@@ -10,7 +10,7 @@ authors = [{name = "Haeng", email = "helpenx@gmail.com"}]
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.8"
-keywords = ["task", "queue", "async", "job", "scheduler", "pentask"]
+keywords = ["task", "queue", "async", "job", "scheduler", "neotask"]
 
 dependencies = ["filelock>=3.12.0"]
 
@@ -19,8 +19,8 @@ ui = ["fastapi>=0.100.0", "uvicorn>=0.23.0"]
 dev = ["pytest>=7.0.0", "black>=23.0.0"]
 
 [project.scripts]
-pentask = "pentask.cli:main"
-pentask-ui = "pentask.cli:ui"
+neotask = "neotask.cli:main"
+neotask-ui = "neotask.cli:ui"
 
 [project.urls]
 Homepage = "https://github.com/neopen/task-queue-manager"
@@ -29,7 +29,7 @@ Documentation = "https://github.com/neopen/task-queue-manager#README"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["pentask*"]
+include = ["neotask*"]
 
 [dependency-groups]
 dev = [

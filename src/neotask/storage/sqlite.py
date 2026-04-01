@@ -1,10 +1,10 @@
 """
-@FileName: sqlite_storage.py
+@FileName: sqlite.py
 @Description: 
 @Author: HiPeng
 @Time: 2026/3/27 23:55
 """
-from neotask.storage.base_storage import BaseStorage
+from neotask.storage.base import BaseStorage
 
 
 class SQLiteStorage(BaseStorage):

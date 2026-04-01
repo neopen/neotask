@@ -1,10 +1,10 @@
 """
-@FileName: redis_storage.py
+@FileName: redis.py
 @Description: 
 @Author: HiPeng
 @Time: 2026/3/27 23:55
 """
-from neotask.storage.base_storage import BaseStorage
+from neotask.storage.base import BaseStorage
 
 
 class RedisStorage(BaseStorage):

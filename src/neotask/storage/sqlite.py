@@ -4,8 +4,3 @@
 @Author: HiPeng
 @Time: 2026/3/27 23:55
 """
-from neotask.storage.base import BaseStorage
-
-
-class SQLiteStorage(BaseStorage):
-    pass

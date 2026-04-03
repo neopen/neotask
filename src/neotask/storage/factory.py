@@ -5,7 +5,7 @@
 @Time: 2026/4/2 21:32
 """
 
-from typing import Tuple
+from typing import Tuple, Optional
 from neotask.models.config import StorageConfig
 from neotask.storage.base import TaskRepository, QueueRepository
 from neotask.storage.memory import MemoryTaskRepository, MemoryQueueRepository
@@ -26,6 +26,25 @@ class StorageFactory:
         >>> config = StorageConfig.redis("redis://localhost:6379")
         >>> task_repo, queue_repo = StorageFactory.create(config)
     """
+
+    @staticmethod
+    def create_storage(storage_type: str, sqlite_path: str, redis_url: Optional[str]):
+        """初始化存储。"""
+        from neotask.models.config import StorageConfig
+
+        if storage_type == "memory":
+            config = StorageConfig.memory()
+        elif storage_type == "sqlite":
+            config = StorageConfig.sqlite(sqlite_path)
+        elif storage_type == "redis":
+            if not redis_url:
+                raise ValueError("Redis URL is required for redis storage")
+            config = StorageConfig.redis(redis_url)
+        else:
+            raise ValueError(f"Unknown storage type: {storage_type}")
+
+        return StorageFactory.create(config)
+
 
     @staticmethod
     def create(config: StorageConfig) -> Tuple[TaskRepository, QueueRepository]:
@@ -95,6 +114,7 @@ class RepositoryFactory:
     This allows dynamic registration of new storage backends.
 
     Examples:
+        >>> class CustomRepository(TaskRepository): pass
         >>> factory = RepositoryFactory()
         >>> factory.register("custom", CustomRepository)
         >>> repo = factory.create("custom", **kwargs)

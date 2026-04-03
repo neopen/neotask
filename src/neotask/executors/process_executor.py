@@ -21,7 +21,7 @@ class ProcessExecutor(TaskExecutor):
     Examples:
         >>> def cpu_intensive(data):
         ...     # Heavy computation here
-        ...     return {"result": result}
+        ...     return {"result": "123456"}
         >>>
         >>> executor = ProcessExecutor(cpu_intensive, max_workers=4)
     """

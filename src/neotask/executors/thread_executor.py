@@ -6,10 +6,12 @@
 """
 
 import asyncio
+import functools
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, Callable
+from typing import Any, Dict, Callable, Optional
 
 from neotask.executors.base import TaskExecutor
+from neotask.executors.exceptions import ExecutionTimeoutError
 
 
 class ThreadExecutor(TaskExecutor):
@@ -26,21 +28,55 @@ class ThreadExecutor(TaskExecutor):
     """
 
     def __init__(self, func: Callable[[Dict[str, Any]], Dict[str, Any]],
-                 max_workers: int = 10):
+                 max_workers: int = 10,
+                 timeout: Optional[float] = None):
         """Initialize with sync function and thread pool.
 
         Args:
             func: Synchronous function that takes task_data and returns result
             max_workers: Maximum number of worker threads
+            timeout: Optional timeout in seconds for execution
         """
         self._func = func
-        self._executor = ThreadPoolExecutor(max_workers=max_workers)
+        self._max_workers = max_workers
+        self._timeout = timeout
+        self._executor: Optional[ThreadPoolExecutor] = None
+        self._shutdown = False
+
+    def _get_executor(self) -> ThreadPoolExecutor:
+        """Lazy initialization of thread pool."""
+        if self._executor is None and not self._shutdown:
+            self._executor = ThreadPoolExecutor(max_workers=self._max_workers)
+        return self._executor
 
     async def execute(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute sync function in thread pool."""
+        """Execute sync function in thread pool with optional timeout."""
+        executor = self._get_executor()
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self._executor, self._func, task_data)
 
-    async def shutdown(self) -> None:
-        """Shutdown thread pool."""
-        self._executor.shutdown(wait=True)
+        # Create a partial function to pass task_data
+        func = functools.partial(self._func, task_data)
+
+        try:
+            if self._timeout is not None:
+                # Execute with timeout
+                future = loop.run_in_executor(executor, func)
+                return await asyncio.wait_for(future, timeout=self._timeout)
+            else:
+                # Execute without timeout
+                return await loop.run_in_executor(executor, func)
+        except asyncio.TimeoutError:
+            raise ExecutionTimeoutError(
+                f"Thread task execution timed out after {self._timeout} seconds"
+            )
+
+    async def shutdown(self, wait: bool = True) -> None:
+        """Shutdown thread pool.
+
+        Args:
+            wait: Whether to wait for pending tasks to complete
+        """
+        self._shutdown = True
+        if self._executor:
+            self._executor.shutdown(wait=wait)
+            self._executor = None

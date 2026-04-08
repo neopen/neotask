@@ -16,7 +16,8 @@ class TaskStatus(Enum):
     """Task status enumeration."""
 
     PENDING = "pending"
-    PROCESSING = "processing"
+    # PROCESSING = "processing"
+    RUNNING = "running"
     SUCCESS = "success"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -93,7 +94,7 @@ class Task:
 
     def start(self, node_id: str) -> None:
         """Mark task as started."""
-        self.status = TaskStatus.PROCESSING
+        self.status = TaskStatus.RUNNING
         self.node_id = node_id
         self.started_at = datetime.now(timezone.utc)
 

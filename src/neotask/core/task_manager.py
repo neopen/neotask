@@ -42,7 +42,7 @@ class TaskManager:
         >>> manager = TaskManager(storage_type="sqlite")
         >>> task_id = manager.create_task({"data": "value"})
         >>> task = manager.get_task(task_id)
-        >>> manager.update_task_status(task_id, TaskStatus.PROCESSING)
+        >>> manager.update_task_status(task_id, TaskStatus.RUNNING)
         >>> manager.complete_task(task_id, {"result": "success"})
     """
 
@@ -251,7 +251,7 @@ class TaskManager:
 
     def start_task(self, task_id: str) -> bool:
         """开始执行任务（状态改为 PROCESSING）。"""
-        return self.update_task_status(task_id, TaskStatus.PROCESSING)
+        return self.update_task_status(task_id, TaskStatus.RUNNING)
 
     def complete_task(self, task_id: str, result: Dict[str, Any]) -> bool:
         """完成任务（状态改为 SUCCESS）。"""
@@ -332,7 +332,7 @@ class TaskManager:
             return False
 
         # 只有 PENDING 和 PROCESSING 状态可以取消
-        if task.status not in (TaskStatus.PENDING, TaskStatus.PROCESSING):
+        if task.status not in (TaskStatus.PENDING, TaskStatus.RUNNING):
             return False
 
         task.cancel()
@@ -518,7 +518,7 @@ class TaskManager:
 
         # 获取各种状态的任务数量
         stats.pending = len(await self._task_repo.list_by_status(TaskStatus.PENDING, limit=10000))
-        stats.processing = len(await self._task_repo.list_by_status(TaskStatus.PROCESSING, limit=10000))
+        stats.processing = len(await self._task_repo.list_by_status(TaskStatus.RUNNING, limit=10000))
         stats.completed = len(await self._task_repo.list_by_status(TaskStatus.SUCCESS, limit=10000))
         stats.failed = len(await self._task_repo.list_by_status(TaskStatus.FAILED, limit=10000))
         stats.cancelled = len(await self._task_repo.list_by_status(TaskStatus.CANCELLED, limit=10000))

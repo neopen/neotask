@@ -43,7 +43,7 @@ class TestTask:
         task = Task(task_id="test-003", data={})
         task.start("node-1")
 
-        assert task.status == TaskStatus.PROCESSING
+        assert task.status == TaskStatus.RUNNING
         assert task.node_id == "node-1"
         assert task.started_at is not None
 
@@ -114,7 +114,7 @@ class TestTaskStatus:
         assert TaskStatus.FAILED.is_terminal() is True
         assert TaskStatus.CANCELLED.is_terminal() is True
         assert TaskStatus.PENDING.is_terminal() is False
-        assert TaskStatus.PROCESSING.is_terminal() is False
+        assert TaskStatus.RUNNING.is_terminal() is False
         assert TaskStatus.SCHEDULED.is_terminal() is False
 
 

@@ -5,7 +5,7 @@
 @Time: 2026/4/9
 """
 
-import time
+import asyncio
 from datetime import datetime, timedelta
 from neotask import TaskScheduler, SchedulerConfig
 
@@ -16,7 +16,7 @@ async def notification_task(data: dict) -> dict:
     return {"sent": True, "message": data["message"]}
 
 
-def main():
+async def main():
     scheduler = TaskScheduler(
         executor=notification_task,
         config=SchedulerConfig.memory()
@@ -27,7 +27,7 @@ def main():
 
         # 1. 延时执行（3秒后）
         print("1. 延时 3 秒执行:")
-        task_id = scheduler.submit_delayed(
+        task_id = await scheduler.submit_delayed_async(
             {"message": "3秒后发送的通知"},
             delay_seconds=3
         )
@@ -36,7 +36,7 @@ def main():
         # 2. 指定时间点执行
         execute_at = datetime.now() + timedelta(seconds=5)
         print(f"\n2. 指定时间点执行: {execute_at.strftime('%H:%M:%S')}")
-        task_id = scheduler.submit_at(
+        task_id = await scheduler.submit_at_async(
             {"message": "定时发送的通知"},
             execute_at=execute_at
         )
@@ -53,7 +53,7 @@ def main():
 
         # 等待观察执行效果
         print("\n等待 10 秒观察执行效果...")
-        time.sleep(10)
+        await asyncio.sleep(10)
 
         # 取消周期任务
         scheduler.cancel_periodic(task_id)
@@ -68,4 +68,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

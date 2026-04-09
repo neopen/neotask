@@ -6,7 +6,7 @@
 """
 
 import asyncio
-from neotask import TaskPool
+from neotask import TaskPool, TaskPoolConfig
 
 
 async def event_task(data: dict) -> dict:
@@ -38,7 +38,10 @@ async def on_cancelled(event):
 
 
 async def main():
-    pool = TaskPool(executor=event_task)
+    pool = TaskPool(
+        executor=event_task,
+        config=TaskPoolConfig(worker_concurrency=3)
+    )
 
     try:
         # 注册事件处理器
@@ -57,8 +60,10 @@ async def main():
             task_ids.append(task_id)
             print(f"  提交任务: {task_id}")
 
-        # 等待完成
-        await asyncio.sleep(2)
+        # 等待所有任务完成
+        for task_id in task_ids:
+            result = await pool.wait_for_result_async(task_id)
+            print(f"  结果: {result}")
 
         print("\n所有任务完成")
 

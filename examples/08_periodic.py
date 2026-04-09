@@ -1,5 +1,5 @@
 """
-@FileName: 08_periodic_management.py
+@FileName: 08_periodic.py
 @Description: 周期任务管理示例 - 暂停、恢复、取消周期任务
 @Author: HiPeng
 @Time: 2026/4/9

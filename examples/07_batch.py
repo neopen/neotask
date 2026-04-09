@@ -5,13 +5,14 @@
 @Time: 2026/4/2 17:25
 """
 
+import asyncio
 import time
 from neotask import TaskPool, TaskPoolConfig
 
 
 async def batch_task(data: dict) -> dict:
     """批量处理任务"""
-    time.sleep(0.05)  # 模拟快速处理
+    await asyncio.sleep(0.05)  # 模拟快速处理
     return {
         "index": data["index"],
         "processed": True,
@@ -19,14 +20,14 @@ async def batch_task(data: dict) -> dict:
     }
 
 
-def main():
+async def main():
     pool = TaskPool(
         executor=batch_task,
         config=TaskPoolConfig(worker_concurrency=20)
     )
 
     try:
-        batch_size = 200
+        batch_size = 100
         print(f"提交 {batch_size} 个任务...")
 
         start_time = time.time()
@@ -34,7 +35,7 @@ def main():
 
         # 批量提交
         for i in range(batch_size):
-            task_id = pool.submit({"index": i})
+            task_id = await pool.submit_async({"index": i})
             task_ids.append(task_id)
 
         submit_time = time.time() - start_time
@@ -49,7 +50,7 @@ def main():
 
         for task_id in task_ids:
             try:
-                result = pool.wait_for_result(task_id, timeout=10)
+                result = await pool.wait_for_result_async(task_id, timeout=10)
                 if result.get("processed"):
                     completed += 1
             except Exception:
@@ -68,4 +69,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

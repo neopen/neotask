@@ -1,11 +1,11 @@
 """
-@FileName: 05_cron_tasks.py
+@FileName: 07_cron_tasks.py
 @Description: Cron 定时任务示例 - 演示 Cron 表达式定时任务
 @Author: HiPeng
 @Time: 2026/4/9
 """
 
-import time
+import asyncio
 from neotask import TaskScheduler, SchedulerConfig
 
 
@@ -15,7 +15,7 @@ async def report_task(data: dict) -> dict:
     return {"generated": True, "type": data["report_type"]}
 
 
-def main():
+async def main():
     scheduler = TaskScheduler(
         executor=report_task,
         config=SchedulerConfig.memory()
@@ -35,27 +35,12 @@ def main():
         )
         print(f"   任务ID: {task_id}")
 
-        # 2. 每小时的第0分钟执行
-        print("\n2. 每小时执行一次:")
-        task_id = scheduler.submit_cron(
-            {"report_type": "hourly_report"},
-            cron_expr="0 * * * *"
-        )
-        print(f"   任务ID: {task_id}")
-
-        # 3. 每天9点执行
-        print("\n3. 每天9点执行:")
-        task_id = scheduler.submit_cron(
-            {"report_type": "daily_report"},
-            cron_expr="0 9 * * *"
-        )
-        print(f"   任务ID: {task_id}")
-
-        # 4. 每周一9点执行
-        print("\n4. 每周一9点执行:")
-        task_id = scheduler.submit_cron(
-            {"report_type": "weekly_report"},
-            cron_expr="0 9 * * 1"
+        # 2. 每5秒执行一次（测试用，实际Cron最小单位是分钟）
+        print("\n2. 测试任务（5秒后执行）:")
+        # 注意：Cron 最小单位是分钟，这里用延时任务模拟
+        task_id = scheduler.submit_delayed(
+            {"report_type": "test_report"},
+            delay_seconds=5
         )
         print(f"   任务ID: {task_id}")
 
@@ -65,8 +50,8 @@ def main():
             print(f"  - {task['task_id']}: interval={task['interval_seconds']}s, "
                   f"cron={task['cron_expr']}, run_count={task['run_count']}")
 
-        print("\n等待 5 秒观察执行...")
-        time.sleep(5)
+        print("\n等待 6 秒观察执行...")
+        await asyncio.sleep(6)
 
         # 取消所有周期任务
         for task in scheduler.get_periodic_tasks():
@@ -79,4 +64,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

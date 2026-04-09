@@ -14,6 +14,7 @@ include CHANGELOG.md
 include CONTRIBUTING.md
 include pyproject.toml
 include requirements.txt
+include src/neotask/config/*.yaml
 
 # ============================================================
 # Include package data

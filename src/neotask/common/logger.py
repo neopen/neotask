@@ -85,7 +85,7 @@ class LoggingConfigManager:
         """
         if config_dir is None:
             # 假设当前文件在 src/neotask/ 目录下
-            self.config_dir = Path(__file__).parent / "config"
+            self.config_dir = Path(__file__).parent.parent / "config"
         else:
             self.config_dir = Path(config_dir)
 

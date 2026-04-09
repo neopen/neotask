@@ -10,7 +10,7 @@ from neotask.executor.async_executor import AsyncExecutor
 from neotask.executor.thread_executor import ThreadExecutor
 from neotask.executor.process_executor import ProcessExecutor
 from neotask.executor.class_executor import ClassExecutor
-from neotask.executor.factory import ExecutorFactory, ExecutorType
+from neotask.executor.factory import ExecutorFactory
 
 __all__ = [
     "TaskExecutor",
@@ -20,5 +20,4 @@ __all__ = [
     "ProcessExecutor",
     "ClassExecutor",
     "ExecutorFactory",
-    "ExecutorType",
 ]

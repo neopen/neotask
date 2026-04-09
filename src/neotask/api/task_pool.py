@@ -6,10 +6,9 @@
 """
 
 import asyncio
+import inspect
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List, Callable, Union
-
-from neotask.lock.factory import LockFactory
 
 from neotask.core.dispatcher import TaskDispatcher
 from neotask.core.future import FutureManager
@@ -17,6 +16,7 @@ from neotask.core.lifecycle import TaskLifecycleManager
 from neotask.event.bus import EventBus, TaskEvent
 from neotask.executor.base import TaskExecutor
 from neotask.executor.factory import ExecutorFactory
+from neotask.lock.factory import LockFactory
 from neotask.models.config import StorageConfig, LockConfig
 from neotask.models.task import TaskPriority
 from neotask.monitor.health import SystemHealthChecker
@@ -30,15 +30,14 @@ from neotask.worker.supervisor import WorkerSupervisor
 
 @dataclass
 class TaskPoolConfig:
-    """TaskPool配置"""
+    """TaskPool配置 - 专注于即时任务"""
     # 存储配置
     storage_type: str = "memory"
     sqlite_path: str = "neotask.db"
     redis_url: Optional[str] = None
 
     # 执行器配置
-    executor_func: Optional[Callable] = None
-    executor_type: str = "auto"
+    executor_type: str = "async"
     max_workers: int = 10
 
     # Worker配置
@@ -48,9 +47,11 @@ class TaskPoolConfig:
 
     # 队列配置
     queue_max_size: int = 10000
+    priority_levels: int = 4
 
     # 锁配置
     lock_type: str = "memory"
+    lock_timeout: int = 30
 
     # 监控配置
     enable_metrics: bool = True
@@ -61,26 +62,28 @@ class TaskPoolConfig:
     max_retries: int = 3
     retry_delay: float = 1.0
 
+    # 节点标识
+    node_id: str = ""
+
+    def __post_init__(self):
+        if not self.node_id:
+            import socket
+            self.node_id = socket.gethostname()
+
 
 class TaskPool:
     """即时任务池
 
     专注于立即执行的任务，提供简洁的同步/异步API。
 
-    使用示例：
-        >>> # 同步方式
-        >>> pool = TaskPool()
-        >>> task_id = pool.submit({"data": "value"})
-        >>> result = pool.wait_for_result(task_id)
-        >>>
-        >>> # 异步方式
-        >>> async def main():
-        ...     pool = TaskPool()
-        ...     task_id = await pool.submit_async({"data": "value"})
-        ...     result = await pool.wait_for_result_async(task_id)
+    设计模式：Facade Pattern - 封装底层复杂组件
     """
 
-    def __init__(self, executor: Union[TaskExecutor, Callable, None] = None, config: Optional[TaskPoolConfig] = None):
+    def __init__(
+            self,
+            executor: Union[TaskExecutor, Callable, None] = None,
+            config: Optional[TaskPoolConfig] = None
+    ):
         """初始化任务池
 
         Args:
@@ -106,7 +109,7 @@ class TaskPool:
 
         # 初始化队列调度器
         self._queue_scheduler = QueueScheduler(
-            repository=self._queue_repo,
+            queue_repo=self._queue_repo,
             max_size=self._config.queue_max_size
         )
 
@@ -119,7 +122,8 @@ class TaskPool:
         # 初始化分发器
         self._dispatcher = TaskDispatcher(
             lifecycle_manager=self._lifecycle,
-            queue_scheduler=self._queue_scheduler
+            queue_scheduler=self._queue_scheduler,
+            node_id=self._config.node_id
         )
 
         # 初始化Worker池
@@ -156,7 +160,7 @@ class TaskPool:
 
         # 运行状态
         self._running = False
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._started = False
 
     def _init_executor(self, executor: Union[TaskExecutor, Callable, None]) -> TaskExecutor:
         """初始化执行器"""
@@ -165,16 +169,21 @@ class TaskPool:
             async def default_executor(data):
                 return {"result": "executed", "data": data}
 
-            return ExecutorFactory.create(default_executor)
+            return ExecutorFactory.create(default_executor, executor_type="async")
 
         if isinstance(executor, TaskExecutor):
             return executor
 
-        return ExecutorFactory.create(
-            executor,
-            executor_type=self._config.executor_type,
-            max_workers=self._config.max_workers
-        )
+        # 根据函数类型自动选择执行器
+        if inspect.iscoroutinefunction(executor):
+            return ExecutorFactory.create(executor, executor_type="async")
+        else:
+            # 同步函数使用线程执行器
+            return ExecutorFactory.create(
+                executor,
+                executor_type="thread",
+                max_workers=self._config.max_workers
+            )
 
     def _init_storage(self):
         """初始化存储"""
@@ -194,7 +203,7 @@ class TaskPool:
         if self._config.lock_type == "memory":
             lock_config = LockConfig.memory()
         elif self._config.lock_type == "redis":
-            lock_config = LockConfig.redis(self._config.redis_url)
+            lock_config = LockConfig.redis(self._config.redis_url, self._config.lock_timeout)
         else:
             raise ValueError(f"Unknown lock type: {self._config.lock_type}")
 
@@ -206,7 +215,7 @@ class TaskPool:
         if self._metrics:
             @self._event_bus.subscribe_global
             async def metrics_handler(event: TaskEvent):
-                if event.event_type == "task.submitted":
+                if event.event_type == "task.created":
                     self._metrics.record_task_submit(event.task_id)
                 elif event.event_type == "task.started":
                     self._metrics.record_task_start(event.task_id)
@@ -220,7 +229,8 @@ class TaskPool:
         # 未来管理器完成
         @self._event_bus.subscribe("task.completed")
         async def complete_future_handler(event: TaskEvent):
-            await self._future_manager.complete(event.task_id, result=event.data)
+            result = event.data.get("result") if isinstance(event.data, dict) else event.data
+            await self._future_manager.complete(event.task_id, result=result)
 
         @self._event_bus.subscribe("task.failed")
         async def fail_future_handler(event: TaskEvent):
@@ -236,23 +246,18 @@ class TaskPool:
         if not self._running:
             self.start()
 
-    def _get_loop(self) -> asyncio.AbstractEventLoop:
-        """获取事件循环"""
-        if self._loop is None or self._loop.is_closed():
-            try:
-                self._loop = asyncio.get_running_loop()
-            except RuntimeError:
-                self._loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(self._loop)
-        return self._loop
-
     def _run_coroutine(self, coro):
-        """运行协程"""
-        loop = self._get_loop()
-        if loop.is_running():
-            return asyncio.create_task(coro)
-        else:
+        """运行协程 - 兼容已有事件循环"""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # 没有运行中的循环，创建新循环
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             return loop.run_until_complete(coro)
+        else:
+            # 已有运行中的循环，创建任务
+            return asyncio.create_task(coro)
 
     # ========== 生命周期管理 ==========
 
@@ -261,22 +266,30 @@ class TaskPool:
         if self._running:
             return
 
-        loop = self._get_loop()
+        async def _start():
+            await self._event_bus.start()
+            await self._queue_scheduler.start()
+            await self._worker_pool.start()
+            await self._supervisor.start()
 
-        # 启动组件
-        loop.run_until_complete(self._event_bus.start())
-        loop.run_until_complete(self._queue_scheduler.start())
-        loop.run_until_complete(self._worker_pool.start())
-        loop.run_until_complete(self._supervisor.start())
+            if self._config.enable_reporter:
+                self._reporter_manager = ReporterManager(interval=60)
+                self._reporter_manager.add_reporter(ConsoleReporter())
+                self._reporter_manager.set_metrics_callback(self.get_stats)
+                await self._reporter_manager.start()
 
-        # 启动上报器
-        if self._config.enable_reporter:
-            self._reporter_manager = ReporterManager(interval=60)
-            self._reporter_manager.add_reporter(ConsoleReporter())
-            self._reporter_manager.set_metrics_callback(self.get_stats)
-            loop.run_until_complete(self._reporter_manager.start())
+        # 直接运行异步启动（不创建新循环）
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_start())
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(_start())
+            loop.close()
 
         self._running = True
+        self._started = True
 
     def shutdown(self, graceful: bool = True, timeout: float = 30) -> None:
         """关闭任务池
@@ -290,30 +303,41 @@ class TaskPool:
 
         self._running = False
 
-        loop = self._get_loop()
+        async def _shutdown():
+            # 停止接收新任务
+            await self._queue_scheduler.disable()
 
-        # 停止接收新任务
-        loop.run_until_complete(self._queue_scheduler.disable())
+            # 等待队列清空
+            if graceful:
+                await self._queue_scheduler.wait_until_empty(timeout)
 
-        # 等待队列清空
-        if graceful:
-            loop.run_until_complete(self._queue_scheduler.wait_until_empty(timeout))
+            # 停止组件
+            await self._supervisor.stop()
+            await self._worker_pool.stop(graceful, timeout)
+            await self._queue_scheduler.stop()
 
-        # 停止组件
-        loop.run_until_complete(self._supervisor.stop())
-        loop.run_until_complete(self._worker_pool.stop(graceful, timeout))
-        loop.run_until_complete(self._queue_scheduler.stop())
+            if self._reporter_manager:
+                await self._reporter_manager.stop()
 
-        if self._reporter_manager:
-            loop.run_until_complete(self._reporter_manager.stop())
+            await self._event_bus.stop()
 
-        loop.run_until_complete(self._event_bus.stop())
+            # 关闭存储连接
+            if hasattr(self._task_repo, 'close'):
+                await self._task_repo.close()
+            if hasattr(self._queue_repo, 'close'):
+                await self._queue_repo.close()
 
-        # 关闭存储连接
-        if hasattr(self._task_repo, 'close'):
-            loop.run_until_complete(self._task_repo.close())
-        if hasattr(self._queue_repo, 'close'):
-            loop.run_until_complete(self._queue_repo.close())
+        # 运行关闭
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_shutdown())
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(_shutdown())
+            loop.close()
+
+        self._started = False
 
     def __enter__(self):
         """上下文管理器入口"""
@@ -331,34 +355,44 @@ class TaskPool:
             data: Dict[str, Any],
             task_id: Optional[str] = None,
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
-            delay: float = 0
+            delay: float = 0,
+            ttl: int = 3600
     ) -> str:
         """提交任务（同步）
 
         Args:
             data: 任务数据
             task_id: 任务ID（可选）
-            priority: 优先级（1-10，数字越小优先级越高）
+            priority: 优先级（0-3，数字越小优先级越高）
             delay: 延迟执行时间（秒）
+            ttl: 任务超时时间（秒）
 
         Returns:
             task_id
         """
         self._ensure_running()
-        return self._run_coroutine(
-            self._dispatcher.dispatch(data, task_id, priority, delay)
+        result = self._run_coroutine(
+            self._dispatcher.dispatch(data, task_id, priority, delay, ttl)
         )
+        # 如果是 Task 对象，返回 task_id
+        if hasattr(result, 'task_id'):
+            return result.task_id
+        return result
 
     async def submit_async(
             self,
             data: Dict[str, Any],
             task_id: Optional[str] = None,
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
-            delay: float = 0
+            delay: float = 0,
+            ttl: int = 3600
     ) -> str:
         """提交任务（异步）"""
         self._ensure_running()
-        return await self._dispatcher.dispatch(data, task_id, priority, delay)
+        result = await self._dispatcher.dispatch(data, task_id, priority, delay, ttl)
+        if hasattr(result, 'task_id'):
+            return result.task_id
+        return result
 
     def submit_batch(
             self,
@@ -389,20 +423,7 @@ class TaskPool:
     # ========== 任务等待 API ==========
 
     def wait_for_result(self, task_id: str, timeout: float = 300) -> Any:
-        """等待任务完成并返回结果（同步）
-
-        Args:
-            task_id: 任务ID
-            timeout: 超时时间（秒）
-
-        Returns:
-            任务结果
-
-        Raises:
-            TaskNotFoundError: 任务不存在
-            TimeoutError: 等待超时
-            Exception: 任务执行失败
-        """
+        """等待任务完成并返回结果（同步）"""
         return self._run_coroutine(self._lifecycle.wait_for_task(task_id, timeout))
 
     async def wait_for_result_async(self, task_id: str, timeout: float = 300) -> Any:
@@ -455,7 +476,7 @@ class TaskPool:
         """获取任务结果（同步）"""
         task = self._run_coroutine(self._lifecycle.get_task(task_id))
         if not task:
-            return {"error": "task not found"}
+            return None
         return {
             "task_id": task.task_id,
             "status": task.status.value,
@@ -469,7 +490,7 @@ class TaskPool:
         """获取任务结果（异步）"""
         task = await self._lifecycle.get_task(task_id)
         if not task:
-            return {"error": "task not found"}
+            return None
         return {
             "task_id": task.task_id,
             "status": task.status.value,
@@ -641,9 +662,9 @@ class TaskPool:
 
     # ========== 事件回调 API ==========
 
-    def on_submitted(self, handler: Callable) -> None:
-        """注册任务提交回调"""
-        self._event_bus.subscribe("task.submitted", handler)
+    def on_created(self, handler: Callable) -> None:
+        """注册任务创建回调"""
+        self._event_bus.subscribe("task.created", handler)
 
     def on_started(self, handler: Callable) -> None:
         """注册任务开始回调"""

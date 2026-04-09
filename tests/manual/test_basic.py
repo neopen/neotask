@@ -45,7 +45,7 @@ def test_basic_submit():
 
         # Verify
         assert result == {"result": 84}
-        print("✓ Test passed")
+        print("Test passed")
 
     finally:
         scheduler.shutdown()
@@ -74,7 +74,7 @@ def test_multiple_tasks():
             result = scheduler.wait_for_result(task_id)
             print(f"Result for {task_id}: {result}")
 
-        print("✓ Test passed")
+        print("Test passed")
 
     finally:
         scheduler.shutdown()
@@ -107,7 +107,7 @@ def test_task_status():
         print(f"Final status: {status}")
 
         assert status == "success"
-        print("✓ Test passed")
+        print("Test passed")
 
     finally:
         scheduler.shutdown()
@@ -135,9 +135,9 @@ def test_get_result():
         result = scheduler.get_result(task_id)
         print(f"Retrieved result: {result}")
 
-        assert result["result"] == 100
+        assert result["result"]["result"] == 100
         assert result["status"] == "success"
-        print("✓ Test passed")
+        print("Test passed")
 
     finally:
         scheduler.shutdown()

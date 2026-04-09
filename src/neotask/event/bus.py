@@ -40,46 +40,78 @@ class EventBus:
         self._queue: asyncio.Queue = asyncio.Queue()
         self._worker_task: Optional[asyncio.Task] = None
 
-    def subscribe(self, event_type: str, handler: Callable) -> Callable:
+    def subscribe(self, event_type: str, handler: Optional[Callable] = None) -> Callable:
         """订阅特定类型事件
+
+        可以用作装饰器：
+        @bus.subscribe("task.completed")
+        async def on_complete(event):
+            pass
+
+        也可以直接调用：
+        bus.subscribe("task.completed", on_complete)
 
         Args:
             event_type: 事件类型
-            handler: 事件处理器
+            handler: 事件处理器（可选，用于直接调用）
 
         Returns:
-            原始handler（用于装饰器）
+            装饰器函数或原始handler
         """
+        
+        def decorator(func: Callable) -> Callable:
+            async def wrapper(event: TaskEvent):
+                if asyncio.iscoroutinefunction(func):
+                    await func(event)
+                else:
+                    func(event)
 
-        async def wrapper(event: TaskEvent):
-            if asyncio.iscoroutinefunction(handler):
-                await handler(event)
-            else:
-                handler(event)
+            if event_type not in self._handlers:
+                self._handlers[event_type] = []
+            self._handlers[event_type].append(wrapper)
+            return func
+        
+        if handler is None:
+            # 用作装饰器
+            return decorator
+        else:
+            # 直接调用
+            return decorator(handler)
 
-        if event_type not in self._handlers:
-            self._handlers[event_type] = []
-        self._handlers[event_type].append(wrapper)
-        return handler
-
-    def subscribe_global(self, handler: Callable) -> Callable:
+    def subscribe_global(self, handler: Optional[Callable] = None) -> Callable:
         """订阅所有事件
 
+        可以用作装饰器：
+        @bus.subscribe_global
+        async def on_event(event):
+            pass
+
+        也可以直接调用：
+        bus.subscribe_global(on_event)
+
         Args:
-            handler: 事件处理器
+            handler: 事件处理器（可选，用于直接调用）
 
         Returns:
-            原始handler（用于装饰器）
+            装饰器函数或原始handler
         """
+        
+        def decorator(func: Callable) -> Callable:
+            async def wrapper(event: TaskEvent):
+                if asyncio.iscoroutinefunction(func):
+                    await func(event)
+                else:
+                    func(event)
 
-        async def wrapper(event: TaskEvent):
-            if asyncio.iscoroutinefunction(handler):
-                await handler(event)
-            else:
-                handler(event)
-
-        self._global_handlers.append(wrapper)
-        return handler
+            self._global_handlers.append(wrapper)
+            return func
+        
+        if handler is None:
+            # 用作装饰器
+            return decorator
+        else:
+            # 直接调用
+            return decorator(handler)
 
     def unsubscribe(self, event_type: str, handler: Callable) -> bool:
         """取消订阅"""

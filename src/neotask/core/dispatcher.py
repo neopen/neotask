@@ -40,7 +40,7 @@ class TaskDispatcher:
         priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
         delay: float = 0,
         ttl: int = 3600
-    ) -> str:
+    ):
         """分发任务
 
         Args:
@@ -51,7 +51,7 @@ class TaskDispatcher:
             ttl: 任务超时时间（秒）
 
         Returns:
-            task_id
+            创建的Task对象或task_id
         """
         # 转换优先级
         if isinstance(priority, int):
@@ -70,12 +70,13 @@ class TaskDispatcher:
 
         # 如果是延迟任务，使用延迟队列
         if delay > 0:
-            await self._queue.schedule_delayed(task.task_id, priority_enum.value, delay)
+            # 使用 push 方法传入 delay 参数
+            await self._queue.push(task.task_id, priority_enum.value, delay)
         else:
             # 立即入队
             await self._queue.push(task.task_id, priority_enum.value)
 
-        return task.task_id
+        return task
 
     async def dispatch_batch(
         self,
@@ -85,8 +86,8 @@ class TaskDispatcher:
         """批量分发任务"""
         task_ids = []
         for task_data in tasks:
-            task_id = await self.dispatch(task_data, priority=priority)
-            task_ids.append(task_id)
+            task = await self.dispatch(task_data, priority=priority)
+            task_ids.append(task.task_id if hasattr(task, 'task_id') else task)
         return task_ids
 
     async def redispatch(self, task_id: str, delay: float = 0) -> bool:
@@ -96,7 +97,7 @@ class TaskDispatcher:
             return False
 
         if delay > 0:
-            await self._queue.schedule_delayed(task_id, task.priority.value, delay)
+            await self._queue.push(task_id, task.priority.value, delay)
         else:
             await self._queue.push(task_id, task.priority.value)
 

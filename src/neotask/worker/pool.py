@@ -13,6 +13,7 @@ from typing import Optional, Dict
 from neotask.core.lifecycle import TaskLifecycleManager
 from neotask.event.bus import EventBus, TaskEvent
 from neotask.executor.base import TaskExecutor
+from neotask.models.task import TaskStatus
 from neotask.queue.scheduler import QueueScheduler
 from neotask.storage.base import TaskRepository
 
@@ -161,7 +162,7 @@ class WorkerPool:
         async with self._semaphore:
             # 获取任务
             task = await self._lifecycle.get_task(task_id)
-            if not task or not task.is_pending:
+            if not task or task.status != TaskStatus.PENDING:
                 return
 
             # 开始执行

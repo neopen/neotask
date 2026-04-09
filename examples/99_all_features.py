@@ -37,12 +37,10 @@ async def demo_taskpool():
     """演示 TaskPool 功能"""
     print_section("TaskPool - 即时任务池")
 
-    pool = TaskPool(
+    with TaskPool(
         executor=demo_executor,
         config=TaskPoolConfig(worker_concurrency=5)
-    )
-
-    try:
+    ) as pool:
         # 1. 基本提交
         print("\n1. 基本提交:")
         task_id = pool.submit({"name": "basic_task"})
@@ -60,7 +58,8 @@ async def demo_taskpool():
             task_id = pool.submit({"name": name}, priority=priority)
             print(f"   提交: {name} (优先级={priority.value})")
 
-        time.sleep(1)
+        # 等待优先级任务完成
+        time.sleep(1.5)
 
         # 3. 批量提交
         print("\n3. 批量提交:")
@@ -76,9 +75,6 @@ async def demo_taskpool():
         stats = pool.get_stats()
         print(f"\n统计: 总={stats['total']}, 完成={stats['completed']}")
 
-    finally:
-        pool.shutdown()
-
 
 async def demo_taskscheduler():
     """演示 TaskScheduler 功能"""
@@ -88,6 +84,7 @@ async def demo_taskscheduler():
         executor=demo_executor,
         config=SchedulerConfig.memory()
     )
+    scheduler.start()
 
     try:
         # 1. 延时任务
@@ -110,18 +107,27 @@ async def demo_taskscheduler():
         # 3. 等待观察
         print("\n等待 6 秒观察执行...")
         for i in range(6):
-            stats = scheduler.get_stats()
-            print(f"\r   第{i+1}秒: 队列={stats['queue_size']}, "
-                  f"周期任务数={stats.get('periodic_tasks_count', 0)}", end="")
+            try:
+                stats = scheduler.get_stats()
+                periodic_count = stats.get("periodic_tasks_count", 0)
+                print(f"\r   第{i+1}秒: 队列={stats['queue_size']}, "
+                      f"周期任务数={periodic_count}", end="", flush=True)
+            except Exception:
+                print(f"\r   第{i+1}秒: 观察中...", end="", flush=True)
             time.sleep(1)
 
+        print()  # 换行
+
         # 4. 取消周期任务
-        print(f"\n\n取消周期任务: {periodic_id}")
+        print(f"\n取消周期任务: {periodic_id}")
         scheduler.cancel_periodic(periodic_id)
 
         # 5. 获取统计
-        stats = scheduler.get_stats()
-        print(f"\n最终统计: 总任务={stats['total']}, 完成={stats['completed']}")
+        try:
+            stats = scheduler.get_stats()
+            print(f"\n最终统计: 总任务={stats['total']}, 完成={stats['completed']}")
+        except Exception:
+            print("\n最终统计: 获取失败")
 
     finally:
         scheduler.shutdown()

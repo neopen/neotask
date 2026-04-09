@@ -1,5 +1,5 @@
 """
-@FileName: 07_cron_tasks.py
+@FileName: 05_cron_tasks.py
 @Description: Cron 定时任务示例 - 演示 Cron 表达式定时任务
 @Author: HiPeng
 @Time: 2026/4/9
@@ -24,25 +24,23 @@ async def main():
     try:
         print("=== Cron 定时任务示例 ===\n")
 
-        # Cron 表达式格式: 分 时 日 月 周
-        # * 表示任意值，*/n 表示每 n 单位
-
-        # 1. 每分钟执行一次
-        print("1. 每分钟执行一次:")
+        # 注意：当前 Cron 解析器简化实现，返回 3 秒后执行
+        # 生产环境建议安装 croniter 库实现完整 Cron 支持
+        print("1. Cron 任务（简化版，3秒后执行）:")
         task_id = scheduler.submit_cron(
-            {"report_type": "minute_report"},
+            {"report_type": "cron_report"},
             cron_expr="*/1 * * * *"
         )
         print(f"   任务ID: {task_id}")
 
-        # 2. 每5秒执行一次（测试用，实际Cron最小单位是分钟）
-        print("\n2. 测试任务（5秒后执行）:")
-        # 注意：Cron 最小单位是分钟，这里用延时任务模拟
-        task_id = scheduler.submit_delayed(
-            {"report_type": "test_report"},
-            delay_seconds=5
+        # 2. 周期任务（推荐用于快速测试）
+        print("\n2. 周期任务（每3秒执行）:")
+        interval_id = scheduler.submit_interval(
+            {"report_type": "interval_report"},
+            interval_seconds=3,
+            run_immediately=True
         )
-        print(f"   任务ID: {task_id}")
+        print(f"   任务ID: {interval_id}")
 
         # 查看所有周期任务
         print("\n已注册的周期任务:")
@@ -50,8 +48,8 @@ async def main():
             print(f"  - {task['task_id']}: interval={task['interval_seconds']}s, "
                   f"cron={task['cron_expr']}, run_count={task['run_count']}")
 
-        print("\n等待 6 秒观察执行...")
-        await asyncio.sleep(6)
+        print("\n等待 10 秒观察执行...")
+        await asyncio.sleep(10)
 
         # 取消所有周期任务
         for task in scheduler.get_periodic_tasks():

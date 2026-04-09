@@ -18,30 +18,20 @@ async def process_data(data: dict) -> dict:
 
 
 async def main():
-    # 创建任务池
-    pool = TaskPool(
+    with TaskPool(
         executor=process_data,
-        config=TaskPoolConfig(
-            worker_concurrency=3,
-            storage_type="memory"
-        )
-    )
-
-    try:
-        # 提交多个任务
+        config=TaskPoolConfig(worker_concurrency=3, storage_type="memory")
+    ) as pool:
         tasks = []
         for i in range(5):
             task_id = await pool.submit_async({"value": i})
             tasks.append(task_id)
             print(f"已提交: {task_id}")
 
-        # 等待所有任务完成
         for task_id in tasks:
             result = await pool.wait_for_result_async(task_id)
             print(f"任务 {task_id} 结果: {result}")
-
-    finally:
-        pool.shutdown()
+    # 退出上下文时自动调用 shutdown()
 
 
 if __name__ == "__main__":

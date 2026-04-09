@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 from neotask.common.exceptions import TaskNotFoundError, TaskAlreadyExistsError
+from neotask.common.logger import debug
 from neotask.core.future import FutureManager
 from neotask.event.bus import EventBus, TaskEvent
 from neotask.models.task import Task, TaskStatus, TaskPriority, TaskStats
@@ -138,6 +139,7 @@ class TaskLifecycleManager:
             async with self._lock:
                 self._cache[task_id] = task
 
+        # 发送 started 事件 - 确保事件被发送
         await self._emit_event("task.started", task_id, {"node_id": node_id})
 
         return True
@@ -168,6 +170,8 @@ class TaskLifecycleManager:
         if not task:
             return False
 
+        debug(f"[DEBUG] Failing task {task_id}: {error}")  # 调试用
+
         task.fail(error)
         await self._task_repo.save(task)
 
@@ -175,7 +179,7 @@ class TaskLifecycleManager:
             async with self._lock:
                 self._cache[task_id] = task
 
-        # 通知等待者
+        # 通知等待者 - 确保错误被传递
         await self._future_manager.complete(task_id, error=error)
 
         await self._emit_event("task.failed", task_id, {"error": error})
@@ -228,17 +232,40 @@ class TaskLifecycleManager:
         """等待任务完成"""
         # 先检查任务是否已完成
         task = await self.get_task(task_id)
-        if task and task.is_terminal():
-            if task.error:
-                raise Exception(task.error)
-            return task.result
-
         if not task:
             raise TaskNotFoundError(task_id)
 
-        # 等待完成
+        # 如果任务已经是最终状态，直接返回结果或抛出异常
+        if task.status == TaskStatus.SUCCESS:
+            return task.result
+        elif task.status == TaskStatus.FAILED:
+            raise Exception(task.error or "Task failed")
+        elif task.status == TaskStatus.CANCELLED:
+            raise Exception("Task was cancelled")
+
+        # 获取或创建 future
         future = await self._future_manager.get(task_id)
-        return await future.wait(timeout)
+
+        try:
+            # 等待完成
+            result = await future.wait(timeout)
+            return result
+        except Exception as e:
+            # 等待失败后，重新检查任务状态（可能任务在等待期间完成了但 future 没收到通知）
+            task = await self.get_task(task_id)
+            if task:
+                if task.status == TaskStatus.SUCCESS:
+                    return task.result
+                elif task.status == TaskStatus.FAILED:
+                    raise Exception(task.error or "Task failed")
+                elif task.status == TaskStatus.CANCELLED:
+                    raise Exception("Task was cancelled")
+            # 如果是超时异常，重新抛出
+            from neotask.common.exceptions import TimeoutError
+            if isinstance(e, TimeoutError):
+                raise
+            # 其他异常
+            raise
 
     async def get_task_stats(self) -> TaskStats:
         """获取任务统计"""

@@ -29,7 +29,7 @@ class TaskRepository(ABC):
         pass
 
     @abstractmethod
-    async def list_by_status(self, status: TaskStatus, limit: int = 100) -> List[Task]:
+    async def list_by_status(self, status: TaskStatus, limit: int = 100, offset: int = 0) -> List[Task]:
         """List tasks by status."""
         pass
 

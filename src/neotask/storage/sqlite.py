@@ -111,7 +111,7 @@ class SQLiteTaskRepository(TaskRepository):
             await db.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
             await db.commit()
 
-    async def list_by_status(self, status: TaskStatus, limit: int = 100) -> List[Task]:
+    async def list_by_status(self, status: TaskStatus, limit: int = 100, offset: int = 0) -> List[Task]:
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
                 "SELECT * FROM tasks WHERE status = ? LIMIT ?",

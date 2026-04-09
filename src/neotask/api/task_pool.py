@@ -7,6 +7,8 @@
 
 import asyncio
 import inspect
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List, Callable, Union
 
@@ -84,12 +86,7 @@ class TaskPool:
             executor: Union[TaskExecutor, Callable, None] = None,
             config: Optional[TaskPoolConfig] = None
     ):
-        """初始化任务池
-
-        Args:
-            executor: 任务执行器（可以是TaskExecutor实例、函数或None）
-            config: 配置对象
-        """
+        """初始化任务池"""
         self._config = config or TaskPoolConfig()
 
         # 初始化执行器
@@ -162,28 +159,34 @@ class TaskPool:
         self._running = False
         self._started = False
 
+        # 线程安全的执行器
+        self._executor_service = ThreadPoolExecutor(max_workers=1, thread_name_prefix="TaskPool")
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._loop_thread: Optional[threading.Thread] = None
+
     def _init_executor(self, executor: Union[TaskExecutor, Callable, None]) -> TaskExecutor:
         """初始化执行器"""
         if executor is None:
-            # 默认执行器
             async def default_executor(data):
                 return {"result": "executed", "data": data}
 
-            return ExecutorFactory.create(default_executor, executor_type="async")
+            return ExecutorFactory.create(default_executor)
 
         if isinstance(executor, TaskExecutor):
             return executor
 
-        # 根据函数类型自动选择执行器
-        if inspect.iscoroutinefunction(executor):
-            return ExecutorFactory.create(executor, executor_type="async")
-        else:
-            # 同步函数使用线程执行器
-            return ExecutorFactory.create(
-                executor,
-                executor_type="thread",
-                max_workers=self._config.max_workers
-            )
+        # 如果是同步函数，包装为异步函数
+        if not inspect.iscoroutinefunction(executor):
+            async def wrapped_executor(data):
+                return executor(data)
+
+            return ExecutorFactory.create(wrapped_executor)
+
+        return ExecutorFactory.create(
+            executor,
+            executor_type=self._config.executor_type,
+            max_workers=self._config.max_workers
+        )
 
     def _init_storage(self):
         """初始化存储"""
@@ -247,17 +250,21 @@ class TaskPool:
             self.start()
 
     def _run_coroutine(self, coro):
-        """运行协程 - 兼容已有事件循环"""
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            # 没有运行中的循环，创建新循环
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            return loop.run_until_complete(coro)
-        else:
-            # 已有运行中的循环，创建任务
-            return asyncio.create_task(coro)
+        """运行协程 - 线程安全版本"""
+        if self._loop is None:
+            raise RuntimeError("TaskPool not started. Call start() first.")
+
+        # 在当前线程使用 run_coroutine_threadsafe
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return future.result()
+
+    def _run_async_in_thread(self, coro):
+        """在线程中运行异步代码"""
+        if self._loop is None:
+            raise RuntimeError("TaskPool not started. Call start() first.")
+
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return future.result()
 
     # ========== 生命周期管理 ==========
 
@@ -266,44 +273,51 @@ class TaskPool:
         if self._running:
             return
 
-        async def _start():
-            await self._event_bus.start()
-            await self._queue_scheduler.start()
-            await self._worker_pool.start()
-            await self._supervisor.start()
+        # 创建独立的事件循环线程
+        def run_loop():
+            self._loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._loop)
 
-            if self._config.enable_reporter:
-                self._reporter_manager = ReporterManager(interval=60)
-                self._reporter_manager.add_reporter(ConsoleReporter())
-                self._reporter_manager.set_metrics_callback(self.get_stats)
-                await self._reporter_manager.start()
+            # 启动组件
+            async def start_components():
+                await self._event_bus.start()
+                await self._queue_scheduler.start()
+                await self._worker_pool.start()
+                await self._supervisor.start()
 
-        # 直接运行异步启动（不创建新循环）
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(_start())
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(_start())
-            loop.close()
+                if self._config.enable_reporter:
+                    self._reporter_manager = ReporterManager(interval=60)
+                    self._reporter_manager.add_reporter(ConsoleReporter())
+                    self._reporter_manager.set_metrics_callback(self.get_stats)
+                    await self._reporter_manager.start()
+
+            self._loop.run_until_complete(start_components())
+            self._loop.run_forever()
+
+        self._loop_thread = threading.Thread(target=run_loop, daemon=True)
+        self._loop_thread.start()
+
+        # 等待循环启动
+        import time
+        timeout = 5
+        start_time = time.time()
+        while self._loop is None and time.time() - start_time < timeout:
+            time.sleep(0.01)
+
+        if self._loop is None:
+            raise RuntimeError("Failed to start event loop")
 
         self._running = True
         self._started = True
 
     def shutdown(self, graceful: bool = True, timeout: float = 30) -> None:
-        """关闭任务池
-
-        Args:
-            graceful: 是否优雅关闭（等待当前任务完成）
-            timeout: 优雅关闭超时时间
-        """
+        """关闭任务池"""
         if not self._running:
             return
 
         self._running = False
 
-        async def _shutdown():
+        async def shutdown_components():
             # 停止接收新任务
             await self._queue_scheduler.disable()
 
@@ -327,17 +341,23 @@ class TaskPool:
             if hasattr(self._queue_repo, 'close'):
                 await self._queue_repo.close()
 
-        # 运行关闭
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(_shutdown())
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(_shutdown())
-            loop.close()
+        # 在事件循环中执行关闭
+        if self._loop:
+            future = asyncio.run_coroutine_threadsafe(shutdown_components(), self._loop)
+            try:
+                future.result(timeout=timeout + 5)
+            except Exception:
+                pass
 
+            # 停止循环
+            self._loop.call_soon_threadsafe(self._loop.stop)
+
+        if self._loop_thread and self._loop_thread.is_alive():
+            self._loop_thread.join(timeout=5)
+
+        self._executor_service.shutdown(wait=False)
         self._started = False
+        self._loop = None
 
     def __enter__(self):
         """上下文管理器入口"""
@@ -358,26 +378,12 @@ class TaskPool:
             delay: float = 0,
             ttl: int = 3600
     ) -> str:
-        """提交任务（同步）
-
-        Args:
-            data: 任务数据
-            task_id: 任务ID（可选）
-            priority: 优先级（0-3，数字越小优先级越高）
-            delay: 延迟执行时间（秒）
-            ttl: 任务超时时间（秒）
-
-        Returns:
-            task_id
-        """
+        """提交任务（同步）"""
         self._ensure_running()
         result = self._run_coroutine(
             self._dispatcher.dispatch(data, task_id, priority, delay, ttl)
         )
-        # 如果是 Task 对象，返回 task_id
-        if hasattr(result, 'task_id'):
-            return result.task_id
-        return result
+        return result.task_id if hasattr(result, 'task_id') else result
 
     async def submit_async(
             self,
@@ -390,9 +396,7 @@ class TaskPool:
         """提交任务（异步）"""
         self._ensure_running()
         result = await self._dispatcher.dispatch(data, task_id, priority, delay, ttl)
-        if hasattr(result, 'task_id'):
-            return result.task_id
-        return result
+        return result.task_id if hasattr(result, 'task_id') else result
 
     def submit_batch(
             self,
@@ -523,9 +527,7 @@ class TaskPool:
     def cancel(self, task_id: str) -> bool:
         """取消任务（同步）"""
         self._ensure_running()
-        # 从队列移除
         self._run_coroutine(self._queue_scheduler.remove(task_id))
-        # 取消任务
         return self._run_coroutine(self._lifecycle.cancel_task(task_id))
 
     async def cancel_async(self, task_id: str) -> bool:

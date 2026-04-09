@@ -124,7 +124,7 @@ class QueueScheduler:
         return removed
 
     async def size(self) -> int:
-        """获取队列总大小"""
+        """获取队列总大小（包括正在处理的任务？）"""
         priority_size = await self._priority_queue.size()
         delayed_size = await self._delayed_queue.size()
         return priority_size + delayed_size

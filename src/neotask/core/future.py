@@ -8,6 +8,7 @@
 import asyncio
 from typing import Optional, Any
 from neotask.common.exceptions import TimeoutError
+from neotask.common.logger import debug
 
 
 class TaskFuture:
@@ -22,12 +23,14 @@ class TaskFuture:
 
     def set_result(self, result: Any) -> None:
         """Set task result and notify waiters."""
+        debug(f"[Future] Setting result for task {self.task_id}")
         self._result = result
         self._completed = True
         self._event.set()
 
     def set_error(self, error: str) -> None:
         """Set task error and notify waiters."""
+        debug(f"[Future] Setting error for task {self.task_id}: {error}")
         self._error = error
         self._completed = True
         self._event.set()
@@ -67,6 +70,7 @@ class FutureManager:
         """Get existing future or create new."""
         async with self._lock:
             if task_id not in self._futures:
+                debug(f"[FutureManager] Creating new future for task {task_id}")
                 self._futures[task_id] = TaskFuture(task_id)
             return self._futures[task_id]
 
@@ -75,16 +79,24 @@ class FutureManager:
         async with self._lock:
             future = self._futures.get(task_id)
             if future:
+                debug(f"[FutureManager] Completing future for task {task_id}, error={error}")
                 if error:
                     future.set_error(error)
                 else:
                     future.set_result(result)
-                del self._futures[task_id]
+            else:
+                debug(f"[FutureManager] No future found for task {task_id}")
 
     async def remove(self, task_id: str) -> None:
         """Remove a future."""
         async with self._lock:
             self._futures.pop(task_id, None)
+
+    async def get_and_remove(self, task_id: str) -> Optional[TaskFuture]:
+        """Get future and remove it from manager."""
+        async with self._lock:
+            future = self._futures.pop(task_id, None)
+            return future
 
     async def cancel_all(self) -> None:
         """Cancel all pending futures."""

@@ -5,9 +5,11 @@
 @Time: 2026/3/27 23:55
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Any
+
 import redis.asyncio as redis
 from redis.asyncio import ConnectionPool
+
 from neotask.models.task import Task, TaskStatus
 from neotask.storage.base import TaskRepository, QueueRepository
 
@@ -56,7 +58,7 @@ class RedisTaskRepository(TaskRepository):
         key = f"task:{task_id}"
         await client.delete(key)
 
-    async def list_by_status(self, status: TaskStatus, limit: int = 100) -> List[Task]:
+    async def list_by_status(self, status: TaskStatus, limit: int = 100, offset: int = 0) -> List[Task]:
         client = await self._get_client()
         task_ids = await client.smembers(f"status:{status.value}")
         tasks = []

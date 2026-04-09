@@ -9,6 +9,8 @@ import asyncio
 from dataclasses import dataclass
 from typing import Dict, List, Callable, Any, Optional
 
+from neotask.common.logger import debug, error
+
 
 @dataclass
 class TaskEvent:
@@ -22,14 +24,6 @@ class EventBus:
     """事件总线
 
     设计模式：Observer Pattern / Pub-Sub Pattern
-
-    使用示例：
-        >>> bus = EventBus()
-        >>> @bus.subscribe("task.completed")
-        ... async def on_complete(event):
-        ...     print(f"Task {event.task_id} completed")
-        >>>
-        >>> bus.emit(TaskEvent("task.completed", "task-123"))
     """
 
     def __init__(self):
@@ -40,7 +34,7 @@ class EventBus:
         self._queue: asyncio.Queue = asyncio.Queue()
         self._worker_task: Optional[asyncio.Task] = None
 
-    def subscribe(self, event_type: str, handler: Optional[Callable] = None) -> Callable:
+    def subscribe(self, event_type: str, handler: Callable = None) -> Callable:
         """订阅特定类型事件
 
         可以用作装饰器：
@@ -58,19 +52,13 @@ class EventBus:
         Returns:
             装饰器函数或原始handler
         """
-        
         def decorator(func: Callable) -> Callable:
-            async def wrapper(event: TaskEvent):
-                if asyncio.iscoroutinefunction(func):
-                    await func(event)
-                else:
-                    func(event)
-
+            # 直接存储原始函数，不包装
             if event_type not in self._handlers:
                 self._handlers[event_type] = []
-            self._handlers[event_type].append(wrapper)
+            self._handlers[event_type].append(func)
             return func
-        
+
         if handler is None:
             # 用作装饰器
             return decorator
@@ -78,7 +66,7 @@ class EventBus:
             # 直接调用
             return decorator(handler)
 
-    def subscribe_global(self, handler: Optional[Callable] = None) -> Callable:
+    def subscribe_global(self, handler: Callable = None) -> Callable:
         """订阅所有事件
 
         可以用作装饰器：
@@ -95,22 +83,13 @@ class EventBus:
         Returns:
             装饰器函数或原始handler
         """
-        
         def decorator(func: Callable) -> Callable:
-            async def wrapper(event: TaskEvent):
-                if asyncio.iscoroutinefunction(func):
-                    await func(event)
-                else:
-                    func(event)
-
-            self._global_handlers.append(wrapper)
+            self._global_handlers.append(func)
             return func
-        
+
         if handler is None:
-            # 用作装饰器
             return decorator
         else:
-            # 直接调用
             return decorator(handler)
 
     def unsubscribe(self, event_type: str, handler: Callable) -> bool:
@@ -126,6 +105,8 @@ class EventBus:
 
     async def emit(self, event: TaskEvent) -> None:
         """发送事件"""
+        debug(f"[EventBus] Emitting event: {event.event_type} for task {event.task_id}")
+
         if not self._running:
             # 同步处理
             await self._process_event(event)
@@ -138,17 +119,23 @@ class EventBus:
         # 调用全局处理器
         for handler in self._global_handlers:
             try:
-                await handler(event)
-            except Exception:
-                pass
+                if asyncio.iscoroutinefunction(handler):
+                    await handler(event)
+                else:
+                    handler(event)
+            except Exception as e:
+                error(f"Global handler error: {e}")
 
         # 调用特定事件处理器
         handlers = self._handlers.get(event.event_type, [])
         for handler in handlers:
             try:
-                await handler(event)
-            except Exception:
-                pass
+                if asyncio.iscoroutinefunction(handler):
+                    await handler(event)
+                else:
+                    handler(event)
+            except Exception as e:
+                error(f"Handler for {event.event_type} error: {e}")
 
     async def start(self) -> None:
         """启动事件总线"""
@@ -178,7 +165,8 @@ class EventBus:
                 continue
             except asyncio.CancelledError:
                 break
-            except Exception:
+            except Exception as e:
+                error(f"Worker loop error: {e}")
                 continue
 
     def clear(self) -> None:

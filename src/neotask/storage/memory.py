@@ -30,7 +30,7 @@ class MemoryTaskRepository(TaskRepository):
         async with self._lock:
             self._tasks.pop(task_id, None)
 
-    async def list_by_status(self, status: TaskStatus, limit: int = 100) -> List[Task]:
+    async def list_by_status(self, status: TaskStatus, limit: int = 100, offset: int = 0) -> List[Task]:
         async with self._lock:
             tasks = [t for t in self._tasks.values() if t.status == status]
             return tasks[:limit]

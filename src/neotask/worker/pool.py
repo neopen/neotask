@@ -154,7 +154,7 @@ class WorkerPool:
 
             except asyncio.CancelledError:
                 break
-            except Exception as e:
+            except Exception:
                 await asyncio.sleep(0.5)
 
     async def _execute_task(self, worker_id: int, task_id: str) -> None:
@@ -162,92 +162,92 @@ class WorkerPool:
         async with self._semaphore:
             # 获取任务
             task = await self._lifecycle.get_task(task_id)
-            if not task or task.status != TaskStatus.PENDING:
+            if not task:
+                return
+
+            # 检查任务状态
+            if task.status != TaskStatus.PENDING:
                 return
 
             # 开始执行
             if not await self._lifecycle.start_task(task_id, f"worker-{worker_id}"):
                 return
 
-            retry_count = 0
+            # 获取当前重试次数
+            current_retry = task.retry_count
 
-            while retry_count <= self._max_retries:
-                try:
-                    # 执行任务
-                    if self._task_timeout:
-                        result = await asyncio.wait_for(
-                            self._executor.execute(task.data),
-                            timeout=self._task_timeout
-                        )
-                    else:
-                        result = await self._executor.execute(task.data)
+            try:
+                # 执行任务
+                if self._task_timeout:
+                    result = await asyncio.wait_for(
+                        self._executor.execute(task.data),
+                        timeout=self._task_timeout
+                    )
+                else:
+                    result = await self._executor.execute(task.data)
 
-                    # 标记完成
-                    await self._lifecycle.complete_task(task_id, result)
+                # 标记完成
+                await self._lifecycle.complete_task(task_id, result)
 
-                    # 更新统计
-                    self._worker_stats[worker_id].completed_tasks += 1
+                # 更新统计
+                self._worker_stats[worker_id].completed_tasks += 1
 
-                    return
+            except asyncio.CancelledError:
+                await self._lifecycle.cancel_task(task_id)
+                return
 
-                except asyncio.CancelledError:
-                    await self._lifecycle.cancel_task(task_id)
-                    return
+            except asyncio.TimeoutError:
+                error = f"Task execution timeout after {self._task_timeout}s"
+                await self._handle_task_failure(task_id, error, current_retry, worker_id)
 
-                except asyncio.TimeoutError:
-                    error = f"Task execution timeout after {self._task_timeout}s"
-                    if retry_count < self._max_retries:
-                        retry_count += 1
-                        await self._handle_retry(task_id, error, retry_count)
-                    else:
-                        await self._lifecycle.fail_task(task_id, error)
-                        self._worker_stats[worker_id].failed_tasks += 1
-                    return
+            except Exception as e:
+                error = str(e)
+                await self._handle_task_failure(task_id, error, current_retry, worker_id)
 
-                except Exception as e:
-                    error = str(e)
-                    if retry_count < self._max_retries:
-                        retry_count += 1
-                        await self._handle_retry(task_id, error, retry_count)
-                    else:
-                        await self._lifecycle.fail_task(task_id, error)
-                        self._worker_stats[worker_id].failed_tasks += 1
-                    return
+            finally:
+                # 更新worker统计
+                async with self._lock:
+                    self._worker_stats[worker_id].active_tasks = max(0, self._worker_stats[worker_id].active_tasks - 1)
+                    self._worker_stats[worker_id].is_busy = self._worker_stats[worker_id].active_tasks > 0
+                    self._worker_stats[worker_id].last_active = datetime.now()
 
-            await self._cleanup_completed_tasks()
-
-    async def _handle_retry(self, task_id: str, error: str, retry_count: int) -> None:
-        """处理任务重试"""
-        # 更新任务状态
+    async def _handle_task_failure(self, task_id: str, error: str, retry_count: int, worker_id: int) -> None:
+        """处理任务失败和重试"""
+        # 获取最新的任务信息
         task = await self._lifecycle.get_task(task_id)
-        if task:
-            task.retry_count = retry_count
+        if not task:
+            return
+
+        if retry_count < self._max_retries:
+            # 需要重试
+            new_retry_count = retry_count + 1
+
+            task.retry_count = new_retry_count
+            task.error = error
+            task.status = TaskStatus.PENDING  # 重置为待处理状态
             await self._task_repo.save(task)
 
-        # 重新入队
-        await self._queue.push(task_id, task.priority.value, delay=self._retry_delay)
+            # 重新入队（带延迟）
+            await self._queue.push(task_id, task.priority.value, delay=self._retry_delay)
 
-        # 发送重试事件
-        await self._event_bus.emit(TaskEvent(
-            "task.retry",
-            task_id,
-            {"error": error, "retry_count": retry_count}
-        ))
+            # 发送重试事件
+            await self._event_bus.emit(TaskEvent(
+                "task.retry",
+                task_id,
+                {"error": error, "retry_count": new_retry_count, "max_retries": self._max_retries}
+            ))
+        else:
+            # 超过最大重试次数，标记为失败
+            await self._lifecycle.fail_task(task_id, error)
+            self._worker_stats[worker_id].failed_tasks += 1
 
     async def _cleanup_completed_tasks(self) -> None:
         """清理已完成的任务"""
         async with self._lock:
             completed = [
-                (tid, task) for tid, task in self._running_tasks.items()
-                if task.done()
+                (tid, t) for tid, t in self._running_tasks.items()
+                if t.done()
             ]
 
             for task_id, task in completed:
                 self._running_tasks.pop(task_id, None)
-
-                # 更新worker统计
-                for stats in self._worker_stats.values():
-                    if stats.active_tasks > 0:
-                        stats.active_tasks -= 1
-                    stats.is_busy = stats.active_tasks > 0
-                    stats.last_active = datetime.now()

@@ -1,29 +1,42 @@
-# NeoTask
+# 分布式任务调度系统（NeoTask）
 
 轻量级 Python 异步任务队列管理器，无需额外服务，开箱即用。
 
-NeoTask 是一个纯 Python 实现的异步任务调度系统，专为耗时任务（AI 生成、视频处理、数据爬取等）设计。无需部署 Redis、PostgreSQL 等外部服务，安装后即可在任意 Python 项目中直接使用。
+> NeoTask 是一个纯 Python 实现的异步任务调度系统，专为耗时任务（AI 生成、视频处理、数据爬取等）设计。无需部署 Redis、PostgreSQL 等外部服务，安装后即可在任意 Python 项目中直接使用。
+
+中文 | [English](./docs/README-en.md) | [架构文档](https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5) | [PyPI](https://pypi.org/project/neotask/)
+
+[![PyPI version](https://badge.fury.io/py/neotask.svg)](https://pypi.org/project/neotask/) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ---
 
-## 核心功能
+## 特性
 
-| 功能 | 说明 |
-|------|------|
-| **零依赖部署** | 纯 Python 实现，仅需 SQLite（Python 内置），无需启动独立服务 |
-| **即时任务** | 提交后立即进入队列，支持优先级调度 |
-| **延时任务** | 指定延迟时间或具体时间点执行 |
-| **周期任务** | 支持固定间隔和 Cron 表达式周期执行 |
-| **异步并发调度** | 基于 asyncio，支持多 Worker 并发执行 |
-| **优先级队列** | 高优先级任务优先执行，紧急任务不排队 |
-| **自动重试** | 失败任务自动重试，支持配置重试次数和超时时间 |
-| **持久化存储** | SQLite/Redis 存储任务状态，程序重启不丢失 |
-| **可选 Web UI** | 一键启动监控面板，实时查看任务状态和统计数据 |
-| **命令行工具** | `neotask` 系列命令，方便脚本集成和运维管理 |
+- **零依赖部署** - 纯 Python 实现，无需 Redis/PostgreSQL
+- **即时任务** - 支持优先级调度，高优先级优先执行
+- **定时任务** - 支持延时执行、固定间隔、Cron 表达式
+- **异步并发** - 基于 asyncio，多 Worker 并发处理
+- **自动重试** - 失败任务自动重试，可配置次数
+- **持久化** - 内存/SQLite/Redis 多种存储后端
+- **事件回调** - 支持任务生命周期事件监听
+
+------
+
+## 应用场景
+
+| 场景                   | 说明                         | 推荐配置                | 使用入口      |
+| :--------------------- | :--------------------------- | :---------------------- | :------------ |
+| **AI 文生图/视频生成** | 耗时任务排队，避免阻塞主流程 | `worker_concurrency=3`  | TaskPool      |
+| **批量文件处理**       | 转码、压缩、上传等批量操作   | `worker_concurrency=10` | TaskPool      |
+| **网页爬虫调度**       | 分布式爬取，防止被封         | `storage_type="redis"`  | TaskPool      |
+| **定时报表发送**       | 每天9点发送日报              | `cron="0 9 * * *"`      | TaskScheduler |
+| **延迟通知**           | 用户操作后5分钟发送提醒      | `delay_seconds=300`     | TaskScheduler |
+| **心跳检测**           | 每30秒检测服务健康状态       | `interval_seconds=30`   | TaskScheduler |
+| **后台数据分析**       | 夜间执行数据聚合任务         | `cron="0 2 * * *"`      | TaskScheduler |
 
 ---
 
-## 架构设计
+## 架构&演进
 
 ```mermaid
 graph TB
@@ -36,185 +49,81 @@ graph TB
         TS[TaskScheduler<br/>定时任务入口]
         
         subgraph Core["共享核心组件"]
-            TM[TaskManager<br/>任务持久化<br/>状态管理]
-            TQ[TaskQueue<br/>优先级队列<br/>任务排序]
-            TW[TaskWorker<br/>Worker池<br/>并发控制]
-            TF[TaskFuture<br/>异步等待<br/>结果回调]
+            LM[LifecycleManager<br/>任务生命周期管理]
+            QS[QueueScheduler<br/>优先级+延迟队列]
+            WP[WorkerPool<br/>Worker池/并发控制]
+            FM[FutureManager<br/>异步等待/结果回调]
         end
         
-        EX[TaskExecutor<br/>抽象接口<br/>用户实现业务逻辑]
+        subgraph Internal["内部组件"]
+            EB[EventBus<br/>事件总线]
+            MC[MetricsCollector<br/>指标收集]
+            LF[LockFactory<br/>分布式锁]
+        end
+        
+        EX[TaskExecutor<br/>用户业务逻辑]
     end
     
     subgraph Storage["存储层"]
-        MEM[MemoryStorage<br/>内存存储]
-        SQLITE[(SQLiteStorage<br/>持久化存储)]
-        REDIS[(RedisStorage<br/>分布式存储)]
-    end
-    
-    subgraph UI["Web UI（可选）"]
-        WEB[FastAPI Server<br/>监控面板<br/>实时状态]
+        MEM[MemoryStorage]
+        SQLITE[(SQLiteStorage)]
+        REDIS[(RedisStorage)]
     end
     
     APP -->|即时任务| TP
     APP -->|定时任务| TS
-    TS -->|委托/底层| TP
-    TP --> TM
-    TP --> TQ
-    TP --> TW
-    TP --> TF
-    TW -->|execute| EX
-    TM --> MEM
-    TM --> SQLITE
-    TM --> REDIS
-    TP -.->|监控数据| WEB
-    WEB -.->|查询/控制| TP
+    TS -->|委托| TP
+    TP --> LM
+    TP --> QS
+    TP --> WP
+    TP --> FM
+    
+    LM --> MEM
+    LM --> SQLITE
+    LM --> REDIS
+    
+    WP --> EX
+    WP --> EB
+    WP --> MC
+    WP --> LF
 ```
 
-## 即时任务数据流图
+发展路线图
 
 ```mermaid
-sequenceDiagram
-    participant User
-    participant Pool as TaskPool
-    participant Manager as TaskManager
-    participant Queue as TaskQueue
-    participant Worker as TaskWorker
-    participant Future as TaskFuture
-    participant Storage as Storage
+timeline
+    title NeoTask 架构演进路线图
+    
+    section MVP v0.1
+        基础任务池 : 本地队列
+                   : 异步执行
+                   : 内存/Redis存储
+                   
+    section V1.0 v0.2
+        监控能力 : 事件总线
+                 : 指标收集
+                 : 历史存储
+        延时任务 : 延时执行
+                 : 周期任务
+                 : Cron表达式
+                 
+    section V2.0 v0.3
+        分布式核心 : Redis共享队列
+                   : 分布式锁
+                   : 预取机制
+                   
+    section V3.0 v1.0
+        高可用保障 : 看门狗续期
+                   : 超时检测
+                   : 故障自动恢复
 
-    User->>Pool: submit(task_data, priority)
-    Pool->>Manager: create_task()
-    Manager->>Storage: 保存任务(PENDING)
-    Pool->>Queue: push(task_id, priority)
-    Pool->>Future: create_future(task_id)
-    Pool-->>User: 返回 task_id
-    
-    loop Worker调度循环
-        Worker->>Queue: pop() 获取任务
-        Worker->>Manager: update_status(PROCESSING)
-        Worker->>Storage: 更新状态
-        
-        alt 任务执行
-            Worker->>Worker: executor.execute(data)
-            Worker-->>Worker: 返回结果
-            Worker->>Manager: complete_task(SUCCESS)
-            Worker->>Future: set_result(result)
-        else 任务失败
-            Worker->>Manager: fail_task(FAILED)
-            Worker->>Future: set_error(error)
-        else 任务取消
-            Worker->>Manager: cancel_task(CANCELLED)
-            Worker->>Future: set_error(cancelled)
-        end
-        
-        Worker->>Storage: 保存最终状态
-    end
-    
-    User->>Pool: wait_for_result(task_id)
-    Pool->>Future: wait() 等待完成
-    Future-->>Pool: 返回结果
-    Pool-->>User: TaskResponse
+    section V4.0 v1.5
+        企业级 : 独立Web UI
+               : 多租户
+               : Prometheus集成
 ```
 
-## 定时任务数据流图
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant TS as TaskScheduler
-    participant Pool as TaskPool
-    participant TimeWheel as 时间轮
-    participant Cron as Cron解析器
-    participant Storage as Storage
-
-    User->>TS: submit_delayed(data, delay)
-    TS->>Storage: 保存定时任务
-    TS->>TimeWheel: 注册延时任务
-    TS-->>User: 返回 task_id
-    
-    User->>TS: submit_cron(data, "0 9 * * *")
-    TS->>Cron: 解析表达式
-    Cron-->>TS: 计算下次执行时间
-    TS->>Storage: 保存周期任务配置
-    TS->>TimeWheel: 注册周期任务
-    TS-->>User: 返回 task_id
-    
-    loop 时间轮扫描
-        TimeWheel->>TimeWheel: 检查到期任务
-        alt 延时任务到期
-            TimeWheel->>Pool: 转换为即时任务
-            Pool->>Pool: 正常执行
-        else 周期任务到期
-            TimeWheel->>Cron: 计算下次执行时间
-            Cron-->>TimeWheel: next_run_at
-            TimeWheel->>Pool: 转换为即时任务
-            TimeWheel->>Storage: 更新下次执行时间
-        end
-    end
-```
-
-
-
-## 组件关系图
-
-```mermaid
-graph LR
-    subgraph External["外部"]
-        USER[用户代码]
-        EXEC[TaskExecutor实现]
-    end
-    
-    subgraph Entry["入口层"]
-        POOL[TaskPool<br/>即时任务]
-        SCHED[TaskScheduler<br/>定时任务]
-    end
-    
-    subgraph Core["共享核心"]
-        MGR[TaskManager]
-        QUE[TaskQueue]
-        WRK[TaskWorker]
-        FTR[TaskFuture]
-    end
-    
-    subgraph Internal["内部组件"]
-        EVT[EventBus]
-        MET[MetricsCollector]
-        LOCK[DistributedLock]
-        TW[TimeWheel]
-        CRON[CronParser]
-    end
-    
-    subgraph StorageImpl["存储实现"]
-        MEM[Memory]
-        SQL[SQLite]
-        RDS[Redis]
-    end
-    
-    USER -->|即时| POOL
-    USER -->|定时| SCHED
-    SCHED -->|委托| POOL
-    SCHED --> TW
-    SCHED --> CRON
-    
-    POOL --> MGR
-    POOL --> QUE
-    POOL --> WRK
-    POOL --> FTR
-    
-    MGR --> MEM
-    MGR --> SQL
-    MGR --> RDS
-    
-    WRK --> EVT
-    WRK --> MET
-    WRK --> LOCK
-    
-    POOL -.->|监控| MET
-    POOL -.->|事件| EVT
-    TW -.->|触发| POOL
-```
-
-
+------
 
 ## 快速上手
 
@@ -223,9 +132,6 @@ graph LR
 ```sh
 # 基础安装
 pip install neotask
-
-# 带 Web UI 支持
-pip install neotask[ui]
 
 # 带 Redis 分布式支持
 pip install neotask[redis]
@@ -239,298 +145,111 @@ pip install neotask[full]
 ### 即时任务（TaskPool）
 
 ```python
-from neotask import TaskPool, TaskExecutor
+from neotask import TaskPool
 
-# 1. 实现业务执行器
-class MyExecutor(TaskExecutor):
-    async def execute(self, task_data: dict) -> dict:
-        # 业务逻辑
-        print(f"处理: {task_data}")
-        return {"result": "processed"}
+async def process(data):
+    return {"result": "done", "data": data}
 
-# 2. 创建任务池
-pool = TaskPool(
-    executor=MyExecutor(),
-    max_concurrent=5,
-    storage_type="sqlite"
-)
+# 创建任务池
+pool = TaskPool(executor=process)
 
-# 3. 提交即时任务
-task_id = pool.submit({"action": "process"})
+# 提交任务
+task_id = pool.submit({"id": 123})
 
-# 4. 等待结果
+# 等待结果
 result = pool.wait_for_result(task_id)
 
-# 5. 优雅关闭
 pool.shutdown()
 ```
 
 ### 定时任务（TaskScheduler）
 
 ```python
-from neotask import TaskScheduler, TaskExecutor
-from datetime import datetime, timedelta
+from neotask import TaskScheduler
 
-class MyExecutor(TaskExecutor):
-    async def execute(self, task_data: dict) -> dict:
-        print(f"定时任务执行: {task_data}")
-        return {"result": "done"}
-
-# 创建调度器
-scheduler = TaskScheduler(executor=MyExecutor())
+scheduler = TaskScheduler(executor=process)
 
 # 延时 60 秒执行
-task_id = scheduler.submit_delayed(
-    {"action": "delayed"}, 
-    delay_seconds=60
-)
+scheduler.submit_delayed({"id": 123}, delay_seconds=60)
 
-# 指定时间点执行
-tomorrow = datetime.now() + timedelta(days=1)
-task_id = scheduler.submit_at(
-    {"action": "scheduled"}, 
-    execute_at=tomorrow
-)
+# 每 5 分钟执行一次
+scheduler.submit_interval({"id": 123}, interval_seconds=300)
 
-# 周期执行（每5分钟）
-task_id = scheduler.submit_interval(
-    {"action": "periodic"}, 
-    interval_seconds=300
-)
+# 每天 9 点执行
+scheduler.submit_cron({"id": 123}, "0 9 * * *")
 
-# Cron 表达式（每天9点）
-task_id = scheduler.submit_cron(
-    {"action": "daily"}, 
-    cron_expr="0 9 * * *"
-)
-
-# 关闭调度器
 scheduler.shutdown()
 ```
 
-
-
-### 使用回调函数
+### 使用上下文管理器
 
 ```python
-def on_completed(task_id, result):
-    print(f"任务 {task_id} 完成: {result}")
-
-# 提交时指定回调
-task_id = pool.submit(
-    {"action": "process"},
-    callback=on_completed
-)
+with TaskPool(executor=process) as pool:
+    task_id = pool.submit({"id": 123})
+    result = pool.wait_for_result(task_id)
 ```
 
-
-
-### 使用 HTTP 回调
+### 使用事件回调
 
 ```python
-# 任务完成后会向指定 URL 发送 POST 请求
-task_id = pool.submit(
-    {"action": "process"},
-    callback_url="https://your-server.com/webhook"
-)
-```
+from neotask import TaskPool
 
-### Web UI 监控
+async def on_task_created(event):
+    print(f"任务创建: {event.task_id}")
 
-```python
-# 启动任务池并启用 Web UI
-pool = TaskPool(
-    executor=MyExecutor(),
-    webui_enabled=True,
-    webui_port=8080,
-    webui_auto_open=True
-)
+async def on_task_completed(event):
+    print(f"任务完成: {event.task_id}, 结果: {event.data}")
 
-# 访问 http://localhost:8080 查看监控面板
+async def on_task_failed(event):
+    print(f"任务失败: {event.task_id}, 错误: {event.data}")
+
+pool = TaskPool(executor=my_executor)
+pool.start()
+
+# 注册事件回调
+pool.on_created(on_task_created)
+pool.on_completed(on_task_completed)
+pool.on_failed(on_task_failed)
+
+task_id = pool.submit({"test": "event"})
+result = pool.wait_for_result(task_id)
 ```
 
 
 
 ## API 参考
 
-### TaskPool（即时任务）
+| 方法                                         | 说明      |
+| :------------------------------------------- | :-------- |
+| `pool.submit(data, priority=2, delay=0)`     | 提交任务  |
+| `pool.wait_for_result(task_id, timeout=300)` | 等待结果  |
+| `pool.get_status(task_id)`                   | 获取状态  |
+| `pool.cancel(task_id)`                       | 取消任务  |
+| `scheduler.submit_delayed(data, delay)`      | 延时任务  |
+| `scheduler.submit_interval(data, interval)`  | 周期任务  |
+| `scheduler.submit_cron(data, cron)`          | Cron 任务 |
 
-| 方法                                      | 说明                       |
-| :---------------------------------------- | :------------------------- |
-| `submit(data, priority=2)`                | 提交即时任务，返回 task_id |
-| `wait_for_result(task_id, timeout=300)`   | 同步等待任务完成           |
-| `wait_for_result_async(task_id, timeout)` | 异步等待任务完成           |
-| `get_status(task_id)`                     | 获取任务状态               |
-| `get_result(task_id)`                     | 获取任务结果               |
-| `cancel(task_id)`                         | 取消任务                   |
-| `get_stats()`                             | 获取实时统计               |
-| `shutdown()`                              | 关闭任务池                 |
-| `on_submitted(handler)`                   | 注册任务提交事件           |
-| `on_started(handler)`                     | 注册任务开始事件           |
-| `on_completed(handler)`                   | 注册任务完成事件           |
-| `on_failed(handler)`                      | 注册任务失败事件           |
-
-### TaskScheduler（定时任务）
-
-| 方法                                                | 说明                |
-| :-------------------------------------------------- | :------------------ |
-| `submit_delayed(data, delay_seconds, priority)`     | 延时执行任务        |
-| `submit_at(data, execute_at, priority)`             | 指定时间点执行      |
-| `submit_interval(data, interval_seconds, priority)` | 固定间隔周期执行    |
-| `submit_cron(data, cron_expr, priority)`            | Cron 表达式周期执行 |
-| `cancel_periodic(task_id)`                          | 取消周期任务        |
-| `pause_periodic(task_id)`                           | 暂停周期任务        |
-| `resume_periodic(task_id)`                          | 恢复周期任务        |
-| `wait_for_result(task_id, timeout)`                 | 等待任务完成        |
-| `get_status(task_id)`                               | 获取任务状态        |
-| `get_result(task_id)`                               | 获取任务结果        |
-| `cancel(task_id)`                                   | 取消任务            |
-| `get_stats()`                                       | 获取实时统计        |
-| `shutdown()`                                        | 关闭调度器          |
+详细 API 请参阅 [文档](http://localhost:4000/2026/04/243d5a536d064df59c2ec8668362b8b5/)
 
 
 
-### 配置选项
+## 配置示例
 
 ```python
-pool = TaskPool(
-    # 必选参数
-    executor=MyExecutor(),           # 任务执行器实例
-    
-    # 可选参数
-    max_concurrent=10,               # 最大并发数，默认 10
-    queue_size=1000,                 # 队列最大长度，默认 1000
-    retry_times=3,                   # 失败重试次数，默认 3
-    timeout_seconds=300,             # 任务超时时间（秒），默认 300
-    
-    # 存储配置
-    storage_type="sqlite",           # 存储类型: memory / sqlite / redis
-    sqlite_path="neotask.db",        # SQLite 数据库路径
-    redis_url="redis://localhost",   # Redis 连接 URL
-    
-    # Web UI 配置
-    webui_enabled=False,             # 是否启用 Web UI
-    webui_port=8080,                 # Web UI 端口
-    webui_host="127.0.0.1",          # Web UI 监听地址
-    webui_auto_open=False,           # 是否自动打开浏览器
+from neotask import TaskPool, TaskPoolConfig
+
+config = TaskPoolConfig(
+    worker_concurrency=10,      # 并发 Worker 数
+    max_retries=3,              # 重试次数
+    storage_type="sqlite",      # 存储类型
 )
+
+pool = TaskPool(executor=process, config=config)
 ```
 
-### 命令行工具
+详细使用示例请参阅 [文档](http://localhost:4000/2026/04/243d5a536d064df59c2ec8668362b8b5/)
 
-```python
-# 启动任务池服务
-neotask start --config config.yaml
 
-# 启动 Web UI（独立模式）
-neotask webui --port 8080 --redis-url redis://localhost
-
-# 查看任务统计
-neotask stats --redis-url redis://localhost
-
-# 列出任务
-neotask list --status pending --limit 10
-```
-
-## 版本与展望
-
-### 当前版本：v0.1 (MVP)
-
-- ✅ 基础任务队列（优先级、并发控制）
-- ✅ 内存/SQLite 存储
-- ✅ 异步执行引擎
-- ✅ 同步/异步等待结果
-- ✅ 基础 Web UI
-- ✅ 回调函数支持
-- ✅ 任务取消功能
-
-### 发展路线图
-
-```mermaid
-timeline
-    title NeoTask 发展路线图
-    
-    section v0.1 MVP
-        即时任务 : TaskPool入口
-                 : 优先级队列
-                 : 异步执行
-                 : SQLite存储
-                 
-    section v0.2
-        监控能力 : EventBus事件总线
-                 : MetricsCollector
-                 : 历史统计
-                 
-    section v0.3
-        分布式核心 : Redis共享队列
-                   : 分布式锁
-                   : 任务预取
-                   
-    section v1.0
-        高可用保障 : 看门狗续期
-                   : 超时检测
-                   : 故障恢复
-
-    section v1.5
-        定时调度 : TaskScheduler入口
-                 : 延时执行
-                 : 周期任务
-                 : Cron表达式
-                 
-    section v2.0
-        企业级 : 多租户隔离
-               : Prometheus集成
-               : 独立Web UI集群
-```
-
-### 版本对比
-
-| 特性                       | v0.1 | v0.2 | v0.3 | v1.0 | v1.5 | v2.0 |
-| :------------------------- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **TaskPool 即时任务**      | ✅    | ✅    | ✅    | ✅    | ✅    | ✅    |
-| 优先级队列                 | ✅    | ✅    | ✅    | ✅    | ✅    | ✅    |
-| 内存/SQLite 存储           | ✅    | ✅    | ✅    | ✅    | ✅    | ✅    |
-| Web UI                     | ✅    | ✅    | ✅    | ✅    | ✅    | ✅    |
-| 事件总线                   | -    | ✅    | ✅    | ✅    | ✅    | ✅    |
-| 指标收集                   | -    | ✅    | ✅    | ✅    | ✅    | ✅    |
-| Redis 存储                 | -    | -    | ✅    | ✅    | ✅    | ✅    |
-| 分布式锁                   | -    | -    | ✅    | ✅    | ✅    | ✅    |
-| 看门狗机制                 | -    | -    | -    | ✅    | ✅    | ✅    |
-| 故障恢复                   | -    | -    | -    | ✅    | ✅    | ✅    |
-| **TaskScheduler 定时任务** | -    | -    | -    | -    | ✅    | ✅    |
-| 延时执行                   | -    | -    | -    | -    | ✅    | ✅    |
-| 周期任务                   | -    | -    | -    | -    | ✅    | ✅    |
-| Cron 表达式                | -    | -    | -    | -    | ✅    | ✅    |
-| 多租户                     | -    | -    | -    | -    | -    | ✅    |
-| Prometheus                 | -    | -    | -    | -    | -    | ✅    |
-
-------
-
-## 典型应用场景
-
-| 场景                   | 说明                         | 推荐配置                           | 使用入口      |
-| :--------------------- | :--------------------------- | :--------------------------------- | :------------ |
-| **AI 文生图/视频生成** | 耗时任务排队，避免阻塞主流程 | `max_concurrent=3, storage=sqlite` | TaskPool      |
-| **批量文件处理**       | 转码、压缩、上传等批量操作   | `max_concurrent=10`                | TaskPool      |
-| **网页爬虫调度**       | 分布式爬取，防止被封         | `storage=redis`，多节点部署        | TaskPool      |
-| **定时报表发送**       | 每天9点发送日报              | `cron="0 9 * * *"`                 | TaskScheduler |
-| **延迟通知**           | 用户操作后5分钟发送提醒      | `delay_seconds=300`                | TaskScheduler |
-| **心跳检测**           | 每30秒检测服务健康状态       | `interval_seconds=30`              | TaskScheduler |
-| **后台数据分析**       | 夜间执行数据聚合任务         | `cron="0 2 * * *"`                 | TaskScheduler |
-
-------
-
-## 性能参考
-
-| 配置                       | 吞吐量       | 平均延迟 | 说明       |
-| :------------------------- | :----------- | :------- | :--------- |
-| 单 Worker，任务耗时 100ms  | ~10 tasks/s  | ~100ms   | 基础配置   |
-| 10 Workers，任务耗时 100ms | ~100 tasks/s | ~110ms   | 推荐配置   |
-| 50 Workers，任务耗时 100ms | ~500 tasks/s | ~120ms   | 高性能配置 |
-
-*注：实际性能受 CPU 核心数、任务复杂度、存储 I/O 影响*
-
-------
 
 ## 贡献指南
 
@@ -549,49 +268,37 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -e ".[dev]"
 
 # 运行测试
-pytest
+pytest tests/
 
 # 查看测试覆盖率
-pytest --cov=neotask
+pytest --cov=neotask tests/
 
-# 代码格式化
-black src/
-isort src/
-
-# 类型检查
-mypy src/
-
-# 代码检查
-ruff check src/
+# 运行特定模块测试
+pytest tests/test_task_pool.py -v
+pytest tests/test_task_scheduler.py -v
 ```
 
 ### 项目结构
 
 ```
-task-schedule-manager/
-├── src/neotask/
-│   ├── api/
-│   │   ├── task_pool.py       # TaskPool 即时任务入口
-│   │   └── task_scheduler.py  # TaskScheduler 定时任务入口
-│   ├── core/                  # 核心组件
-│   ├── storage/               # 存储层
-│   ├── executors/             # 执行器
-│   ├── scheduler/             # 定时调度器（时间轮/Cron）
-│   ├── web/                   # Web UI
-│   └── models/                # 数据模型
-├── tests/                     # 单元测试
-├── examples/                  # 示例代码
-└── docs/                      # 文档
+neotask/
+├── api/           # TaskPool, TaskScheduler
+├── core/          # 生命周期、队列、Worker
+├── storage/       # 内存/SQLite/Redis
+├── event/         # 事件总线
+└── models/        # 数据模型
 ```
 
 
 
 ### 贡献流程
 
-1. Fork 项目仓库
-2. 创建特性分支：`git checkout -b feature/amazing_feature`
-3. 提交更改：`git commit -m 'Add amazing feature'`
-4. 推送分支：`git push origin feature/amazing_feature`
+欢迎提交 Issue 和 Pull Request
+
+1. Fork 项目
+2. 创建特性分支 (`git checkout -b feature/amazing`)
+3. 提交更改 (`git commit -m 'Add amazing feature'`)
+4. 推送分支 (`git push origin feature/amazing`)
 5. 提交 Pull Request
 
 ### 代码规范
@@ -627,9 +334,7 @@ python examples/05_webui.py
 
 ## 许可证
 
-MIT License - 详见 [LICENSE](https://license/) 文件
-
-Copyright (c) 2024 HiPeng
+MIT License © 2026 NeoPen
 
 ------
 
@@ -642,6 +347,6 @@ Copyright (c) 2024 HiPeng
 ## 联系方式
 
 - 项目主页：https://github.com/neopen/task-schedule-manager
-- 作者：HiPeng
+- 作者：NeoPen
 - 邮箱：helpenx@gmail.com
-- 文档：https://pengline.cn/2026/03/0ec8d887591a40c98be76645d33a2f23
+- 文档：https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5

@@ -6,8 +6,8 @@
 """
 
 import asyncio
+import random
 import threading
-import uuid
 from datetime import datetime, timedelta
 from typing import Optional, Any, Dict, List, Callable, Union
 
@@ -285,7 +285,8 @@ class TaskScheduler:
     # ========== 辅助方法 ==========
 
     def _generate_task_id(self) -> str:
-        return f"PRD{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
+        # return f"PRD{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
+        return f"PRD{datetime.now().strftime('%Y%m%d%H%M%S')}{random.randint(1000, 9999)}"
 
     # ========== 委托给 TaskPool 的方法 ==========
 

@@ -6,7 +6,7 @@
 """
 
 import asyncio
-import uuid
+import random
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
@@ -304,7 +304,8 @@ class TaskLifecycleManager:
 
     def _generate_task_id(self) -> str:
         """生成任务ID"""
-        return f"TSK{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
+        # return f"TSK{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
+        return f"TSK{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}{random.randint(1000, 9999)}"
 
     def clear_cache(self):
         """清空缓存"""

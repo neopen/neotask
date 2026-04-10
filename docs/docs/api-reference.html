@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API 参考 - NeoTask</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <style>
+        .api-method {
+            background: rgba(168, 85, 247, 0.1);
+            border-radius: 4px;
+            padding: 0.2rem 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-right: 0.5rem;
+        }
+        .api-class {
+            margin-top: 2rem;
+            margin-bottom: 2rem;
+        }
+        .api-class h3 {
+            font-family: 'Fira Code', monospace;
+            color: #a855f7;
+            margin-bottom: 1rem;
+        }
+        .api-param-table {
+            margin: 1rem 0;
+        }
+        .param-name {
+            font-family: 'Fira Code', monospace;
+            color: #ffbd2e;
+        }
+        .param-type {
+            color: #27c93f;
+            font-size: 0.85rem;
+        }
+        .api-example {
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <div class="logo-icon"><i class="fas fa-tasks"></i></div>
+                <span>NeoTask</span>
+            </div>
+            <div class="menu-btn" id="menuBtn"><i class="fas fa-bars"></i></div>
+            <div class="nav-links" id="navLinks">
+                <a href="../index.html">首页</a>
+                <a href="quickstart.html">文档</a>
+                <a href="../blog/index.html">博客</a>
+                <a href="https://github.com/neopen/task-schedule-manager" class="github-btn">
+                    <i class="fab fa-github"></i> GitHub
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="docs-container">
+        <aside class="docs-sidebar">
+            <h4>文档导航</h4>
+            <ul>
+                <li><a href="quickstart.html">快速上手</a></li>
+                <li><a href="api-reference.html" class="active">API 参考</a></li>
+                <li><a href="configuration.html">配置说明</a></li>
+                <li><a href="architecture.html">架构设计</a></li>
+            </ul>
+            <div class="toc">
+                <h4>本页目录</h4>
+                <ul>
+                    <li><a href="#taskpool">TaskPool 类</a></li>
+                    <li><a href="#taskscheduler">TaskScheduler 类</a></li>
+                    <li><a href="#config">配置类</a></li>
+                    <li><a href="#enums">枚举类型</a></li>
+                    <li><a href="#exceptions">异常类</a></li>
+                    <li><a href="#events">事件系统</a></li>
+                </ul>
+            </div>
+        </aside>
+
+        <main class="docs-content">
+            <h1>API 参考</h1>
+            <p>完整的 NeoTask API 文档。</p>
+
+            <!-- TaskPool 类 -->
+            <div id="taskpool" class="api-class">
+                <h2>TaskPool 类</h2>
+                <p>即时任务池，专注于立即执行的任务。</p>
+
+                <h3>初始化</h3>
+                <pre><code>class TaskPool:
+    def __init__(
+        self,
+        executor: Union[Callable, None] = None,
+        config: Optional[TaskPoolConfig] = None
+    )</code></pre>
+
+                <h4>参数</h4>
+                <table>
+                    <thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>executor</code></td><td>Callable</td><td>任务执行函数（异步函数）</td></tr>
+                        <tr><td><code>config</code></td><td>TaskPoolConfig</td><td>配置对象</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>任务提交</h3>
+                
+                <h4>submit</h4>
+                <pre><code>def submit(
+    self,
+    data: Dict[str, Any],
+    task_id: Optional[str] = None,
+    priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+    delay: float = 0,
+    ttl: int = 3600
+) -> str</code></pre>
+                <p>提交即时任务（同步）。</p>
+                <table>
+                    <thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>data</code></td><td>Dict</td><td>任务数据</td></tr>
+                        <tr><td><code>task_id</code></td><td>str</td><td>任务ID（可选，自动生成）</td></tr>
+                        <tr><td><code>priority</code></td><td>int/TaskPriority</td><td>优先级（0-3，默认2）</td></tr>
+                        <tr><td><code>delay</code></td><td>float</td><td>延迟执行时间（秒）</td></tr>
+                        <tr><td><code>ttl</code></td><td>int</td><td>任务超时时间（秒）</td></tr>
+                    </tbody>
+                </table>
+                <p><strong>返回：</strong> str - 任务ID</p>
+
+                <h4>submit_async</h4>
+                <pre><code>async def submit_async(
+    self,
+    data: Dict[str, Any],
+    task_id: Optional[str] = None,
+    priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+    delay: float = 0,
+    ttl: int = 3600
+) -> str</code></pre>
+                <p>提交即时任务（异步）。</p>
+
+                <h4>submit_batch / submit_batch_async</h4>
+                <pre><code>def submit_batch(
+    self,
+    tasks: List[Dict[str, Any]],
+    priority: Union[int, TaskPriority] = TaskPriority.NORMAL
+) -> List[str]
+
+async def submit_batch_async(
+    self,
+    tasks: List[Dict[str, Any]],
+    priority: Union[int, TaskPriority] = TaskPriority.NORMAL
+) -> List[str]</code></pre>
+                <p>批量提交任务。</p>
+
+                <h3>任务等待</h3>
+
+                <h4>wait_for_result</h4>
+                <pre><code>def wait_for_result(
+    self,
+    task_id: str,
+    timeout: float = 300
+) -> Any</code></pre>
+                <p>同步等待任务完成并返回结果。</p>
+                <table>
+                    <thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>task_id</code></td><td>str</td><td>任务ID</td></tr>
+                        <tr><td><code>timeout</code></td><td>float</td><td>超时时间（秒）</td></tr>
+                    </tbody>
+                </table>
+                <p><strong>返回：</strong> Any - 任务结果</p>
+                <p><strong>异常：</strong> TaskNotFoundError, TimeoutError, Exception</p>
+
+                <h4>wait_all</h4>
+                <pre><code>def wait_all(
+    self,
+    task_ids: List[str],
+    timeout: float = 300
+) -> Dict[str, Any]</code></pre>
+                <p>等待所有任务完成（同步）。</p>
+
+                <h3>任务查询</h3>
+
+                <h4>get_status</h4>
+                <pre><code>def get_status(self, task_id: str) -> Optional[str]</code></pre>
+                <p>获取任务状态。返回值：pending/running/success/failed/cancelled/scheduled</p>
+
+                <h4>get_result</h4>
+                <pre><code>def get_result(self, task_id: str) -> Optional[Dict[str, Any]]</code></pre>
+                <p>获取任务结果。</p>
+
+                <h4>get_task</h4>
+                <pre><code>def get_task(self, task_id: str) -> Optional[Dict[str, Any]]</code></pre>
+                <p>获取完整任务信息。</p>
+
+                <h4>task_exists</h4>
+                <pre><code>def task_exists(self, task_id: str) -> bool</code></pre>
+                <p>检查任务是否存在。</p>
+
+                <h3>任务管理</h3>
+
+                <h4>cancel</h4>
+                <pre><code>def cancel(self, task_id: str) -> bool</code></pre>
+                <p>取消任务。</p>
+
+                <h4>delete</h4>
+                <pre><code>def delete(self, task_id: str) -> bool</code></pre>
+                <p>删除任务。</p>
+
+                <h4>retry</h4>
+                <pre><code>def retry(self, task_id: str, delay: float = 0) -> bool</code></pre>
+                <p>重试失败的任务。</p>
+
+                <h3>队列控制</h3>
+                <pre><code>def pause(self) -> None          # 暂停处理新任务
+def resume(self) -> None         # 恢复处理新任务
+def clear_queue(self) -> None    # 清空队列
+def get_queue_size(self) -> int  # 获取队列大小</code></pre>
+
+                <h3>统计与监控</h3>
+                <pre><code>def get_stats(self) -> Dict[str, Any]           # 获取实时统计信息
+def get_worker_stats(self) -> Dict[int, Any]    # 获取 Worker 统计
+def get_health_status(self) -> Dict[str, Any]   # 获取健康状态</code></pre>
+
+                <p><strong>返回示例：</strong></p>
+                <pre><code>{
+    "queue_size": 10,
+    "total": 100,
+    "pending": 5,
+    "running": 3,
+    "completed": 85,
+    "failed": 5,
+    "cancelled": 2,
+    "success_rate": 0.944
+}</code></pre>
+
+                <h3>生命周期</h3>
+                <pre><code>def start(self) -> None                                    # 启动任务池
+def shutdown(self, graceful: bool = True, timeout: float = 30) -> None  # 关闭任务池</code></pre>
+
+                <h3>事件回调</h3>
+                <pre><code>def on_created(self, handler: Callable) -> None     # 任务创建
+def on_started(self, handler: Callable) -> None     # 任务开始
+def on_completed(self, handler: Callable) -> None   # 任务完成
+def on_failed(self, handler: Callable) -> None      # 任务失败
+def on_cancelled(self, handler: Callable) -> None   # 任务取消</code></pre>
+            </div>
+
+            <!-- TaskScheduler 类 -->
+            <div id="taskscheduler" class="api-class">
+                <h2>TaskScheduler 类</h2>
+                <p>定时任务调度器，专注于延时/周期任务。</p>
+
+                <h3>初始化</h3>
+                <pre><code>class TaskScheduler:
+    def __init__(
+        self,
+        executor: Optional[Callable] = None,
+        config: Optional[SchedulerConfig] = None
+    )</code></pre>
+
+                <h3>任务提交</h3>
+
+                <h4>submit_delayed</h4>
+                <pre><code>def submit_delayed(
+    self,
+    data: Dict[str, Any],
+    delay_seconds: float,
+    task_id: Optional[str] = None,
+    priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+    ttl: int = 3600
+) -> str</code></pre>
+                <p>延时执行任务。</p>
+
+                <h4>submit_at</h4>
+                <pre><code>def submit_at(
+    self,
+    data: Dict[str, Any],
+    execute_at: datetime,
+    task_id: Optional[str] = None,
+    priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+    ttl: int = 3600
+) -> str</code></pre>
+                <p>指定时间点执行。</p>
+
+                <h4>submit_interval</h4>
+                <pre><code>def submit_interval(
+    self,
+    data: Dict[str, Any],
+    interval_seconds: float,
+    task_id: Optional[str] = None,
+    priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+    run_immediately: bool = True
+) -> str</code></pre>
+                <p>按固定间隔周期执行。</p>
+
+                <h4>submit_cron</h4>
+                <pre><code>def submit_cron(
+    self,
+    data: Dict[str, Any],
+    cron_expr: str,
+    task_id: Optional[str] = None,
+    priority: Union[int, TaskPriority] = TaskPriority.NORMAL
+) -> str</code></pre>
+                <p>按 Cron 表达式周期执行。</p>
+
+                <h4>Cron 格式说明</h4>
+                <table>
+                    <thead><tr><th>字段</th><th>范围</th><th>示例</th></tr></thead>
+                    <tbody>
+                        <tr><td>分钟</td><td>0-59</td><td>0 表示整点</td></tr>
+                        <tr><td>小时</td><td>0-23</td><td>9 表示上午9点</td></tr>
+                        <tr><td>日</td><td>1-31</td><td>* 表示每天</td></tr>
+                        <tr><td>月</td><td>1-12</td><td>* 表示每月</td></tr>
+                        <tr><td>周</td><td>0-6（0=周日）</td><td>* 表示每周</td></tr>
+                    </tbody>
+                </table>
+                <pre><code># 每天 9:00 执行
+scheduler.submit_cron(data, "0 9 * * *")
+
+# 每 5 分钟执行
+scheduler.submit_cron(data, "*/5 * * * *")
+
+# 每周一 9:00 执行
+scheduler.submit_cron(data, "0 9 * * 1")</code></pre>
+
+                <h3>周期任务管理</h3>
+                <pre><code>def cancel_periodic(self, task_id: str) -> bool      # 取消周期任务
+def pause_periodic(self, task_id: str) -> bool       # 暂停周期任务
+def resume_periodic(self, task_id: str) -> bool      # 恢复周期任务
+def get_periodic_tasks(self) -> List[Dict[str, Any]] # 获取所有周期任务</code></pre>
+
+                <h3>委托方法</h3>
+                <p>TaskScheduler 委托给 TaskPool 的相同方法：</p>
+                <ul>
+                    <li><code>wait_for_result(task_id, timeout)</code></li>
+                    <li><code>wait_for_result_async(task_id, timeout)</code></li>
+                    <li><code>get_status(task_id)</code></li>
+                    <li><code>get_result(task_id)</code></li>
+                    <li><code>cancel(task_id)</code></li>
+                    <li><code>get_stats()</code></li>
+                </ul>
+            </div>
+
+            <!-- 枚举类型 -->
+            <div id="enums" class="api-class">
+                <h2>枚举类型</h2>
+
+                <h3>TaskStatus</h3>
+                <pre><code>from neotask import TaskStatus
+
+TaskStatus.PENDING     # "pending"   - 等待执行
+TaskStatus.RUNNING     # "running"   - 执行中
+TaskStatus.SUCCESS     # "success"   - 执行成功
+TaskStatus.FAILED      # "failed"    - 执行失败
+TaskStatus.CANCELLED   # "cancelled" - 已取消
+TaskStatus.SCHEDULED   # "scheduled" - 已调度（定时任务）</code></pre>
+
+                <h4>状态流转</h4>
+                <pre><code># 正常流程
+PENDING → RUNNING → SUCCESS
+
+# 失败流程
+PENDING → RUNNING → FAILED → PENDING（重试）→ SUCCESS
+
+# 取消流程
+PENDING → CANCELLED
+RUNNING → CANCELLED</code></pre>
+
+                <h3>TaskPriority</h3>
+                <pre><code>from neotask import TaskPriority
+
+TaskPriority.CRITICAL  # 0 - 最高优先级
+TaskPriority.HIGH      # 1 - 高优先级
+TaskPriority.NORMAL    # 2 - 普通优先级（默认）
+TaskPriority.LOW       # 3 - 低优先级</code></pre>
+            </div>
+
+            <!-- 配置类 -->
+            <div id="config" class="api-class">
+                <h2>配置类</h2>
+
+                <h3>TaskPoolConfig</h3>
+                <pre><code>from neotask import TaskPoolConfig
+
+config = TaskPoolConfig(
+    storage_type: str = "memory",      # memory/sqlite/redis
+    sqlite_path: str = "neotask.db",   # SQLite 路径
+    redis_url: Optional[str] = None,   # Redis URL
+    worker_concurrency: int = 10,      # 并发 Worker 数
+    prefetch_size: int = 20,           # 预取数量
+    queue_max_size: int = 10000,       # 队列最大长度
+    max_retries: int = 3,              # 最大重试次数
+    retry_delay: float = 1.0,          # 重试延迟（秒）
+    task_timeout: Optional[float] = None,  # 任务超时
+    enable_metrics: bool = True,       # 启用指标收集
+)</code></pre>
+
+                <h3>SchedulerConfig</h3>
+                <pre><code>from neotask import SchedulerConfig
+
+config = SchedulerConfig(
+    storage_type: str = "memory",
+    sqlite_path: str = "neotask.db",
+    redis_url: Optional[str] = None,
+    worker_concurrency: int = 10,
+    max_retries: int = 3,
+    retry_delay: float = 1.0,
+    enable_persistence: bool = False,
+    scan_interval: float = 0.05,       # 调度扫描间隔（秒）
+)</code></pre>
+            </div>
+
+            <!-- 异常类 -->
+            <div id="exceptions" class="api-class">
+                <h2>异常类</h2>
+                <pre><code>from neotask.common.exceptions import (
+    TaskSchedulerError,      # 基类异常
+    TaskNotFoundError,       # 任务不存在
+    TaskAlreadyExistsError,  # 任务已存在
+    QueueFullError,          # 队列已满
+    TimeoutError,            # 等待超时
+)</code></pre>
+
+                <h4>示例</h4>
+                <pre><code>from neotask.common.exceptions import TaskNotFoundError, TimeoutError
+
+try:
+    result = pool.wait_for_result(task_id, timeout=30)
+except TaskNotFoundError:
+    print("任务不存在")
+except TimeoutError:
+    print("等待超时")
+except Exception as e:
+    print(f"任务失败: {e}")</code></pre>
+            </div>
+
+            <!-- 事件系统 -->
+            <div id="events" class="api-class">
+                <h2>事件系统</h2>
+
+                <h3>TaskEvent</h3>
+                <pre><code>class TaskEvent:
+    event_type: str    # 事件类型
+    task_id: str       # 任务ID
+    data: Any          # 事件数据</code></pre>
+
+                <h4>事件类型</h4>
+                <table>
+                    <thead><tr><th>类型</th><th>说明</th><th>data 内容</th></tr></thead>
+                    <tbody>
+                        <tr><td>task.created</td><td>任务创建</td><td>任务字典</td></tr>
+                        <tr><td>task.started</td><td>任务开始</td><td>{"node_id": "..."}</td></tr>
+                        <tr><td>task.completed</td><td>任务完成</td><td>{"result": ...}</td></tr>
+                        <tr><td>task.failed</td><td>任务失败</td><td>{"error": "..."}</td></tr>
+                        <tr><td>task.cancelled</td><td>任务取消</td><td>None</td></tr>
+                    </tbody>
+                </table>
+
+                <h4>使用示例</h4>
+                <pre><code>async def on_created(event):
+    print(f"任务创建: {event.task_id}")
+
+async def on_completed(event):
+    print(f"任务完成: {event.task_id}, 结果: {event.data}")
+
+pool.on_created(on_created)
+pool.on_completed(on_completed)</code></pre>
+            </div>
+        </main>
+    </div>
+
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-column">
+                <div class="footer-logo">
+                    <div class="logo-icon"><i class="fas fa-tasks"></i></div>
+                    <span>NeoTask</span>
+                </div>
+                <p>下一代分布式任务调度框架</p>
+            </div>
+            <div class="footer-column">
+                <h4>文档</h4>
+                <a href="quickstart.html">快速上手</a>
+                <a href="api-reference.html">API 参考</a>
+                <a href="configuration.html">配置说明</a>
+                <a href="architecture.html">架构设计</a>
+            </div>
+            <div class="footer-column">
+                <h4>社区</h4>
+                <a href="https://github.com/neopen/task-schedule-manager">GitHub</a>
+                <a href="https://github.com/neopen/task-schedule-manager/issues">Issues</a>
+                <a href="https://github.com/neopen/task-schedule-manager/discussions">Discussions</a>
+            </div>
+            <div class="footer-column">
+                <h4>资源</h4>
+                <a href="https://pypi.org/project/neotask/">PyPI</a>
+                <a href="https://github.com/neopen/task-schedule-manager/blob/main/LICENSE">License</a>
+                <a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5">详细文档</a>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2026 NeoTask. 基于 MIT 协议开源.</p>
+        </div>
+    </footer>
+
+    <script src="../assets/js/main.js"></script>
+</body>
+</html>

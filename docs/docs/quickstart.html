@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>快速上手 - NeoTask</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <div class="logo-icon"><i class="fas fa-tasks"></i></div>
+                <span>NeoTask</span>
+            </div>
+            <div class="menu-btn" id="menuBtn"><i class="fas fa-bars"></i></div>
+            <div class="nav-links" id="navLinks">
+                <a href="../index.html">首页</a>
+                <a href="quickstart.html" class="active">文档</a>
+                <a href="../blog/index.html">博客</a>
+                <a href="https://github.com/neopen/task-schedule-manager" class="github-btn">
+                    <i class="fab fa-github"></i> GitHub
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="docs-container">
+        <aside class="docs-sidebar">
+            <h4>文档导航</h4>
+            <ul>
+                <li><a href="quickstart.html" class="active">快速上手</a></li>
+                <li><a href="api-reference.html">API 参考</a></li>
+                <li><a href="configuration.html">配置说明</a></li>
+                <li><a href="architecture.html">架构设计</a></li>
+            </ul>
+            <div class="toc"></div>
+        </aside>
+
+        <main class="docs-content">
+            <h1>快速上手</h1>
+            <p>5 分钟快速入门 NeoTask 任务调度系统。</p>
+
+            <h2>安装</h2>
+            <pre><code># 基础安装（内存存储，适合开发测试）
+pip install neotask
+
+# 带 SQLite 持久化（适合单机生产）
+pip install neotask[sqlite]
+
+# 带 Redis 分布式支持（适合多节点部署）
+pip install neotask[redis]
+
+# 完整安装（包含所有扩展）
+pip install neotask[full]</code></pre>
+
+            <h2>5 分钟入门</h2>
+            
+            <h3>1. 定义任务处理函数</h3>
+            <pre><code>from neotask import TaskPool
+
+async def process_image(data: dict) -> dict:
+    """处理图片任务"""
+    print(f"开始处理图片: {data['url']}")
+    import asyncio
+    await asyncio.sleep(1)
+    return {
+        "status": "success",
+        "url": data['url'],
+        "size": 1024
+    }</code></pre>
+
+            <h3>2. 创建任务池并提交任务</h3>
+            <pre><code># 创建任务池
+pool = TaskPool(executor=process_image)
+
+# 提交任务
+task_id = pool.submit({
+    "url": "https://example.com/image.jpg"
+})
+print(f"任务已提交: {task_id}")</code></pre>
+
+            <h3>3. 等待并获取结果</h3>
+            <pre><code># 同步等待（阻塞当前线程）
+result = pool.wait_for_result(task_id, timeout=30)
+print(f"任务结果: {result}")
+
+# 关闭任务池
+pool.shutdown()</code></pre>
+
+            <h3>4. 异步方式（推荐）</h3>
+            <pre><code>import asyncio
+
+async def main():
+    pool = TaskPool(executor=process_image)
+    pool.start()
+    
+    task_id = await pool.submit_async({"url": "https://example.com/image.jpg"})
+    result = await pool.wait_for_result_async(task_id)
+    print(f"任务结果: {result}")
+    
+    await pool.shutdown_async()
+
+asyncio.run(main())</code></pre>
+
+            <h3>5. 使用上下文管理器（最简洁）</h3>
+            <pre><code>with TaskPool(executor=process_image) as pool:
+    task_id = pool.submit({"url": "https://example.com/image.jpg"})
+    result = pool.wait_for_result(task_id)
+    print(result)
+# 自动关闭</code></pre>
+
+            <h2>定时任务快速入门</h2>
+            <pre><code>from neotask import TaskScheduler
+
+async def send_report(data: dict) -> dict:
+    """发送报表"""
+    print(f"发送报表: {data['type']}")
+    return {"status": "sent"}
+
+# 创建调度器
+scheduler = TaskScheduler(executor=send_report)
+
+# 延时 60 秒执行
+task_id = scheduler.submit_delayed(
+    {"type": "daily"},
+    delay_seconds=60
+)
+
+# 每 5 分钟执行一次
+task_id = scheduler.submit_interval(
+    {"type": "heartbeat"},
+    interval_seconds=300
+)
+
+# 每天 9 点执行
+task_id = scheduler.submit_cron(
+    {"type": "daily_report"},
+    cron_expr="0 9 * * *"
+)
+
+# 等待结果
+result = scheduler.wait_for_result(task_id)
+
+# 关闭调度器
+scheduler.shutdown()</code></pre>
+
+            <h2>优先级任务</h2>
+            <pre><code>from neotask import TaskPriority
+
+# 高优先级任务（数字越小优先级越高）
+high_priority_id = pool.submit(
+    {"task": "urgent"},
+    priority=TaskPriority.HIGH   # 或 priority=1
+)
+
+# 普通优先级（默认）
+normal_id = pool.submit({"task": "normal"})
+
+# 低优先级
+low_id = pool.submit(
+    {"task": "background"},
+    priority=TaskPriority.LOW    # 或 priority=3
+)</code></pre>
+
+            <h3>优先级说明</h3>
+            <table>
+                <thead>
+                    <tr><th>优先级</th><th>值</th><th>说明</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>CRITICAL</td><td>0</td><td>最高优先级</td></tr>
+                    <tr><td>HIGH</td><td>1</td><td>高优先级</td></tr>
+                    <tr><td>NORMAL</td><td>2</td><td>普通优先级（默认）</td></tr>
+                    <tr><td>LOW</td><td>3</td><td>低优先级</td></tr>
+                </tbody>
+            </table>
+
+            <h2>批量提交</h2>
+            <pre><code># 批量提交任务
+tasks = [
+    {"id": 1, "url": "image1.jpg"},
+    {"id": 2, "url": "image2.jpg"},
+    {"id": 3, "url": "image3.jpg"},
+]
+
+# 同步批量提交
+task_ids = pool.submit_batch(tasks)
+
+# 异步批量提交
+task_ids = await pool.submit_batch_async(tasks)
+
+# 等待所有任务完成
+results = pool.wait_all(task_ids)
+for task_id, result in results.items():
+    print(f"{task_id}: {result}")</code></pre>
+
+            <h2>事件回调</h2>
+            <pre><code># 定义事件处理器
+async def on_created(event):
+    print(f"任务创建: {event.task_id}")
+
+async def on_started(event):
+    print(f"任务开始: {event.task_id}")
+
+async def on_completed(event):
+    print(f"任务完成: {event.task_id}")
+
+# 注册事件回调
+pool.on_created(on_created)
+pool.on_started(on_started)
+pool.on_completed(on_completed)</code></pre>
+
+            <h2>常见问题</h2>
+            
+            <h3>Q: 同步和异步 API 有什么区别？</h3>
+            <p>同步 API（如 <code>submit</code>）会阻塞当前线程直到操作完成；异步 API（如 <code>submit_async</code>）返回 awaitable，需要在 async 函数中使用。</p>
+            
+            <h3>Q: 如何选择存储类型？</h3>
+            <ul>
+                <li><code>memory</code>：开发测试，进程重启丢失</li>
+                <li><code>sqlite</code>：单机生产，持久化存储</li>
+                <li><code>redis</code>：分布式部署，多节点共享</li>
+            </ul>
+            
+            <h3>Q: 任务失败后会自动重试吗？</h3>
+            <p>会。可通过 <code>max_retries</code> 配置重试次数，<code>retry_delay</code> 配置重试延迟。</p>
+            
+            <h3>Q: 如何监控任务执行情况？</h3>
+            <p>使用事件回调监听任务生命周期；调用 <code>get_stats()</code> 获取实时统计；启用 Web UI（规划中）。</p>
+        </main>
+    </div>
+
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-column">
+                <div class="footer-logo">
+                    <div class="logo-icon"><i class="fas fa-tasks"></i></div>
+                    <span>NeoTask</span>
+                </div>
+                <p>下一代分布式任务调度框架</p>
+            </div>
+            <div class="footer-column">
+                <h4>文档</h4>
+                <a href="quickstart.html">快速上手</a>
+                <a href="api-reference.html">API 参考</a>
+                <a href="configuration.html">配置说明</a>
+                <a href="architecture.html">架构设计</a>
+            </div>
+            <div class="footer-column">
+                <h4>社区</h4>
+                <a href="https://github.com/neopen/task-schedule-manager">GitHub</a>
+                <a href="https://github.com/neopen/task-schedule-manager/issues">Issues</a>
+                <a href="https://github.com/neopen/task-schedule-manager/discussions">Discussions</a>
+            </div>
+            <div class="footer-column">
+                <h4>资源</h4>
+                <a href="https://pypi.org/project/neotask/">PyPI</a>
+                <a href="https://github.com/neopen/task-schedule-manager/blob/main/LICENSE">License</a>
+                <a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5">详细文档</a>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2026 NeoTask. 基于 MIT 协议开源.</p>
+        </div>
+    </footer>
+
+    <script src="../assets/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>博客 - NeoTask</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <div class="logo-icon"><i class="fas fa-tasks"></i></div>
+                <span>NeoTask</span>
+            </div>
+            <div class="menu-btn" id="menuBtn"><i class="fas fa-bars"></i></div>
+            <div class="nav-links" id="navLinks">
+                <a href="../index.html">首页</a>
+                <a href="../docs/quickstart.html">文档</a>
+                <a href="index.html" class="active">博客</a>
+                <a href="https://github.com/neopen/task-schedule-manager" class="github-btn">
+                    <i class="fab fa-github"></i> GitHub
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div style="max-width: 1200px; margin: 100px auto 0; padding: 2rem;">
+        <div class="section-header">
+            <h2>NeoTask 博客</h2>
+            <p>最新动态、技术分享和使用教程</p>
+        </div>
+
+        <div class="features-grid" style="grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));">
+            <div class="feature-card">
+                <div class="feature-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <i class="fas fa-rocket"></i>
+                </div>
+                <h3>NeoTask v1.0 正式发布</h3>
+                <p style="color: #a855f7; font-size: 0.85rem; margin-bottom: 0.5rem;">
+                    <i class="far fa-calendar-alt"></i> 2026-06-10
+                </p>
+                <p>经过多个版本的迭代，NeoTask v1.0 正式发布！新增高可用保障、看门狗机制、故障自动恢复等企业级特性...</p>
+                <a href="#" style="color: #a855f7; text-decoration: none; margin-top: 1rem; display: inline-block;">阅读全文 →</a>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <h3>NeoTask 性能测试报告</h3>
+                <p style="color: #a855f7; font-size: 0.85rem; margin-bottom: 0.5rem;">
+                    <i class="far fa-calendar-alt"></i> 2026-06-05
+                </p>
+                <p>我们进行了详细的性能测试，单节点每秒可处理超过 10,000 个任务，延迟低于 10 毫秒...</p>
+                <a href="#" style="color: #a855f7; text-decoration: none; margin-top: 1rem; display: inline-block;">阅读全文 →</a>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                </div>
+                <h3>分布式部署最佳实践</h3>
+                <p style="color: #a855f7; font-size: 0.85rem; margin-bottom: 0.5rem;">
+                    <i class="far fa-calendar-alt"></i> 2026-09-28
+                </p>
+                <p>本文介绍如何使用 Redis 存储后端部署多节点 NeoTask 集群，实现高可用和水平扩展...</p>
+                <a href="#" style="color: #a855f7; text-decoration: none; margin-top: 1rem; display: inline-block;">阅读全文 →</a>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <h3>Cron 表达式完全指南</h3>
+                <p style="color: #a855f7; font-size: 0.85rem; margin-bottom: 0.5rem;">
+                    <i class="far fa-calendar-alt"></i> 2026-05-20
+                </p>
+                <p>详细介绍 NeoTask 中 Cron 表达式的使用方法，包含丰富的示例和常见场景...</p>
+                <a href="#" style="color: #a855f7; text-decoration: none; margin-top: 1rem; display: inline-block;">阅读全文 →</a>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <i class="fas fa-database"></i>
+                </div>
+                <h3>存储后端选型指南</h3>
+                <p style="color: #a855f7; font-size: 0.85rem; margin-bottom: 0.5rem;">
+                    <i class="far fa-calendar-alt"></i> 2026-03-15
+                </p>
+                <p>Memory、SQLite、Redis 三种存储后端的对比分析，帮助您选择最适合的方案...</p>
+                <a href="#" style="color: #a855f7; text-decoration: none; margin-top: 1rem; display: inline-block;">阅读全文 →</a>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <i class="fas fa-code"></i>
+                </div>
+                <h3>AI 图像生成任务队列实战</h3>
+                <p style="color: #a855f7; font-size: 0.85rem; margin-bottom: 0.5rem;">
+                    <i class="far fa-calendar-alt"></i> 2027-03-10
+                </p>
+                <p>使用 NeoTask 处理 AI 图像生成请求的完整实战教程，包含代码示例和性能优化...</p>
+                <a href="#" style="color: #a855f7; text-decoration: none; margin-top: 1rem; display: inline-block;">阅读全文 →</a>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-column">
+                <div class="footer-logo">
+                    <div class="logo-icon"><i class="fas fa-tasks"></i></div>
+                    <span>NeoTask</span>
+                </div>
+                <p>下一代分布式任务调度框架</p>
+            </div>
+            <div class="footer-column">
+                <h4>文档</h4>
+                <a href="quickstart.html">快速上手</a>
+                <a href="api-reference.html">API 参考</a>
+                <a href="configuration.html">配置说明</a>
+                <a href="architecture.html">架构设计</a>
+            </div>
+            <div class="footer-column">
+                <h4>社区</h4>
+                <a href="https://github.com/neopen/task-schedule-manager">GitHub</a>
+                <a href="https://github.com/neopen/task-schedule-manager/issues">Issues</a>
+                <a href="https://github.com/neopen/task-schedule-manager/discussions">Discussions</a>
+            </div>
+            <div class="footer-column">
+                <h4>资源</h4>
+                <a href="https://pypi.org/project/neotask/">PyPI</a>
+                <a href="https://github.com/neopen/task-schedule-manager/blob/main/LICENSE">License</a>
+                <a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5">详细文档</a>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2026 NeoTask. 基于 MIT 协议开源.</p>
+        </div>
+    </footer>
+
+    <script src="../assets/js/main.js"></script>
+</body>
+</html>

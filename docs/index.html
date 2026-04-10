@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeoTask - 下一代分布式任务调度系统</title>
+    <meta name="description" content="NeoTask 是一个高性能、可扩展、易用的分布式任务调度框架，以库的形式嵌入应用，让异步任务处理变得简单而优雅。">
+    <meta name="keywords" content="任务调度,分布式,异步任务,Python,任务队列,Cron">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="assets/css/style.css">
+
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <div class="logo-icon">
+                    <i class="fas fa-tasks"></i>
+                </div>
+                <span>NeoTask</span>
+            </div>
+            <div class="menu-btn" id="menuBtn">
+                <i class="fas fa-bars"></i>
+            </div>
+            <div class="nav-links" id="navLinks">
+                <a href="index.html" class="active">首页</a>
+                <a href="docs/quickstart.html">文档</a>
+                <a href="blog/index.html">博客</a>
+                <a href="#features">特性</a>
+                <a href="#architecture">架构</a>
+                <a href="#roadmap">路线图</a>
+                <a href="https://github.com/neopen/task-schedule-manager" class="github-btn">
+                    <i class="fab fa-github"></i>
+                    GitHub
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero 区域 -->
+    <section id="home" class="hero">
+        <div class="hero-content">
+            <div class="hero-badge">
+                <i class="fas fa-rocket"></i> 嵌入式通用任务调度框架
+            </div>
+            <h1>NeoTask</h1>
+            <p class="hero-subtitle">高性能、可扩展、易用的分布式任务调度框架<br>以库的形式嵌入应用，让异步任务处理变得简单而优雅</p>
+            <div class="hero-buttons">
+                <a href="docs/quickstart.html" class="btn btn-primary">
+                    <i class="fas fa-play"></i> 快速开始
+                </a>
+                <a href="https://github.com/neopen/task-schedule-manager" class="btn btn-secondary">
+                    <i class="fab fa-github"></i> GitHub
+                </a>
+                <a href="docs/configuration.html" class="btn btn-secondary">
+                    <i class="fas fa-cog"></i> 配置说明
+                </a>
+            </div>
+            <div class="hero-stats">
+                <div class="hero-stat">
+                    <span class="stat-number">10k+</span>
+                    <span class="stat-label">任务/秒</span>
+                </div>
+                <div class="hero-stat">
+                    <span class="stat-number">99.99%</span>
+                    <span class="stat-label">可用性</span>
+                </div>
+                <div class="hero-stat">
+                    <span class="stat-number">4</span>
+                    <span class="stat-label">优先级</span>
+                </div>
+                <div class="hero-stat">
+                    <span class="stat-number">3</span>
+                    <span class="stat-label">存储后端</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 特性区域 -->
+    <section id="features" class="features">
+        <div class="section-header">
+            <h2>核心特性</h2>
+            <p>NeoTask 提供了一套完整的企业级任务调度解决方案</p>
+        </div>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon"><i class="fas fa-bolt"></i></div>
+                <h3>高性能</h3>
+                <p>基于异步IO实现，支持每秒处理数万级任务，延迟低于10毫秒</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+                <h3>分布式</h3>
+                <p>支持 Redis 作为后端存储，实现多节点分布式部署和任务调度</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon"><i class="fas fa-clock"></i></div>
+                <h3>定时任务</h3>
+                <p>支持延时执行、周期执行和 Cron 表达式，满足各种定时需求</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon"><i class="fas fa-chart-line"></i></div>
+                <h3>监控告警</h3>
+                <p>内置指标收集和健康检查，支持自定义告警规则</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon"><i class="fas fa-lock"></i></div>
+                <h3>分布式锁</h3>
+                <p>基于 Redis 的分布式锁，确保任务在集群中只被一个节点执行</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon"><i class="fas fa-database"></i></div>
+                <h3>多种存储</h3>
+                <p>支持 Memory、SQLite、Redis 三种存储后端，按需选择</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon"><i class="fas fa-undo-alt"></i></div>
+                <h3>自动重试</h3>
+                <p>任务失败自动重试，支持配置重试次数和退避策略</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon"><i class="fas fa-chart-pie"></i></div>
+                <h3>可观测性</h3>
+                <p>事件总线 + 指标收集，支持 Prometheus 集成</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- 架构图区域 -->
+    <section id="architecture" class="architecture">
+        <div class="section-header">
+            <h2>系统架构</h2>
+            <p>NeoTask 采用分层架构设计，模块化清晰，易于扩展</p>
+        </div>
+        <div class="arch-container">
+            <div class="arch-layer">
+                <div class="arch-layer-title">API Layer</div>
+                <div class="arch-components">
+                    <span class="arch-component">TaskPool</span>
+                    <span class="arch-component">TaskScheduler</span>
+                    <span class="arch-component">TaskEngine</span>
+                </div>
+            </div>
+            <div class="arch-arrow"><i class="fas fa-arrow-down"></i></div>
+            <div class="arch-layer">
+                <div class="arch-layer-title">Core Layer</div>
+                <div class="arch-components">
+                    <span class="arch-component">Dispatcher</span>
+                    <span class="arch-component">Lifecycle Manager</span>
+                    <span class="arch-component">Future Manager</span>
+                    <span class="arch-component">Event Bus</span>
+                </div>
+            </div>
+            <div class="arch-arrow"><i class="fas fa-arrow-down"></i></div>
+            <div class="arch-layer">
+                <div class="arch-layer-title">Queue & Worker Layer</div>
+                <div class="arch-components">
+                    <span class="arch-component">Priority Queue</span>
+                    <span class="arch-component">Delayed Queue</span>
+                    <span class="arch-component">Worker Pool</span>
+                    <span class="arch-component">Supervisor</span>
+                </div>
+            </div>
+            <div class="arch-arrow"><i class="fas fa-arrow-down"></i></div>
+            <div class="arch-layer">
+                <div class="arch-layer-title">Storage Layer</div>
+                <div class="arch-components">
+                    <span class="arch-component">Memory Storage</span>
+                    <span class="arch-component">SQLite Storage</span>
+                    <span class="arch-component">Redis Storage</span>
+                </div>
+            </div>
+        </div>
+        <div class="arch-note">
+            <i class="fas fa-info-circle"></i> 了解更多架构设计细节，请查看 <a href="docs/architecture.html">架构设计文档</a>
+        </div>
+    </section>
+
+    <!-- 代码示例 -->
+    <section class="code-section">
+        <div class="section-header">
+            <h2>简单易用</h2>
+            <p>只需几行代码，即可开始使用 NeoTask</p>
+        </div>
+        <div class="code-tabs">
+            <div class="code-tab-buttons">
+                <button class="code-tab-btn active" data-tab="basic">基础使用</button>
+                <button class="code-tab-btn" data-tab="scheduler">定时任务</button>
+                <button class="code-tab-btn" data-tab="advanced">高级特性</button>
+            </div>
+            <div class="code-tab-content active" id="basic-tab">
+                <div class="code-container">
+                    <div class="code-header">
+                        <div class="code-dot red"></div>
+                        <div class="code-dot yellow"></div>
+                        <div class="code-dot green"></div>
+                    </div>
+                    <pre><code>from neotask import TaskPool
+
+# 定义任务处理函数
+async def process_order(data: dict) -> dict:
+    print(f"Processing order: {data['id']}")
+    await asyncio.sleep(1)
+    return {"status": "success", "order_id": data["id"]}
+
+# 创建任务池
+pool = TaskPool(executor=process_order)
+
+# 提交任务
+task_id = pool.submit({"id": "order_001", "amount": 100})
+
+# 等待结果
+result = pool.wait_for_result(task_id, timeout=30)
+print(f"Result: {result}")</code></pre>
+                </div>
+            </div>
+            <div class="code-tab-content" id="scheduler-tab">
+                <div class="code-container">
+                    <div class="code-header">
+                        <div class="code-dot red"></div>
+                        <div class="code-dot yellow"></div>
+                        <div class="code-dot green"></div>
+                    </div>
+                    <pre><code>from neotask import TaskScheduler
+
+scheduler = TaskScheduler(executor=process_order)
+
+# 延时 60 秒执行
+task_id = scheduler.submit_delayed(
+    {"action": "reminder"},
+    delay_seconds=60
+)
+
+# 每 5 分钟执行一次
+scheduler.submit_interval(
+    {"action": "heartbeat"},
+    interval_seconds=300
+)
+
+# 每天 9 点执行（Cron 表达式）
+scheduler.submit_cron(
+    {"action": "daily_report"},
+    cron_expr="0 9 * * *"
+)</code></pre>
+                </div>
+            </div>
+            <div class="code-tab-content" id="advanced-tab">
+                <div class="code-container">
+                    <div class="code-header">
+                        <div class="code-dot red"></div>
+                        <div class="code-dot yellow"></div>
+                        <div class="code-dot green"></div>
+                    </div>
+                    <pre><code>from neotask import TaskPool, TaskPriority, TaskPoolConfig
+
+# 自定义配置
+config = TaskPoolConfig(
+    storage_type="redis",
+    redis_url="redis://localhost:6379",
+    worker_concurrency=20,
+    max_retries=3,
+    enable_metrics=True
+)
+
+pool = TaskPool(executor=process_order, config=config)
+
+# 高优先级任务
+urgent_id = pool.submit(
+    {"task": "urgent"},
+    priority=TaskPriority.HIGH
+)
+
+# 批量提交
+tasks = [{"id": i} for i in range(100)]
+task_ids = pool.submit_batch(tasks)
+
+# 批量等待
+results = pool.wait_all(task_ids)</code></pre>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 版本演进 -->
+    <section class="version-section">
+        <div class="section-header">
+            <h2>版本演进</h2>
+            <p>从单机到分布式的渐进式架构演进</p>
+        </div>
+        <div class="version-timeline">
+            <div class="version-item">
+                <div class="version-badge">v0.1</div>
+                <div class="version-content">
+                    <h4>基础任务池</h4>
+                    <p>本地内存队列、异步执行、基础持久化</p>
+                </div>
+            </div>
+            <div class="version-item">
+                <div class="version-badge">v0.2</div>
+                <div class="version-content">
+                    <h4>监控 + 定时任务</h4>
+                    <p>事件总线、指标收集、延时队列、周期任务、Cron</p>
+                </div>
+            </div>
+            <div class="version-item">
+                <div class="version-badge">v0.3</div>
+                <div class="version-content">
+                    <h4>分布式核心</h4>
+                    <p>Redis共享队列、分布式锁、预取机制</p>
+                </div>
+            </div>
+            <div class="version-item">
+                <div class="version-badge">v1.0</div>
+                <div class="version-content">
+                    <h4>高可用保障</h4>
+                    <p>看门狗机制、超时检测、故障恢复</p>
+                </div>
+            </div>
+            <div class="version-item">
+                <div class="version-badge">v1.5</div>
+                <div class="version-content">
+                    <h4>企业级能力</h4>
+                    <p>Prometheus集成、多租户支持</p>
+                </div>
+            </div>
+            <div class="version-item">
+                <div class="version-badge future">v2.0</div>
+                <div class="version-content">
+                    <h4>Web UI 面板</h4>
+                    <p>可视化任务管理、实时监控面板、任务拓扑图</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 用户评价 -->
+    <section class="testimonials">
+        <div class="section-header">
+            <h2>用户评价</h2>
+            <p>来自社区的真实反馈</p>
+        </div>
+        <div class="testimonials-grid">
+            <div class="testimonial-card">
+                <div class="testimonial-text">
+                    "NeoTask 的嵌入式设计非常巧妙，我们只用了半天就完成了集成，性能表现超出预期。"
+                </div>
+                <div class="testimonial-author">
+                    <div class="author-icon"><i class="fas fa-user"></i></div>
+                    <div class="author-info">
+                        <div class="author-name">李明</div>
+                        <div class="author-title">某电商平台架构师</div>
+                    </div>
+                </div>
+            </div>
+            <div class="testimonial-card">
+                <div class="testimonial-text">
+                    "从单机到分布式的平滑演进让我们没有后顾之忧，Redis 存储模式非常稳定。"
+                </div>
+                <div class="testimonial-author">
+                    <div class="author-icon"><i class="fas fa-user"></i></div>
+                    <div class="author-info">
+                        <div class="author-name">王芳</div>
+                        <div class="author-title">某金融科技公司技术负责人</div>
+                    </div>
+                </div>
+            </div>
+            <div class="testimonial-card">
+                <div class="testimonial-text">
+                    "API 设计非常直观，文档完善，社区响应迅速，强烈推荐！"
+                </div>
+                <div class="testimonial-author">
+                    <div class="author-icon"><i class="fas fa-user"></i></div>
+                    <div class="author-info">
+                        <div class="author-name">张伟</div>
+                        <div class="author-title">开源贡献者</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 路线图 -->
+    <section id="roadmap" class="roadmap">
+        <div class="section-header">
+            <h2>产品路线图</h2>
+            <p>NeoTask 的未来规划</p>
+        </div>
+        <div class="timeline">
+            <div class="timeline-item">
+                <div class="timeline-dot completed"></div>
+                <div class="timeline-content">
+                    <span class="timeline-badge completed">已完成</span>
+                    <h4>基础任务队列</h4>
+                    <p>支持即时任务、优先级队列、内存/SQLite存储</p>
+                </div>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-dot completed"></div>
+                <div class="timeline-content">
+                    <span class="timeline-badge completed">已完成</span>
+                    <h4>定时调度能力</h4>
+                    <p>延时执行、周期任务、Cron表达式支持</p>
+                </div>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-dot completed"></div>
+                <div class="timeline-content">
+                    <span class="timeline-badge completed">已完成</span>
+                    <h4>分布式支持</h4>
+                    <p>Redis存储、分布式锁、预取机制</p>
+                </div>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-dot current"></div>
+                <div class="timeline-content">
+                    <span class="timeline-badge current">进行中</span>
+                    <h4>高可用保障</h4>
+                    <p>看门狗机制、超时检测、故障自动恢复</p>
+                </div>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-dot"></div>
+                <div class="timeline-content">
+                    <span class="timeline-badge">计划中</span>
+                    <h4>Web UI 监控面板</h4>
+                    <p>可视化任务管理、实时监控、任务拓扑图</p>
+                </div>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-dot"></div>
+                <div class="timeline-content">
+                    <span class="timeline-badge">计划中</span>
+                    <h4>任务编排引擎</h4>
+                    <p>DAG工作流、任务依赖管理、条件分支</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA 区域 -->
+    <section class="cta">
+        <div class="cta-content">
+            <h2>准备好开始了吗？</h2>
+            <p>立即开始使用 NeoTask，体验下一代任务调度框架</p>
+            <div class="cta-buttons">
+                <a href="docs/quickstart.html" class="btn btn-primary btn-large">
+                    <i class="fas fa-play"></i> 快速开始
+                </a>
+                <a href="https://github.com/neopen/task-schedule-manager" class="btn btn-secondary btn-large">
+                    <i class="fab fa-github"></i> GitHub
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-column">
+                <div class="footer-logo">
+                    <div class="logo-icon"><i class="fas fa-tasks"></i></div>
+                    <span>NeoTask</span>
+                </div>
+                <p>下一代分布式任务调度框架</p>
+                <div class="footer-social">
+                    <a href="https://github.com/neopen/task-schedule-manager"><i class="fab fa-github"></i></a>
+                    <a href="#"><i class="fab fa-twitter"></i></a>
+                    <a href="#"><i class="fab fa-discord"></i></a>
+                </div>
+            </div>
+            <div class="footer-column">
+                <h4>文档</h4>
+                <a href="docs/quickstart.html">快速上手</a>
+                <a href="docs/api-reference.html">API 参考</a>
+                <a href="docs/configuration.html">配置说明</a>
+                <a href="docs/architecture.html">架构设计</a>
+            </div>
+            <div class="footer-column">
+                <h4>社区</h4>
+                <a href="https://github.com/neopen/task-schedule-manager">GitHub</a>
+                <a href="https://github.com/neopen/task-schedule-manager/issues">Issues</a>
+                <a href="https://github.com/neopen/task-schedule-manager/discussions">Discussions</a>
+                <a href="#">贡献指南</a>
+            </div>
+            <div class="footer-column">
+                <h4>资源</h4>
+                <a href="blog/index.html">博客</a>
+                <a href="https://github.com/neopen/task-schedule-manager/tree/main/examples">示例代码</a>
+                <a href="#">视频教程</a>
+                <a href="#">常见问题</a>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2026 NeoTask. 基于 MIT 协议开源.</p>
+            <p>嵌入式设计 | 渐进式增强 | 可观测性优先</p>
+        </div>
+    </footer>
+
+    <script src="assets/js/main.js"></script>
+</body>
+</html>

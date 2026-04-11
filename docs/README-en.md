@@ -4,9 +4,9 @@ Lightweight Python asynchronous task queue manager, no extra services required, 
 
 > NeoTask is a pure Python-based asynchronous task queue scheduling system specifically designed for time-consuming tasks (such as AI generation, video processing, data scraping, etc.). It supports scheduled tasks, periodic tasks, and delayed tasks. There is no need to deploy external services like Redis or PostgreSQL. After installation, it can be directly used in any Python project.
 
-[中文](../README.md) | English | [Documentation](https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5) | [PyPI](https://pypi.org/project/neotask/)
+[中文](../README.md) | English | [Documentation](https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5) | [PyPI](https://pypi.org/project/neotask/) | [website](https://neopen.github.io/task-schedule-manager)
 
-[![PyPI version](https://badge.fury.io/py/neotask.svg)](https://pypi.org/project/neotask/) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/) [![PyPI](https://img.shields.io/pypi/v/neotask.svg)](https://pypi.org/project/penshot/) [![Downloads](https://static.pepy.tech/badge/neotask)](https://pepy.tech/project/neotask)
 
 ---
 
@@ -229,7 +229,7 @@ result = pool.wait_for_result(task_id)
 | `scheduler.submit_interval(data, interval)` | Periodic task |
 | `scheduler.submit_cron(data, cron)` | Cron task |
 
-Detailed API documentation can be found [here](http://localhost:4000/2026/04/243d5a536d064df59c2ec8668362b8b5/)
+Detailed API documentation can be found [here](https://pengline.cn/2026/04/650ac5bb41c74e26bc4effcec88bf26c/)
 
 
 
@@ -247,7 +247,7 @@ config = TaskPoolConfig(
 pool = TaskPool(executor=process, config=config)
 ```
 
-Detailed usage examples can be found [here](http://localhost:4000/2026/04/243d5a536d064df59c2ec8668362b8b5/)
+Detailed usage examples can be found [here](https://pengline.cn/2026/04/fa51edd849b24f48b4d7fa8e27efef77/)
 
 
 
@@ -341,12 +341,3 @@ MIT License © 2026 NeoPen
 ## Acknowledgments
 
 Thanks to all contributors and the open source community for their support.
-
-------
-
-## Contact
-
-- Project Homepage: https://github.com/neopen/task-schedule-manager
-- Author: NeoPen
-- Email: helpenx@gmail.com
-- Documentation: https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5

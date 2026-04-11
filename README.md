@@ -4,9 +4,9 @@
 
 > NeoTask 是一个纯 Python 实现的异步任务队列调度系统，专为耗时任务（AI 生成、视频处理、数据爬取等）设计，支持定时任务、周期任务、延迟任务。无需部署 Redis、PostgreSQL 等外部服务，安装后即可在任意 Python 项目中直接使用。
 
-中文 | [English](./docs/README-en.md) | [文档](https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5/) | [PyPI](https://pypi.org/project/neotask/)
+中文 | [English](./docs/README-en.md) | [文档](https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5/) | [PyPI](https://pypi.org/project/neotask/) | [官网](https://neopen.github.io/task-schedule-manager)
 
-[![PyPI version](https://badge.fury.io/py/neotask.svg)](https://pypi.org/project/neotask/) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/) [![PyPI](https://img.shields.io/pypi/v/neotask.svg)](https://pypi.org/project/penshot/) [![Downloads](https://static.pepy.tech/badge/neotask)](https://pepy.tech/project/neotask)
 
 ---
 
@@ -127,6 +127,8 @@ timeline
 
 ## 快速上手
 
+详细使用方式 请参阅 [文档](https://pengline.cn/2026/04/118be805273f47408bc580c4bd1203d8/)
+
 ### 安装
 
 ```sh
@@ -229,7 +231,7 @@ result = pool.wait_for_result(task_id)
 | `scheduler.submit_interval(data, interval)`  | 周期任务  |
 | `scheduler.submit_cron(data, cron)`          | Cron 任务 |
 
-详细 API 请参阅 [文档](http://localhost:4000/2026/04/243d5a536d064df59c2ec8668362b8b5/)
+详细 API 请参阅 [文档](https://pengline.cn/2026/04/650ac5bb41c74e26bc4effcec88bf26c/)
 
 
 
@@ -247,7 +249,7 @@ config = TaskPoolConfig(
 pool = TaskPool(executor=process, config=config)
 ```
 
-详细使用示例请参阅 [文档](http://localhost:4000/2026/04/243d5a536d064df59c2ec8668362b8b5/)
+详细使用示例请参阅 [文档](https://pengline.cn/2026/04/fa51edd849b24f48b4d7fa8e27efef77/)
 
 
 

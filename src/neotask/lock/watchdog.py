@@ -1,121 +1,119 @@
 """
 @FileName: watchdog.py
-@Description: 看门狗机制 - 自动续期锁。
+@Description: 看门狗 - 自动续期锁
 @Author: HiPeng
-@Time: 2026/4/1 19:08
+@Time: 2026/4/8 00:00
 """
+
 import asyncio
-from typing import Optional, Callable, Dict
+from typing import Dict, Optional
 
 from neotask.lock.base import TaskLock
 
 
 class WatchDog:
-    """看门狗，负责自动续期锁。
+    """看门狗
+
+    自动为锁续期，防止锁在任务执行期间过期。
 
     使用示例：
-        >>> lock = TaskLock()
+        >>> lock = RedisLock("redis://localhost")
         >>> watchdog = WatchDog(lock)
-        >>>   watchdog.start("my_key", ttl=30)
-        >>> try:
-        ...     # 长时间执行的任务
-        ...     asyncio.sleep(60)
-        ... finally:
-        ...     watchdog.stop("my_key")
+        >>>
+        >>> if await lock.acquire("my_key", ttl=30):
+        ...     await watchdog.start("my_key", ttl=30)
+        ...     try:
+        ...         # 长时间执行的任务
+        ...         await long_running_task()
+        ...     finally:
+        ...         await watchdog.stop("my_key")
+        ...         await lock.release("my_key")
     """
 
     def __init__(self, lock: TaskLock, interval_ratio: float = 0.3):
-        """初始化看门狗。
+        """初始化看门狗
 
         Args:
             lock: 分布式锁实例
-            interval_ratio: 续期间隔与 TTL 的比例，默认 0.3（TTL的30%）
+            interval_ratio: 续期间隔与 TTL 的比例（默认 0.3，即每 TTL/3 续期一次）
         """
         self._lock = lock
         self._interval_ratio = interval_ratio
         self._tasks: Dict[str, asyncio.Task] = {}
-        self._stop_events: Dict[str, asyncio.Event] = {}
+        self._running: Dict[str, bool] = {}
 
-    async def start(self, key: str, ttl: int = 30, on_extend_fail: Optional[Callable] = None) -> bool:
-        """启动看门狗。
+    async def start(self, key: str, ttl: int) -> None:
+        """启动看门狗
 
         Args:
             key: 锁的键名
             ttl: 锁的生存时间（秒）
-            on_extend_fail: 续期失败时的回调函数
-
-        Returns:
-            是否成功启动
         """
-        if key in self._tasks:
-            return False
+        if key in self._tasks and not self._tasks[key].done():
+            return
 
-        # 检查锁是否被当前进程持有
-        owner = await self._lock.get_owner(key)
-        if not owner:
-            return False
-
-        stop_event = asyncio.Event()
-        self._stop_events[key] = stop_event
-
-        task = asyncio.create_task(
-            self._watchdog_loop(key, ttl, stop_event, on_extend_fail)
-        )
-        self._tasks[key] = task
-
-        return True
-
-    async def stop(self, key: str) -> bool:
-        """停止看门狗。"""
-        if key not in self._tasks:
-            return False
-
-        # 发送停止信号
-        if key in self._stop_events:
-            self._stop_events[key].set()
-
-        # 等待任务结束
-        task = self._tasks.pop(key)
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-
-        if key in self._stop_events:
-            del self._stop_events[key]
-
-        return True
-
-    async def _watchdog_loop(self, key: str, ttl: int, stop_event: asyncio.Event, on_extend_fail: Optional[Callable]):
-        """看门狗循环。"""
+        self._running[key] = True
         interval = ttl * self._interval_ratio
+        self._tasks[key] = asyncio.create_task(
+            self._watchdog_loop(key, ttl, interval)
+        )
 
-        while not stop_event.is_set():
+    async def stop(self, key: str) -> None:
+        """停止看门狗
+
+        Args:
+            key: 锁的键名
+        """
+        self._running[key] = False
+
+        if key in self._tasks:
+            self._tasks[key].cancel()
+            try:
+                await self._tasks[key]
+            except asyncio.CancelledError:
+                pass
+            finally:
+                self._tasks.pop(key, None)
+                self._running.pop(key, None)
+
+    async def stop_all(self) -> None:
+        """停止所有看门狗"""
+        for key in list(self._tasks.keys()):
+            await self.stop(key)
+
+    async def _watchdog_loop(self, key: str, ttl: int, interval: float) -> None:
+        """看门狗循环"""
+        while self._running.get(key, False):
             try:
                 await asyncio.sleep(interval)
+
+                if not self._running.get(key, False):
+                    break
 
                 # 续期锁
                 success = await self._lock.extend(key, ttl)
 
                 if not success:
-                    # 续期失败，锁可能已被释放
-                    if on_extend_fail:
-                        await on_extend_fail(key)
+                    # 锁已丢失，停止续期
+                    self._running[key] = False
                     break
 
             except asyncio.CancelledError:
                 break
-            except Exception as e:
-                if on_extend_fail:
-                    await on_extend_fail(key, str(e))
-                break
-
-    async def stop_all(self):
-        """停止所有看门狗。"""
-        for key in list(self._tasks.keys()):
-            await self.stop(key)
+            except Exception:
+                # 发生错误，继续尝试
+                continue
 
     def is_running(self, key: str) -> bool:
-        """检查看门狗是否在运行。"""
-        return key in self._tasks
+        """检查看门狗是否在运行
+
+        Args:
+            key: 锁的键名
+
+        Returns:
+            是否在运行
+        """
+        return self._running.get(key, False)
+
+    def __repr__(self) -> str:
+        return f"WatchDog(active={len(self._tasks)})"

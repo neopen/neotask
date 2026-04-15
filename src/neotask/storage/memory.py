@@ -4,46 +4,82 @@
 @Author: HiPeng
 @Time: 2026/3/27 23:54
 """
-import asyncio
-from typing import Dict, List, Optional
-from neotask.models.task import Task, TaskStatus
-from neotask.storage.base import TaskRepository, QueueRepository
 import heapq
+
+"""
+@FileName: memory.py
+@Description: 内存存储实现
+@Author: HiPeng
+@Time: 2026/4/8 00:00
+"""
+
+import asyncio
+import copy
+from typing import Optional, Dict, List
+
+from neotask.storage.base import TaskRepository, QueueRepository
+from neotask.models.task import Task, TaskStatus
 
 
 class MemoryTaskRepository(TaskRepository):
-    """In-memory task repository."""
+    """内存任务存储"""
 
     def __init__(self):
         self._tasks: Dict[str, Task] = {}
         self._lock = asyncio.Lock()
 
     async def save(self, task: Task) -> None:
+        """保存任务（深拷贝避免外部修改）"""
         async with self._lock:
-            self._tasks[task.task_id] = task
+            self._tasks[task.task_id] = copy.deepcopy(task)
 
     async def get(self, task_id: str) -> Optional[Task]:
+        """获取任务（返回深拷贝）"""
         async with self._lock:
-            return self._tasks.get(task_id)
+            task = self._tasks.get(task_id)
+            if task:
+                return copy.deepcopy(task)
+            return None
 
-    async def delete(self, task_id: str) -> None:
-        async with self._lock:
-            self._tasks.pop(task_id, None)
-
-    async def list_by_status(self, status: TaskStatus, limit: int = 100, offset: int = 0) -> List[Task]:
-        async with self._lock:
-            tasks = [t for t in self._tasks.values() if t.status == status]
-            return tasks[:limit]
-
-    async def update_status(self, task_id: str, status: TaskStatus) -> None:
+    async def delete(self, task_id: str) -> bool:
         async with self._lock:
             if task_id in self._tasks:
-                self._tasks[task_id].status = status
+                del self._tasks[task_id]
+                return True
+            return False
 
     async def exists(self, task_id: str) -> bool:
-        """Check if task exists."""
         async with self._lock:
             return task_id in self._tasks
+
+    async def list_by_status(
+            self,
+            status: TaskStatus,
+            limit: int = 100,
+            offset: int = 0
+    ) -> List[Task]:
+        async with self._lock:
+            tasks = [
+                copy.deepcopy(task) for task in self._tasks.values()
+                if task.status == status
+            ]
+            return tasks[offset:offset + limit]
+
+    async def update_status(
+            self,
+            task_id: str,
+            status: TaskStatus,
+            **kwargs
+    ) -> bool:
+        async with self._lock:
+            task = self._tasks.get(task_id)
+            if not task:
+                return False
+            task.status = status
+            for key, value in kwargs.items():
+                if hasattr(task, key):
+                    setattr(task, key, value)
+            return True
 
 
 class MemoryQueueRepository(QueueRepository):

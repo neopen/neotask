@@ -1,6 +1,6 @@
 """
 @FileName: __init__.py
-@Description: Executor module exports.
+@Description: 执行器模块导出
 @Author: HiPeng
 @Time: 2026/4/8 00:00
 """
@@ -9,8 +9,7 @@ from neotask.executor.base import TaskExecutor, CallbackExecutor
 from neotask.executor.async_executor import AsyncExecutor
 from neotask.executor.thread_executor import ThreadExecutor
 from neotask.executor.process_executor import ProcessExecutor
-from neotask.executor.class_executor import ClassExecutor
-from neotask.executor.factory import ExecutorFactory
+from neotask.executor.factory import ExecutorFactory, create_executor
 
 __all__ = [
     "TaskExecutor",
@@ -18,6 +17,6 @@ __all__ = [
     "AsyncExecutor",
     "ThreadExecutor",
     "ProcessExecutor",
-    "ClassExecutor",
     "ExecutorFactory",
+    "create_executor",
 ]

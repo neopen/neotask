@@ -81,6 +81,10 @@ class BaseQueue(ABC):
         """获取队列大小"""
         pass
 
+    async def is_empty(self) -> bool:
+        """检查队列是否为空"""
+        return await self.size() == 0
+
     @abstractmethod
     async def peek(self, count: int = 1) -> List[str]:
         """查看队首任务

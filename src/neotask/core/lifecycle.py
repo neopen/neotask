@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 from neotask.common.exceptions import TaskNotFoundError, TaskAlreadyExistsError
-from neotask.common.logger import debug
+from neotask.common.logger import debug, warning, info
 from neotask.core.future import FutureManager
 from neotask.event.bus import EventBus, TaskEvent
 from neotask.models.task import Task, TaskStatus, TaskPriority, TaskStats
@@ -33,13 +33,14 @@ class TaskLifecycleManager:
     def __init__(
             self,
             task_repo: TaskRepository,
-            event_bus: Optional[EventBus] = None
+            event_bus: Optional[EventBus] = None,
+            cache_enabled: bool = True  # 添加 cache_enabled 参数
     ):
         self._task_repo = task_repo
         self._event_bus = event_bus
         self._future_manager = FutureManager()
         self._cache: Dict[str, Task] = {}
-        self._cache_enabled = True
+        self._cache_enabled = cache_enabled  # 使用传入的参数
         self._lock = asyncio.Lock()
 
     async def create_task(
@@ -130,6 +131,7 @@ class TaskLifecycleManager:
         """开始执行任务"""
         task = await self.get_task(task_id)
         if not task or task.status != TaskStatus.PENDING:
+            warning(f"Cannot start task {task_id}: status={task.status if task else 'not found'}")
             return False
 
         task.start(node_id)
@@ -139,9 +141,9 @@ class TaskLifecycleManager:
             async with self._lock:
                 self._cache[task_id] = task
 
-        # 发送 started 事件 - 确保事件被发送
         await self._emit_event("task.started", task_id, {"node_id": node_id})
 
+        debug(f"Task {task_id} started on node {node_id}")
         return True
 
     async def complete_task(self, task_id: str, result: Any) -> bool:
@@ -170,7 +172,7 @@ class TaskLifecycleManager:
         if not task:
             return False
 
-        debug(f"[DEBUG] Failing task {task_id}: {error}")  # 调试用
+        debug(f"[DEBUG] Failing task {task_id}: {error}")
 
         task.fail(error)
         await self._task_repo.save(task)
@@ -267,32 +269,154 @@ class TaskLifecycleManager:
             # 其他异常
             raise
 
-
     async def get_task_stats(self) -> TaskStats:
-        """获取任务统计"""
+        """获取任务统计
+
+        从存储层聚合统计信息，支持内存、SQLite、Redis 后端。
+        """
         stats = TaskStats()
 
-        # 从缓存或存储获取统计
-        async with self._lock:
-            for task in self._cache.values():
-                stats.total += 1
-                if task.status == TaskStatus.PENDING:
-                    stats.pending += 1
-                elif task.status == TaskStatus.RUNNING:
-                    stats.running += 1
-                elif task.status == TaskStatus.SUCCESS:
-                    stats.completed += 1
-                elif task.status == TaskStatus.FAILED:
-                    stats.failed += 1
-                elif task.status == TaskStatus.CANCELLED:
-                    stats.cancelled += 1
-
-        # 如果缓存未启用或缓存为空，从存储获取
-        if stats.total == 0 and not self._cache_enabled:
-            # TODO: 从存储聚合统计
-            pass
+        # 如果缓存启用且有数据，优先使用缓存
+        if self._cache_enabled and self._cache:
+            async with self._lock:
+                for task in self._cache.values():
+                    stats.total += 1
+                    if task.status == TaskStatus.PENDING:
+                        stats.pending += 1
+                    elif task.status == TaskStatus.RUNNING:
+                        stats.running += 1
+                    elif task.status == TaskStatus.SUCCESS:
+                        stats.completed += 1
+                    elif task.status == TaskStatus.FAILED:
+                        stats.failed += 1
+                    elif task.status == TaskStatus.CANCELLED:
+                        stats.cancelled += 1
+        else:
+            # 从存储聚合统计
+            stats = await self._aggregate_stats_from_storage()
 
         return stats
+
+    async def _aggregate_stats_from_storage(self) -> TaskStats:
+        """从存储层聚合统计信息
+
+        支持所有存储后端（内存、SQLite、Redis）。
+        """
+        stats = TaskStats()
+
+        # 遍历所有任务状态，从存储获取计数
+        for status in TaskStatus:
+            # 获取该状态的任务数量
+            tasks = await self._task_repo.list_by_status(status, limit=10000)
+            count = len(tasks)
+
+            stats.total += count
+            if status == TaskStatus.PENDING:
+                stats.pending = count
+            elif status == TaskStatus.RUNNING:
+                stats.running = count
+            elif status == TaskStatus.SUCCESS:
+                stats.completed = count
+            elif status == TaskStatus.FAILED:
+                stats.failed = count
+            elif status == TaskStatus.CANCELLED:
+                stats.cancelled = count
+
+        return stats
+
+    async def cleanup_expired(self) -> int:
+        """清理过期任务
+
+        删除超过 TTL 且处于终端状态（SUCCESS/FAILED/CANCELLED）的任务。
+
+        Returns:
+            清理的任务数量
+        """
+        cleaned_count = 0
+        now = datetime.now(timezone.utc)
+
+        # 获取所有终端状态的任务
+        terminal_statuses = [TaskStatus.SUCCESS, TaskStatus.FAILED, TaskStatus.CANCELLED]
+
+        for status in terminal_statuses:
+            tasks = await self._task_repo.list_by_status(status, limit=1000)
+
+            for task in tasks:
+                # 检查是否过期
+                is_expired = False
+
+                # 根据任务的 completed_at 或 created_at 判断
+                if task.completed_at:
+                    # 任务已完成，检查是否超过 TTL
+                    # 修复：completed_at 是 datetime，需要转换为时间戳比较
+                    age_seconds = (now - task.completed_at).total_seconds()
+                    if age_seconds > task.ttl:
+                        is_expired = True
+                elif task.created_at:
+                    # 任务未完成但处于终端状态（异常情况）
+                    age_seconds = (now - task.created_at).total_seconds()
+                    if age_seconds > task.ttl * 2:  # 给予双倍时间
+                        is_expired = True
+
+                if is_expired:
+                    # 删除过期任务
+                    await self._task_repo.delete(task.task_id)
+
+                    # 从缓存中移除
+                    if self._cache_enabled:
+                        async with self._lock:
+                            self._cache.pop(task.task_id, None)
+
+                    # 清理 future
+                    await self._future_manager.remove(task.task_id)
+
+                    cleaned_count += 1
+                    debug(f"Cleaned expired task: {task.task_id}, status={task.status.value}, age={age_seconds:.0f}s")
+
+        if cleaned_count > 0:
+            info(f"Cleaned {cleaned_count} expired tasks")
+
+        return cleaned_count
+
+    async def cleanup_expired_by_time(self, max_age_seconds: int = 86400) -> int:
+        """按时间清理过期任务
+
+        Args:
+            max_age_seconds: 最大存活时间（秒），默认 24 小时
+
+        Returns:
+            清理的任务数量
+        """
+        cleaned_count = 0
+        now = datetime.now(timezone.utc)
+        cutoff_time = now.timestamp() - max_age_seconds
+
+        # 获取所有终端状态的任务
+        terminal_statuses = [TaskStatus.SUCCESS, TaskStatus.FAILED, TaskStatus.CANCELLED]
+
+        for status in terminal_statuses:
+            tasks = await self._task_repo.list_by_status(status, limit=1000)
+
+            for task in tasks:
+                # 检查是否超过最大存活时间
+                check_time = task.completed_at or task.created_at
+                if check_time:
+                    # 修复：check_time 是 datetime，需要转换为时间戳
+                    if check_time.timestamp() < cutoff_time:
+                        await self._task_repo.delete(task.task_id)
+
+                        if self._cache_enabled:
+                            async with self._lock:
+                                self._cache.pop(task.task_id, None)
+
+                        await self._future_manager.remove(task.task_id)
+                        cleaned_count += 1
+                        debug(f"Cleaned old task: {task.task_id}, age={(now - check_time).total_seconds():.0f}s")
+
+        if cleaned_count > 0:
+            info(f"Cleaned {cleaned_count} old tasks by time")
+
+        return cleaned_count
 
     async def list_tasks(
             self,
@@ -310,13 +434,6 @@ class TaskLifecycleManager:
             tasks.extend(await self._task_repo.list_by_status(s, limit // 5, offset))
         return tasks[:limit]
 
-    async def cleanup_expired(self) -> int:
-        """清理过期任务"""
-        cleaned = 0
-        # TODO: 实现过期清理逻辑
-        # 删除超过 TTL 且已完成的任务
-        return cleaned
-
     async def _emit_event(self, event_type: str, task_id: str, data=None):
         """发送事件"""
         if self._event_bus:
@@ -324,7 +441,6 @@ class TaskLifecycleManager:
 
     def _generate_task_id(self) -> str:
         """生成任务ID"""
-        # return f"TSK{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
         return f"TSK{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}{random.randint(100000, 999999)}"
 
     def clear_cache(self):

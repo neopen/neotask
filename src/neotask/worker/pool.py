@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Dict
 
+from neotask.common.logger import debug, warning, error
 from neotask.core.lifecycle import TaskLifecycleManager
 from neotask.event.bus import EventBus, TaskEvent
 from neotask.executor.base import TaskExecutor
@@ -51,7 +52,7 @@ class WorkerPool:
         self._queue = queue_scheduler
         self._event_bus = event_bus
         self._lifecycle = lifecycle_manager
-        self._concurrency = concurrency
+        self._concurrency = concurrency  # 保存 concurrency 值
         self._prefetch_size = prefetch_size
         self._task_timeout = task_timeout
 
@@ -73,10 +74,13 @@ class WorkerPool:
 
         self._running = True
 
+        # 使用 self._concurrency 而不是硬编码的 3
         for i in range(self._concurrency):
             worker_task = asyncio.create_task(self._worker_loop(i))
             self._workers[i] = worker_task
             self._worker_stats[i] = WorkerStats(worker_id=i, active_tasks=0)
+
+        debug(f"Started {self._concurrency} workers")
 
     async def stop(self, graceful: bool = True, timeout: float = 30) -> None:
         """停止worker池
@@ -111,6 +115,7 @@ class WorkerPool:
 
         self._workers.clear()
         self._running_tasks.clear()
+        debug("All workers stopped")
 
     async def cancel_task(self, task_id: str) -> bool:
         """取消运行中的任务"""
@@ -134,6 +139,7 @@ class WorkerPool:
 
     async def _worker_loop(self, worker_id: int) -> None:
         """Worker主循环"""
+        debug(f"Worker {worker_id} started")
         while self._running:
             try:
                 # 获取任务
@@ -150,27 +156,39 @@ class WorkerPool:
                 # 清理已完成的任务
                 await self._cleanup_completed_tasks()
 
-                await asyncio.sleep(0.01)
+                # 如果没有获取到任务，短暂休眠避免空转
+                if not task_ids:
+                    await asyncio.sleep(0.01)
 
             except asyncio.CancelledError:
+                debug(f"Worker {worker_id} cancelled")
                 break
-            except Exception:
+            except Exception as e:
+                error(f"Worker {worker_id} error: {e}")
                 await asyncio.sleep(0.5)
+
+        debug(f"Worker {worker_id} stopped")
 
     async def _execute_task(self, worker_id: int, task_id: str) -> None:
         """执行单个任务"""
         async with self._semaphore:
+            debug(f"Worker {worker_id} executing task {task_id}")
+
             # 获取任务
             task = await self._lifecycle.get_task(task_id)
             if not task:
+                warning(f"Task {task_id} not found")
                 return
 
-            # 检查任务状态
+            # 检查任务状态 - 只有 PENDING 的任务才能执行
             if task.status != TaskStatus.PENDING:
+                warning(f"Task {task_id} status is {task.status}, not PENDING, skipping")
                 return
 
-            # 开始执行
-            if not await self._lifecycle.start_task(task_id, f"worker-{worker_id}"):
+            # 开始执行 - 更新状态为 RUNNING
+            success = await self._lifecycle.start_task(task_id, f"worker-{worker_id}")
+            if not success:
+                error(f"Failed to start task {task_id}")
                 return
 
             # 获取当前重试次数
@@ -191,18 +209,22 @@ class WorkerPool:
 
                 # 更新统计
                 self._worker_stats[worker_id].completed_tasks += 1
+                debug(f"Worker {worker_id} completed task {task_id}")
 
             except asyncio.CancelledError:
+                debug(f"Task {task_id} was cancelled")
                 await self._lifecycle.cancel_task(task_id)
                 return
 
             except asyncio.TimeoutError:
-                error = f"Task execution timeout after {self._task_timeout}s"
-                await self._handle_task_failure(task_id, error, current_retry, worker_id)
+                err = f"Task execution timeout after {self._task_timeout}s"
+                error(f"Task {task_id} timeout: {err}")
+                await self._handle_task_failure(task_id, err, current_retry, worker_id)
 
             except Exception as e:
-                error = str(e)
-                await self._handle_task_failure(task_id, error, current_retry, worker_id)
+                err = str(e)
+                error(f"Task {task_id} failed: {err}")
+                await self._handle_task_failure(task_id, err, current_retry, worker_id)
 
             finally:
                 # 更新worker统计
@@ -211,34 +233,47 @@ class WorkerPool:
                     self._worker_stats[worker_id].is_busy = self._worker_stats[worker_id].active_tasks > 0
                     self._worker_stats[worker_id].last_active = datetime.now()
 
-    async def _handle_task_failure(self, task_id: str, error: str, retry_count: int, worker_id: int) -> None:
+    async def _handle_task_failure(self, task_id: str, error_msg: str, retry_count: int, worker_id: int) -> None:
         """处理任务失败和重试"""
-        # 获取最新的任务信息
+        # 重新获取最新任务状态
         task = await self._lifecycle.get_task(task_id)
         if not task:
             return
+
+        debug(f"Handling failure for task {task_id}, retry_count={retry_count}, max_retries={self._max_retries}")
 
         if retry_count < self._max_retries:
             # 需要重试
             new_retry_count = retry_count + 1
 
+            debug(f"Retrying task {task_id} (attempt {new_retry_count}/{self._max_retries})")
+
+            # 更新重试计数，重置状态为 PENDING
             task.retry_count = new_retry_count
-            task.error = error
-            task.status = TaskStatus.PENDING  # 重置为待处理状态
+            task.error = error_msg
+            task.status = TaskStatus.PENDING
+            task.node_id = ""
             await self._task_repo.save(task)
 
+            # 更新缓存
+            if self._lifecycle._cache_enabled:
+                async with self._lifecycle._lock:
+                    self._lifecycle._cache[task_id] = task
+
             # 重新入队（带延迟）
-            await self._queue.push(task_id, task.priority.value, delay=self._retry_delay)
+            delay = self._retry_delay * new_retry_count
+            await self._queue.push(task_id, task.priority.value, delay=delay)
 
             # 发送重试事件
             await self._event_bus.emit(TaskEvent(
                 "task.retry",
                 task_id,
-                {"error": error, "retry_count": new_retry_count, "max_retries": self._max_retries}
+                {"error": error_msg, "retry_count": new_retry_count, "max_retries": self._max_retries}
             ))
         else:
             # 超过最大重试次数，标记为失败
-            await self._lifecycle.fail_task(task_id, error)
+            debug(f"Task {task_id} exceeded max retries ({self._max_retries}), marking as FAILED")
+            await self._lifecycle.fail_task(task_id, error_msg)
             self._worker_stats[worker_id].failed_tasks += 1
 
     async def _cleanup_completed_tasks(self) -> None:

@@ -18,6 +18,8 @@ Lightweight Python asynchronous task queue manager, no extra services required, 
 - **Asynchronous Concurrency** - Based on asyncio, multi-worker concurrent processing
 - **Automatic Retry** - Failed tasks automatically retry with configurable attempts
 - **Persistence** - Multiple storage backends: Memory/SQLite/Redis
+- **DAG Workflow** - Support for task orchestration, conditional branches, and parallel execution
+- **Distributed Support** - Distributed task scheduling, high availability, and fault tolerance
 - **Event Callbacks** - Supports task lifecycle event listeners
 
 ------
@@ -94,33 +96,44 @@ Development Roadmap
 timeline
     title NeoTask Architecture Evolution Roadmap
     
-    section MVP v0.1
-        Basic Task Pool : Local Queue
-                   : Async Execution
-                   : Memory/Redis Storage
-                   
-    section V1.0 v0.2
-        Monitoring Capabilities : Event Bus
-                 : Metrics Collection
-                 : Historical Storage
-        Delayed Tasks : Delayed Execution
-                 : Periodic Tasks
-                 : Cron Expressions
-                 
-    section V2.0 v0.3
-        Distributed Core : Redis Shared Queue
-                   : Distributed Lock
-                   : Prefetch Mechanism
-                   
-    section V3.0 v1.0
-        High Availability : Watchdog Renewal
-                   : Timeout Detection
-                   : Automatic Fault Recovery
+    section v0.1
+        Basic Task Pool : Local Memory Queue
+                        : Async Execution Engine
+                        : Memory/SQLite Storage
+                        
+    section v0.2
+        Observability : Event Bus
+                      : Metrics Collection
+                      : Health Check
+                      
+    section v0.3
+        Scheduled Tasks : Delayed Queue/Time Wheel
+                        : Periodic Tasks
+                        : Cron Expression
+                        
+    section v0.4
+        Distributed Base : Redis Shared Queue
+                         : Distributed Lock
+                         
+    section v0.5
+        Performance Optimization : Prefetch Mechanism
+                                : Batch Operations
+                                : Connection Pool
 
-    section V4.0 v1.5
-        Enterprise Grade : Independent Web UI
-               : Multi-Tenancy
-               : Prometheus Integration
+    section v1.0
+        High Availability : Watchdog Renewal
+                          : Timeout Detection
+                          : Automatic Fault Recovery
+
+    section v1.5
+        Task Orchestration : DAG Workflow
+                           : Conditional Branch
+                           : Parallel Execution
+
+    section v2.0
+        Enterprise Features : Independent Web UI
+                            : Multi-Tenancy Isolation
+                            : Prometheus Integration
 ```
 
 ------
@@ -228,6 +241,8 @@ result = pool.wait_for_result(task_id)
 | `scheduler.submit_delayed(data, delay)` | Delayed task |
 | `scheduler.submit_interval(data, interval)` | Periodic task |
 | `scheduler.submit_cron(data, cron)` | Cron task |
+| `engine.submit_workflow(definition)` | Submit workflow (v1.5) |
+| `engine.wait_workflow(execution_id)` | Wait for workflow (v1.5) |
 
 Detailed API documentation can be found [here](https://pengline.cn/2026/04/650ac5bb41c74e26bc4effcec88bf26c/)
 
@@ -284,6 +299,9 @@ pytest tests/test_task_scheduler.py -v
 neotask/
 ├── api/           # TaskPool, TaskScheduler
 ├── core/          # Lifecycle, Queue, Worker
+├── workflow/      # Workflow  Engine
+├── engine/        # Task Orchestration
+├── executor/      # Async Execution Engine
 ├── storage/       # Memory/SQLite/Redis
 ├── event/         # Event Bus
 └── models/        # Data Models

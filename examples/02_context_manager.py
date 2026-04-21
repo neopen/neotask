@@ -4,9 +4,9 @@
 @Author: HiPeng
 @Time: 2026/4/9
 """
-
-import time
+import asyncio
 import threading
+
 from neotask import TaskPool
 
 
@@ -16,7 +16,7 @@ async def my_task(data: dict) -> dict:
     # 使用锁避免 print 交错
     with print_lock:
         print(f"  ▶ 执行任务: {task_name}")
-    time.sleep(0.2)
+    await asyncio.sleep(0.2)
     return {"status": "done", "name": task_name}
 
 
@@ -47,7 +47,7 @@ def main():
             result = pool.wait_for_result(task_id)
             print(f"  📦 结果 [{task_id[:8]}...]: {result['status']}")
 
-    print("\n✅ 任务池已自动关闭")
+    print("\n 任务池已自动关闭")
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neotask"
-version = "0.1.1"
+version = "0.2.0"
 description = "NeoTask - 轻量级 Python 异步任务队列，支持即时/延时/周期任务，内置优先级队列、自动重试 | Lightweight Python Async Task Queue Manager"
 readme = "README.md"
 license = {text = "MIT"}
@@ -61,7 +61,7 @@ ui = [
 
 # Redis 分布式支持
 redis = [
-    "redis>=5.0.0",
+    "redis>=4.5.0",
 ]
 
 # 完整功能

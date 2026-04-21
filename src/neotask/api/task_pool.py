@@ -175,15 +175,15 @@ class TaskPool:
             @self._event_bus.subscribe_global
             async def metrics_handler(event: TaskEvent):
                 if event.event_type == "task.created":
-                    self._metrics.record_task_submit(event.task_id)
+                    await self._metrics.record_task_submit(event.task_id)
                 elif event.event_type == "task.started":
-                    self._metrics.record_task_start(event.task_id)
+                    await self._metrics.record_task_start(event.task_id)
                 elif event.event_type == "task.completed":
-                    self._metrics.record_task_complete(event.task_id)
+                    await self._metrics.record_task_complete(event.task_id)
                 elif event.event_type == "task.failed":
-                    self._metrics.record_task_failed(event.task_id)
+                    await self._metrics.record_task_failed(event.task_id)
                 elif event.event_type == "task.cancelled":
-                    self._metrics.record_task_cancelled(event.task_id)
+                    await self._metrics.record_task_cancelled(event.task_id)
 
         # 未来管理器完成
         @self._event_bus.subscribe("task.completed")

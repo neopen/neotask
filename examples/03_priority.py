@@ -4,8 +4,8 @@
 @Author: HiPeng
 @Time: 2026/4/2 17:24
 """
+import asyncio
 
-import time
 from neotask import TaskPool, TaskPoolConfig, TaskPriority
 
 
@@ -16,7 +16,7 @@ async def priority_task(data: dict) -> dict:
     duration = data.get("duration", 0.3)
 
     print(f"[{priority_name}] 执行: 任务 {task_id}")
-    time.sleep(duration)
+    await asyncio.sleep(duration)
     print(f"[{priority_name}] 完成: 任务 {task_id}")
 
     return {"executed": True, "priority": priority_name, "task_id": task_id}
@@ -25,7 +25,7 @@ async def priority_task(data: dict) -> dict:
 def main():
     config = TaskPoolConfig(
         storage_type="memory",
-        worker_concurrency=1,      # 单 Worker，强制串行
+        worker_concurrency=1,  # 单 Worker，强制串行
         max_retries=0,
         enable_metrics=True,
         queue_max_size=100

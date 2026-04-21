@@ -34,13 +34,13 @@ class TaskLifecycleManager:
             self,
             task_repo: TaskRepository,
             event_bus: Optional[EventBus] = None,
-            cache_enabled: bool = True  # 添加 cache_enabled 参数
+            cache_enabled: bool = True
     ):
         self._task_repo = task_repo
         self._event_bus = event_bus
         self._future_manager = FutureManager()
         self._cache: Dict[str, Task] = {}
-        self._cache_enabled = cache_enabled  # 使用传入的参数
+        self._cache_enabled = cache_enabled
         self._lock = asyncio.Lock()
 
     async def create_task(
@@ -149,7 +149,19 @@ class TaskLifecycleManager:
     async def complete_task(self, task_id: str, result: Any) -> bool:
         """完成任务"""
         task = await self.get_task(task_id)
+
+        # 检查任务是否存在
         if not task:
+            return False
+
+        # 检查是否已经是终态
+        if task.status.is_terminal():
+            warning(f"Cannot complete task {task_id}: already in terminal state {task.status.value}")
+            return False
+
+        # 只有 RUNNING 状态的任务可以完成
+        if task.status != TaskStatus.RUNNING:
+            warning(f"Cannot complete task {task_id}: status={task.status.value}, expected RUNNING")
             return False
 
         task.complete(result)
@@ -162,14 +174,31 @@ class TaskLifecycleManager:
         # 通知等待者
         await self._future_manager.complete(task_id, result=result)
 
-        await self._emit_event("task.completed", task_id, {"result": result})
+        # 直接传递 result，不包装
+        await self._emit_event("task.completed", task_id, result)
 
+        debug(f"Task {task_id} completed successfully")
         return True
 
     async def fail_task(self, task_id: str, error: str) -> bool:
-        """任务失败"""
+        """任务失败
+
+        只有 RUNNING 状态的任务可以标记为失败。
+        """
         task = await self.get_task(task_id)
+
+        # 检查任务是否存在
         if not task:
+            return False
+
+        # 检查是否已经是终态
+        if task.status.is_terminal():
+            warning(f"Cannot fail task {task_id}: already in terminal state {task.status.value}")
+            return False
+
+        # 【修复】只有 RUNNING 状态的任务可以失败
+        if task.status != TaskStatus.RUNNING:
+            warning(f"Cannot fail task {task_id}: status={task.status.value}, expected RUNNING")
             return False
 
         debug(f"[DEBUG] Failing task {task_id}: {error}")
@@ -187,6 +216,7 @@ class TaskLifecycleManager:
         await self._emit_event("task.failed", task_id, {"error": error})
 
         return True
+
 
     async def cancel_task(self, task_id: str) -> bool:
         """取消任务"""
@@ -344,11 +374,11 @@ class TaskLifecycleManager:
             for task in tasks:
                 # 检查是否过期
                 is_expired = False
+                age_seconds = 0
 
                 # 根据任务的 completed_at 或 created_at 判断
                 if task.completed_at:
                     # 任务已完成，检查是否超过 TTL
-                    # 修复：completed_at 是 datetime，需要转换为时间戳比较
                     age_seconds = (now - task.completed_at).total_seconds()
                     if age_seconds > task.ttl:
                         is_expired = True
@@ -401,7 +431,6 @@ class TaskLifecycleManager:
                 # 检查是否超过最大存活时间
                 check_time = task.completed_at or task.created_at
                 if check_time:
-                    # 修复：check_time 是 datetime，需要转换为时间戳
                     if check_time.timestamp() < cutoff_time:
                         await self._task_repo.delete(task.task_id)
 
@@ -445,14 +474,16 @@ class TaskLifecycleManager:
 
     def clear_cache(self):
         """清空缓存"""
-
-        async def _clear():
-            async with self._lock:
-                self._cache.clear()
-
-        # 如果在异步上下文中
+        # 同步清空缓存，确保立即生效
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(_clear())
+            # 如果有运行中的循环，创建任务清空
+            loop.create_task(self._clear_cache_async())
         except RuntimeError:
-            pass
+            # 没有运行中的循环，同步清空
+            asyncio.run(self._clear_cache_async())
+
+    async def _clear_cache_async(self):
+        """异步清空缓存"""
+        async with self._lock:
+            self._cache.clear()

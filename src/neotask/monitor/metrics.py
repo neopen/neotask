@@ -48,82 +48,111 @@ class TaskMetrics:
 
     @property
     def success_rate(self) -> float:
-        """成功率"""
+        """成功率（两位小数）"""
         total = self.total_completed + self.total_failed
         if total == 0:
             return 1.0
-        return self.total_completed / total
+        return round(self.total_completed / total, 2)
 
     @property
     def failure_rate(self) -> float:
-        """失败率"""
-        return 1.0 - self.success_rate
+        """失败率（两位小数）"""
+        return round(1.0 - self.success_rate, 2)
 
     @property
     def avg_execution_time(self) -> float:
-        """平均执行时间（秒）"""
+        """平均执行时间（秒，两位小数）"""
         if not self.execution_times:
             return 0.0
-        return mean(self.execution_times)
+        return round(mean(self.execution_times), 2)
 
     @property
     def p50_execution_time(self) -> float:
-        """P50执行时间（秒）"""
+        """P50执行时间（秒，两位小数）"""
         return self._percentile(self.execution_times, 0.5)
 
     @property
     def p90_execution_time(self) -> float:
-        """P90执行时间（秒）"""
+        """P90执行时间（秒，两位小数）"""
         return self._percentile(self.execution_times, 0.9)
 
     @property
     def p95_execution_time(self) -> float:
-        """P95执行时间（秒）"""
+        """P95执行时间（秒，两位小数）"""
         return self._percentile(self.execution_times, 0.95)
 
     @property
     def p99_execution_time(self) -> float:
-        """P99执行时间（秒）"""
+        """P99执行时间（秒，两位小数）"""
         return self._percentile(self.execution_times, 0.99)
 
     @property
     def avg_queue_time(self) -> float:
-        """平均排队时间（秒）"""
+        """平均排队时间（秒，两位小数）"""
         if not self.queue_times:
             return 0.0
-        return mean(self.queue_times)
+        return round(mean(self.queue_times), 2)
 
     @property
     def p95_queue_time(self) -> float:
-        """P95排队时间（秒）"""
+        """P95排队时间（秒，两位小数）"""
         return self._percentile(self.queue_times, 0.95)
 
     @property
     def avg_retry_count(self) -> float:
-        """平均重试次数"""
+        """平均重试次数（两位小数）"""
         if not self.retry_counts:
             return 0.0
-        return mean(self.retry_counts)
+        return round(mean(self.retry_counts), 2)
 
     @property
     def throughput(self) -> float:
-        """吞吐量（任务/秒）"""
-        # 基于最近完成的1000个任务计算
+        """吞吐量（任务/秒，两位小数）"""
         if not self.execution_times:
             return 0.0
-        # 简化实现：平均执行时间的倒数
-        return 1.0 / (self.avg_execution_time + 0.001)
+        avg_time = self.avg_execution_time
+        if avg_time == 0:
+            return 0.0
+        return round(1.0 / avg_time, 2)
 
     def _percentile(self, data: deque, p: float) -> float:
-        """计算百分位数"""
+        """计算百分位数（线性插值法）
+
+        使用标准的百分位数计算方法，确保结果准确。
+
+        Args:
+            data: 数据列表
+            p: 百分位数（0-1之间）
+
+        Returns:
+            百分位数（两位小数）
+        """
         if not data:
             return 0.0
+
         sorted_data = sorted(data)
-        idx = int(len(sorted_data) * p)
-        return sorted_data[min(idx, len(sorted_data) - 1)]
+        n = len(sorted_data)
+
+        if n == 1:
+            return round(sorted_data[0], 2)
+
+        # 使用线性插值法计算百分位数
+        # 标准公式：位置 = p * (n - 1)
+        pos = p * (n - 1)
+        lower_idx = int(pos)
+        upper_idx = lower_idx + 1
+
+        if upper_idx >= n:
+            result = sorted_data[-1]
+        else:
+            # 线性插值
+            weight = pos - lower_idx
+            result = sorted_data[lower_idx] * (1 - weight) + sorted_data[upper_idx] * weight
+
+        return round(result, 2)
 
     def to_dict(self) -> Dict[str, Any]:
-        """转换为字典"""
+        """转换为字典（所有浮点数保留两位小数）"""
         return {
             "total_submitted": self.total_submitted,
             "total_completed": self.total_completed,
@@ -159,6 +188,17 @@ class SystemMetrics:
     thread_count: int = 0
     task_count: int = 0
     uptime_seconds: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典（浮点数保留两位小数）"""
+        return {
+            "cpu_percent": round(self.cpu_percent, 2),
+            "memory_percent": round(self.memory_percent, 2),
+            "memory_used_mb": round(self.memory_used_mb, 2),
+            "thread_count": self.thread_count,
+            "task_count": self.task_count,
+            "uptime_seconds": round(self.uptime_seconds, 2),
+        }
 
 
 class MetricsCollector:
@@ -403,7 +443,6 @@ class MetricsCollector:
     async def get_metrics_async(self) -> TaskMetrics:
         """异步获取任务指标"""
         async with self._lock:
-            # 返回副本
             return self._metrics
 
     def get_system_metrics(self) -> Optional[SystemMetrics]:
@@ -426,34 +465,16 @@ class MetricsCollector:
     def get_full_summary(self) -> Dict[str, Any]:
         """获取完整摘要（包含系统指标）"""
         result = self._metrics.to_dict()
-
         if self._system_metrics:
-            result["system"] = {
-                "cpu_percent": self._system_metrics.cpu_percent,
-                "memory_percent": self._system_metrics.memory_percent,
-                "memory_used_mb": self._system_metrics.memory_used_mb,
-                "thread_count": self._system_metrics.thread_count,
-                "task_count": self._system_metrics.task_count,
-                "uptime_seconds": self._system_metrics.uptime_seconds,
-            }
-
+            result["system"] = self._system_metrics.to_dict()
         return result
 
     async def get_full_summary_async(self) -> Dict[str, Any]:
         """异步获取完整摘要"""
         async with self._lock:
             result = self._metrics.to_dict()
-
         if self._system_metrics:
-            result["system"] = {
-                "cpu_percent": self._system_metrics.cpu_percent,
-                "memory_percent": self._system_metrics.memory_percent,
-                "memory_used_mb": self._system_metrics.memory_used_mb,
-                "thread_count": self._system_metrics.thread_count,
-                "task_count": self._system_metrics.task_count,
-                "uptime_seconds": self._system_metrics.uptime_seconds,
-            }
-
+            result["system"] = self._system_metrics.to_dict()
         return result
 
     # ========== 指标重置 ==========
@@ -516,46 +537,46 @@ class MetricsCollector:
         lines.append(f"# TYPE neotask_scheduled gauge")
         lines.append(f"neotask_scheduled {metrics.scheduled}")
 
-        # 比率
+        # 比率（两位小数）
         lines.append(f"# HELP neotask_success_rate Task success rate")
         lines.append(f"# TYPE neotask_success_rate gauge")
-        lines.append(f"neotask_success_rate {metrics.success_rate}")
+        lines.append(f"neotask_success_rate {metrics.success_rate:.2f}")
 
-        # 时间统计（毫秒）
+        # 时间统计（毫秒，两位小数）
         lines.append(f"# HELP neotask_avg_execution_time_ms Average execution time in milliseconds")
         lines.append(f"# TYPE neotask_avg_execution_time_ms gauge")
-        lines.append(f"neotask_avg_execution_time_ms {metrics.avg_execution_time * 1000}")
+        lines.append(f"neotask_avg_execution_time_ms {metrics.avg_execution_time * 1000:.2f}")
 
         lines.append(f"# HELP neotask_p95_execution_time_ms P95 execution time in milliseconds")
         lines.append(f"# TYPE neotask_p95_execution_time_ms gauge")
-        lines.append(f"neotask_p95_execution_time_ms {metrics.p95_execution_time * 1000}")
+        lines.append(f"neotask_p95_execution_time_ms {metrics.p95_execution_time * 1000:.2f}")
 
         lines.append(f"# HELP neotask_p99_execution_time_ms P99 execution time in milliseconds")
         lines.append(f"# TYPE neotask_p99_execution_time_ms gauge")
-        lines.append(f"neotask_p99_execution_time_ms {metrics.p99_execution_time * 1000}")
+        lines.append(f"neotask_p99_execution_time_ms {metrics.p99_execution_time * 1000:.2f}")
 
         lines.append(f"# HELP neotask_avg_queue_time_ms Average queue time in milliseconds")
         lines.append(f"# TYPE neotask_avg_queue_time_ms gauge")
-        lines.append(f"neotask_avg_queue_time_ms {metrics.avg_queue_time * 1000}")
+        lines.append(f"neotask_avg_queue_time_ms {metrics.avg_queue_time * 1000:.2f}")
 
-        # 吞吐量
+        # 吞吐量（两位小数）
         lines.append(f"# HELP neotask_throughput Task throughput per second")
         lines.append(f"# TYPE neotask_throughput gauge")
-        lines.append(f"neotask_throughput {metrics.throughput}")
+        lines.append(f"neotask_throughput {metrics.throughput:.2f}")
 
-        # 系统指标
+        # 系统指标（两位小数）
         if self._system_metrics:
             lines.append(f"# HELP neotask_cpu_percent CPU usage percentage")
             lines.append(f"# TYPE neotask_cpu_percent gauge")
-            lines.append(f"neotask_cpu_percent {self._system_metrics.cpu_percent}")
+            lines.append(f"neotask_cpu_percent {self._system_metrics.cpu_percent:.2f}")
 
             lines.append(f"# HELP neotask_memory_percent Memory usage percentage")
             lines.append(f"# TYPE neotask_memory_percent gauge")
-            lines.append(f"neotask_memory_percent {self._system_metrics.memory_percent}")
+            lines.append(f"neotask_memory_percent {self._system_metrics.memory_percent:.2f}")
 
             lines.append(f"# HELP neotask_memory_used_mb Memory used in megabytes")
             lines.append(f"# TYPE neotask_memory_used_mb gauge")
-            lines.append(f"neotask_memory_used_mb {self._system_metrics.memory_used_mb}")
+            lines.append(f"neotask_memory_used_mb {self._system_metrics.memory_used_mb:.2f}")
 
             lines.append(f"# HELP neotask_thread_count Number of active threads")
             lines.append(f"# TYPE neotask_thread_count gauge")
@@ -563,7 +584,7 @@ class MetricsCollector:
 
             lines.append(f"# HELP neotask_uptime_seconds System uptime in seconds")
             lines.append(f"# TYPE neotask_uptime_seconds gauge")
-            lines.append(f"neotask_uptime_seconds {self._system_metrics.uptime_seconds}")
+            lines.append(f"neotask_uptime_seconds {self._system_metrics.uptime_seconds:.2f}")
 
         # 按优先级统计
         for priority, count in metrics.priority_counts.items():
@@ -576,4 +597,4 @@ class MetricsCollector:
     def __repr__(self) -> str:
         return (f"MetricsCollector(window_size={self._window_size}, "
                 f"total_submitted={self._metrics.total_submitted}, "
-                f"success_rate={self._metrics.success_rate:.2%})")
+                f"success_rate={self._metrics.success_rate:.2f})")

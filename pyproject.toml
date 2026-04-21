@@ -92,11 +92,11 @@ docs = [
 
 [project.urls]
 # 项目链接
-Homepage = "https://github.com/neopen/task-schedule-manager"
-Repository = "https://github.com/neopen/task-schedule-manager"
-Documentation = "https://github.com/neopen/task-schedule-manager#readme"
-Issues = "https://github.com/neopen/task-schedule-manager/issues"
-Changelog = "https://github.com/neopen/task-schedule-manager/releases"
+Homepage = "https://github.com/neopen/neotask"
+Repository = "https://github.com/neopen/neotask"
+Documentation = "https://github.com/neopen/neotask#readme"
+Issues = "https://github.com/neopen/neotask/issues"
+Changelog = "https://github.com/neopen/neotask/releases"
 
 # 作者链接
 Author = "https://github.com/neopen"

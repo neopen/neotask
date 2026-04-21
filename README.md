@@ -6,7 +6,7 @@
 
 中文 | [English](./docs/README-en.md) | [文档](https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5/) | [PyPI](https://pypi.org/project/neotask/) | [官网](https://task.pengline.cn)
 
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/) [![PyPI](https://img.shields.io/pypi/v/neotask.svg)](https://pypi.org/project/penshot/) [![Downloads](https://static.pepy.tech/badge/neotask)](https://pepy.tech/project/neotask) ![GitHub stars](https://img.shields.io/github/stars/neopen/task-schedule-manager)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/) [![PyPI](https://img.shields.io/pypi/v/neotask.svg)](https://pypi.org/project/penshot/) [![Downloads](https://static.pepy.tech/badge/neotask)](https://pepy.tech/project/neotask) ![GitHub stars](https://img.shields.io/github/stars/neopen/neotask)
 
 ---
 
@@ -278,8 +278,8 @@ pool = TaskPool(executor=process, config=config)
 
 ```python
 # 克隆仓库
-git clone https://github.com/neopen/task-schedule-manager.git
-cd task-schedule-manager
+git clone https://github.com/neopen/neotask.git
+cd neotask
 
 # 创建虚拟环境
 python -m venv venv
@@ -351,7 +351,7 @@ python examples/05_webui.py
 
 ## 问题反馈
 
-- **提交 Issue**：https://github.com/neopen/task-schedule-manager/issues
+- **提交 Issue**：https://github.com/neopen/neotask/issues
 - **功能建议**：使用 Enhancement 标签
 - **Bug 报告**：使用 Bug 标签并提供复现步骤
 - **安全漏洞**：请直接发送邮件至作者邮箱
@@ -372,7 +372,7 @@ MIT License © 2026 NeoPen
 
 ## 联系方式
 
-- 项目主页：https://github.com/neopen/task-schedule-manager
+- 项目主页：https://github.com/neopen/neotask
 - 作者：NeoPen
 - 邮箱：helpenx@gmail.com
 - 文档：https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5

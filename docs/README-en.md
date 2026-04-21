@@ -272,8 +272,8 @@ Detailed usage examples can be found [here](https://pengline.cn/2026/04/fa51edd8
 
 ```sh
 # Clone repository
-git clone https://github.com/neopen/task-schedule-manager.git
-cd task-schedule-manager
+git clone https://github.com/neopen/neotask.git
+cd neotask
 
 # Create virtual environment
 python -m venv venv
@@ -343,7 +343,7 @@ python examples/05_webui.py
 
 ## Issue Reporting
 
-- **Submit Issue**: https://github.com/neopen/task-schedule-manager/issues
+- **Submit Issue**: https://github.com/neopen/neotask/issues
 - **Feature Suggestions**: Use Enhancement label
 - **Bug Reports**: Use Bug label and provide reproduction steps
 - **Security Vulnerabilities**: Please send email directly to the author's email

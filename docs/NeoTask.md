@@ -635,8 +635,8 @@ timeline
 
 ```python
 # 克隆仓库
-git clone https://github.com/neopen/task-schedule-manager.git
-cd task-schedule-manager
+git clone https://github.com/neopen/neotask.git
+cd neotask
 
 # 创建虚拟环境
 python -m venv venv
@@ -736,7 +736,7 @@ python examples/05_webui.py
 
 ## 问题反馈
 
-- **提交 Issue**：https://github.com/neopen/task-schedule-manager/issues
+- **提交 Issue**：https://github.com/neopen/neotask/issues
 - **功能建议**：使用 Enhancement 标签
 - **Bug 报告**：使用 Bug 标签并提供复现步骤
 - **安全漏洞**：请直接发送邮件至作者邮箱
@@ -759,7 +759,7 @@ Copyright (c) 2024 HiPeng
 
 ## 联系方式
 
-- 项目主页：https://github.com/neopen/task-schedule-manager
+- 项目主页：https://github.com/neopen/neotask
 - 作者：NeoPen
 - 邮箱：helpenx@gmail.com
 - 文档：https://pengline.cn/2026/03/0ec8d887591a40c98be76645d33a2f23

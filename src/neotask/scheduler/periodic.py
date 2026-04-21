@@ -651,6 +651,7 @@ class PeriodicTaskManager:
             "name": instance.definition.name,
             "description": instance.definition.description,
             "status": instance.status.value,
+            "is_paused": instance.status == PeriodicTaskStatus.PAUSED,
             "priority": instance.definition.priority,
             "interval_seconds": instance.definition.interval_seconds,
             "cron_expr": instance.definition.cron_expr,

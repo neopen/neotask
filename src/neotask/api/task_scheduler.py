@@ -100,7 +100,21 @@ class TaskScheduler:
 
         设计模式: Template Method Pattern - 定义启动流程
         """
+        # 先启动 TaskPool（它会在独立线程中启动事件循环）
         self._pool.start()
+
+        # 等待 TaskPool 的事件循环就绪
+        import time
+        timeout = 5
+        start_time = time.time()
+        while (not hasattr(self._pool, '_loop') or
+               self._pool._loop is None or
+               not isinstance(self._pool._loop, asyncio.AbstractEventLoop)) and \
+                time.time() - start_time < timeout:
+            time.sleep(0.01)
+
+        if not hasattr(self._pool, '_loop') or self._pool._loop is None:
+            raise RuntimeError("TaskPool event loop not available")
 
         if self._running:
             return
@@ -108,34 +122,38 @@ class TaskScheduler:
         self._running = True
         self._stop_event.clear()
 
-        # 获取或创建事件循环
-        try:
-            self._loop = asyncio.get_running_loop()
-        except RuntimeError:
-            self._loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._loop)
+        # 获取 TaskPool 的事件循环
+        self._loop = self._pool._loop
 
-        # 异步初始化组件
+        # 异步初始化组件（使用 TaskPool 的事件循环）
         if self._config.enable_periodic_manager:
             self._periodic_manager = PeriodicTaskManager(
                 task_pool=self._pool,
                 storage=None
             )
-            # 创建任务来启动，而不是直接 run_until_complete
-            asyncio.run_coroutine_threadsafe(
+            # 使用 call_soon_threadsafe + Future 的方式
+            future = asyncio.run_coroutine_threadsafe(
                 self._periodic_manager.start(),
                 self._loop
             )
+            try:
+                future.result(timeout=5)
+            except Exception as e:
+                print(f"Failed to start periodic manager: {e}")
 
         if self._config.enable_time_wheel:
             self._time_wheel = TimeWheel(
                 slot_count=self._config.time_wheel_slots,
                 tick_interval=self._config.time_wheel_tick
             )
-            asyncio.run_coroutine_threadsafe(
+            future = asyncio.run_coroutine_threadsafe(
                 self._time_wheel.start(self._on_delayed_task_ready),
                 self._loop
             )
+            try:
+                future.result(timeout=5)
+            except Exception as e:
+                print(f"Failed to start time wheel: {e}")
 
         # 启动调度线程
         self._start_scheduler_thread()
@@ -160,23 +178,30 @@ class TaskScheduler:
 
         根据当前是否在事件循环中，选择合适的执行方式
 
+        由于 TaskPool 已经在独立线程中运行事件循环，
+        这里直接使用 TaskPool 的事件循环执行协程。
+
         Args:
             coro: 协程对象
 
         Returns:
             协程执行结果
         """
+        # 获取 TaskPool 的事件循环
+        if hasattr(self._pool, '_loop') and self._pool._loop is not None:
+            # 确保是真正的事件循环对象
+            loop = self._pool._loop
+            if isinstance(loop, asyncio.AbstractEventLoop):
+                future = asyncio.run_coroutine_threadsafe(coro, loop)
+                return future.result()
+
+        # 降级方案：创建临时事件循环
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            # 没有运行中的事件循环，直接运行
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
             return loop.run_until_complete(coro)
-        else:
-            # 有运行中的事件循环，创建任务并等待
-            future = asyncio.run_coroutine_threadsafe(coro, loop)
-            return future.result()
+        finally:
+            loop.close()
 
     def _start_scheduler_thread(self) -> None:
         """启动调度器线程
@@ -612,6 +637,7 @@ class TaskScheduler:
         return [
             {
                 "task_id": task.task_id,
+                "name": getattr(task, 'name', task.task_id),  # 添加 name 字段
                 "interval_seconds": task.interval_seconds,
                 "cron_expr": task.cron_expr,
                 "priority": task.priority,
@@ -643,6 +669,7 @@ class TaskScheduler:
 
         return {
             "task_id": task.task_id,
+            "name": getattr(task, 'name', task.task_id),  # 添加 name 字段
             "interval_seconds": task.interval_seconds,
             "cron_expr": task.cron_expr,
             "priority": task.priority,

@@ -199,27 +199,65 @@ class TestTaskPoolWait:
 
     @pytest.mark.asyncio
     async def test_wait_for_result_failure(self):
-        """测试等待失败任务"""
-        pool = TaskPool(executor=failing_executor)
+        """测试等待失败任务 - 健壮版本"""
+        config = TaskPoolConfig(
+            storage_type="memory",
+            worker_concurrency=1,  # 单 worker 便于调试
+            max_retries=0  # 不重试，直接失败
+        )
+
+        execution_log = []
+
+        async def failing_executor(data):
+            execution_log.append("executed")
+            raise RuntimeError("Task execution failed intentionally")
+
+        pool = TaskPool(executor=failing_executor, config=config)
         pool.start()
 
-        task_id = await pool.submit_async({"test": "fail"})
+        try:
+            task_id = await pool.submit_async({"test": "fail"})
+            print(f"Submitted task: {task_id}")
 
-        # 等待任务执行完成
-        await asyncio.sleep(0.5)
+            # 初始状态应该是 PENDING
+            initial_status = await pool.get_status_async(task_id)
+            print(f"Initial status: {initial_status}")
+            assert initial_status == TaskStatus.PENDING.value
 
-        with pytest.raises(Exception) as exc_info:
-            await pool.wait_for_result_async(task_id, timeout=5)
+            # 等待任务执行完成（轮询状态）
+            max_wait = 3.0
+            start = asyncio.get_event_loop().time()
+            final_status = None
 
-        # 错误消息应该包含失败信息
-        error_msg = str(exc_info.value).lower()
-        assert "failed" in error_msg or "valueerror" in error_msg
+            while asyncio.get_event_loop().time() - start < max_wait:
+                status = await pool.get_status_async(task_id)
+                print(f"Current status: {status}")
+                if status in [TaskStatus.SUCCESS.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value]:
+                    final_status = status
+                    break
+                await asyncio.sleep(0.1)
 
-        # 验证任务状态为失败
-        status = await pool.get_status_async(task_id)
-        assert status == TaskStatus.FAILED.value
+            # 验证执行器被调用了
+            assert len(execution_log) > 0, "Executor was not called"
 
-        pool.shutdown()
+            # 验证最终状态是 FAILED
+            assert final_status == TaskStatus.FAILED.value, f"Expected FAILED, got {final_status}"
+
+            # 验证 wait_for_result 抛出异常
+            with pytest.raises(Exception) as exc_info:
+                await pool.wait_for_result_async(task_id, timeout=2)
+
+            print(f"Exception caught: {exc_info.value}")
+            assert "failed" in str(exc_info.value).lower() or "execution" in str(exc_info.value).lower()
+
+            # 获取任务详情验证错误信息
+            task_info = await pool.get_task_async(task_id)
+            if task_info:
+                print(f"Task info: {task_info}")
+                assert task_info.get("error") is not None
+
+        finally:
+            pool.shutdown()
 
     @pytest.mark.asyncio
     async def test_wait_for_result_timeout(self):

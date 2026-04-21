@@ -145,45 +145,41 @@ class RepositoryFactory:
             "queue": queue_repo_class
         }
 
-    @classmethod
-    def create(cls, config: StorageConfig) -> Tuple[TaskRepository, QueueRepository]:
-        """Create repositories from registered types.
+    @staticmethod
+    def create(config: StorageConfig) -> Tuple[TaskRepository, QueueRepository]:
+        """创建存储实例
 
         Args:
-            config: Storage configuration
+            config: 存储配置
 
         Returns:
-            Tuple of (TaskRepository, QueueRepository)
+            (TaskRepository, QueueRepository)
         """
-        storage_type = config.type
-
-        if storage_type not in cls._repositories:
-            raise ValueError(f"Unknown storage type: {storage_type}")
-
-        repo_classes = cls._repositories[storage_type]
-
-        if storage_type == "memory":
-            return repo_classes["task"](), repo_classes["queue"]()
-
-        elif storage_type == "redis":
+        if config.type == "memory":
+            return MemoryTaskRepository(), MemoryQueueRepository()
+        elif config.type == "sqlite":
+            return (
+                SQLiteTaskRepository(config.sqlite_path),
+                SQLiteQueueRepository(config.sqlite_path)
+            )
+        elif config.type == "redis":
             if not config.redis_url:
-                raise ValueError("Redis URL is required for Redis storage")
+                raise ValueError("Redis URL is required for redis storage")
             return (
-                repo_classes["task"](config.redis_url),
-                repo_classes["queue"](config.redis_url)
+                RedisTaskRepository(config.redis_url),
+                RedisQueueRepository(config.redis_url)
             )
-
-        elif storage_type == "sqlite":
-            return (
-                repo_classes["task"](config.sqlite_path),
-                repo_classes["queue"](config.sqlite_path)
-            )
-
         else:
-            return (
-                repo_classes["task"](),
-                repo_classes["queue"]()
-            )
+            raise ValueError(f"Unknown storage type: {config.type}")
+
+    @staticmethod
+    async def close(repositories: Tuple[TaskRepository, QueueRepository]) -> None:
+        """关闭存储连接"""
+        task_repo, queue_repo = repositories
+        if hasattr(task_repo, 'close'):
+            await task_repo.close()
+        if hasattr(queue_repo, 'close'):
+            await queue_repo.close()
 
 
 # Register default repositories

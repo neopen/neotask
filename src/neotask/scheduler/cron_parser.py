@@ -54,6 +54,8 @@ class CronExpression:
         self.expression = expression.strip()
         self._fields: List[Set[int]] = []
         self._original_fields: List[str] = []
+        self._has_day_l = False  # 是否有 L 标记
+        self._has_weekday_l = False  # 是否有星期 L 标记
         self._parse()
 
     def _parse(self) -> None:
@@ -67,42 +69,55 @@ class CronExpression:
 
         self._original_fields = parts
 
+        # 检查是否有 L 标记
+        self._has_day_l = parts[2] == "L" or parts[2].startswith("L")
+        self._has_weekday_l = parts[4] == "L" or parts[4].startswith("L")
+
         # 解析各个字段
         self._fields = [
             self._parse_field(parts[0], 0, 59, "minute"),  # 分钟
             self._parse_field(parts[1], 0, 23, "hour"),  # 小时
-            self._parse_field(parts[2], 1, 31, "day"),  # 日期
+            self._parse_day_field(parts[2]),  # 日期（支持L）
             self._parse_field(parts[3], 1, 12, "month"),  # 月份
-            self._parse_weekday(parts[4]),  # 星期
+            self._parse_weekday_field(parts[4]),  # 星期（支持L）
         ]
 
     def _parse_field(self, field: str, min_val: int, max_val: int, name: str) -> Set[int]:
-        """解析单个字段"""
+        """解析普通字段"""
         if field == "*" or field == "?":
-            # 所有值
             return set(range(min_val, max_val + 1))
 
         if field.startswith("*/"):
-            # 步长: */5
             step = int(field[2:])
             return set(range(min_val, max_val + 1, step))
 
         if "/" in field and not field.startswith("*/"):
-            # 带步长的范围: 1-10/2
             range_part, step_part = field.split("/")
             step = int(step_part)
             values = self._parse_range(range_part, min_val, max_val)
-            return {v for v in values if (v - min(values)) % step == 0}
+            if values:
+                min_value = min(values)
+                return {v for v in values if (v - min_value) % step == 0}
+            return set()
 
         if "," in field:
-            # 列表: 1,2,3
             result = set()
             for part in field.split(","):
                 result.update(self._parse_range(part, min_val, max_val))
             return result
 
-        # 单个值或范围
-        return self._parse_range(field, min_val, max_val)
+        if "-" in field:
+            return self._parse_range(field, min_val, max_val)
+
+        # 单个值
+        try:
+            val = int(field)
+            if val < min_val or val > max_val:
+                raise ValueError(f"Value {val} out of range [{min_val}-{max_val}]")
+            return {val}
+        except ValueError:
+            # 可能是特殊字符，返回空集（后续处理）
+            return set()
 
     def _parse_range(self, expr: str, min_val: int, max_val: int) -> Set[int]:
         """解析范围表达式"""
@@ -119,23 +134,76 @@ class CronExpression:
                 raise ValueError(f"Value {val} out of range [{min_val}-{max_val}]")
             return {val}
 
-    def _parse_weekday(self, field: str) -> Set[int]:
-        """解析星期字段"""
+    def _parse_day_field(self, field: str) -> Set[int]:
+        """解析日期字段（支持 L 特殊字符）"""
+        if field == "*" or field == "?":
+            return set(range(1, 32))
+
+        if field == "L":
+            # 月末最后一天，返回空集，在 _check_day 中特殊处理
+            return set()
+
+        if field.startswith("L-"):
+            # L-1 表示倒数第二天
+            return set()
+
+        if field.startswith("*/"):
+            step = int(field[2:])
+            return set(range(1, 32, step))
+
+        if "/" in field and not field.startswith("*/"):
+            range_part, step_part = field.split("/")
+            step = int(step_part)
+            values = self._parse_day_range(range_part)
+            if values:
+                min_value = min(values)
+                return {v for v in values if (v - min_value) % step == 0}
+            return set()
+
+        if "," in field:
+            result = set()
+            for part in field.split(","):
+                result.update(self._parse_day_range(part))
+            return result
+
+        if "-" in field:
+            return self._parse_day_range(field)
+
+        try:
+            val = int(field)
+            if val < 1 or val > 31:
+                raise ValueError(f"Day value {val} out of range [1-31]")
+            return {val}
+        except ValueError:
+            return set()
+
+    def _parse_day_range(self, expr: str) -> Set[int]:
+        """解析日期范围"""
+        if "-" in expr:
+            start, end = expr.split("-")
+            start_val = int(start)
+            end_val = int(end)
+            if start_val < 1 or end_val > 31 or start_val > end_val:
+                raise ValueError(f"Invalid day range: {expr}")
+            return set(range(start_val, end_val + 1))
+        else:
+            val = int(expr)
+            if val < 1 or val > 31:
+                raise ValueError(f"Day value {val} out of range [1-31]")
+            return {val}
+
+    def _parse_weekday_field(self, field: str) -> Set[int]:
+        """解析星期字段（支持 L 特殊字符）"""
         if field == "*" or field == "?":
             return set(range(0, 7))
 
-        # 处理特殊字符 L (last)
         if field == "L":
-            return set(range(0, 7))  # L 需要结合月份计算，这里返回所有
+            # 最后一个工作日
+            return set()
 
-        # 处理 # (第几个星期几)
         if "#" in field:
             # 格式: 5#2 表示第二个星期五
-            return set(range(0, 7))  # 需要动态计算
-
-        # 处理 L-1 等
-        if field.startswith("L"):
-            return set(range(0, 7))
+            return set()
 
         return self._parse_field(field, 0, 6, "weekday")
 
@@ -149,32 +217,48 @@ class CronExpression:
             下一次执行时间
         """
         now = after or datetime.now()
-        # 从当前时间开始，检查未来1年内的执行时间
-        max_iterations = 366 * 24 * 60  # 最多检查一年
+        # 从当前时间开始，检查未来2年内的执行时间
+        max_iterations = 366 * 24 * 60 * 2  # 最多检查两年
 
         for _ in range(max_iterations):
             # 检查月份
             if now.month not in self._fields[CronField.MONTH.value]:
-                # 跳到下个月
+                # 跳到下个月1号
                 if now.month == 12:
                     now = now.replace(year=now.year + 1, month=1, day=1, hour=0, minute=0)
                 else:
-                    now = now.replace(month=now.month + 1, day=1, hour=0, minute=0)
+                    # 安全地增加月份
+                    try:
+                        now = now.replace(month=now.month + 1, day=1, hour=0, minute=0)
+                    except ValueError:
+                        now = datetime(now.year + 1, 1, 1, 0, 0)
                 continue
 
             # 检查日期
             day_match = self._check_day(now)
             if not day_match:
                 # 跳到下一天
-                now = now.replace(day=1) + timedelta(days=32)
-                now = now.replace(day=1, hour=0, minute=0)
+                try:
+                    now = now.replace(day=now.day + 1, hour=0, minute=0)
+                except ValueError:
+                    # 日期溢出，跳到下个月
+                    if now.month == 12:
+                        now = datetime(now.year + 1, 1, 1, 0, 0)
+                    else:
+                        now = datetime(now.year, now.month + 1, 1, 0, 0)
                 continue
 
             # 检查小时
             if now.hour not in self._fields[CronField.HOUR.value]:
                 # 跳到下一小时
                 if now.hour == 23:
-                    now = now.replace(day=now.day + 1, hour=0, minute=0)
+                    try:
+                        now = now.replace(day=now.day + 1, hour=0, minute=0)
+                    except ValueError:
+                        if now.month == 12:
+                            now = datetime(now.year + 1, 1, 1, 0, 0)
+                        else:
+                            now = datetime(now.year, now.month + 1, 1, 0, 0)
                 else:
                     now = now.replace(hour=now.hour + 1, minute=0)
                 continue
@@ -183,7 +267,16 @@ class CronExpression:
             if now.minute not in self._fields[CronField.MINUTE.value]:
                 # 跳到下一分钟
                 if now.minute == 59:
-                    now = now.replace(hour=now.hour + 1, minute=0)
+                    if now.hour == 23:
+                        try:
+                            now = now.replace(day=now.day + 1, hour=0, minute=0)
+                        except ValueError:
+                            if now.month == 12:
+                                now = datetime(now.year + 1, 1, 1, 0, 0)
+                            else:
+                                now = datetime(now.year, now.month + 1, 1, 0, 0)
+                    else:
+                        now = now.replace(hour=now.hour + 1, minute=0)
                 else:
                     now = now.replace(minute=now.minute + 1)
                 continue
@@ -192,6 +285,14 @@ class CronExpression:
             return now
 
         raise ValueError(f"No valid next execution time found for cron: {self.expression}")
+
+    def _get_month_last_day(self, year: int, month: int) -> int:
+        """获取指定月份的最后一天"""
+        if month == 12:
+            next_month = datetime(year + 1, 1, 1)
+        else:
+            next_month = datetime(year, month + 1, 1)
+        return (next_month - timedelta(days=1)).day
 
     def _check_day(self, dt: datetime) -> bool:
         """检查日期是否匹配"""
@@ -204,20 +305,56 @@ class CronExpression:
         day_field = self._fields[CronField.DAY.value]
         weekday_field = self._fields[CronField.WEEKDAY.value]
 
-        # 处理特殊值
-        day_match = day_in_month in day_field or "*" in str(day_field) or "?" in str(day_field)
-        weekday_match = cron_weekday in weekday_field or "*" in str(weekday_field) or "?" in str(weekday_field)
+        # 获取月份最后一天
+        last_day = self._get_month_last_day(dt.year, dt.month)
 
-        # 检查是否有 L (月末) 特殊处理
-        if "L" in self._original_fields[CronField.DAY.value]:
-            # 检查是否是当月最后一天
-            next_day = dt + timedelta(days=1)
-            if next_day.month != dt.month:
+        # 处理 L（月末）特殊值 - 日期字段
+        day_match = False
+        if self._has_day_l:
+            # 日期字段是 L，检查是否是当月最后一天
+            if day_in_month == last_day:
                 day_match = True
-            else:
-                day_match = False
+        else:
+            # 正常日期匹配
+            day_match = (not day_field or day_in_month in day_field)
 
-        return day_match and weekday_match
+        # 处理星期字段
+        weekday_match = False
+        if self._has_weekday_l:
+            # 星期字段是 L，检查是否是最后一个工作日
+            # 简化处理：检查是否是最后一个周五
+            if cron_weekday == 5:  # 周五
+                # 检查是否是本月最后一个周五
+                next_week = dt + timedelta(days=7)
+                if next_week.month != dt.month:
+                    weekday_match = True
+        else:
+            weekday_match = (not weekday_field or cron_weekday in weekday_field)
+
+        # 判断逻辑：
+        # 1. 如果日期字段有具体值且星期字段有具体值，需要同时满足
+        # 2. 如果只有日期字段有值，只需日期匹配
+        # 3. 如果只有星期字段有值，只需星期匹配
+        # 4. 如果都没有具体值，都匹配
+
+        if self._has_day_l:
+            # 日期字段是 L，只检查日期
+            return day_match
+        elif self._has_weekday_l:
+            # 星期字段是 L，只检查星期
+            return weekday_match
+        elif day_field and weekday_field:
+            # 两个字段都有具体值，需要同时满足
+            return day_match and weekday_match
+        elif day_field:
+            # 只有日期字段有值
+            return day_match
+        elif weekday_field:
+            # 只有星期字段有值
+            return weekday_match
+        else:
+            # 都没有具体值（都是 * 或 ?）
+            return True
 
     def previous(self, before: Optional[datetime] = None) -> datetime:
         """获取上一次执行时间
@@ -228,12 +365,10 @@ class CronExpression:
         Returns:
             上一次执行时间
         """
-        # 简单实现：从当前时间往前推
         now = before or datetime.now()
-        max_iterations = 366 * 24 * 60
+        max_iterations = 366 * 24 * 60 * 2
 
         for _ in range(max_iterations):
-            # 往前推一分钟
             now = now - timedelta(minutes=1)
 
             if self._matches(now):
@@ -350,7 +485,7 @@ class CronParser:
         elif minute.startswith("*/"):
             descriptions.append(f"每{minute[2:]}分钟")
         elif minute == "0":
-            pass  # 整点
+            pass
         else:
             descriptions.append(f"第{minute}分钟")
 

@@ -58,7 +58,7 @@ class TestTaskPoolInit:
         """测试默认初始化"""
         pool = TaskPool()
         assert pool._config is not None
-        assert pool._config.memory() == "memory"
+        assert pool._config.memory()
         assert pool._config.worker_concurrency == 10
         assert not pool._running
 

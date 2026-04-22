@@ -294,13 +294,10 @@ class TestTaskPoolPriority:
         # 提交不同优先级的任务（按优先级从低到高提交，验证队列会重新排序）
         # 先提交低优先级
         pool.submit({"priority": "LOW"}, priority=TaskPriority.LOW)  # priority=3
-        time.sleep(0.05)
 
         pool.submit({"priority": "NORMAL"}, priority=TaskPriority.NORMAL)  # priority=2
-        time.sleep(0.05)
 
         pool.submit({"priority": "HIGH"}, priority=TaskPriority.HIGH)  # priority=1
-        time.sleep(0.05)
 
         pool.submit({"priority": "CRITICAL"}, priority=TaskPriority.CRITICAL)  # priority=0
 
@@ -326,10 +323,8 @@ class TestTaskPoolPriority:
         # 提交多个相同优先级的任务（应该按 FIFO 顺序执行）
         for i in range(5):
             pool.submit({"priority": f"NORMAL_{i}"}, priority=TaskPriority.NORMAL)
-            time.sleep(0.02)
 
         # 提交一个高优先级任务（应该插队到最前面）
-        time.sleep(0.05)
         pool.submit({"priority": "HIGH_INSERT"}, priority=TaskPriority.HIGH)
 
         # 等待完成
@@ -385,13 +380,10 @@ class TestTaskPoolPriorityCorrected:
 
         # 提交不同优先级的任务
         pool.submit({"priority": "LOW"}, priority=TaskPriority.LOW)
-        time.sleep(0.05)
 
         pool.submit({"priority": "NORMAL"}, priority=TaskPriority.NORMAL)
-        time.sleep(0.05)
 
         pool.submit({"priority": "HIGH"}, priority=TaskPriority.HIGH)
-        time.sleep(0.05)
 
         pool.submit({"priority": "CRITICAL"}, priority=TaskPriority.CRITICAL)
 

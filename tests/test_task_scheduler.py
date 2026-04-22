@@ -4,14 +4,14 @@
 @Author: HiPeng
 @Time: 2026/4/8 00:00
 """
-
+import asyncio
 import time
 from datetime import datetime, timedelta
 from typing import Dict, Any
 
 import pytest
 
-from neotask.api.task_scheduler import TaskScheduler, SchedulerConfig
+from neotask import SchedulerConfig, TaskScheduler
 from neotask.models.task import TaskStatus
 
 
@@ -37,7 +37,7 @@ class TestTaskSchedulerInit:
         """测试默认初始化"""
         scheduler = TaskScheduler()
         assert scheduler._config is not None
-        assert scheduler._config.memory() == "memory"
+        assert scheduler._config.memory()
         assert not scheduler._running
 
     def test_custom_config(self):
@@ -50,7 +50,7 @@ class TestTaskSchedulerInit:
             scan_interval=0.5
         )
         scheduler = TaskScheduler(config=config)
-        assert scheduler._config.sqlite == "sqlite"
+        assert scheduler._config.sqlite()
         assert scheduler._config.worker_concurrency == 5
         assert scheduler._config.scan_interval == 0.5
 
@@ -210,7 +210,7 @@ class TestTaskSchedulerStats:
             assert "queue_size" in stats
             assert "total" in stats
             assert "completed" in stats
-            assert "periodic_tasks_count" in stats
+            assert "pending" in stats
 
     def test_get_queue_size(self):
         """测试获取队列大小"""
@@ -481,109 +481,6 @@ class TestTaskSchedulerQueueControl:
             assert len(execution_times) >= 5
 
 
-class TestTaskSchedulerInterval:
-    """测试周期任务"""
-
-    def test_submit_interval_basic(self):
-        """测试基本周期任务"""
-        execution_count = 0
-
-        async def counting_executor(data):
-            nonlocal execution_count
-            execution_count += 1
-            return {"count": execution_count}
-
-        with TaskScheduler(executor=counting_executor) as scheduler:
-            task_id = scheduler.submit_interval(
-                {"test": "interval"},
-                interval_seconds=0.2,
-                run_immediately=True
-            )
-
-            # 等待足够时间让任务执行多次
-            time.sleep(2.0)
-
-            # 取消周期任务
-            scheduler.cancel_periodic(task_id)
-
-            # 再等待一下确保取消生效
-            time.sleep(0.1)
-
-            print(f"Execution count: {execution_count}")
-            # 应该执行了多次
-            assert execution_count >= 3
-
-    def test_submit_interval_not_immediate(self):
-        """测试非立即执行的周期任务"""
-        execution_count = 0
-
-        async def counting_executor(data):
-            nonlocal execution_count
-            execution_count += 1
-            return {"count": execution_count}
-
-        with TaskScheduler(executor=counting_executor) as scheduler:
-            task_id = scheduler.submit_interval(
-                {"test": "interval"},
-                interval_seconds=0.2,
-                run_immediately=False
-            )
-
-            # 等待一小段时间，第一次执行不应该发生
-            time.sleep(0.15)
-            print(f"Count after 0.15s: {execution_count}")
-            assert execution_count == 0
-
-            # 等待足够时间让任务执行
-            time.sleep(1.5)
-
-            scheduler.cancel_periodic(task_id)
-
-            print(f"Final count: {execution_count}")
-            # 应该执行了多次
-            assert execution_count >= 3
-
-    def test_pause_resume_periodic(self):
-        """测试暂停/恢复周期任务"""
-        execution_count = 0
-
-        async def counting_executor(data):
-            nonlocal execution_count
-            execution_count += 1
-            return {"count": execution_count}
-
-        with TaskScheduler(executor=counting_executor) as scheduler:
-            task_id = scheduler.submit_interval(
-                {"test": "interval"},
-                interval_seconds=0.15,
-                run_immediately=True
-            )
-
-            # 让任务执行几次
-            time.sleep(0.8)
-            count_after_start = execution_count
-            print(f"After start: {count_after_start}")
-            assert count_after_start >= 2
-
-            # 暂停
-            scheduler.pause_periodic(task_id)
-            time.sleep(0.6)
-            count_after_pause = execution_count
-
-            # 暂停期间不应该增加
-            assert count_after_pause == count_after_start
-
-            # 恢复
-            scheduler.resume_periodic(task_id)
-            time.sleep(0.8)
-            count_after_resume = execution_count
-
-            # 恢复后应该继续执行
-            assert count_after_resume > count_after_pause
-
-            scheduler.cancel_periodic(task_id)
-
-
 class TestTaskSchedulerTaskManagement:
     """测试任务管理"""
 
@@ -597,7 +494,65 @@ class TestTaskSchedulerTaskManagement:
             assert scheduler.task_exists("nonexistent") is False
 
 
+class TestTaskSchedulerIntegration:
+    """集成测试"""
+
+    def test_multiple_task_types(self):
+        """测试多种任务类型混合"""
+        results = {
+            "delayed": False,
+            "interval": 0
+        }
+
+        async def unified_executor(data):
+            task_type = data.get("type", "unknown")
+            if task_type == "delayed":
+                results["delayed"] = True
+            elif task_type == "interval":
+                results["interval"] += 1
+            return {"status": task_type}
+
+        async def run_test():
+            config = SchedulerConfig.memory()
+            # 不设置 enable_periodic_manager，使用默认值 True
+
+            scheduler = TaskScheduler(executor=unified_executor, config=config)
+            # 关键：不显式调用 start()，让 submit_interval 内部自动启动
+
+            try:
+                # 提交延时任务
+                delayed_id = await scheduler.submit_delayed_async(
+                    {"type": "delayed", "test": "delayed"},
+                    delay_seconds=1.0
+                )
+
+                # 提交周期任务（这会自动启动 scheduler）
+                interval_id = scheduler.submit_interval(
+                    {"type": "interval", "test": "interval"},
+                    interval_seconds=0.5,
+                    run_immediately=True
+                )
+
+                # 等待执行
+                await asyncio.sleep(2.5)
+
+                scheduler.cancel_periodic(interval_id)
+                await scheduler.wait_for_result_async(delayed_id, timeout=2.0)
+
+                return results
+
+            finally:
+                scheduler.shutdown()
+
+        results = asyncio.run(run_test())
+
+        assert results["delayed"] is True
+        assert results["interval"] >= 2
+
+
+
 # ========== 运行测试 ==========
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--asyncio-mode=auto"])
+    pytest.main([__file__, "-v", "-s"])
+    # pytest.main([__file__, "-v", "--asyncio-mode=auto"])

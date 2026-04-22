@@ -276,3 +276,6 @@ class TestReclaimerIntegration:
         assert "by_reason" in stats
 
         await reclaimer.stop()
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "--asyncio-mode=auto"])

@@ -20,8 +20,6 @@ def main():
         executor=heartbeat_task,
         config=SchedulerConfig.memory()
     )
-    # 显式启动
-    # scheduler.start()
 
     try:
         print("=== 周期任务管理示例 ===\n")
@@ -43,9 +41,13 @@ def main():
         print("\n等待 5 秒观察执行...")
         time.sleep(5)
 
-        # 调试：直接访问内存中的对象
-        print(f"\n[DEBUG] 内存中 task1 run_count = {scheduler._periodic_tasks[task1].run_count}")
-        print(f"[DEBUG] 内存中 task2 run_count = {scheduler._periodic_tasks[task2].run_count}")
+        # 使用公开 API 获取统计信息
+        tasks = scheduler.get_periodic_tasks()
+        for task in tasks:
+            if task['task_id'] == task1:
+                print(f"\n[INFO] 任务 A run_count = {task['run_count']}")
+            if task['task_id'] == task2:
+                print(f"[INFO] 任务 B run_count = {task['run_count']}")
 
         print(f"\n暂停任务 A: {task1}")
         scheduler.pause_periodic(task1)
@@ -71,7 +73,6 @@ def main():
 
     finally:
         scheduler.shutdown()
-
 
 if __name__ == "__main__":
     main()

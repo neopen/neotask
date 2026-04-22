@@ -6,12 +6,14 @@
 """
 
 import asyncio
+from datetime import datetime
+
 from neotask import TaskScheduler, SchedulerConfig
 
 
 async def report_task(data: dict) -> dict:
     """报表生成任务"""
-    print(f"[定时任务] 生成报表: {data['report_type']}")
+    print(f"[定时任务] 生成报表({datetime.now()}): {data['report_type']}")
     return {"generated": True, "type": data["report_type"]}
 
 

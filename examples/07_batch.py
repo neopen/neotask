@@ -20,6 +20,17 @@ async def batch_task(data: dict) -> dict:
     }
 
 
+# 优化后的批量等待
+async def wait_all_concurrently(pool, task_ids, timeout=1):
+    """并发等待所有任务完成"""
+    tasks = [pool.wait_for_result_async(tid, timeout) for tid in task_ids]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    completed = sum(1 for r in results if isinstance(r, dict) and r.get("processed"))
+    failed = sum(1 for r in results if isinstance(r, Exception))
+
+    return completed, failed
+
 async def main():
     pool = TaskPool(
         executor=batch_task,
@@ -45,16 +56,7 @@ async def main():
         print("等待所有任务完成...")
         start_time = time.time()
 
-        completed = 0
-        failed = 0
-
-        for task_id in task_ids:
-            try:
-                result = await pool.wait_for_result_async(task_id, timeout=10)
-                if result.get("processed"):
-                    completed += 1
-            except Exception:
-                failed += 1
+        completed, failed = await wait_all_concurrently(pool, task_ids)
 
         wait_time = time.time() - start_time
 

@@ -137,37 +137,38 @@ class WorkerPool:
         self._max_retries = max_retries
         self._retry_delay = retry_delay
 
-
     async def _worker_loop(self, worker_id: int) -> None:
         """Worker主循环"""
         debug(f"Worker {worker_id} started")
+        consecutive_empty = 0  # 连续空轮询计数
+
         while self._running:
             try:
-                # 获取任务 - 使用较短的超时或非阻塞方式
                 task_ids = await self._queue.pop(self._prefetch_size)
 
-                for task_id in task_ids:
-                    # 启动任务执行
-                    exec_task = asyncio.create_task(self._execute_task(worker_id, task_id))
-                    async with self._lock:
-                        self._running_tasks[task_id] = exec_task
-                        self._worker_stats[worker_id].active_tasks += 1
-                        self._worker_stats[worker_id].is_busy = True
+                if task_ids:
+                    # 有任务时，重置空轮询计数
+                    consecutive_empty = 0
+                    for task_id in task_ids:
+                        exec_task = asyncio.create_task(self._execute_task(worker_id, task_id))
+                        async with self._lock:
+                            self._running_tasks[task_id] = exec_task
+                            self._worker_stats[worker_id].active_tasks += 1
+                            self._worker_stats[worker_id].is_busy = True
+                else:
+                    # 没有任务时，指数退避
+                    consecutive_empty += 1
+                    sleep_time = min(0.01 * (1 << min(consecutive_empty, 6)), 0.5)
+                    await asyncio.sleep(sleep_time)
+                    continue
 
-                # 清理已完成的任务
                 await self._cleanup_completed_tasks()
 
-                # 如果没有获取到任务，短暂休眠避免空转
-                if not task_ids:
-                    # 使用更短的休眠时间，或者使用事件等待
-                    await asyncio.sleep(0.01)  # 减少到 10ms
-
             except asyncio.CancelledError:
-                debug(f"Worker {worker_id} cancelled")
                 break
             except Exception as e:
                 error(f"Worker {worker_id} error: {e}")
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.1)
 
         debug(f"Worker {worker_id} stopped")
 

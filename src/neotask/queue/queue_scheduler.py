@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
 
+from neotask.common.logger import debug
 from neotask.queue.delayed_queue import DelayedQueue
 from neotask.queue.priority_queue import PriorityQueue
 from neotask.storage.base import QueueRepository
@@ -70,6 +71,7 @@ class QueueScheduler:
         Returns:
             是否成功入队
         """
+        debug(f"[QUEUE_SCHEDULER] push: task_id={task_id}, priority={priority}, delay={delay}")
         if self._disabled:
             return False
 
@@ -102,6 +104,7 @@ class QueueScheduler:
 
     async def pop(self, count: int = 1) -> List[str]:
         """弹出任务"""
+        debug(f"[QUEUE_SCHEDULER] pop called, paused={self._paused}, disabled={self._disabled}")  # 调试
         if self._paused or self._disabled:
             return []
 

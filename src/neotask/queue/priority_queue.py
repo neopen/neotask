@@ -9,6 +9,7 @@ import asyncio
 import heapq
 from typing import List, Tuple, Optional, Dict, Any
 
+from neotask.common.logger import debug
 from neotask.queue.base import BaseQueue
 from neotask.storage.base import QueueRepository
 
@@ -32,6 +33,7 @@ class PriorityQueue(BaseQueue):
 
     async def push(self, task_id: str, priority: int, delay: float = 0) -> bool:
         """入队"""
+        debug(f"[PRIORITY_QUEUE] push: task_id={task_id}, priority={priority}, use_repo={self._use_repository}")
         if delay > 0:
             # 延迟任务不应直接入优先级队列
             return False
@@ -51,6 +53,7 @@ class PriorityQueue(BaseQueue):
 
     async def pop(self, count: int = 1) -> List[str]:
         """出队，返回任务ID列表"""
+        debug(f"[PRIORITY_QUEUE] pop: use_repo={self._use_repository}")
         if self._use_repository:
             return await self._repository.pop(count)
 

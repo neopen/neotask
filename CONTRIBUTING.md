@@ -48,7 +48,7 @@
 
 ```bash
 # 1. Fork 并克隆仓库
-git clone https://github.com/YOUR_USERNAME/neotask.git
+git clone https://github.com/neopen/neotask.git
 cd neotask
 
 # 2. 添加上游远程
@@ -242,7 +242,7 @@ git checkout main
 git pull upstream main
 
 # 2. 创建特性分支
-git checkout -b feature/your-feature-name
+git checkout -b feature/test
 # 或
 git checkout -b fix/bug-description
 # 或
@@ -253,7 +253,7 @@ git add .
 git commit -m "feat: add new feature"
 
 # 4. 推送到你的 fork
-git push origin feature/your-feature-name
+git push origin feature/test
 
 # 5. 在 GitHub 上创建 Pull Request
 ```
@@ -430,7 +430,6 @@ tests/
 4. 遵循最佳实践
 
 ```python
-# examples/xx_feature_demo.py
 """功能演示：XXX
 
 这个示例展示了如何使用 XXX 功能。

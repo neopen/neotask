@@ -330,7 +330,7 @@ logger.addFilter(SensitiveDataFilter())
 
 1. **GitHub Security Advisories**
 2. **CHANGELOG.md** 中的安全相关条目
-3. **项目邮件列表**（如有）
+3. **项目邮件列表**
 
 ### 订阅安全通知
 

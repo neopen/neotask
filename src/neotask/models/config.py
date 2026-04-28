@@ -135,6 +135,17 @@ class ExecutorConfig:
 
 
 @dataclass
+class DistributedConfig:
+    """分布式配置"""
+    node_id: str = ""
+    redis_url: Optional[str] = None
+    enable_heartbeat: bool = True
+    heartbeat_interval: int = 5
+    enable_election: bool = False
+    shard_count: int = 1
+
+
+@dataclass
 class TaskPoolConfig:
     """TaskPool配置 - 专注于即时任务"""
 

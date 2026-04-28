@@ -55,11 +55,12 @@ class TaskLock(ABC):
         pass
 
     @abstractmethod
-    async def get_lock_info(self, key: str) -> Optional[Dict[str, Any]]:
+    async def get_lock_info(self, key: str, ttl_threshold: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """获取锁的详细信息。
 
         Args:
             key: 锁键名
+            ttl_threshold: TTL 阈值（可选），用于判断锁是否陈旧
 
         Returns:
             锁信息字典，包含 owner, ttl, created_at 等

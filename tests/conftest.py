@@ -7,10 +7,12 @@
 
 import asyncio
 import os
+import sys
 import tempfile
 from typing import Dict, Any
 
 import pytest
+import redis.asyncio as redis
 
 from neotask.event.bus import EventBus
 from neotask.models.task import Task, TaskPriority
@@ -21,17 +23,82 @@ from neotask.queue.queue_scheduler import QueueScheduler
 from neotask.storage.memory import MemoryTaskRepository, MemoryQueueRepository
 from neotask.storage.sqlite import SQLiteTaskRepository, SQLiteQueueRepository
 
+# Redis 配置
+REDIS_URL = "redis://localhost:6379/11"  # 使用 db 0 用于测试
+TEST_REDIS_URL = "redis://localhost:6379/12"  # 使用 db 1 避免冲突
 
-# ========== 异步支持 ==========
+
+# Windows 上解决事件循环关闭问题
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 
 @pytest.fixture(scope="session")
 def event_loop():
-    """创建事件循环"""
-    loop = asyncio.new_event_loop()
+    """创建事件循环 - 修复 Windows 关闭问题"""
+    policy = asyncio.get_event_loop_policy()
+    loop = policy.new_event_loop()
     asyncio.set_event_loop(loop)
     yield loop
-    loop.close()
+    # 关闭前处理所有 pending 任务
+    if not loop.is_closed():
+        # 取消所有正在运行的任务
+        pending = asyncio.all_tasks(loop)
+        for task in pending:
+            task.cancel()
+        # 等待任务取消完成
+        if pending:
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
 
+
+@pytest.fixture(autouse=True)
+def close_loop_after_test():
+    """确保每个测试后正确关闭事件循环"""
+    yield
+    # 清理
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        # 如果循环正在运行，不要立即关闭
+        pass
+
+
+@pytest.fixture(scope="session")
+async def redis_client():
+    """Redis 客户端 fixture"""
+    # 为每个测试创建新连接
+    client = redis.from_url(TEST_REDIS_URL, decode_responses=True, max_connections=10)
+    yield client
+    # 清理测试数据
+    await client.flushdb()
+    await client.close()
+
+
+@pytest.fixture(autouse=True)
+async def clean_redis(redis_client):
+    """每个测试后自动清理 Redis"""
+    yield
+    await redis_client.flushdb()
+
+
+@pytest.fixture
+def test_node_id():
+    """生成测试节点 ID"""
+    import socket
+    import os
+    import time
+    return f"test_node_{socket.gethostname()}_{os.getpid()}_{int(time.time() * 1000)}"
+
+
+@pytest.fixture
+def mock_executor():
+    """模拟任务执行器"""
+
+    async def executor(data: Dict[str, Any]) -> Dict[str, Any]:
+        return {"result": "success", "data": data}
+
+    return executor
 
 # ========== 存储 Fixtures ==========
 

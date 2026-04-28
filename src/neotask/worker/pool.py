@@ -1,6 +1,6 @@
 """
 @FileName: pool.py
-@Description: Worker池 - 管理任务执行器
+@Description: Worker池 - 管理任务执行器，支持预取器
 @Author: HiPeng
 @Time: 2026/4/8 00:00
 """
@@ -17,6 +17,7 @@ from neotask.executor.base import TaskExecutor
 from neotask.models.task import TaskStatus
 from neotask.queue.queue_scheduler import QueueScheduler
 from neotask.storage.base import TaskRepository
+from neotask.worker.prefetcher import TaskPrefetcher, PrefetchConfig, PrefetchStrategy
 
 
 @dataclass
@@ -34,6 +35,10 @@ class WorkerPool:
     """Worker池
 
     管理多个worker协程，控制并发执行。
+
+    支持两种模式：
+    - 预取模式：使用 TaskPrefetcher 批量预取任务到本地队列
+    - 直接模式：直接从共享队列获取任务
     """
 
     def __init__(
@@ -45,16 +50,18 @@ class WorkerPool:
             lifecycle_manager: TaskLifecycleManager,
             concurrency: int = 10,
             prefetch_size: int = 20,
-            task_timeout: Optional[float] = None
+            task_timeout: Optional[float] = None,
+            enable_prefetch: bool = True  # 新增：是否启用预取器
     ):
         self._executor = executor
         self._task_repo = task_repo
         self._queue = queue_scheduler
         self._event_bus = event_bus
         self._lifecycle = lifecycle_manager
-        self._concurrency = concurrency  # 保存 concurrency 值
+        self._concurrency = concurrency
         self._prefetch_size = prefetch_size
         self._task_timeout = task_timeout
+        self._enable_prefetch = enable_prefetch
 
         self._workers: Dict[int, asyncio.Task] = {}
         self._running_tasks: Dict[str, asyncio.Task] = {}
@@ -67,6 +74,19 @@ class WorkerPool:
         self._max_retries = 3
         self._retry_delay = 1.0
 
+        # 预取器（仅在启用时创建）
+        self._prefetcher: Optional[TaskPrefetcher] = None
+        if enable_prefetch:
+            prefetch_config = PrefetchConfig(
+                prefetch_size=prefetch_size,
+                local_queue_size=prefetch_size * 5,
+                min_threshold=max(1, prefetch_size // 4),
+                max_threshold=prefetch_size * 3,
+                enable_batch_pop=True,
+                strategy=PrefetchStrategy.HYBRID
+            )
+            self._prefetcher = TaskPrefetcher(queue_scheduler, prefetch_config)
+
     async def start(self) -> None:
         """启动worker池"""
         if self._running:
@@ -74,13 +94,18 @@ class WorkerPool:
 
         self._running = True
 
-        # 使用 self._concurrency 而不是硬编码的 3
+        # 启动预取器
+        if self._prefetcher:
+            await self._prefetcher.start()
+            debug(f"Prefetcher started with size={self._prefetcher._config.prefetch_size}")
+
+        # 启动所有worker
         for i in range(self._concurrency):
             worker_task = asyncio.create_task(self._worker_loop(i))
             self._workers[i] = worker_task
             self._worker_stats[i] = WorkerStats(worker_id=i, active_tasks=0)
 
-        debug(f"Started {self._concurrency} workers")
+        debug(f"Started {self._concurrency} workers (prefetch={self._enable_prefetch})")
 
     async def stop(self, graceful: bool = True, timeout: float = 30) -> None:
         """停止worker池
@@ -90,6 +115,10 @@ class WorkerPool:
             timeout: 优雅停止超时时间
         """
         self._running = False
+
+        # 停止预取器
+        if self._prefetcher:
+            await self._prefetcher.stop(graceful, timeout)
 
         if graceful and self._running_tasks:
             # 等待当前任务完成
@@ -130,7 +159,13 @@ class WorkerPool:
 
     def get_stats(self) -> Dict[int, WorkerStats]:
         """获取worker统计信息"""
-        return self._worker_stats.copy()
+        stats = self._worker_stats.copy()
+
+        # 添加预取器统计
+        # if self._prefetcher:
+        #     stats[0] = self._prefetcher.get_stats()
+
+        return stats
 
     def set_retry_config(self, max_retries: int, retry_delay: float) -> None:
         """设置重试配置"""
@@ -138,30 +173,55 @@ class WorkerPool:
         self._retry_delay = retry_delay
 
     async def _worker_loop(self, worker_id: int) -> None:
-        """Worker主循环"""
-        debug(f"Worker {worker_id} started")
-        consecutive_empty = 0  # 连续空轮询计数
+        """Worker主循环（支持预取器）"""
+        debug(f"Worker {worker_id} started (prefetch={self._enable_prefetch})")
+        consecutive_empty = 0
 
         while self._running:
             try:
-                task_ids = await self._queue.pop(self._prefetch_size)
+                if self._prefetcher:
+                    # ========== 预取模式 ==========
+                    # 从预取器获取任务（非阻塞）
+                    task_id = await self._prefetcher.get(timeout=0.1)
 
-                if task_ids:
-                    # 有任务时，重置空轮询计数
-                    consecutive_empty = 0
-                    for task_id in task_ids:
-                        exec_task = asyncio.create_task(self._execute_task(worker_id, task_id))
+                    if task_id:
+                        consecutive_empty = 0
+                        # 执行任务
+                        exec_task = asyncio.create_task(
+                            self._execute_task(worker_id, task_id)
+                        )
                         async with self._lock:
                             self._running_tasks[task_id] = exec_task
                             self._worker_stats[worker_id].active_tasks += 1
                             self._worker_stats[worker_id].is_busy = True
-                else:
-                    # 没有任务时，指数退避
-                    consecutive_empty += 1
-                    sleep_time = min(0.01 * (1 << min(consecutive_empty, 6)), 0.5)
-                    await asyncio.sleep(sleep_time)
-                    continue
+                    else:
+                        # 没有任务时，指数退避
+                        consecutive_empty += 1
+                        sleep_time = min(0.01 * (1 << min(consecutive_empty, 6)), 0.5)
+                        await asyncio.sleep(sleep_time)
+                        continue
 
+                else:
+                    # ========== 直接模式（原有逻辑）==========
+                    task_ids = await self._queue.pop(self._prefetch_size)
+
+                    if task_ids:
+                        consecutive_empty = 0
+                        for task_id in task_ids:
+                            exec_task = asyncio.create_task(
+                                self._execute_task(worker_id, task_id)
+                            )
+                            async with self._lock:
+                                self._running_tasks[task_id] = exec_task
+                                self._worker_stats[worker_id].active_tasks += 1
+                                self._worker_stats[worker_id].is_busy = True
+                    else:
+                        consecutive_empty += 1
+                        sleep_time = min(0.01 * (1 << min(consecutive_empty, 6)), 0.5)
+                        await asyncio.sleep(sleep_time)
+                        continue
+
+                # 清理已完成的任务
                 await self._cleanup_completed_tasks()
 
             except asyncio.CancelledError:
@@ -232,7 +292,9 @@ class WorkerPool:
             finally:
                 # 更新worker统计
                 async with self._lock:
-                    self._worker_stats[worker_id].active_tasks = max(0, self._worker_stats[worker_id].active_tasks - 1)
+                    self._worker_stats[worker_id].active_tasks = max(
+                        0, self._worker_stats[worker_id].active_tasks - 1
+                    )
                     self._worker_stats[worker_id].is_busy = self._worker_stats[worker_id].active_tasks > 0
                     self._worker_stats[worker_id].last_active = datetime.now()
 
@@ -289,3 +351,20 @@ class WorkerPool:
 
             for task_id, task in completed:
                 self._running_tasks.pop(task_id, None)
+
+    # ========== 预取器管理方法 ==========
+
+    async def get_prefetcher_stats(self) -> Optional[Dict]:
+        """获取预取器统计信息"""
+        if self._prefetcher:
+            return self._prefetcher.get_stats()
+        return None
+
+    async def reset_prefetcher_stats(self) -> None:
+        """重置预取器统计"""
+        if self._prefetcher:
+            self._prefetcher.reset_stats()
+
+    def is_prefetch_enabled(self) -> bool:
+        """检查预取器是否启用"""
+        return self._enable_prefetch and self._prefetcher is not None

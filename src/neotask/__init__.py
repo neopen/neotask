@@ -72,6 +72,14 @@ from neotask.common.exceptions import (
     TaskAlreadyExistsError, QueueFullError, TimeoutError
 )
 
+#
+from neotask.distributed import (
+    NodeManager, NodeInfo, NodeStatus,
+    Coordinator, CoordinatorConfig,
+    Elector, LeaderInfo,
+    Sharder, ConsistentHashSharder
+)
+
 __all__ = [
     # 版本
     "__version__",

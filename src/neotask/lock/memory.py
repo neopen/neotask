@@ -104,7 +104,7 @@ class MemoryLock(TaskLock):
             keys = list(self._locks.keys())
             return keys[:count]
 
-    async def get_lock_info(self, key: str) -> Optional[Dict[str, Any]]:
+    async def get_lock_info(self, key: str, ttl_threshold: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """获取锁的详细信息
 
         Args:

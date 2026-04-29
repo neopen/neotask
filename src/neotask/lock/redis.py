@@ -157,26 +157,22 @@ class RedisLock(TaskLock):
     async def extend(self, key: str, ttl: int = 30) -> bool:
         """延长锁的生存时间
 
-        Args:
-            key: 锁的键名
-            ttl: 新的生存时间（秒）
-
-        Returns:
-            是否成功延长
+        注意：这个方法需要正确获取当前锁的持有者
         """
         client = await self._get_client()
         full_key = self._get_key(key)
 
-        owner = self._owners.get(key, self._owner)
-        if not owner:
-            return False
+        # 获取当前持有者
+        current_owner = await client.get(full_key)
 
-        script = client.register_script(self.LUA_EXTEND)
-        result = await script(
-            keys=[full_key],
-            args=[owner, ttl]
-        )
-        return result == 1
+        # 只有当前持有者才能续期
+        if current_owner == self._owner:
+            result = await client.expire(full_key, ttl)
+            return result
+        else:
+            # owner 不匹配，续期失败
+            # 这可能是因为锁已被其他实例持有或已过期
+            return False
 
     async def is_locked(self, key: str) -> bool:
         """检查锁是否被持有"""

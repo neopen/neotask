@@ -1,241 +1,186 @@
 """
 @FileName: redis.py
-@Description: Redis storage implementation using sync client in thread pool.
+@Description: Redis storage implementation with connection pooling.
 @Author: HiPeng
 @Time: 2026/3/27 23:55
 """
 
-import asyncio
-import json
-from concurrent.futures import ThreadPoolExecutor
-from typing import List, Optional
+from typing import List, Optional, Any
 
-import redis
+import redis.asyncio as redis
+from redis.asyncio import ConnectionPool
 
 from neotask.models.task import Task, TaskStatus
 from neotask.storage.base import TaskRepository, QueueRepository
 
 
 class RedisTaskRepository(TaskRepository):
-    """Redis-based task repository using sync client."""
+    """Redis-based task repository."""
 
     def __init__(self, redis_url: str, max_connections: int = 10):
         self.redis_url = redis_url
         self.max_connections = max_connections
-        self._executor = ThreadPoolExecutor(max_workers=1)
+        self._pool: Optional[ConnectionPool] = None
         self._client: Optional[redis.Redis] = None
 
-    def _get_client(self) -> redis.Redis:
-        """Get sync Redis client."""
+    async def _get_client(self) -> redis.Redis:
+        """Get Redis client with connection pooling."""
         if self._client is None:
-            self._client = redis.Redis.from_url(
+            self._pool = ConnectionPool.from_url(
                 self.redis_url,
-                decode_responses=True,
-                max_connections=self.max_connections
+                max_connections=self.max_connections,
+                decode_responses=True
             )
+            self._client = redis.Redis(connection_pool=self._pool)
         return self._client
 
-    async def _run_sync(self, func, *args, **kwargs):
-        """Run sync function in thread pool."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            self._executor,
-            lambda: func(*args, **kwargs)
-        )
-
     async def save(self, task: Task) -> None:
-        client = self._get_client()
+        client = await self._get_client()
         key = f"task:{task.task_id}"
-
-        def _save():
-            # Store entire task as JSON
-            client.set(key, json.dumps(task.to_dict()))
-            # Also add to status index
-            client.sadd(f"status:{task.status.value}", task.task_id)
-
-        await self._run_sync(_save)
+        await client.hset(key, mapping=task.to_dict())
+        await client.sadd(f"status:{task.status.value}", task.task_id)
 
     async def get(self, task_id: str) -> Optional[Task]:
-        client = self._get_client()
+        client = await self._get_client()
         key = f"task:{task_id}"
-
-        def _get():
-            data = client.get(key)
-            if not data:
-                return None
-            return json.loads(data)
-
-        data = await self._run_sync(_get)
+        data = await client.hgetall(key)
         if not data:
             return None
         return Task.from_dict(data)
 
-    async def delete(self, task_id: str) -> None:
-        client = self._get_client()
-
-        def _delete():
-            # Get task first to know its status
-            task_data = client.get(f"task:{task_id}")
-            if task_data:
-                task_dict = json.loads(task_data)
-                status = task_dict.get("status")
-                if status:
-                    client.srem(f"status:{status}", task_id)
-            client.delete(f"task:{task_id}")
-
-        await self._run_sync(_delete)
+    async def delete(self, task_id: str) -> bool:
+        client = await self._get_client()
+        task = await self.get(task_id)
+        if task:
+            await client.srem(f"status:{task.status.value}", task_id)
+        key = f"task:{task_id}"
+        result = await client.delete(key)
+        return result > 0
 
     async def list_by_status(self, status: TaskStatus, limit: int = 100, offset: int = 0) -> List[Task]:
-        client = self._get_client()
+        client = await self._get_client()
+        task_ids = await client.smembers(f"status:{status.value}")
+        tasks = []
+        for task_id in list(task_ids)[offset:offset + limit]:
+            task = await self.get(task_id)
+            if task:
+                tasks.append(task)
+        return tasks
 
-        def _list():
-            task_ids = client.smembers(f"status:{status.value}")
-            tasks = []
-            for task_id in list(task_ids)[offset:offset + limit]:
-                data = client.get(f"task:{task_id}")
-                if data:
-                    tasks.append(json.loads(data))
-            return tasks
+    async def update_status(self, task_id: str, status: TaskStatus) -> None:
+        client = await self._get_client()
+        old_task = await self.get(task_id)
+        if old_task:
+            await client.srem(f"status:{old_task.status.value}", task_id)
 
-        tasks_data = await self._run_sync(_list)
-        return [Task.from_dict(data) for data in tasks_data]
-
-    async def update_status(self, task_id: str, status: TaskStatus, **kwargs) -> bool:
-        client = self._get_client()
-
-        def _update():
-            # Get old status to remove from index
-            old_data = client.get(f"task:{task_id}")
-            if old_data:
-                old_dict = json.loads(old_data)
-                old_status = old_dict.get("status")
-                if old_status:
-                    client.srem(f"status:{old_status}", task_id)
-
-            # Get current task, update, save
-            data = client.get(f"task:{task_id}")
-            if not data:
-                return False
-
-            task_dict = json.loads(data)
-            task_dict["status"] = status.value
-
-            for key_name, value in kwargs.items():
-                if value is not None:
-                    task_dict[key_name] = value
-
-            client.set(f"task:{task_id}", json.dumps(task_dict))
-            client.sadd(f"status:{status.value}", task_id)
-            return True
-
-        return await self._run_sync(_update)
+        key = f"task:{task_id}"
+        await client.hset(key, "status", status.value)
+        await client.sadd(f"status:{status.value}", task_id)
 
     async def exists(self, task_id: str) -> bool:
-        client = self._get_client()
-
-        def _exists():
-            return client.exists(f"task:{task_id}") > 0
-
-        return await self._run_sync(_exists)
+        client = await self._get_client()
+        key = f"task:{task_id}"
+        return await client.exists(key) > 0
 
     async def close(self) -> None:
         """Close Redis connection."""
-
-        def _close():
-            if self._client:
-                self._client.close()
-            self._executor.shutdown(wait=True)
-
-        await self._run_sync(_close)
+        if self._client:
+            await self._client.close()
+            self._client = None
+        if self._pool:
+            await self._pool.disconnect()
+            self._pool = None
 
 
 class RedisQueueRepository(QueueRepository):
-    """Redis-based priority queue repository using sync client."""
+    """Redis-based priority queue repository."""
 
     def __init__(self, redis_url: str, max_connections: int = 10):
         self.redis_url = redis_url
         self.max_connections = max_connections
-        self._executor = ThreadPoolExecutor(max_workers=1)
+        self._pool: Optional[ConnectionPool] = None
         self._client: Optional[redis.Redis] = None
         self._queue_key = "queue:priority"
+        self._pop_script: Optional[Any] = None
 
-    def _get_client(self) -> redis.Redis:
-        """Get sync Redis client."""
+    async def _get_client(self) -> redis.Redis:
+        """Get Redis client with connection pooling."""
         if self._client is None:
-            self._client = redis.Redis.from_url(
+            self._pool = ConnectionPool.from_url(
                 self.redis_url,
-                decode_responses=True,
-                max_connections=self.max_connections
+                max_connections=self.max_connections,
+                decode_responses=True
             )
+            self._client = redis.Redis(connection_pool=self._pool)
         return self._client
 
-    async def _run_sync(self, func, *args, **kwargs):
-        """Run sync function in thread pool."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            self._executor,
-            lambda: func(*args, **kwargs)
-        )
+    async def _get_pop_script(self):
+        """Get or create Lua pop script."""
+        if self._pop_script is None:
+            client = await self._get_client()
+            lua_script = """
+            local queue_key = KEYS[1]
+            local count = tonumber(ARGV[1])
+            local task_ids = redis.call('ZRANGE', queue_key, 0, count-1)
+            if #task_ids > 0 then
+                redis.call('ZREM', queue_key, unpack(task_ids))
+            end
+            return task_ids
+            """
+            self._pop_script = client.register_script(lua_script)
+        return self._pop_script
 
     async def push(self, task_id: str, priority: int) -> None:
-        client = self._get_client()
-
-        def _push():
-            client.zadd(self._queue_key, {task_id: priority})
-
-        await self._run_sync(_push)
+        client = await self._get_client()
+        await client.zadd(self._queue_key, {task_id: priority})
 
     async def pop(self, count: int = 1) -> List[str]:
-        client = self._get_client()
-
-        def _pop():
-            # Get and remove tasks atomically using pipeline
-            pipe = client.pipeline()
-            pipe.zrange(self._queue_key, 0, count - 1)
-            pipe.zremrangebyrank(self._queue_key, 0, count - 1)
-            results = pipe.execute()
-            return results[0] if results else []
-
-        return await self._run_sync(_pop)
+        script = await self._get_pop_script()
+        return await script(keys=[self._queue_key], args=[count])
 
     async def remove(self, task_id: str) -> bool:
-        client = self._get_client()
-
-        def _remove():
-            return client.zrem(self._queue_key, task_id) > 0
-
-        return await self._run_sync(_remove)
+        client = await self._get_client()
+        removed = await client.zrem(self._queue_key, task_id)
+        return removed > 0
 
     async def size(self) -> int:
-        client = self._get_client()
-
-        def _size():
-            return client.zcard(self._queue_key)
-
-        return await self._run_sync(_size)
+        client = await self._get_client()
+        return await client.zcard(self._queue_key)
 
     async def peek(self, count: int = 1) -> List[str]:
-        client = self._get_client()
-
-        def _peek():
-            return client.zrange(self._queue_key, 0, count - 1)
-
-        return await self._run_sync(_peek)
+        client = await self._get_client()
+        return await client.zrange(self._queue_key, 0, count - 1)
 
     async def clear(self) -> None:
-        client = self._get_client()
+        client = await self._get_client()
+        await client.delete(self._queue_key)
 
-        def _clear():
-            client.delete(self._queue_key)
+    async def contains(self, task_id: str) -> bool:
+        """检查任务是否在队列中"""
+        client = await self._get_client()
+        score = await client.zscore(self._queue_key, task_id)
+        return score is not None
 
-        await self._run_sync(_clear)
+    async def pause(self) -> None:
+        """暂停队列"""
+        client = await self._get_client()
+        await client.set(f"{self._queue_key}:paused", "1", ex=3600)
+
+    async def resume(self) -> None:
+        """恢复队列"""
+        client = await self._get_client()
+        await client.delete(f"{self._queue_key}:paused")
+
+    async def is_paused(self) -> bool:
+        """检查是否暂停"""
+        client = await self._get_client()
+        return await client.exists(f"{self._queue_key}:paused") > 0
 
     async def close(self) -> None:
         """Close Redis connection."""
-
-        def _close():
-            if self._client:
-                self._client.close()
-            self._executor.shutdown(wait=True)
-
-        await self._run_sync(_close)
+        if self._client:
+            await self._client.close()
+            self._client = None
+        if self._pool:
+            await self._pool.disconnect()
+            self._pool = None

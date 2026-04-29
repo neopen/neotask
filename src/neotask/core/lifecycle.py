@@ -476,7 +476,8 @@ class TaskLifecycleManager:
 
     def _generate_task_id(self) -> str:
         """生成任务ID"""
-        return f"TSK{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}{random.randint(100000, 999999)}"
+        return f"TSK{datetime.now().strftime('%y%m%d%H%M%S%f')}{random.randint(100000, 999999)}"
+        # return f"TSK{datetime.now().strftime('%y%m%d%H%M%S')}{uuid.uuid4().time}"
 
     def clear_cache(self):
         """清空缓存"""

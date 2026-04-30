@@ -5,11 +5,12 @@
 @Time: 2026/4/8 00:00
 """
 
-from neotask.executor.base import TaskExecutor, CallbackExecutor
 from neotask.executor.async_executor import AsyncExecutor
-from neotask.executor.thread_executor import ThreadExecutor
+from neotask.executor.base import TaskExecutor, CallbackExecutor
+from neotask.executor.class_executor import ClassExecutor
+from neotask.executor.factory import ExecutorFactory, create_executor, ExecutorType
 from neotask.executor.process_executor import ProcessExecutor
-from neotask.executor.factory import ExecutorFactory, create_executor
+from neotask.executor.thread_executor import ThreadExecutor
 
 __all__ = [
     "TaskExecutor",
@@ -17,6 +18,8 @@ __all__ = [
     "AsyncExecutor",
     "ThreadExecutor",
     "ProcessExecutor",
+    "ClassExecutor",
     "ExecutorFactory",
+    "ExecutorType",
     "create_executor",
 ]

@@ -115,3 +115,7 @@ async def test_executor_shutdown():
 
     # Should be able to shutdown multiple times
     await executor.shutdown()
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "--asyncio-mode=auto"])

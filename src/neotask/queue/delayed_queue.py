@@ -195,7 +195,12 @@ class DelayedQueue:
                 for task_id, priority, data in tasks_to_execute:
                     if self._callback:
                         try:
-                            await self._callback(task_id, priority, data)
+                            # 兼容不同签名的回调函数
+                            try:
+                                await self._callback(task_id, priority, data)
+                            except TypeError:
+                                # 如果回调只接受两个参数
+                                await self._callback(task_id, priority)
                         except Exception:
                             pass
 

@@ -8,6 +8,8 @@
 from dataclasses import dataclass, field
 from typing import Optional, Literal
 
+from neotask.executor import ExecutorType
+
 
 @dataclass
 class StorageConfig:
@@ -155,7 +157,7 @@ class TaskPoolConfig:
     redis_url: Optional[str] = None
 
     # 执行器配置
-    executor_type: str = "async"
+    executor_type: ExecutorType = ExecutorType.ASYNC
     max_workers: int = 10
 
     # Worker配置

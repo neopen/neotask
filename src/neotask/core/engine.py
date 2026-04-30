@@ -14,7 +14,7 @@ from neotask.core.dispatcher import TaskDispatcher
 from neotask.core.context import TaskContext
 from neotask.storage.base import TaskRepository, QueueRepository
 from neotask.storage.factory import StorageFactory
-from neotask.executor.factory import ExecutorFactory
+from neotask.executor.factory import ExecutorFactory, ExecutorType
 from neotask.executor.base import TaskExecutor
 from neotask.queue.queue_scheduler import QueueScheduler
 from neotask.worker.pool import WorkerPool
@@ -35,7 +35,7 @@ class EngineConfig:
 
     # 执行器配置
     executor_func: Optional[Any] = None
-    executor_type: str = "auto"
+    executor_type: ExecutorType = ExecutorType.AUTO
     max_workers: int = 10
 
     # Worker配置

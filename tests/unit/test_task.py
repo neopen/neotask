@@ -85,7 +85,7 @@ class TestTask:
         data = task.to_dict()
 
         assert data["task_id"] == "test-007"
-        assert data["priority"] == "1"  # HIGH value
+        assert data["priority"] == 1  # HIGH value (integer)
         assert "data" in data
 
     def test_from_dict(self):
@@ -127,3 +127,7 @@ class TestTaskPriority:
         assert TaskPriority.HIGH.value == 1
         assert TaskPriority.NORMAL.value == 2
         assert TaskPriority.LOW.value == 3
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "--asyncio-mode=auto"])

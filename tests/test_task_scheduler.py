@@ -544,7 +544,7 @@ class TestTaskSchedulerIntegration:
             finally:
                 scheduler.shutdown()
 
-        results = asyncio.run(run_test())
+        asyncio.run(run_test())
 
         assert results["delayed"] is True
         assert results["interval"] >= 2

@@ -45,8 +45,9 @@ class TestCronParser:
         cron = CronParser.parse("* * * * *")
         now = datetime(2024, 1, 1, 10, 0, 0)
         next_run = cron.next(after=now)
-        # 应该立即执行（当前分钟）
-        assert next_run.minute == 0 or next_run.minute == now.minute
+        # 下一次执行应该是下一分钟
+        assert next_run.minute == 1
+        assert next_run.hour == 10
 
     def test_minute_specific(self):
         """测试指定分钟"""

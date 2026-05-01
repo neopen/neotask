@@ -7,6 +7,7 @@
 
 import os
 import tempfile
+import asyncio
 
 import pytest
 
@@ -126,21 +127,57 @@ class TestSQLiteStorage:
     @pytest.fixture
     async def sqlite_task_repo(self):
         """创建 SQLite 任务存储"""
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-            db_path = f.name
-        repo = SQLiteTaskRepository(db_path)
-        await repo._ensure_init()
-        yield repo
-        os.unlink(db_path)
+        db_path = None
+        repo = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+                db_path = f.name
+            repo = SQLiteTaskRepository(db_path)
+            await repo._ensure_init()
+            yield repo
+        finally:
+            if repo:
+                # 确保关闭数据库连接
+                if hasattr(repo, 'close'):
+                    await repo.close()
+            if db_path and os.path.exists(db_path):
+                # 等待文件释放
+                await asyncio.sleep(0.1)
+                try:
+                    os.unlink(db_path)
+                except PermissionError:
+                    # 如果还是被占用，延迟删除
+                    await asyncio.sleep(0.5)
+                    try:
+                        os.unlink(db_path)
+                    except PermissionError:
+                        pass  # 忽略，让系统清理
 
     @pytest.fixture
     async def sqlite_queue_repo(self):
         """创建 SQLite 队列存储"""
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-            db_path = f.name
-        repo = SQLiteQueueRepository(db_path)
-        yield repo
-        os.unlink(db_path)
+        db_path = None
+        repo = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+                db_path = f.name
+            repo = SQLiteQueueRepository(db_path)
+            yield repo
+        finally:
+            if repo:
+                # 确保关闭数据库连接
+                if hasattr(repo, 'close'):
+                    await repo.close()
+            if db_path and os.path.exists(db_path):
+                await asyncio.sleep(0.1)
+                try:
+                    os.unlink(db_path)
+                except PermissionError:
+                    await asyncio.sleep(0.5)
+                    try:
+                        os.unlink(db_path)
+                    except PermissionError:
+                        pass
 
     @pytest.mark.asyncio
     async def test_task_crud(self, sqlite_task_repo):
@@ -293,7 +330,8 @@ class TestRedisStorage:
 class TestStorageFactory:
     """测试存储工厂"""
 
-    def test_create_memory(self):
+    @pytest.mark.asyncio
+    async def test_create_memory(self):
         """测试创建内存存储"""
         config = StorageConfig.memory()
         task_repo, queue_repo = StorageFactory.create(config)
@@ -303,18 +341,41 @@ class TestStorageFactory:
         assert isinstance(task_repo, MemoryTaskRepository)
         assert isinstance(queue_repo, MemoryQueueRepository)
 
-    def test_create_sqlite(self):
+    @pytest.mark.asyncio
+    async def test_create_sqlite(self):
         """测试创建 SQLite 存储"""
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-            db_path = f.name
+        db_path = None
+        task_repo = None
+        queue_repo = None
 
-        config = StorageConfig.sqlite(db_path)
-        task_repo, queue_repo = StorageFactory.create(config)
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+                db_path = f.name
 
-        assert task_repo is not None
-        assert queue_repo is not None
+            config = StorageConfig.sqlite(db_path)
+            task_repo, queue_repo = StorageFactory.create(config)
 
-        os.unlink(db_path)
+            assert task_repo is not None
+            assert queue_repo is not None
+
+        finally:
+            # 关闭连接
+            if task_repo and hasattr(task_repo, 'close'):
+                await task_repo.close()
+            if queue_repo and hasattr(queue_repo, 'close'):
+                await queue_repo.close()
+
+            # 删除文件
+            if db_path and os.path.exists(db_path):
+                await asyncio.sleep(0.1)
+                try:
+                    os.unlink(db_path)
+                except PermissionError:
+                    await asyncio.sleep(0.5)
+                    try:
+                        os.unlink(db_path)
+                    except PermissionError:
+                        pass
 
     def test_create_redis_without_url(self):
         """测试创建 Redis 存储但未提供 URL"""
@@ -326,7 +387,8 @@ class TestStorageFactory:
         not os.environ.get("REDIS_TEST_URL"),
         reason="REDIS_TEST_URL not set"
     )
-    def test_create_redis(self):
+    @pytest.mark.asyncio
+    async def test_create_redis(self):
         """测试创建 Redis 存储"""
         config = StorageConfig.redis(os.environ["REDIS_TEST_URL"])
         task_repo, queue_repo = StorageFactory.create(config)
@@ -335,6 +397,9 @@ class TestStorageFactory:
         assert queue_repo is not None
         assert isinstance(task_repo, RedisTaskRepository)
         assert isinstance(queue_repo, RedisQueueRepository)
+
+        await task_repo.close()
+        await queue_repo.close()
 
 
 if __name__ == "__main__":

@@ -80,6 +80,8 @@ dev = [
     "ruff>=0.1.0",
     "build>=1.0.0",
     "twine>=4.0.0",
+    "cloudpickle",
+    "psutil",
     "aiosqlite>=0.19.0"
 ]
 

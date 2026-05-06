@@ -1,0 +1,27 @@
+# NeoTask Project - Claude Code Configuration
+# ==========================================
+
+# Permissions for common development operations
+permissions:
+  allow:
+    - "Bash(pytest *)"
+    - "Bash(python *)"
+    - "Bash(pip *)"
+    - "Bash(black *)"
+    - "Bash(ruff *)"
+    - "Bash(isort *)"
+    - "Bash(mypy *)"
+    - "Bash(git *)"
+    - "Bash(ls *)"
+
+  deny: []
+
+# Hooks for automated behaviors
+hooks: {}
+
+# Project-specific settings
+settings:
+  project: neotask
+  language: python
+  test_framework: pytest
+  python_version: "3.9"

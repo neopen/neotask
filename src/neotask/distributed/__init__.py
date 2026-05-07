@@ -7,7 +7,6 @@
 
 from neotask.distributed.node import NodeManager, NodeInfo, NodeStatus
 from neotask.distributed.coordinator import Coordinator, CoordinatorConfig
-from neotask.distributed.elector import Elector, LeaderInfo
 from neotask.distributed.sharding import Sharder, ConsistentHashSharder, ModuloSharder, RangeSharder
 
 __all__ = [
@@ -16,8 +15,6 @@ __all__ = [
     "NodeStatus",
     "Coordinator",
     "CoordinatorConfig",
-    "Elector",
-    "LeaderInfo",
     "Sharder",
     "ConsistentHashSharder",
     "ModuloSharder",

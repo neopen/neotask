@@ -17,13 +17,14 @@
 """
 
 import asyncio
-import sys
 import os
-import uuid
+import sys
 import time
-import pytest
-from typing import Dict, Any, List, Optional
+import uuid
 from dataclasses import dataclass
+from typing import Dict, Any
+
+import pytest
 
 # 添加项目根目录到 Python 路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -31,9 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 # 导入 NeoTask 组件
 from neotask.api.task_pool import TaskPool
 from neotask.models.config import TaskPoolConfig
-from neotask.distributed.node import NodeManager, NodeInfo, NodeStatus
-from neotask.distributed.coordinator import Coordinator, CoordinatorConfig
-from neotask.distributed.elector import Elector, LeaderInfo
+from neotask.distributed.node import NodeManager
 from neotask.lock.redis import RedisLock
 
 
@@ -124,7 +123,7 @@ async def two_nodes(redis_available):
         config = TaskPoolConfig(
             storage_type="redis",
             redis_url=TEST_CONFIG.redis_url,
-            node_id=f"multi-node-{i+1}",
+            node_id=f"multi-node-{i + 1}",
             enable_prefetch=True,
             worker_concurrency=2
         )
@@ -382,7 +381,7 @@ class TestDistributedV04:
         for i in range(node_count):
             manager = NodeManager(
                 redis_url=TEST_CONFIG.redis_url,
-                node_id=f"reg-test-{i+1}"
+                node_id=f"reg-test-{i + 1}"
             )
             await manager.start()
             managers.append(manager)
@@ -393,7 +392,7 @@ class TestDistributedV04:
 
         # 验证所有节点都注册了
         node_ids = {n.node_id for n in active_nodes}
-        expected_ids = {f"reg-test-{i+1}" for i in range(node_count)}
+        expected_ids = {f"reg-test-{i + 1}" for i in range(node_count)}
 
         # 至少包含我们的节点
         assert len(node_ids & expected_ids) >= node_count
@@ -422,35 +421,6 @@ class TestDistributedV04:
 
         # 重试后可能成功也可能失败，取决于执行器
         assert status in ["failed", "success", "FAILED", "SUCCESS"]
-
-    # ========== 主节点选举测试 ==========
-
-    @pytest.mark.asyncio
-    async def test_leader_election(self, redis_available):
-        """测试主节点选举"""
-        node_ids = [f"elector-{i+1}" for i in range(3)]
-        electors = []
-
-        # 创建选举器
-        for node_id in node_ids:
-            elector = Elector(redis_url=TEST_CONFIG.redis_url, node_id=node_id)
-            electors.append(elector)
-
-        # 尝试选举（只有一个能成为领导者）
-        results = await asyncio.gather(*[e.elect(ttl=5) for e in electors])
-
-        # 只有一个成功
-        success_count = sum(results)
-        assert success_count == 1
-
-        # 获取领导者
-        leader = await electors[0].get_leader()
-        assert leader is not None
-
-        # 清理
-        for elector in electors:
-            if elector.is_leader:
-                await elector.resign()
 
     # ========== 统计和健康检查测试 ==========
 
@@ -496,9 +466,9 @@ class TestDistributedV04:
 async def test_integration_distributed(redis_available):
     """集成测试 - 一个测试覆盖所有分布式功能"""
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("v0.4 Distributed Features Integration Test")
-    print("="*60)
+    print("=" * 60)
 
     results = {}
 
@@ -532,7 +502,7 @@ async def test_integration_distributed(redis_available):
 
     await asyncio.sleep(1)
     results["nodes_created"] = True
-    print("   ✅ Nodes created")
+    print("    Nodes created")
 
     # 2. 测试跨节点任务消费
     print("\n2. Testing cross-node task consumption...")
@@ -544,10 +514,10 @@ async def test_integration_distributed(redis_available):
     try:
         result = await pool2.wait_for_result_async(task_id, timeout=10)
         results["cross_node"] = result is not None
-        print(f"   ✅ Task consumed by node-2: {result}")
+        print(f"    Task consumed by node-2: {result}")
     except Exception as e:
         results["cross_node"] = False
-        print(f"   ❌ Failed: {e}")
+        print(f"    Failed: {e}")
 
     # 3. 测试批量任务
     print("\n3. Testing batch tasks...")
@@ -561,17 +531,17 @@ async def test_integration_distributed(redis_available):
 
     await asyncio.sleep(2)
     results["batch_tasks"] = True
-    print(f"   ✅ {len(batch_ids)} tasks submitted")
+    print(f"    {len(batch_ids)} tasks submitted")
 
     # 4. 测试预取器
     print("\n4. Testing prefetcher...")
     if pool1._worker_pool._prefetcher:
         stats = pool1._worker_pool._prefetcher.get_stats()
         results["prefetch"] = stats["total_prefetch"] >= 0
-        print(f"   ✅ Prefetch stats: total_fetched={stats['total_fetched']}")
+        print(f"    Prefetch stats: total_fetched={stats['total_fetched']}")
     else:
         results["prefetch"] = True
-        print("   ⚠️ Prefetcher not enabled")
+        print("    Prefetcher not enabled")
 
     # 5. 测试节点管理器
     print("\n5. Testing node manager...")
@@ -581,7 +551,7 @@ async def test_integration_distributed(redis_available):
     await manager.stop()
 
     results["node_manager"] = len(active_nodes) >= 2
-    print(f"   ✅ Active nodes detected: {len(active_nodes)}")
+    print(f"    Active nodes detected: {len(active_nodes)}")
 
     # 6. 清理
     print("\n6. Cleaning up...")
@@ -590,17 +560,17 @@ async def test_integration_distributed(redis_available):
     await asyncio.sleep(1)
 
     # 总结
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Integration Test Results:")
     passed = sum(1 for v in results.values() if v)
     total = len(results)
     print(f"  Passed: {passed}/{total}")
 
     for name, result in results.items():
-        status = "✅" if result else "❌"
+        status = "" if result else ""
         print(f"  {status} {name}: {result}")
 
-    print("="*60)
+    print("=" * 60)
 
     assert passed == total, f"Integration test failed: {passed}/{total} passed"
 

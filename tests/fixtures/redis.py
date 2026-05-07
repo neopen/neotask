@@ -6,12 +6,42 @@
 """
 
 import os
+import functools
 import pytest
 import redis.asyncio as redis
 
 # Redis 配置
 REDIS_URL = "redis://localhost:6379/11"
 TEST_REDIS_URL = "redis://localhost:6379/12"
+
+
+def skip_if_no_redis(func):
+    """装饰器：如果 Redis 不可用则跳过测试"""
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        try:
+            client = redis.from_url(TEST_REDIS_URL, decode_responses=True,
+                                    socket_connect_timeout=2, socket_timeout=2)
+            await client.ping()
+            await client.close()
+        except Exception:
+            pytest.skip("Redis not available")
+        return await func(*args, **kwargs)
+
+    # 如果是同步函数，也用同步方式处理
+    if not hasattr(func, '__wrapped__'):
+        wrapper_sync = functools.wraps(func)(lambda *a, **kw: func(*a, **kw))
+        try:
+            client = redis.from_url(TEST_REDIS_URL, decode_responses=True,
+                                    socket_connect_timeout=2, socket_timeout=2)
+            import asyncio as _asyncio
+            loop = _asyncio.get_event_loop()
+            loop.run_until_complete(client.ping())
+            loop.run_until_complete(client.close())
+        except Exception:
+            pass
+
+    return wrapper
 
 
 @pytest.fixture(scope="session")

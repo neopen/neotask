@@ -281,6 +281,7 @@ async def test_v03_scheduled_tasks(reporter: TestReporter):
         return {"recorded": True}
 
     config = SchedulerConfig.memory()
+    config.scan_interval = 0.2  # 200ms 扫描一次
     scheduler = TaskScheduler(executor=record_executor, config=config)
 
     try:
@@ -296,7 +297,7 @@ async def test_v03_scheduled_tasks(reporter: TestReporter):
         )
 
         # 等待任务执行
-        await asyncio.sleep(2)
+        scheduler.wait_for_result(task_id, timeout=3)
 
         delayed_executed = any(r["data"].get("task_id") == "delay-001" for r in execution_records)
         delay_duration = time.time() - delay_start
@@ -309,8 +310,6 @@ async def test_v03_scheduled_tasks(reporter: TestReporter):
 
         # 2. 周期任务
         print("\n📌 测试 3.2: 周期任务")
-        exec_count_before = len(execution_records)
-
         periodic_id = scheduler.submit_interval(
             {"action": "periodic", "task_id": "periodic-001"},
             interval_seconds=1,

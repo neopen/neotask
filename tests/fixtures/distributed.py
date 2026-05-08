@@ -78,3 +78,15 @@ async def redis_lock(distributed_redis_url):
     lock = RedisLock(distributed_redis_url)
     yield lock
     await lock.close()
+
+
+@pytest.fixture
+def redis_config(distributed_redis_url):
+    """Redis TaskPool 配置 fixture"""
+    from neotask.api.task_pool import TaskPoolConfig
+    return TaskPoolConfig(
+        storage_type="redis",
+        redis_url=distributed_redis_url,
+        worker_concurrency=2,
+        task_timeout=30
+    )

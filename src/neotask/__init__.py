@@ -76,7 +76,6 @@ from neotask.common.exceptions import (
 from neotask.distributed import (
     NodeManager, NodeInfo, NodeStatus,
     Coordinator, CoordinatorConfig,
-    Elector, LeaderInfo,
     Sharder, ConsistentHashSharder
 )
 

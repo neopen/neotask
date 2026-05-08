@@ -53,3 +53,13 @@ repos:
   #   rev: v0.10.0.1
   #   hooks:
   #     - id: shellcheck
+
+  - repo: local
+    hooks:
+      - id: pytest-check
+        name: pytest
+        entry: pytest tests/v.x/test_integration_v01_v04.py
+        language: system
+        pass_filenames: false
+        always_run: false
+        stages: [ manual ]  # 改为手动运行

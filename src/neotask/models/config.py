@@ -215,11 +215,16 @@ class TaskPoolConfig:
         return config
 
     @classmethod
-    def redis(cls, url: str, node_id: Optional[str] = None) -> "TaskPoolConfig":
+    def redis(cls, url: str, node_id: Optional[str] = None, enable_prefetch: bool = None, prefetch_size: int = None) -> "TaskPoolConfig":
         """创建Redis存储配置"""
         config = cls(storage_type="redis", redis_url=url)
         if node_id:
             config.node_id = node_id
+        if enable_prefetch:
+            config.enable_prefetch = enable_prefetch
+        if prefetch_size:
+            config.prefetch_size = prefetch_size
+
         return config
 
 

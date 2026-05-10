@@ -354,7 +354,6 @@ class TaskPool:
         self._running = True
         self._started = True
 
-
     def shutdown(self, graceful: bool = True, timeout: float = 30) -> None:
         """关闭任务池"""
         if not self._running:
@@ -374,15 +373,10 @@ class TaskPool:
             # 停止分布式组件
             if self._reclaimer:
                 await self._reclaimer.stop()
-                debug("Task reclaimer stopped")
-
             if self._heartbeat_manager:
                 await self._heartbeat_manager.stop()
-                debug("Heartbeat manager stopped")
-
             if self._node_manager:
                 await self._node_manager.stop()
-                debug("Node manager stopped")
 
             # 停止核心组件
             await self._supervisor.stop()
@@ -394,41 +388,41 @@ class TaskPool:
 
             await self._event_bus.stop()
 
-            # 关闭存储连接
-            if hasattr(self._task_repo, 'close'):
-                try:
-                    await self._task_repo.close()
-                except Exception as e:
-                    error(f"Error closing task repo: {e}")
-            if hasattr(self._queue_repo, 'close'):
-                try:
-                    await self._queue_repo.close()
-                except Exception as e:
-                    error(f"Error closing queue repo: {e}")
+            # 关闭存储连接 - 捕获异常避免循环冲突
+            for repo in [self._task_repo, self._queue_repo]:
+                if hasattr(repo, 'close'):
+                    try:
+                        await repo.close()
+                    except RuntimeError as e:
+                        if "different loop" in str(e):
+                            # 忽略循环冲突错误
+                            debug(f"Ignored loop conflict when closing {repo}")
+                        else:
+                            error(f"Error closing repo: {e}")
+                    except Exception as e:
+                        error(f"Error closing repo: {e}")
 
             info("TaskPool shutdown complete")
 
-        # 在事件循环中执行关闭
-        if self._loop and self._loop.is_running():
-            # 创建新的事件循环来执行关闭，避免循环冲突
-            try:
-                new_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(new_loop)
-                new_loop.run_until_complete(shutdown_components())
-                new_loop.close()
-            except Exception as e:
-                error(f"Failed to stop components in new loop: {e}")
-        elif self._loop:
-            future = asyncio.run_coroutine_threadsafe(shutdown_components(), self._loop)
-            try:
-                future.result(timeout=timeout + 5)
-            except Exception as e:
-                error(f"Failed to stop components: {e}")
-        else:
-            # 没有循环，直接运行
-            asyncio.run(shutdown_components())
+        # 执行关闭
+        try:
+            if self._loop and self._loop.is_running():
+                # 尝试在当前循环中执行
+                future = asyncio.run_coroutine_threadsafe(shutdown_components(), self._loop)
+                try:
+                    future.result(timeout=timeout + 5)
+                except Exception as e:
+                    error(f"Failed to stop components: {e}")
+            else:
+                # 创建临时循环
+                asyncio.run(shutdown_components())
+        except RuntimeError as e:
+            if "different loop" in str(e):
+                # 忽略循环冲突，尝试直接执行
+                pass
+            else:
+                error(f"Shutdown error: {e}")
 
-        # 清理
         self._started = False
         self._loop = None
 

@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Dict
@@ -232,8 +233,9 @@ class WorkerPool:
 
         debug(f"Worker {worker_id} stopped")
 
+
     async def _execute_task(self, worker_id: int, task_id: str) -> None:
-        """执行单个任务"""
+        """执行单个任务（支持进度回调）"""
         async with self._semaphore:
             debug(f"Worker {worker_id} executing task {task_id}")
 
@@ -243,12 +245,12 @@ class WorkerPool:
                 warning(f"Task {task_id} not found")
                 return
 
-            # 检查任务状态 - 只有 PENDING 的任务才能执行
+            # 检查任务状态
             if task.status != TaskStatus.PENDING:
                 warning(f"Task {task_id} status is {task.status}, not PENDING, skipping")
                 return
 
-            # 开始执行 - 更新状态为 RUNNING
+            # 开始执行
             success = await self._lifecycle.start_task(task_id, f"worker-{worker_id}")
             if not success:
                 error(f"Failed to start task {task_id}")
@@ -258,14 +260,25 @@ class WorkerPool:
             current_retry = task.retry_count
 
             try:
-                # 执行任务
-                if self._task_timeout:
-                    result = await asyncio.wait_for(
-                        self._executor.execute(task.data),
-                        timeout=self._task_timeout
-                    )
+                # 定义进度回调函数
+                async def progress_callback(progress: float, message: str = ""):
+                    """更新任务进度"""
+                    await self._update_task_progress(task_id, progress, message)
+
+                # 检查执行器是否支持进度回调
+                if hasattr(self._executor, 'execute_with_progress'):
+                    # 使用支持进度的执行方法
+                    result = await self._executor.execute_with_progress(task.data, progress_callback)
                 else:
-                    result = await self._executor.execute(task.data)
+                    # 使用标准执行方法
+                    if self._task_timeout:
+                        result = await asyncio.wait_for(
+                            self._executor.execute(task.data),
+                            timeout=self._task_timeout
+                        )
+                    else:
+                        result = await self._executor.execute(task.data)
+                # ========== 进度回调支持结束 ==========
 
                 # 标记完成
                 await self._lifecycle.complete_task(task_id, result)
@@ -297,6 +310,31 @@ class WorkerPool:
                     )
                     self._worker_stats[worker_id].is_busy = self._worker_stats[worker_id].active_tasks > 0
                     self._worker_stats[worker_id].last_active = datetime.now()
+
+    async def _update_task_progress(self, task_id: str, progress: float, message: str = "") -> None:
+        """更新任务进度
+
+        Args:
+            task_id: 任务ID
+            progress: 进度 (0.0 - 1.0)
+            message: 进度消息
+        """
+        try:
+            # 更新存储中的任务进度
+            if hasattr(self._task_repo, 'update_progress'):
+                await self._task_repo.update_progress(task_id, progress, message)
+
+            # 发送进度事件
+            await self._event_bus.emit(TaskEvent(
+                "task.progress",
+                task_id,
+                {"progress": progress, "message": message, "timestamp": time.time()}
+            ))
+
+            debug(f"Task {task_id} progress: {progress * 100:.1f}% - {message}")
+        except Exception as e:
+            debug(f"Failed to update progress for task {task_id}: {e}")
+
 
     async def _handle_task_failure(self, task_id: str, error_msg: str, retry_count: int, worker_id: int) -> None:
         """处理任务失败和重试"""

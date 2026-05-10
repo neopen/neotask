@@ -7,20 +7,14 @@
 
 import asyncio
 import time
-from dataclasses import dataclass
 from typing import Optional, Set, Dict, Any, List
 
+import redis.asyncio as redis
+from redis.asyncio import ConnectionPool
+
+from neotask.models.config import HeartbeatConfig
 from neotask.models.task import TaskStatus
 from neotask.storage.base import TaskRepository
-
-
-@dataclass
-class HeartbeatConfig:
-    """心跳配置"""
-    interval: float = 5.0  # 心跳间隔（秒）
-    timeout: float = 20.0  # 心跳超时（秒）
-    cleanup_interval: float = 30.0  # 清理检查间隔
-    max_reclaim_per_cycle: int = 100  # 每周期最大回收数量
 
 
 class HeartbeatManager:
@@ -35,22 +29,30 @@ class HeartbeatManager:
     def __init__(
             self,
             node_id: str,
-            storage,  # Redis/SQLite 存储
+            redis_url: str,  # 直接接收 Redis URL
             task_repo: TaskRepository,
             config: Optional[HeartbeatConfig] = None
     ):
         self._node_id = node_id
-        self._storage = storage
+        self._redis_url = redis_url
         self._task_repo = task_repo
         self._config = config or HeartbeatConfig()
 
         self._running = False
         self._heartbeat_task: Optional[asyncio.Task] = None
         self._monitor_task: Optional[asyncio.Task] = None
+        self._client: Optional[redis.Redis] = None
 
         # 统计
         self._reclaimed_nodes: Set[str] = set()
         self._total_reclaimed_tasks = 0
+
+    async def _get_client(self) -> redis.Redis:
+        """获取 Redis 客户端"""
+        if self._client is None:
+            pool = ConnectionPool.from_url(self._redis_url, decode_responses=True)
+            self._client = redis.Redis(connection_pool=pool)
+        return self._client
 
     async def start(self) -> None:
         """启动心跳管理器"""
@@ -58,6 +60,7 @@ class HeartbeatManager:
             return
 
         self._running = True
+        await self._get_client()  # 确保客户端初始化
 
         # 注册节点
         await self._register_node()
@@ -80,34 +83,42 @@ class HeartbeatManager:
         # 注销节点
         await self._unregister_node()
 
+        if self._client:
+            await self._client.close()
+            self._client = None
+
     async def _register_node(self) -> None:
         """注册节点"""
+        client = await self._get_client()
         key = f"node:{self._node_id}"
-        await self._storage.hset(key, "node_id", self._node_id)
-        await self._storage.hset(key, "status", "active")
-        await self._storage.hset(key, "started_at", str(time.time()))
-        await self._storage.hset(key, "last_heartbeat", str(time.time()))
-        await self._storage.expire(key, int(self._config.timeout * 2))
+        await client.hset(key, "node_id", self._node_id)
+        await client.hset(key, "status", "active")
+        await client.hset(key, "started_at", str(time.time()))
+        await client.hset(key, "last_heartbeat", str(time.time()))
+        await client.expire(key, int(self._config.timeout * 2))
 
         # 加入节点集合
-        await self._storage.sadd("neotask:active_nodes", self._node_id)
+        await client.sadd("neotask:active_nodes", self._node_id)
 
     async def _unregister_node(self) -> None:
         """注销节点"""
+        if not self._client:
+            return
         key = f"node:{self._node_id}"
-        await self._storage.hset(key, "status", "stopped")
-        await self._storage.expire(key, 60)
+        await self._client.hset(key, "status", "stopped")
+        await self._client.expire(key, 60)
 
         # 从节点集合移除
-        await self._storage.srem("neotask:active_nodes", self._node_id)
+        await self._client.srem("neotask:active_nodes", self._node_id)
 
     async def _heartbeat_loop(self) -> None:
         """心跳上报循环"""
         while self._running:
             try:
-                key = f"node:{self._node_id}"
-                await self._storage.hset(key, "last_heartbeat", str(time.time()))
-                await self._storage.expire(key, int(self._config.timeout * 2))
+                if self._client:
+                    key = f"node:{self._node_id}"
+                    await self._client.hset(key, "last_heartbeat", str(time.time()))
+                    await self._client.expire(key, int(self._config.timeout * 2))
                 await asyncio.sleep(self._config.interval)
             except asyncio.CancelledError:
                 break
@@ -127,8 +138,11 @@ class HeartbeatManager:
 
     async def _check_and_reclaim_dead_nodes(self) -> None:
         """检查并回收死节点的任务"""
+        if not self._client:
+            return
+
         # 获取所有活跃节点
-        node_ids = await self._storage.smembers("neotask:active_nodes")
+        node_ids = await self._client.smembers("neotask:active_nodes")
         now = time.time()
 
         for node_id in node_ids:
@@ -136,7 +150,7 @@ class HeartbeatManager:
                 continue
 
             key = f"node:{node_id}"
-            data = await self._storage.hgetall(key)
+            data = await self._client.hgetall(key)
 
             if not data:
                 continue
@@ -156,14 +170,15 @@ class HeartbeatManager:
                 self._reclaimed_nodes.add(node_id)
 
     async def _reclaim_node_tasks(self, node_id: str) -> None:
-        """回收节点任务
+        """回收节点任务"""
+        if not self._client:
+            return
 
-        将指定节点正在执行的任务重新放回队列
-        """
         try:
             # 获取该节点正在执行的任务
-            # 方案1：通过状态索引扫描
-            running_task_ids = await self._storage.smembers(f"status:{TaskStatus.RUNNING.value}")
+            running_task_ids = await self._client.smembers(
+                f"status:{TaskStatus.RUNNING.value}"
+            )
 
             reclaimed_count = 0
 
@@ -173,7 +188,7 @@ class HeartbeatManager:
 
                 # 获取任务详情
                 key = f"task:{task_id}"
-                data = await self._storage.hgetall(key)
+                data = await self._client.hgetall(key)
 
                 if not data:
                     continue
@@ -192,46 +207,43 @@ class HeartbeatManager:
 
             # 标记节点为已回收
             key = f"node:{node_id}"
-            await self._storage.hset(key, "status", "reclaimed")
+            await self._client.hset(key, "status", "reclaimed")
 
-        except Exception as e:
+        except Exception:
             pass
 
     async def _reclaim_single_task(self, task_id: str, task_data: Dict) -> bool:
-        """回收单个任务
+        """回收单个任务"""
+        if not self._client:
+            return False
 
-        Args:
-            task_id: 任务ID
-            task_data: 任务数据
-
-        Returns:
-            是否回收成功
-        """
         try:
             # 更新任务状态为 PENDING
             key = f"task:{task_id}"
-            await self._storage.hset(key, "status", TaskStatus.PENDING.value)
-            await self._storage.hset(key, "node_id", "")
-            await self._storage.hset(key, "error", f"Reclaimed from dead node")
+            await self._client.hset(key, "status", TaskStatus.PENDING.value)
+            await self._client.hset(key, "node_id", "")
+            await self._client.hset(key, "error", f"Reclaimed from dead node")
 
             # 获取优先级
             priority = int(task_data.get("priority", 2))
 
             # 重新入队
-            await self._storage.zadd("queue:priority", {task_id: priority})
+            await self._client.zadd("queue:priority", {task_id: priority})
 
             # 更新状态索引
-            await self._storage.srem(f"status:{TaskStatus.RUNNING.value}", task_id)
-            await self._storage.sadd(f"status:{TaskStatus.PENDING.value}", task_id)
+            await self._client.srem(f"status:{TaskStatus.RUNNING.value}", task_id)
+            await self._client.sadd(f"status:{TaskStatus.PENDING.value}", task_id)
 
             return True
 
-        except Exception as e:
+        except Exception:
             return False
 
     async def get_active_nodes(self) -> List[str]:
         """获取活跃节点列表"""
-        node_ids = await self._storage.smembers("neotask:active_nodes")
+        if not self._client:
+            return []
+        node_ids = await self._client.smembers("neotask:active_nodes")
         active_nodes = []
 
         for node_id in node_ids:
@@ -242,8 +254,10 @@ class HeartbeatManager:
 
     async def is_node_alive(self, node_id: str) -> bool:
         """检查节点是否存活"""
+        if not self._client:
+            return False
         key = f"node:{node_id}"
-        data = await self._storage.hgetall(key)
+        data = await self._client.hgetall(key)
 
         if not data:
             return False

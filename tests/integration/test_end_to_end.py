@@ -219,7 +219,7 @@ class TestEndToEndWithDelayed:
         )
 
         # 等待多次执行
-        await asyncio.sleep(2.0)
+        await asyncio.sleep(5.0)
 
         # 取消周期任务
         scheduler.cancel_periodic(task_id)

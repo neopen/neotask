@@ -11,10 +11,11 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Dict, Any, List, Callable, Union
 
-from neotask.common.logger import error
+from neotask.common.logger import error, debug, info
 from neotask.core.dispatcher import TaskDispatcher
 from neotask.core.future import FutureManager
 from neotask.core.lifecycle import TaskLifecycleManager
+from neotask.core.heartbeat import HeartbeatManager, HeartbeatConfig
 from neotask.event.bus import EventBus, TaskEvent
 from neotask.executor.base import TaskExecutor
 from neotask.executor.factory import ExecutorFactory
@@ -28,6 +29,9 @@ from neotask.queue.queue_scheduler import QueueScheduler
 from neotask.storage.factory import StorageFactory
 from neotask.worker.pool import WorkerPool
 from neotask.worker.supervisor import WorkerSupervisor
+from neotask.worker.reclaimer import TaskReclaimer, ReclaimerConfig
+from neotask.distributed.node import NodeManager
+from neotask.distributed.coordinator import Coordinator, CoordinatorConfig
 
 
 class TaskPool:
@@ -36,6 +40,12 @@ class TaskPool:
     专注于立即执行的任务，提供简洁的同步/异步API。
 
     设计模式：Facade Pattern - 封装底层复杂组件
+
+    去中心化架构特性：
+    - 所有节点对等，无主节点
+    - 抢占式任务消费
+    - 自动故障检测与恢复
+    - 水平扩展能力
     """
 
     def __init__(
@@ -89,7 +99,8 @@ class TaskPool:
             lifecycle_manager=self._lifecycle,
             concurrency=self._config.worker_concurrency,
             prefetch_size=self._config.prefetch_size,
-            task_timeout=self._config.task_timeout
+            task_timeout=self._config.task_timeout,
+            enable_prefetch=self._config.enable_prefetch
         )
 
         # 设置重试配置
@@ -100,6 +111,16 @@ class TaskPool:
 
         # 初始化监督者
         self._supervisor = WorkerSupervisor(self._worker_pool)
+
+        # ========== 分布式组件（去中心化）==========
+        self._node_manager: Optional[NodeManager] = None
+        self._heartbeat_manager: Optional[HeartbeatManager] = None
+        self._reclaimer: Optional[TaskReclaimer] = None
+        self._coordinator: Optional[Coordinator] = None
+
+        # 仅在 Redis 模式下启用分布式组件
+        if self._config.storage_type == "redis" and self._config.redis_url:
+            self._init_distributed_components()
 
         # 初始化监控
         self._metrics = MetricsCollector() if self._config.enable_metrics else None
@@ -121,12 +142,66 @@ class TaskPool:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._loop_thread: Optional[threading.Thread] = None
 
+    def _init_distributed_components(self) -> None:
+        """初始化分布式组件（去中心化架构）"""
+        try:
+            # 1. 节点管理器
+            self._node_manager = NodeManager(
+                redis_url=self._config.redis_url,
+                node_id=self._config.node_id
+            )
+
+            # 2. 心跳管理器 - 直接传递 Redis URL
+            heartbeat_config = HeartbeatConfig(
+                interval=5,
+                timeout=20,
+                cleanup_interval=30
+            )
+            self._heartbeat_manager = HeartbeatManager(
+                node_id=self._config.node_id,
+                redis_url=self._config.redis_url,  # 直接传 URL
+                task_repo=self._task_repo,
+                config=heartbeat_config
+            )
+
+            # 3. 任务回收器
+            reclaimer_config = ReclaimerConfig(
+                interval=30,
+                task_timeout=self._config.task_timeout or 300,
+                max_retries=self._config.max_retries,
+                enable_timeout_reclaim=True,
+                enable_orphan_reclaim=True,
+                enable_stale_lock_reclaim=True
+            )
+            self._reclaimer = TaskReclaimer(
+                task_repo=self._task_repo,
+                queue_scheduler=self._queue_scheduler,
+                lock=self._lock_manager,
+                event_bus=self._event_bus,
+                config=reclaimer_config
+            )
+
+            # 4. 协调器
+            coordinator_config = CoordinatorConfig(
+                load_balance_strategy="round_robin",
+                distribution_mode="shared"
+            )
+            self._coordinator = Coordinator(
+                node_manager=self._node_manager,
+                queue_scheduler=self._queue_scheduler,
+                config=coordinator_config
+            )
+
+            info(f"Distributed components initialized for node: {self._config.node_id}")
+
+        except Exception as e:
+            error(f"Failed to initialize distributed components: {e}")
+
     def _init_executor(self, executor: Union[TaskExecutor, Callable, None]) -> TaskExecutor:
         """初始化执行器"""
         if executor is None:
             async def default_executor(data):
                 return {"result": "executed", "data": data}
-
             return ExecutorFactory.create(default_executor)
 
         if isinstance(executor, TaskExecutor):
@@ -136,7 +211,6 @@ class TaskPool:
         if not inspect.iscoroutinefunction(executor):
             async def wrapped_executor(data):
                 return executor(data)
-
             return ExecutorFactory.create(wrapped_executor)
 
         return ExecutorFactory.create(
@@ -194,12 +268,17 @@ class TaskPool:
 
         @self._event_bus.subscribe("task.failed")
         async def fail_future_handler(event: TaskEvent):
-            error = event.data.get("error") if isinstance(event.data, dict) else str(event.data)
-            await self._future_manager.complete(event.task_id, error=error)
+            err = event.data.get("error") if isinstance(event.data, dict) else str(event.data)
+            await self._future_manager.complete(event.task_id, error=err)
 
         @self._event_bus.subscribe("task.cancelled")
         async def cancel_future_handler(event: TaskEvent):
             await self._future_manager.complete(event.task_id, error="Task cancelled")
+
+        # 任务回收事件（用于监控）
+        @self._event_bus.subscribe("task.reclaimed")
+        async def reclaim_handler(event: TaskEvent):
+            debug(f"Task reclaimed: {event.task_id}, reason: {event.data}")
 
     def _ensure_running(self):
         """确保服务正在运行"""
@@ -208,15 +287,6 @@ class TaskPool:
 
     def _run_coroutine(self, coro):
         """运行协程 - 线程安全版本"""
-        if self._loop is None:
-            raise RuntimeError("TaskPool not started. Call start() first.")
-
-        # 在当前线程使用 run_coroutine_threadsafe
-        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        return future.result()
-
-    def _run_async_in_thread(self, coro):
-        """在线程中运行异步代码"""
         if self._loop is None:
             raise RuntimeError("TaskPool not started. Call start() first.")
 
@@ -232,25 +302,38 @@ class TaskPool:
 
         # 创建独立的事件循环线程
         def run_loop():
-            # 创建新的事件循环
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-
-            # 保存到实例属性（使用普通变量，不是 typing 类型）
             self._loop = loop
 
-            # 启动组件
             async def start_components():
+                # 启动核心组件
                 await self._event_bus.start()
                 await self._queue_scheduler.start()
                 await self._worker_pool.start()
                 await self._supervisor.start()
 
+                # 启动分布式组件（去中心化）
+                if self._node_manager:
+                    await self._node_manager.start()
+                    info(f"Node manager started for {self._config.node_id}")
+
+                if self._heartbeat_manager:
+                    await self._heartbeat_manager.start()
+                    debug("Heartbeat manager started")
+
+                if self._reclaimer:
+                    await self._reclaimer.start()
+                    info("Task reclaimer started")
+
+                # 启动监控上报
                 if self._config.enable_reporter:
                     self._reporter_manager = ReporterManager(interval=60)
                     self._reporter_manager.add_reporter(ConsoleReporter())
                     self._reporter_manager.set_metrics_callback(self.get_stats)
                     await self._reporter_manager.start()
+
+                info(f"TaskPool started with node_id: {self._config.node_id}")
 
             loop.run_until_complete(start_components())
             loop.run_forever()
@@ -277,6 +360,7 @@ class TaskPool:
             return
 
         self._running = False
+        info("Shutting down TaskPool...")
 
         async def shutdown_components():
             # 停止接收新任务
@@ -286,7 +370,15 @@ class TaskPool:
             if graceful:
                 await self._queue_scheduler.wait_until_empty(timeout)
 
-            # 停止组件
+            # 停止分布式组件
+            if self._reclaimer:
+                await self._reclaimer.stop()
+            if self._heartbeat_manager:
+                await self._heartbeat_manager.stop()
+            if self._node_manager:
+                await self._node_manager.stop()
+
+            # 停止核心组件
             await self._supervisor.stop()
             await self._worker_pool.stop(graceful, timeout)
             await self._queue_scheduler.stop()
@@ -296,39 +388,70 @@ class TaskPool:
 
             await self._event_bus.stop()
 
-            # 关闭存储连接
-            if hasattr(self._task_repo, 'close'):
-                await self._task_repo.close()
-            if hasattr(self._queue_repo, 'close'):
-                await self._queue_repo.close()
+            # 关闭存储连接 - 捕获异常避免循环冲突
+            for repo in [self._task_repo, self._queue_repo]:
+                if hasattr(repo, 'close'):
+                    try:
+                        await repo.close()
+                    except RuntimeError as e:
+                        if "different loop" in str(e):
+                            # 忽略循环冲突错误
+                            debug(f"Ignored loop conflict when closing {repo}")
+                        else:
+                            error(f"Error closing repo: {e}")
+                    except Exception as e:
+                        error(f"Error closing repo: {e}")
 
-        # 在事件循环中执行关闭
-        if self._loop:
-            future = asyncio.run_coroutine_threadsafe(shutdown_components(), self._loop)
-            try:
-                future.result(timeout=timeout + 5)
-            except Exception as e:
-                error(f"Failed to stop components: {e}")
+            info("TaskPool shutdown complete")
+
+        # 执行关闭
+        try:
+            if self._loop and self._loop.is_running():
+                # 尝试在当前循环中执行
+                future = asyncio.run_coroutine_threadsafe(shutdown_components(), self._loop)
+                try:
+                    future.result(timeout=timeout + 5)
+                except Exception as e:
+                    error(f"Failed to stop components: {e}")
+            else:
+                # 创建临时循环
+                asyncio.run(shutdown_components())
+        except RuntimeError as e:
+            if "different loop" in str(e):
+                # 忽略循环冲突，尝试直接执行
                 pass
+            else:
+                error(f"Shutdown error: {e}")
 
-            # 停止循环
-            self._loop.call_soon_threadsafe(self._loop.stop)
-
-        if self._loop_thread and self._loop_thread.is_alive():
-            self._loop_thread.join(timeout=5)
-
-        self._executor_service.shutdown(wait=False)
         self._started = False
         self._loop = None
 
     def __enter__(self):
-        """上下文管理器入口"""
+        """同步上下文管理器入口"""
         self.start()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """上下文管理器出口"""
+        """同步上下文管理器出口"""
         self.shutdown()
+
+    # ========== 异步上下文管理器 ==========
+    async def __aenter__(self):
+        """异步上下文管理器入口"""
+        self.start()
+        # 等待启动完成
+        import time
+        timeout = 5
+        start_time = time.time()
+        while not self._running and time.time() - start_time < timeout:
+            await asyncio.sleep(0.05)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """异步上下文管理器出口"""
+        self.shutdown()
+        # 等待关闭完成
+        await asyncio.sleep(0.1)
 
     # ========== 任务提交 API ==========
 
@@ -530,10 +653,15 @@ class TaskPool:
             "failed": stats.failed,
             "cancelled": stats.cancelled,
             "success_rate": stats.success_rate if stats.total > 0 else 1.0,
+            "node_id": self._config.node_id,
         }
 
         if self._metrics:
             result["metrics"] = self._metrics.get_summary()
+
+        # 添加回收器统计
+        if self._reclaimer:
+            result["reclaimer"] = self._reclaimer.get_stats()
 
         return result
 
@@ -551,10 +679,14 @@ class TaskPool:
             "failed": stats.failed,
             "cancelled": stats.cancelled,
             "success_rate": stats.success_rate if stats.total > 0 else 1.0,
+            "node_id": self._config.node_id,
         }
 
         if self._metrics:
-            result["metrics"] = self._metrics.get_summary()
+            result["metrics"] = await self._metrics.get_summary_async()
+
+        if self._reclaimer:
+            result["reclaimer"] = self._reclaimer.get_stats()
 
         return result
 
@@ -564,9 +696,25 @@ class TaskPool:
 
     def get_health_status(self) -> Dict[str, Any]:
         """获取健康状态"""
+        health = {"status": "healthy", "node_id": self._config.node_id}
+
         if self._health_checker:
-            return self._health_checker.get_summary()
-        return {"status": "unknown", "message": "Health check disabled"}
+            health.update(self._health_checker.get_summary())
+
+        if self._node_manager:
+            try:
+                active_nodes = self._run_coroutine(self._node_manager.get_active_nodes())
+                health["active_nodes"] = len(active_nodes)
+            except Exception:
+                health["active_nodes"] = 0
+
+        if self._heartbeat_manager:
+            health["heartbeat"] = self._heartbeat_manager.get_stats()
+
+        if self._reclaimer:
+            health["reclaimer"] = self._reclaimer.get_stats()
+
+        return health
 
     # ========== 队列管理 API ==========
 
@@ -624,6 +772,27 @@ class TaskPool:
         lock_key = f"task:{task_id}"
         return await self._lock_manager.release(lock_key)
 
+    # ========== 节点管理 API（去中心化）==========
+
+    def get_active_nodes(self) -> List[Dict[str, Any]]:
+        """获取活跃节点列表"""
+        if self._node_manager:
+            nodes = self._run_coroutine(self._node_manager.get_active_nodes())
+            return [{"node_id": n.node_id, "hostname": n.hostname, "pid": n.pid} for n in nodes]
+        return []
+
+    async def get_active_nodes_async(self) -> List[Dict[str, Any]]:
+        """获取活跃节点列表（异步）"""
+        if self._node_manager:
+            nodes = await self._node_manager.get_active_nodes()
+            return [{"node_id": n.node_id, "hostname": n.hostname, "pid": n.pid} for n in nodes]
+        return []
+
+    def is_leader(self) -> bool:
+        """检查当前节点是否为领导者（去中心化架构中始终返回 False）"""
+        # 去中心化架构无主节点
+        return False
+
     # ========== 事件回调 API ==========
 
     def on_created(self, handler: Callable) -> None:
@@ -649,3 +818,7 @@ class TaskPool:
     def on_progress(self, handler: Callable) -> None:
         """注册任务进度回调"""
         self._event_bus.subscribe("task.progress", handler)
+
+    def on_reclaimed(self, handler: Callable) -> None:
+        """注册任务回收回调"""
+        self._event_bus.subscribe("task.reclaimed", handler)

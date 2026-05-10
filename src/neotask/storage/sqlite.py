@@ -6,11 +6,11 @@
 """
 
 import json
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import aiosqlite
 
-from neotask.models.task import Task, TaskStatus, TaskPriority
+from neotask.models.task import Task, TaskStatus
 from neotask.storage.base import TaskRepository, QueueRepository
 
 
@@ -42,7 +42,9 @@ class SQLiteTaskRepository(TaskRepository):
                 started_at TEXT,
                 completed_at TEXT,
                 result TEXT,
-                error TEXT
+                error TEXT,
+                progress REAL DEFAULT 0.0,
+                progress_message TEXT DEFAULT ''
             )
         """)
         await self._conn.execute("""
@@ -60,8 +62,8 @@ class SQLiteTaskRepository(TaskRepository):
         await self._conn.execute("""
             INSERT OR REPLACE INTO tasks 
             (task_id, data, status, priority, node_id, retry_count, ttl,
-             created_at, started_at, completed_at, result, error)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             created_at, started_at, completed_at, result, error, progress, progress_message)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             task.task_id,
             json.dumps(task.data),
@@ -74,7 +76,9 @@ class SQLiteTaskRepository(TaskRepository):
             task.started_at.isoformat() if task.started_at else None,
             task.completed_at.isoformat() if task.completed_at else None,
             json.dumps(task.result) if task.result else None,
-            task.error
+            task.error,
+            getattr(task, 'progress', 0.0),
+            getattr(task, 'progress_message', '')
         ))
         await self._conn.commit()
 
@@ -105,12 +109,28 @@ class SQLiteTaskRepository(TaskRepository):
             "completed_at": data["completed_at"],
             "result": data["result"],
             "error": data["error"],
+            "progress": data.get("progress", 0.0),
+            "progress_message": data.get("progress_message", "")
         })
 
     async def delete(self, task_id: str) -> None:
         await self._ensure_init()
         await self._conn.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
         await self._conn.commit()
+
+    async def delete_batch(self, task_ids: List[str]) -> int:
+        """批量删除任务"""
+        if not task_ids:
+            return 0
+
+        await self._ensure_init()
+        placeholders = ",".join("?" * len(task_ids))
+        cursor = await self._conn.execute(
+            f"DELETE FROM tasks WHERE task_id IN ({placeholders})",
+            task_ids
+        )
+        await self._conn.commit()
+        return cursor.rowcount
 
     async def list_by_status(self, status: TaskStatus, limit: int = 100, offset: int = 0) -> List[Task]:
         await self._ensure_init()
@@ -137,21 +157,65 @@ class SQLiteTaskRepository(TaskRepository):
                 "completed_at": data["completed_at"],
                 "result": data["result"],
                 "error": data["error"],
+                "progress": data.get("progress", 0.0),
+                "progress_message": data.get("progress_message", "")
             }))
 
         return tasks
 
     async def update_status(self, task_id: str, status: TaskStatus, **kwargs) -> bool:
         await self._ensure_init()
+
+        # 检查任务是否存在
         if not await self.exists(task_id):
             return False
 
+        # 构建更新语句
+        updates = ["status = ?"]
+        params = [status.value]
+
+        for key, value in kwargs.items():
+            if key in ["node_id", "retry_count", "error", "completed_at",
+                       "started_at", "progress", "progress_message"]:
+                updates.append(f"{key} = ?")
+                params.append(value)
+
+        params.append(task_id)
+
         await self._conn.execute(
-            "UPDATE tasks SET status = ? WHERE task_id = ?",
-            (status.value, task_id)
+            f"UPDATE tasks SET {', '.join(updates)} WHERE task_id = ?",
+            params
         )
         await self._conn.commit()
         return True
+
+    async def update_status_batch(
+            self,
+            updates: List[Tuple[str, TaskStatus, dict]]
+    ) -> int:
+        """批量更新任务状态
+
+        Args:
+            updates: 更新列表，每个元素为 (task_id, status, kwargs)
+
+        Returns:
+            成功更新的数量
+        """
+        if not updates:
+            return 0
+
+        await self._ensure_init()
+        success_count = 0
+
+        for task_id, status, kwargs in updates:
+            try:
+                result = await self.update_status(task_id, status, **kwargs)
+                if result:
+                    success_count += 1
+            except Exception:
+                continue
+
+        return success_count
 
     async def exists(self, task_id: str) -> bool:
         await self._ensure_init()
@@ -191,6 +255,8 @@ class SQLiteTaskRepository(TaskRepository):
                 "completed_at": data["completed_at"],
                 "result": data["result"],
                 "error": data["error"],
+                "progress": data.get("progress", 0.0),
+                "progress_message": data.get("progress_message", "")
             }))
 
         return tasks

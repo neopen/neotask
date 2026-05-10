@@ -78,6 +78,16 @@ class WorkerConfig:
         return cls(max_concurrent=50, prefetch_size=100)
 
 
+
+@dataclass
+class HeartbeatConfig:
+    """心跳配置"""
+    interval: float = 5.0  # 心跳间隔（秒）
+    timeout: float = 20.0  # 心跳超时（秒）
+    cleanup_interval: float = 30.0  # 清理检查间隔
+    max_reclaim_per_cycle: int = 100  # 每周期最大回收数量
+
+
 @dataclass
 class QueueConfig:
     """队列配置"""

@@ -130,6 +130,37 @@ class RedisTaskRepository(TaskRepository):
             self._pool = None
 
 
+    async def update_status_batch(
+            self,
+            updates: List[tuple]
+    ) -> int:
+        """批量更新任务状态（使用 pipeline）"""
+        client = await self._get_client()
+        pipe = client.pipeline()
+
+        for update in updates:
+            task_id = update[0]
+            status = update[1]
+            kwargs = update[2] if len(update) > 2 else {}
+
+            key = f"task:{task_id}"
+
+            # 获取现有任务
+            data = await client.get(key)
+            if data:
+                task_dict = json.loads(data)
+                task_dict["status"] = status.value if hasattr(status, 'value') else status
+
+                for key_name, value in kwargs.items():
+                    if key_name in task_dict:
+                        task_dict[key_name] = value
+
+                pipe.set(key, json.dumps(task_dict, default=str))
+
+        results = await pipe.execute()
+        return len([r for r in results if r])
+
+
 class RedisQueueRepository(QueueRepository):
     """Redis-based priority queue repository."""
 

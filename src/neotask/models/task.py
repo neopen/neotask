@@ -50,6 +50,8 @@ class Task:
     data: Dict[str, Any]
     status: TaskStatus = TaskStatus.PENDING
     priority: TaskPriority = TaskPriority.NORMAL
+    progress: float = 0.0  # 任务进度 (0.0 - 1.0)
+    progress_message: str = ""  # 进度消息
     node_id: str = ""
     retry_count: int = 0
     ttl: int = 3600
@@ -66,6 +68,8 @@ class Task:
             "data": json.dumps(self.data) if self.data is not None else "{}",
             "status": self.status.value,
             "priority": self.priority.value,
+            "progress": self.progress,
+            "progress_message": self.progress_message or "",
             "node_id": self.node_id or "",
             "retry_count": self.retry_count,
             "ttl": self.ttl,
@@ -75,6 +79,13 @@ class Task:
             "result": json.dumps(self.result) if self.result is not None else "",
             "error": self.error or "",
         }
+
+    def update_progress(self, progress: float, message: str = "") -> None:
+        """更新任务进度"""
+        self.progress = min(1.0, max(0.0, progress))
+        if message:
+            self.progress_message = message
+
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Task":

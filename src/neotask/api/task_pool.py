@@ -645,3 +645,7 @@ class TaskPool:
     def on_cancelled(self, handler: Callable) -> None:
         """注册任务取消回调"""
         self._event_bus.subscribe("task.cancelled", handler)
+
+    def on_progress(self, handler: Callable) -> None:
+        """注册任务进度回调"""
+        self._event_bus.subscribe("task.progress", handler)

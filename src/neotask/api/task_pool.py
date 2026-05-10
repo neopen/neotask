@@ -354,6 +354,7 @@ class TaskPool:
         self._running = True
         self._started = True
 
+
     def shutdown(self, graceful: bool = True, timeout: float = 30) -> None:
         """关闭任务池"""
         if not self._running:
@@ -370,7 +371,7 @@ class TaskPool:
             if graceful:
                 await self._queue_scheduler.wait_until_empty(timeout)
 
-            # 停止分布式组件（先于 Worker 停止，确保回收完成）
+            # 停止分布式组件
             if self._reclaimer:
                 await self._reclaimer.stop()
                 debug("Task reclaimer stopped")
@@ -395,36 +396,68 @@ class TaskPool:
 
             # 关闭存储连接
             if hasattr(self._task_repo, 'close'):
-                await self._task_repo.close()
+                try:
+                    await self._task_repo.close()
+                except Exception as e:
+                    error(f"Error closing task repo: {e}")
             if hasattr(self._queue_repo, 'close'):
-                await self._queue_repo.close()
+                try:
+                    await self._queue_repo.close()
+                except Exception as e:
+                    error(f"Error closing queue repo: {e}")
 
             info("TaskPool shutdown complete")
 
         # 在事件循环中执行关闭
-        if self._loop:
+        if self._loop and self._loop.is_running():
+            # 创建新的事件循环来执行关闭，避免循环冲突
+            try:
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                new_loop.run_until_complete(shutdown_components())
+                new_loop.close()
+            except Exception as e:
+                error(f"Failed to stop components in new loop: {e}")
+        elif self._loop:
             future = asyncio.run_coroutine_threadsafe(shutdown_components(), self._loop)
             try:
                 future.result(timeout=timeout + 5)
             except Exception as e:
                 error(f"Failed to stop components: {e}")
+        else:
+            # 没有循环，直接运行
+            asyncio.run(shutdown_components())
 
-            # 停止循环
-            self._loop.call_soon_threadsafe(self._loop.stop)
-
-        if self._loop_thread and self._loop_thread.is_alive():
-            self._loop_thread.join(timeout=5)
-
-        self._executor_service.shutdown(wait=False)
+        # 清理
         self._started = False
         self._loop = None
 
     def __enter__(self):
+        """同步上下文管理器入口"""
         self.start()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        """同步上下文管理器出口"""
         self.shutdown()
+
+    # ========== 异步上下文管理器 ==========
+    async def __aenter__(self):
+        """异步上下文管理器入口"""
+        self.start()
+        # 等待启动完成
+        import time
+        timeout = 5
+        start_time = time.time()
+        while not self._running and time.time() - start_time < timeout:
+            await asyncio.sleep(0.05)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """异步上下文管理器出口"""
+        self.shutdown()
+        # 等待关闭完成
+        await asyncio.sleep(0.1)
 
     # ========== 任务提交 API ==========
 

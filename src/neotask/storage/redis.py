@@ -7,7 +7,7 @@
 
 import time
 import json
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Tuple
 
 import redis.asyncio as redis
 from redis.asyncio import ConnectionPool
@@ -70,6 +70,43 @@ class RedisTaskRepository(TaskRepository):
         result = await client.delete(key)
         return result > 0
 
+    async def delete_batch(self, task_ids: List[str]) -> int:
+        """批量删除任务
+
+        Args:
+            task_ids: 任务ID列表
+
+        Returns:
+            成功删除的数量
+        """
+        if not task_ids:
+            return 0
+
+        client = await self._get_client()
+        pipe = client.pipeline()
+
+        deleted_count = 0
+
+        for task_id in task_ids:
+            key = f"task:{task_id}"
+            data = await client.get(key)
+
+            if data:
+                task_dict = json.loads(data)
+                status = task_dict.get("status")
+                if status:
+                    # 从状态索引中移除
+                    pipe.srem(f"status:{status}", task_id)
+                # 删除任务
+                pipe.delete(key)
+                deleted_count += 1
+            else:
+                # 任务不存在，直接尝试删除键
+                pipe.delete(key)
+
+        await pipe.execute()
+        return deleted_count
+
     async def list_by_status(self, status: TaskStatus, limit: int = 100, offset: int = 0) -> List[Task]:
         """按状态列出任务"""
         client = await self._get_client()
@@ -96,6 +133,7 @@ class RedisTaskRepository(TaskRepository):
             return False
 
         task_dict = json.loads(data)
+        old_status = task_dict.get("status")
         task_dict["status"] = status.value
 
         # 更新其他字段
@@ -107,12 +145,56 @@ class RedisTaskRepository(TaskRepository):
         await client.set(key, json.dumps(task_dict, default=str))
 
         # 更新状态索引
-        old_status = task_dict.get("old_status")
         if old_status:
             await client.srem(f"status:{old_status}", task_id)
         await client.sadd(f"status:{status.value}", task_id)
 
         return True
+
+    async def update_status_batch(
+        self,
+        updates: List[Tuple[str, TaskStatus, dict]]
+    ) -> int:
+        """批量更新任务状态（使用 pipeline）
+
+        Args:
+            updates: 更新列表，每个元素为 (task_id, status, kwargs)
+
+        Returns:
+            成功更新的数量
+        """
+        if not updates:
+            return 0
+
+        client = await self._get_client()
+        pipe = client.pipeline()
+        success_count = 0
+
+        for task_id, status, kwargs in updates:
+            key = f"task:{task_id}"
+
+            # 获取现有任务
+            data = await client.get(key)
+            if data:
+                task_dict = json.loads(data)
+                old_status = task_dict.get("status")
+                task_dict["status"] = status.value if hasattr(status, 'value') else status
+
+                for key_name, value in kwargs.items():
+                    if key_name in task_dict:
+                        task_dict[key_name] = value
+
+                pipe.set(key, json.dumps(task_dict, default=str))
+
+                # 更新状态索引
+                if old_status:
+                    pipe.srem(f"status:{old_status}", task_id)
+                pipe.sadd(f"status:{status.value if hasattr(status, 'value') else status}", task_id)
+
+                success_count += 1
+
+        await pipe.execute()
+        return success_count
 
     async def exists(self, task_id: str) -> bool:
         """检查任务是否存在"""
@@ -128,37 +210,6 @@ class RedisTaskRepository(TaskRepository):
         if self._pool:
             await self._pool.disconnect()
             self._pool = None
-
-
-    async def update_status_batch(
-            self,
-            updates: List[tuple]
-    ) -> int:
-        """批量更新任务状态（使用 pipeline）"""
-        client = await self._get_client()
-        pipe = client.pipeline()
-
-        for update in updates:
-            task_id = update[0]
-            status = update[1]
-            kwargs = update[2] if len(update) > 2 else {}
-
-            key = f"task:{task_id}"
-
-            # 获取现有任务
-            data = await client.get(key)
-            if data:
-                task_dict = json.loads(data)
-                task_dict["status"] = status.value if hasattr(status, 'value') else status
-
-                for key_name, value in kwargs.items():
-                    if key_name in task_dict:
-                        task_dict[key_name] = value
-
-                pipe.set(key, json.dumps(task_dict, default=str))
-
-        results = await pipe.execute()
-        return len([r for r in results if r])
 
 
 class RedisQueueRepository(QueueRepository):
@@ -232,7 +283,6 @@ class RedisQueueRepository(QueueRepository):
         script = await self._get_pop_script()
         pop_result = await script(keys=[self._queue_key], args=[count])
 
-        # 合并结果
         return pop_result
 
     async def pop_delayed(self, count: int = 1) -> List[str]:

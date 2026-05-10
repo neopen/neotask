@@ -135,6 +135,37 @@ class MemoryTaskRepository(TaskRepository):
             debug(f"Task {task_id} status updated to {status.value}")
             return True
 
+    async def update_status_batch(
+            self,
+            updates: List[tuple]
+    ) -> int:
+        """批量更新任务状态"""
+        async with self._lock:
+            success_count = 0
+            for update in updates:
+                task_id = update[0]
+                status = update[1]
+                kwargs = update[2] if len(update) > 2 else {}
+
+                task = self._tasks.get(task_id)
+                if task:
+                    task.status = status
+                    for key, value in kwargs.items():
+                        if hasattr(task, key):
+                            setattr(task, key, value)
+                    success_count += 1
+            return success_count
+
+    async def delete_batch(self, task_ids: List[str]) -> int:
+        """批量删除任务"""
+        async with self._lock:
+            deleted = 0
+            for task_id in task_ids:
+                if task_id in self._tasks:
+                    del self._tasks[task_id]
+                    deleted += 1
+            return deleted
+
 
 class MemoryQueueRepository(QueueRepository):
     """内存队列存储

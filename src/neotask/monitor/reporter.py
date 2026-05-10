@@ -8,6 +8,7 @@
 import asyncio
 import json
 import logging
+import time
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
 
@@ -166,12 +167,48 @@ class ReporterManager:
             except Exception as e:
                 logger.error(f"Failed to report metrics: {e}")
 
+    async def report_batch(self, metrics_list: List[Dict[str, Any]]) -> None:
+        """批量上报指标"""
+        if not self._reporters:
+            return
+
+        for reporter in self._reporters:
+            try:
+                # 如果上报器支持批量上报
+                if hasattr(reporter, 'report_batch'):
+                    await reporter.report_batch(metrics_list)
+                else:
+                    # 逐个上报
+                    for metrics in metrics_list:
+                        await reporter.report(metrics)
+            except Exception as e:
+                logger.error(f"Failed to report batch metrics: {e}")
+
     async def _report_loop(self) -> None:
-        """上报循环"""
+        """上报循环（支持批量聚合）"""
+        batch_buffer = []
+        batch_size = 10
+        last_flush = time.time()
+
         while self._running:
             try:
-                await self.report_now()
-                await asyncio.sleep(self._interval)
+                if self._metrics_callback:
+                    metrics = self._metrics_callback()
+                    batch_buffer.append(metrics)
+
+                    # 批量触发条件
+                    should_flush = (
+                            len(batch_buffer) >= batch_size or
+                            time.time() - last_flush >= self._interval
+                    )
+
+                    if should_flush and batch_buffer:
+                        await self.report_batch(batch_buffer)
+                        batch_buffer.clear()
+                        last_flush = time.time()
+
+                await asyncio.sleep(1)
+
             except asyncio.CancelledError:
                 break
             except Exception as e:

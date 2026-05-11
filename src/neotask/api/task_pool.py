@@ -119,6 +119,7 @@ class TaskPool:
         self._heartbeat_manager: Optional[HeartbeatManager] = None
         self._reclaimer: Optional[TaskReclaimer] = None
         self._coordinator: Optional[Coordinator] = None
+        self._dead_letter = None
 
         # 仅在 Redis 模式下启用分布式组件
         if self._config.storage_type == "redis" and self._config.redis_url:

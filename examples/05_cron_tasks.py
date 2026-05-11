@@ -26,17 +26,26 @@ async def main():
     try:
         print("=== Cron 定时任务示例 ===\n")
 
-        # 注意：当前 Cron 解析器简化实现，返回 3 秒后执行
-        # 生产环境建议安装 croniter 库实现完整 Cron 支持
-        print("1. Cron 任务（简化版，3秒后执行）:")
-        task_id = scheduler.submit_cron(
-            {"report_type": "cron_report"},
-            cron_expr="*/1 * * * *"
+        # 方式1：使用 delay 参数实现延时任务
+        print("1. 延时任务（3秒后执行一次）:")
+        task_id = scheduler.submit_delayed(
+            {"report_type": "delayed_report"},
+            delay_seconds=3
         )
         print(f"   任务ID: {task_id}")
 
-        # 2. 周期任务（推荐用于快速测试）
-        print("\n2. 周期任务（每3秒执行）:")
+        # 方式2：使用 submit_at 指定时间点执行
+        from datetime import timedelta
+        execute_at = datetime.now() + timedelta(seconds=5)
+        print(f"\n2. 定时任务（{execute_at.strftime('%H:%M:%S')} 执行）:")
+        task_id2 = scheduler.submit_at(
+            {"report_type": "scheduled_report"},
+            execute_at=execute_at
+        )
+        print(f"   任务ID: {task_id2}")
+
+        # 方式3：使用周期任务（推荐）
+        print("\n3. 周期任务（每3秒执行）:")
         interval_id = scheduler.submit_interval(
             {"report_type": "interval_report"},
             interval_seconds=3,
@@ -44,20 +53,12 @@ async def main():
         )
         print(f"   任务ID: {interval_id}")
 
-        # 查看所有周期任务
-        print("\n已注册的周期任务:")
-        for task in scheduler.get_periodic_tasks():
-            print(f"  - {task['task_id']}: interval={task['interval_seconds']}s, "
-                  f"cron={task['cron_expr']}, run_count={task['run_count']}")
+        print("\n等待 12 秒观察执行...")
+        await asyncio.sleep(12)
 
-        print("\n等待 10 秒观察执行...")
-        await asyncio.sleep(10)
-
-        # 取消所有周期任务
-        for task in scheduler.get_periodic_tasks():
-            scheduler.cancel_periodic(task["task_id"])
-
-        print("\n所有周期任务已取消")
+        # 取消周期任务
+        scheduler.cancel_periodic(interval_id)
+        print("\n周期任务已取消")
 
     finally:
         scheduler.shutdown()

@@ -173,7 +173,7 @@ class TaskPoolConfig:
     # Worker配置
     worker_concurrency: int = 10
     prefetch_size: int = 20
-    task_timeout: Optional[float] = None
+    task_timeout: Optional[float] = None  # 任务默认超时时间（秒）
 
     # 队列配置
     queue_max_size: int = 10000
@@ -197,8 +197,14 @@ class TaskPoolConfig:
     prefetch_min_threshold: int = 5
 
     # 回收配置
-    enable_reclaimer: bool = True
-    reclaimer_interval: float = 30.0
+    enable_reclaimer: bool = True  # 是否启用任务回收器
+    reclaimer_interval: float = 30.0  # 回收器扫描间隔（秒）
+    enable_heartbeat: bool = True  # 是否启用心跳
+    heartbeat_interval: int = 5  # 心跳间隔（秒）
+    heartbeat_timeout: int = 20  # 心跳超时（秒）
+    enable_dead_letter: bool = True  # 是否启用死信队列
+    dead_letter_max_size: int = 10000  # 死信队列最大容量
+    dead_letter_ttl: int = 604800  # 死信保留时间（秒，默认7天）
 
     # 节点标识
     node_id: str = ""

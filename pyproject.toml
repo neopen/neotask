@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neotask"
-version = "0.5.0"
+version = "1.0.0"
 description = "NeoTask - 轻量级 Python 异步任务队列，支持即时/延时/周期任务，内置优先级队列、自动重试 | Lightweight Python Async Task Queue Manager"
 readme = "README.md"
 license = {text = "MIT"}
@@ -79,6 +79,7 @@ dev = [
     "mypy>=1.0.0",
     "ruff>=0.1.0",
     "build>=1.0.0",
+    "croniter>=1.0.0",
     "twine>=4.0.0",
     "cloudpickle",
     "psutil",

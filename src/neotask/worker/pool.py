@@ -263,34 +263,32 @@ class WorkerPool:
             watchdog = None
 
             # 检查是否有锁管理器（Redis 模式下存在）
-            if hasattr(self, '_lock_manager') and self._lock_manager:
+            if self._lock_manager:
                 try:
                     lock_acquired = await self._lock_manager.acquire(lock_key, ttl=30)
                     if not lock_acquired:
-                        warning(f"Failed to acquire lock for task {task_id}, skipping")
                         return
-                    debug(f"Lock acquired for task {task_id}")
 
-                    # 启动看门狗（自动续期）
                     from neotask.lock.watchdog import WatchDog
                     watchdog = WatchDog(self._lock_manager, interval_ratio=0.3)
                     await watchdog.start(lock_key, ttl=30)
-                    debug(f"Watchdog started for task {task_id}")
-
                 except Exception as e:
-                    error(f"Failed to acquire lock for task {task_id}: {e}")
+                    error(f"Failed to acquire lock: {e}")
                     return
             else:
                 # 无锁管理器（内存模式），不需要锁
                 lock_acquired = True
             # ========== 锁获取完成 ==========
 
-            # 开始执行 - 更新状态为 RUNNING
+            # 开始执行 - 更新状态为 RUNNING。只有获取锁成功后，才调用 start_task
+            if not lock_acquired:
+                return
+
             success = await self._lifecycle.start_task(task_id, f"worker-{worker_id}")
             if not success:
                 error(f"Failed to start task {task_id}")
                 # 释放锁
-                if lock_acquired and hasattr(self, '_lock_manager') and self._lock_manager:
+                if self._lock_manager:
                     if watchdog:
                         await watchdog.stop(lock_key)
                     await self._lock_manager.release(lock_key)
@@ -333,15 +331,10 @@ class WorkerPool:
 
             finally:
                 # ========== 停止看门狗并释放锁 ==========
-                if lock_acquired and hasattr(self, '_lock_manager') and self._lock_manager:
-                    try:
-                        if watchdog:
-                            await watchdog.stop(lock_key)
-                            debug(f"Watchdog stopped for task {task_id}")
-                        await self._lock_manager.release(lock_key)
-                        debug(f"Lock released for task {task_id}")
-                    except Exception as e:
-                        error(f"Failed to release lock for task {task_id}: {e}")
+                if watchdog:
+                    await watchdog.stop(lock_key)
+                if lock_acquired and self._lock_manager:
+                    await self._lock_manager.release(lock_key)
                 # ========== 锁释放完成 ==========
 
                 # 更新worker统计

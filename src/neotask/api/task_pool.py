@@ -439,19 +439,19 @@ class TaskPool:
     async def __aenter__(self):
         """异步上下文管理器入口"""
         self.start()
-        # 等待启动完成
+        # 等待事件循环启动
         import time
         timeout = 5
         start_time = time.time()
-        while not self._running and time.time() - start_time < timeout:
-            await asyncio.sleep(0.05)
+        while self._loop is None and time.time() - start_time < timeout:
+            await asyncio.sleep(0.01)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """异步上下文管理器出口"""
         self.shutdown()
-        # 等待关闭完成
-        await asyncio.sleep(0.1)
+        # 等待清理完成
+        await asyncio.sleep(0.2)
 
     # ========== 任务提交 API ==========
 

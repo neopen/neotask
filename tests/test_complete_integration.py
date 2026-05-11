@@ -455,20 +455,16 @@ async def test_v04_distributed(reporter: TestReporter):
         await asyncio.sleep(data.get("duration", 0.05))
         return {"result": "ok", "task_id": data.get("task_id")}
 
-    # 1. 多节点共享队列测试
+    # 1. 多节点共享队列测试 - 使用 async with
     print("\n📌 测试 4.1: 多节点共享队列")
 
     config1 = TaskPoolConfig.redis(url=redis_url, node_id="dist-node-1")
     config2 = TaskPoolConfig.redis(url=redis_url, node_id="dist-node-2")
 
-    pool1 = TaskPool(executor=dist_executor, config=config1)
-    pool2 = TaskPool(executor=dist_executor, config=config2)
+    async with TaskPool(executor=dist_executor, config=config1) as pool1, \
+               TaskPool(executor=dist_executor, config=config2) as pool2:
+        await asyncio.sleep(1)
 
-    pool1.start()
-    pool2.start()
-    await asyncio.sleep(1)
-
-    try:
         task_id = await pool1.submit_async({
             "task_id": "cross-node-test",
             "duration": 0.3
@@ -481,27 +477,21 @@ async def test_v04_distributed(reporter: TestReporter):
             status=TestStatus.PASSED if result is not None else TestStatus.FAILED,
             message=f"任务 {task_id} 被节点2消费成功" if result else "跨节点消费失败"
         ))
-    finally:
-        pool1.shutdown()
-        pool2.shutdown()
-        await asyncio.sleep(0.3)
 
-    # 2. 分布式锁测试
+    # 2. 分布式锁测试 - 使用独立的锁实例
     print("\n📌 测试 4.2: 分布式锁")
 
     lock = RedisLock(redis_url=redis_url)
     lock_key = f"test-lock-{uuid.uuid4().hex[:8]}"
-    try:
-        await lock.close()
-    except RuntimeError as e:
-        if "different loop" in str(e):
-            pass  # 忽略循环冲突
 
     async def try_acquire(owner: str, delay: float = 0.1) -> bool:
-        acquired = await lock.acquire(lock_key, ttl=5)
+        # 每个竞争使用新的锁实例，避免连接冲突
+        lock_instance = RedisLock(redis_url=redis_url)
+        acquired = await lock_instance.acquire(lock_key, ttl=5)
         if acquired:
             await asyncio.sleep(delay)
-            await lock.release(lock_key)
+            await lock_instance.release(lock_key)
+        await lock_instance.close()
         return acquired
 
     results = await asyncio.gather(
@@ -517,8 +507,6 @@ async def test_v04_distributed(reporter: TestReporter):
         status=TestStatus.PASSED if success_count == 1 else TestStatus.FAILED,
         message=f"并发竞争: {success_count}/3 成功获取锁"
     ))
-
-    await lock.close()
 
     # 3. 节点管理测试
     print("\n📌 测试 4.3: 节点管理")
@@ -538,7 +526,6 @@ async def test_v04_distributed(reporter: TestReporter):
     ))
 
     reporter.end_suite()
-
 
 # ============================================================
 # v0.5 性能优化测试

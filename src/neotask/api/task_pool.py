@@ -25,6 +25,7 @@ from neotask.models.task import TaskPriority
 from neotask.monitor.health import SystemHealthChecker
 from neotask.monitor.metrics import MetricsCollector
 from neotask.monitor.reporter import ReporterManager, ConsoleReporter
+from neotask.queue.dead_letter import DeadLetterQueue
 from neotask.queue.queue_scheduler import QueueScheduler
 from neotask.storage.factory import StorageFactory
 from neotask.worker.pool import WorkerPool
@@ -96,6 +97,7 @@ class TaskPool:
             task_repo=self._task_repo,
             queue_scheduler=self._queue_scheduler,
             event_bus=self._event_bus,
+            lock_manager=self._lock_manager,
             lifecycle_manager=self._lifecycle,
             concurrency=self._config.worker_concurrency,
             prefetch_size=self._config.prefetch_size,
@@ -191,6 +193,15 @@ class TaskPool:
                 queue_scheduler=self._queue_scheduler,
                 config=coordinator_config
             )
+
+            # 5. 死信队列
+            self._dead_letter = None
+            if self._config.enable_dead_letter and self._config.storage_type == "redis":
+                self._dead_letter = DeadLetterQueue(
+                    redis_url=self._config.redis_url,
+                    max_size=self._config.dead_letter_max_size,
+                    ttl=self._config.dead_letter_ttl
+                )
 
             info(f"Distributed components initialized for node: {self._config.node_id}")
 
@@ -377,6 +388,9 @@ class TaskPool:
                 await self._heartbeat_manager.stop()
             if self._node_manager:
                 await self._node_manager.stop()
+            # 关闭死信队列
+            if self._dead_letter:
+                await self._dead_letter.close()
 
             # 停止核心组件
             await self._supervisor.stop()

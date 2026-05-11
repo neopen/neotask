@@ -5,7 +5,7 @@
 @Time: 2026/4/8 00:00
 """
 
-__version__ = "0.3.0"
+__version__ = "1.0.0"
 __author__ = "HiPeng"
 
 # API 入口

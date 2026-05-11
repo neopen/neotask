@@ -9,10 +9,10 @@ description = "NeoTask - 轻量级 Python 异步任务队列，支持即时/延�
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "HiPeng", email = "helpengx@gmail.com"}
+    {name = "HiPeng", email = "helpenx@gmail.com"}
 ]
 maintainers = [
-    {name = "HiPeng", email = "helpengx@gmail.com"}
+    {name = "HiPeng", email = "helpenx@gmail.com"}
 ]
 keywords = [
     # 英文关键词
@@ -21,7 +21,7 @@ keywords = [
     "scheduled-tasks", "distributed-tasks", "worker-pool",
     # 中文关键词
     "任务队列", "异步任务", "定时任务", "任务调度", "后台任务",
-    "优先级队列", "周期任务", "分布式任务", "工作池"
+    "优先级队列", "周期任务", "分布式任务", "工作池", "嵌入式任务池"
 ]
 classifiers = [
     # 开发状态
@@ -48,7 +48,12 @@ classifiers = [
 ]
 
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+    "aiosqlite>=0.19.0",  # SQLite 存储支持
+    "redis>=4.5.0",       # Redis 分布式支持（可选但推荐）
+    "psutil>=5.9.0",      # 系统指标收集
+    "croniter>=1.0.0",   # 添加 Cron 表达式支持
+]
 
 [project.optional-dependencies]
 # Web UI 支持
@@ -64,9 +69,19 @@ redis = [
     "redis>=4.5.0",
 ]
 
+# SQLite 支持
+sqlite = [
+    "aiosqlite>=0.19.0",
+]
+
+# 监控支持
+monitor = [
+    "psutil>=5.9.0",
+]
+
 # 完整功能
 full = [
-    "neotask[ui,redis]",
+    "neotask[ui,redis,sqlite,monitor]",
 ]
 
 # 开发依赖
@@ -79,11 +94,8 @@ dev = [
     "mypy>=1.0.0",
     "ruff>=0.1.0",
     "build>=1.0.0",
-    "croniter>=1.0.0",
     "twine>=4.0.0",
     "cloudpickle",
-    "psutil",
-    "aiosqlite>=0.19.0"
 ]
 
 # 文档依赖
@@ -95,9 +107,9 @@ docs = [
 
 [project.urls]
 # 项目链接
-Homepage = "https://github.com/neopen/neotask"
+Homepage = "https://task.pengline.cn"
+Documentation = "https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5"
 Repository = "https://github.com/neopen/neotask"
-Documentation = "https://task.pengline.cn"
 Issues = "https://github.com/neopen/neotask/issues"
 Changelog = "https://github.com/neopen/neotask/releases"
 
@@ -256,7 +268,7 @@ build-backend = "setuptools.build_meta"
 # ========== 版本管理 ==========
 
 [tool.bumpversion]
-current_version = "1.5.0"
+current_version = "1.0.0"
 commit = true
 tag = true
 tag_name = "v{new_version}"
@@ -281,7 +293,7 @@ username = "__token__"
 site_name = "NeoTask Documentation"
 site_description = "NeoTask - Lightweight Python Async Task Queue Manager"
 site_author = "HiPeng"
-site_url = "https://pengline.cn/neotask"
+site_url = "https://task.pengline.cn"
 docs_dir = "docs"
 site_dir = "site"
 

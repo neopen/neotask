@@ -4,7 +4,6 @@
 @Author: HiPeng
 @Time: 2026/4/8 00:00
 """
-import asyncio
 import time
 from datetime import datetime, timedelta
 from typing import Dict, Any
@@ -508,16 +507,22 @@ class TestTaskSchedulerIntegration:
             task_type = data.get("type", "unknown")
             if task_type == "delayed":
                 results["delayed"] = True
+                print(f"[executor] 延时任务执行: {data}")
             elif task_type == "interval":
                 results["interval"] += 1
+                print(f"[executor] 周期任务执行: count={results['interval']}")
             return {"status": task_type}
 
         async def run_test():
             config = SchedulerConfig.memory()
-            # 不设置 enable_periodic_manager，使用默认值 True
+            config.scan_interval = 0.1  # 提高调度精度
+            # 注意：不要设置 enable_periodic_manager = False
 
             scheduler = TaskScheduler(executor=unified_executor, config=config)
-            # 关键：不显式调用 start()，让 submit_interval 内部自动启动
+
+            # 关键修复：显式启动 scheduler，并等待启动完成
+            scheduler.start()
+            await asyncio.sleep(0.3)  # 等待调度器启动
 
             try:
                 # 提交延时任务
@@ -525,30 +530,102 @@ class TestTaskSchedulerIntegration:
                     {"type": "delayed", "test": "delayed"},
                     delay_seconds=1.0
                 )
+                print(f"[test] 延时任务已提交: {delayed_id}")
 
-                # 提交周期任务（这会自动启动 scheduler）
+                # 提交周期任务
                 interval_id = scheduler.submit_interval(
                     {"type": "interval", "test": "interval"},
                     interval_seconds=0.5,
                     run_immediately=True
                 )
+                print(f"[test] 周期任务已提交: {interval_id}")
 
-                # 等待执行
+                # 等待执行（给足够时间让周期任务执行多次）
                 await asyncio.sleep(2.5)
 
+                # 取消周期任务
                 scheduler.cancel_periodic(interval_id)
+                print(f"[test] 周期任务已取消，执行次数: {results['interval']}")
+
+                # 等待延时任务完成
                 await scheduler.wait_for_result_async(delayed_id, timeout=2.0)
+                print(f"[test] 延时任务已完成")
 
                 return results
 
             finally:
                 scheduler.shutdown()
 
-        asyncio.run(run_test())
+        # 运行测试
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            final_results = loop.run_until_complete(run_test())
+        finally:
+            loop.close()
 
+        print(f"\n[assert] delayed={final_results['delayed']}, interval={final_results['interval']}")
+        assert final_results["delayed"] is True
+        assert final_results["interval"] >= 2
+
+    def test_multiple_task_types_sync(self):
+        """测试多种任务类型混合 - 同步版本"""
+        results = {
+            "delayed": False,
+            "interval": 0
+        }
+
+        async def unified_executor(data):
+            task_type = data.get("type", "unknown")
+            if task_type == "delayed":
+                results["delayed"] = True
+                print(f"[executor] 延时任务执行")
+            elif task_type == "interval":
+                results["interval"] += 1
+                print(f"[executor] 周期任务执行: {results['interval']}")
+            return {"status": task_type}
+
+        config = SchedulerConfig.memory()
+        config.scan_interval = 0.1
+
+        scheduler = TaskScheduler(executor=unified_executor, config=config)
+        scheduler.start()
+        time.sleep(0.3)  # 等待调度器启动
+
+        try:
+            # 提交延时任务（同步）
+            delayed_id = scheduler.submit_delayed(
+                {"type": "delayed", "test": "delayed"},
+                delay_seconds=1.0
+            )
+            print(f"[test] 延时任务已提交")
+
+            # 提交周期任务
+            interval_id = scheduler.submit_interval(
+                {"type": "interval", "test": "interval"},
+                interval_seconds=0.5,
+                run_immediately=True
+            )
+            print(f"[test] 周期任务已提交")
+
+            # 等待执行
+            time.sleep(2.5)
+
+            # 取消周期任务
+            scheduler.cancel_periodic(interval_id)
+            print(f"[test] 周期任务已取消，执行次数: {results['interval']}")
+
+            # 等待延时任务完成
+            scheduler.wait_for_result(delayed_id, timeout=2.0)
+            print(f"[test] 延时任务已完成")
+
+        finally:
+            scheduler.shutdown()
+
+        print(f"\n[assert] delayed={results['delayed']}, interval={results['interval']}")
         assert results["delayed"] is True
         assert results["interval"] >= 2
-
 
 
 # ========== 运行测试 ==========

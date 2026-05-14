@@ -4,7 +4,7 @@ Lightweight Python asynchronous task queue manager, no extra services required, 
 
 > NeoTask is a pure Python-based asynchronous task queue scheduling system specifically designed for time-consuming tasks (such as AI generation, video processing, data scraping, etc.). It supports scheduled tasks, periodic tasks, and delayed tasks. There is no need to deploy external services like Redis or PostgreSQL. After installation, it can be directly used in any Python project.
 
-[中文](./README_zh.md) | English | [Documentation](https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5) | [PyPI](https://pypi.org/project/neotask/) | [website](https://task.pengline.cn)
+[中文](./README_zh.md) | English | [Documentation](https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5) | [PyPI](https://pypi.org/project/neotask/) | [website](https://task.helpenx.com)
 
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/) [![PyPI](https://img.shields.io/pypi/v/neotask.svg)](https://pypi.org/project/penshot/) [![Downloads](https://static.pepy.tech/badge/neotask)](https://pepy.tech/project/neotask)
 

@@ -41,25 +41,12 @@ class RedisTaskRepository(TaskRepository):
         client = await self._get_client()
         key = f"task:{task.task_id}"
 
-        # 读取旧状态，用于维护状态索引（避免任务残留到多个 status:* 集合）
-        old_status = None
-        old_data = await client.get(key)
-        if old_data:
-            try:
-                old_status = json.loads(old_data).get("status")
-            except (json.JSONDecodeError, TypeError):
-                old_status = None
-
         # 使用 JSON 字符串存储整个任务
         task_dict = task.to_dict()
         await client.set(key, json.dumps(task_dict, default=str))
 
-        new_status = task.status.value
-        # 状态变化时从旧索引移除，避免索引污染
-        if old_status and old_status != new_status:
-            await client.srem(f"status:{old_status}", task.task_id)
-        # 添加到新状态索引
-        await client.sadd(f"status:{new_status}", task.task_id)
+        # 添加到状态索引
+        await client.sadd(f"status:{task.status.value}", task.task_id)
 
     async def get(self, task_id: str) -> Optional[Task]:
         """获取任务"""

@@ -47,9 +47,9 @@ class ExecutorFactory:
         Returns:
             TaskExecutor 实例
         """
-        # 处理字符串输入（配置文件中 executor_type 可能以字符串形式传入）
-        if isinstance(executor_type, str):
-            executor_type = ExecutorType(executor_type)
+        # 处理 Enum 类型输入
+        # if isinstance(executor_type, Enum):
+        #     executor_type = executor_type.value
 
         if executor_type == ExecutorType.AUTO:
             # 自动选择执行器类型

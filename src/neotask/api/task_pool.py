@@ -13,6 +13,7 @@ from typing import Optional, Dict, Any, List, Callable, Union
 
 from neotask.common.logger import error, debug, info
 from neotask.core.dispatcher import TaskDispatcher
+from neotask.core.future import FutureManager
 from neotask.core.lifecycle import TaskLifecycleManager
 from neotask.core.heartbeat import HeartbeatManager, HeartbeatConfig
 from neotask.event.bus import EventBus, TaskEvent
@@ -20,7 +21,7 @@ from neotask.executor.base import TaskExecutor
 from neotask.executor.factory import ExecutorFactory
 from neotask.lock.factory import LockFactory
 from neotask.models.config import StorageConfig, LockConfig, TaskPoolConfig
-from neotask.models.task import Task, TaskPriority, TaskStatus
+from neotask.models.task import TaskPriority
 from neotask.monitor.health import SystemHealthChecker
 from neotask.monitor.metrics import MetricsCollector
 from neotask.monitor.reporter import ReporterManager, ConsoleReporter
@@ -67,6 +68,9 @@ class TaskPool:
 
         # 初始化事件总线
         self._event_bus = EventBus()
+
+        # 初始化未来管理器
+        self._future_manager = FutureManager()
 
         # 初始化队列调度器
         self._queue_scheduler = QueueScheduler(
@@ -267,6 +271,21 @@ class TaskPool:
                     await self._metrics.record_task_failed(event.task_id)
                 elif event.event_type == "task.cancelled":
                     await self._metrics.record_task_cancelled(event.task_id)
+
+        # 未来管理器完成
+        @self._event_bus.subscribe("task.completed")
+        async def complete_future_handler(event: TaskEvent):
+            result = event.data.get("result") if isinstance(event.data, dict) else event.data
+            await self._future_manager.complete(event.task_id, result=result)
+
+        @self._event_bus.subscribe("task.failed")
+        async def fail_future_handler(event: TaskEvent):
+            err = event.data.get("error") if isinstance(event.data, dict) else str(event.data)
+            await self._future_manager.complete(event.task_id, error=err)
+
+        @self._event_bus.subscribe("task.cancelled")
+        async def cancel_future_handler(event: TaskEvent):
+            await self._future_manager.complete(event.task_id, error="Task cancelled")
 
         # 任务回收事件（用于监控）
         @self._event_bus.subscribe("task.reclaimed")
@@ -602,37 +621,6 @@ class TaskPool:
     async def task_exists_async(self, task_id: str) -> bool:
         """检查任务是否存在（异步）"""
         return await self._task_repo.exists(task_id)
-
-    def list_tasks(
-            self,
-            status: Optional[str] = None,
-            limit: int = 100,
-            offset: int = 0
-    ) -> List[Dict[str, Any]]:
-        """列出任务（可选按状态过滤）（同步）
-
-        Args:
-            status: 状态过滤（pending/running/success/failed/cancelled），None 表示全部
-            limit: 返回数量上限
-            offset: 偏移量
-
-        Returns:
-            任务信息字典列表
-        """
-        status_enum = TaskStatus(status) if status else None
-        tasks = self._run_coroutine(self._lifecycle.list_tasks(status_enum, limit, offset))
-        return [t.to_dict() for t in tasks]
-
-    async def list_tasks_async(
-            self,
-            status: Optional[str] = None,
-            limit: int = 100,
-            offset: int = 0
-    ) -> List[Dict[str, Any]]:
-        """列出任务（可选按状态过滤）（异步）"""
-        status_enum = TaskStatus(status) if status else None
-        tasks = await self._lifecycle.list_tasks(status_enum, limit, offset)
-        return [t.to_dict() for t in tasks]
 
     # ========== 任务管理 API ==========
 

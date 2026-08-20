@@ -193,7 +193,9 @@ class TaskPoolConfig:
     retry_delay: float = 1.0
 
     # 预取配置
-    enable_prefetch: bool = True
+    # 默认关闭预取：预取器的批量弹出 + 本地 FIFO 队列会破坏严格优先级顺序，
+    # 且对内存存储无性能收益。仅在 Redis/SQLite 高延迟场景按需开启。
+    enable_prefetch: bool = False
     prefetch_min_threshold: int = 5
 
     # 回收配置

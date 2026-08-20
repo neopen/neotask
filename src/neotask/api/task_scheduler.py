@@ -155,8 +155,9 @@ class TaskScheduler:
             except Exception as e:
                 print(f"Failed to start time wheel: {e}")
 
-        # 启动调度线程
-        self._start_scheduler_thread()
+        # 启动调度线程（仅在未使用 PeriodicTaskManager 时，用于本地周期任务后备存储）
+        if self._periodic_manager is None:
+            self._start_scheduler_thread()
 
     def _get_or_create_event_loop(self) -> asyncio.AbstractEventLoop:
         """获取或创建事件循环
@@ -235,51 +236,34 @@ class TaskScheduler:
             try:
                 now = datetime.now()
 
-                if self._periodic_manager:
-                    # 使用PeriodicTaskManager获取任务列表
-                    tasks = await self._periodic_manager.list_tasks()
-                    for task_info in tasks:
-                        if not task_info.get("is_paused", False):
-                            next_run_str = task_info.get("next_run")
-                            if next_run_str:
-                                next_run_dt = datetime.fromisoformat(next_run_str)
-                                if next_run_dt <= now:
-                                    # 获取完整的任务实例
-                                    instance = await self._periodic_manager.get_task_instance(task_info["task_id"])
-                                    if instance:
-                                        await self._periodic_manager._execute_periodic_task(
-                                            task_info["task_id"],
-                                            instance
-                                        )
-                else:
-                    # 使用本地存储的周期任务
-                    for task_id, periodic_task in list(self._periodic_tasks.items()):
-                        if periodic_task.is_paused:
+                # 使用本地存储的周期任务（仅在未使用 PeriodicTaskManager 时运行）
+                for task_id, periodic_task in list(self._periodic_tasks.items()):
+                    if periodic_task.is_paused:
+                        continue
+
+                    if periodic_task.next_run and periodic_task.next_run <= now:
+                        # 更新执行信息
+                        periodic_task.run_count += 1
+                        periodic_task.last_run = now
+
+                        # 计算下次执行时间
+                        if periodic_task.cron_expr and periodic_task.cron_obj:
+                            periodic_task.next_run = periodic_task.cron_obj.next(after=now)
+                        else:
+                            periodic_task.next_run = now + timedelta(seconds=periodic_task.interval_seconds)
+
+                        # 检查是否达到最大执行次数
+                        if periodic_task.max_runs and periodic_task.run_count >= periodic_task.max_runs:
+                            del self._periodic_tasks[task_id]
                             continue
 
-                        if periodic_task.next_run and periodic_task.next_run <= now:
-                            # 更新执行信息
-                            periodic_task.run_count += 1
-                            periodic_task.last_run = now
-
-                            # 计算下次执行时间
-                            if periodic_task.cron_expr and periodic_task.cron_obj:
-                                periodic_task.next_run = periodic_task.cron_obj.next(after=now)
-                            else:
-                                periodic_task.next_run = now + timedelta(seconds=periodic_task.interval_seconds)
-
-                            # 检查是否达到最大执行次数
-                            if periodic_task.max_runs and periodic_task.run_count >= periodic_task.max_runs:
-                                del self._periodic_tasks[task_id]
-                                continue
-
-                            # 执行任务
-                            exec_task_id = f"EXEC_{task_id}_{periodic_task.run_count}_{uuid.uuid4().hex[:4]}"
-                            self._pool.submit(
-                                periodic_task.data,
-                                exec_task_id,
-                                periodic_task.priority
-                            )
+                        # 执行任务
+                        exec_task_id = f"EXEC_{task_id}_{periodic_task.run_count}_{uuid.uuid4().hex[:4]}"
+                        self._pool.submit(
+                            periodic_task.data,
+                            exec_task_id,
+                            periodic_task.priority
+                        )
 
                 await asyncio.sleep(self._config.scan_interval)
 

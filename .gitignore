@@ -48,6 +48,7 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 *.suo
+*.db
 *.ntvs*
 *.njsproj
 *.sln

@@ -478,10 +478,7 @@ class TestLifecycleCache:
         event_bus = EventBus()
         await event_bus.start()
         # 传入 cache_enabled=False
-        manager = TaskLifecycleManager(repo, event_bus, cache_enabled=False)
-        yield manager
-        await event_bus.stop()
-        await asyncio.sleep(0.1)
+        return TaskLifecycleManager(repo, event_bus, cache_enabled=False)
 
     @pytest.mark.asyncio
     async def test_cache_enabled(self, lifecycle_with_cache):

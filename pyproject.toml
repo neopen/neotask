@@ -107,7 +107,7 @@ docs = [
 
 [project.urls]
 # 项目链接
-Homepage = "https://task.pengline.cn"
+Homepage = "https://task.helpenx.com"
 Documentation = "https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5"
 Repository = "https://github.com/neopen/neotask"
 Issues = "https://github.com/neopen/neotask/issues"

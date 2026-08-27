@@ -265,7 +265,7 @@ class TaskEngine:
             self,
             data: Dict[str, Any],
             task_id: Optional[str] = None,
-            priority: int = 2,
+            priority: int = 5,
             delay: float = 0,
             ttl: int = 3600
     ) -> str:
@@ -274,7 +274,7 @@ class TaskEngine:
         Args:
             data: 任务数据
             task_id: 任务ID（可选）
-            priority: 优先级（0-3，数字越小优先级越高）
+            priority: 优先级（1-10，数字越小优先级越高）
             delay: 延迟执行时间（秒）
             ttl: 任务超时时间（秒）
 
@@ -328,7 +328,7 @@ class TaskEngine:
     async def submit_batch(
             self,
             tasks: List[Dict[str, Any]],
-            priority: int = 2
+            priority: int = 5
     ) -> List[str]:
         """批量提交任务"""
         task_ids = []

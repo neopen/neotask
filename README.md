@@ -22,7 +22,7 @@
 
 > 🚀 **Lightweight & Async**: Pure Python task queue manager designed for time-consuming jobs (AI generation, video processing, data scraping, etc.)  
 > 📦 **Zero External Dependencies**: No extra deployment required (no Redis/PostgreSQL needed). Ready to run out of the box  
-> ⏰ **Flexible Scheduling**: Native support for scheduled, periodic (cron-like), and delayed tasks
+> ⏰ **Flexible Scheduling**: Native support for scheduled, periodic (cron-like), and delayed tasks  
 > ⚡ **Quick Integration**: `pip install neotask` + few lines of configuration
 
 ---

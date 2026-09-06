@@ -1,7 +1,7 @@
 <p align="center">
   <h1 align="center">⚡ NeoTask</h1>
   <p align="center">
-    <strong>Distributed Task Scheduling System / 轻量级 Python 异步任务队列管理器</strong>
+    <strong>Distributed Task Scheduling System / 轻量级 Python 异步分布式任务队列管理器</strong>
   </p>
   <p align="center">
     <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.8+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
@@ -14,9 +14,9 @@
   </p>
   <p align="center">
     <a href="./README_zh.md">中文</a> •
+    <a href="https://task.helpenx.com">Website</a> •
     <a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5">Documentation</a> •
-    <a href="https://pypi.org/project/neotask/">PyPI</a> •
-    <a href="https://task.helpenx.com">Website Demo</a>
+    <a href="https://pypi.org/project/neotask/">PyPI</a>
   </p>
 </p>
 
@@ -323,20 +323,6 @@ pytest tests/test_task_pool.py -v
 pytest tests/test_task_scheduler.py -v
 ```
 
-### Project Structure
-
-```
-neotask/
-├── api/           # TaskPool, TaskScheduler
-├── core/          # Lifecycle, Queue, Worker
-├── workflow/      # Workflow  Engine
-├── engine/        # Task Orchestration
-├── executor/      # Async Execution Engine
-├── storage/       # Memory/SQLite/Redis
-├── event/         # Event Bus
-└── models/        # Data Models
-```
-
 
 
 ### Contribution Workflow
@@ -357,19 +343,6 @@ Welcome to submit Issues and Pull Requests
 - Update relevant documentation and example code
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
 
-### Testing Requirements
-
-```
-# Run all tests
-pytest tests/
-
-# Run specific module tests
-pytest tests/unit/test_task.py
-
-# Run manual tests
-python examples/01_simple.py
-python examples/05_webui.py
-```
 
 ## Issue Reporting
 

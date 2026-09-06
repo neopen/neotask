@@ -1,12 +1,42 @@
-# Distributed Task Scheduling System (NeoTask)
+<p align="center">
+  <h1 align="center">⚡ NeoTask</h1>
+  <p align="center">
+    <strong>Distributed Task Scheduling System / 轻量级 Python 异步任务队列管理器</strong>
+  </p>
+  <p align="center">
+    <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.8+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
+    <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License"></a>
+  </p>
+  <p align="center">
+    <a href="https://pypi.org/project/neotask/"><img src="https://img.shields.io/pypi/v/neotask.svg?style=flat-square&logo=pypi&logoColor=white" alt="PyPI"></a>
+    <a href="https://pepy.tech/project/neotask"><img src="https://img.shields.io/pepy/dt/neotask?style=flat-square&color=blue" alt="Downloads"></a>
+    <a href="https://github.com/neopen/neotask"><img src="https://img.shields.io/github/stars/neopen/neotask?style=flat-square&logo=github" alt="GitHub Stars"></a>
+  </p>
+  <p align="center">
+    <a href="./README_zh.md">中文</a> •
+    <a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5">Documentation</a> •
+    <a href="https://pypi.org/project/neotask/">PyPI</a> •
+    <a href="https://task.helpenx.com">Website Demo</a>
+  </p>
+</p>
 
-Lightweight Python asynchronous task queue manager, no extra services required, ready to use out of the box.
+> 🚀 **Lightweight & Async**: Pure Python task queue manager designed for time-consuming jobs (AI generation, video processing, data scraping, etc.)  
+> 📦 **Zero External Dependencies**: No extra deployment required (no Redis/PostgreSQL needed). Ready to run out of the box  
+> ⏰ **Flexible Scheduling**: Native support for scheduled, periodic (cron-like), and delayed tasks
+> ⚡ **Quick Integration**: `pip install neotask` + few lines of configuration
 
-> NeoTask is a pure Python-based asynchronous task queue scheduling system specifically designed for time-consuming tasks (such as AI generation, video processing, data scraping, etc.). It supports scheduled tasks, periodic tasks, and delayed tasks. There is no need to deploy external services like Redis or PostgreSQL. After installation, it can be directly used in any Python project.
+---
 
-[中文](./README_zh.md) | English | [Documentation](https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5) | [PyPI](https://pypi.org/project/neotask/) | [website](https://task.helpenx.com)
+## 💡 Why NeoTask?
 
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/) [![PyPI](https://img.shields.io/pypi/v/neotask.svg)](https://pypi.org/project/neotask/) [![Downloads](https://static.pepy.tech/badge/neotask)](https://pepy.tech/project/neotask)
+**NeoTask** is designed to solve complex task orchestration, async queueing, and priority management for modern distributed systems and AI multi-agent pipelines.
+
+| Pain Point | NeoTask Solution |
+| :--- | :--- |
+| **Task blockage under heavy concurrency** | Priority queueing & task worker pool isolation |
+| **Unreliable long-running tasks** | Automatic state persistence, health check & retry mechanism |
+| **Complex SDK setup** | Lightweight Pythonic interface with zero friction |
+
 
 ---
 

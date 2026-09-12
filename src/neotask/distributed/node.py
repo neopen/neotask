@@ -13,7 +13,11 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, Dict, List, Any
+from typing import TYPE_CHECKING, Optional, Dict, List, Any
+
+if TYPE_CHECKING:
+    import redis.asyncio as redis
+    from redis.asyncio import ConnectionPool
 
 try:
     import redis.asyncio as redis

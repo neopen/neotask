@@ -13,6 +13,7 @@ permissions:
     - "Bash(mypy *)"
     - "Bash(git *)"
     - "Bash(ls *)"
+    - "Bash(cd *)"
 
   deny: ["Bash(rm -rf *)"]
 

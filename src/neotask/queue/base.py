@@ -1,7 +1,8 @@
 """
 @FileName: base.py
 @Description: 队列抽象基类
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 

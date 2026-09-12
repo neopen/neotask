@@ -1,7 +1,8 @@
 """
 @FileName: async_executor.py
 @Description: 异步执行器 - 直接调用异步函数
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 

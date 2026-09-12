@@ -1,7 +1,8 @@
 """
 @FileName: future.py
 @Description: 任务 Task Future for async wait operations.
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/1 17:41
 """
 

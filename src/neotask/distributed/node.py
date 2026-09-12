@@ -1,7 +1,8 @@
 """
 @FileName: node.py
 @Description: 节点管理 - 节点注册、心跳、健康检查
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/28
 """
 
@@ -14,8 +15,15 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, Dict, List, Any
 
-import redis.asyncio as redis
-from redis.asyncio import ConnectionPool
+try:
+    import redis.asyncio as redis
+    from redis.asyncio import ConnectionPool
+
+    HAS_REDIS = True
+except ImportError:  # pragma: no cover
+    redis = None  # type: ignore[assignment]
+    ConnectionPool = None  # type: ignore[assignment]
+    HAS_REDIS = False
 
 
 class NodeStatus(Enum):
@@ -63,7 +71,7 @@ class NodeManager:
         """
         self._redis_url = redis_url
         self._node_id = node_id or self._generate_node_id()
-        self._client: Optional[redis.Redis] = None
+        self._client: Optional["redis.Redis"] = None
         self._heartbeat_task: Optional[asyncio.Task] = None
         self._health_check_task: Optional[asyncio.Task] = None
         self._running = False
@@ -73,8 +81,10 @@ class NodeManager:
             pid=os.getpid()
         )
 
-    async def _get_client(self) -> redis.Redis:
+    async def _get_client(self) -> "redis.Redis":
         """获取Redis客户端"""
+        if not HAS_REDIS:
+            raise RuntimeError("redis not installed. Run: pip install neotask[redis]")
         if self._client is None:
             pool = ConnectionPool.from_url(self._redis_url, decode_responses=True)
             self._client = redis.Redis(connection_pool=pool)

@@ -1,7 +1,8 @@
 """
 @FileName: memory.py
 @Description: 内存存储实现
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/3/27 23:54
 """
 

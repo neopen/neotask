@@ -1,7 +1,8 @@
 """
 @FileName: 03_priority.py
 @Description: 优先级队列示例 - 演示不同优先级任务的执行顺序
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/2 17:24
 """
 import asyncio

@@ -1,7 +1,8 @@
 """
 @FileName: prefetcher.py
 @Description: 任务预取器 - 批量预取任务到本地队列，减少远程访问
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/15
 """
 

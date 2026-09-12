@@ -14,7 +14,7 @@ permissions:
     - "Bash(git *)"
     - "Bash(ls *)"
 
-  deny: []
+  deny: ["Bash(rm -rf *)"]
 
 # Hooks for automated behaviors
 hooks: {}

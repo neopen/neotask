@@ -1,7 +1,8 @@
 """
 @FileName: __init__.py
 @Description: Storage module exports.
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 

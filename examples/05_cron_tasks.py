@@ -1,7 +1,8 @@
 """
 @FileName: 05_cron_tasks.py
 @Description: Cron 定时任务示例 - 演示 Cron 表达式定时任务
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/9
 """
 

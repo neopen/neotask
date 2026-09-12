@@ -1,7 +1,8 @@
 """
 @FileName: test_redis_storage.py
 @Description: Redis 存储测试 - 修复事件循环问题
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/29
 """
 

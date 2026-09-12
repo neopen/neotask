@@ -1,7 +1,8 @@
 """
 @FileName: time_wheel.py
 @Description: 时间轮实现 - 高性能定时器
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/21
 """
 

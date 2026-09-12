@@ -1,7 +1,8 @@
 """
 @FileName: reclaimer.py
 @Description: 任务回收器 - 回收超时、孤儿、僵尸任务和锁
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/15
 """
 

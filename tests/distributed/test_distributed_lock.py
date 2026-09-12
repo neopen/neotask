@@ -1,7 +1,8 @@
 """
 @FileName: test_distributed_lock.py
 @Description: 分布式锁完整测试 - 多节点、故障转移、并发竞争
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/29
 """
 

@@ -1,7 +1,8 @@
 """
 @FileName: class_executor.py
 @Description: Class executor for instances with execute method.
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/2 22:10
 """
 

@@ -1,7 +1,8 @@
 """
 @FileName: test_heartbeat.py
 @Description: 节点心跳和故障检测测试
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/29
 """
 

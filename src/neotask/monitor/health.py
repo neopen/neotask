@@ -1,7 +1,8 @@
 """
 @FileName: health.py
 @Description: 健康检查 - 系统健康状态监控
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 
@@ -183,7 +184,15 @@ class SystemHealthChecker:
 
     async def _check_system(self) -> CheckResult:
         """检查系统健康状态"""
-        import psutil
+        try:
+            import psutil
+        except ImportError:
+            return CheckResult(
+                name="system",
+                status=HealthStatus.DEGRADED,
+                message="psutil not installed, system check skipped. "
+                        "Install with: pip install neotask[monitor]"
+            )
 
         try:
             # CPU使用率

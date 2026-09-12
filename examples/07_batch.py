@@ -1,7 +1,8 @@
 """
 @FileName: 05_batch.py
 @Description: 批量任务示例 - 批量提交和监控大量任务
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/2 17:25
 """
 

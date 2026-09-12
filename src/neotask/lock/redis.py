@@ -1,16 +1,28 @@
 """
 @FileName: redis.py
 @Description: Redis分布式锁实现 - 添加扫描和清理功能
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/15
 """
 
 import time
 import uuid
-from typing import Optional, List, Dict, Any
+from typing import TYPE_CHECKING, Optional, List, Dict, Any
 
-import redis.asyncio as redis
-from redis.asyncio import ConnectionPool
+if TYPE_CHECKING:
+    import redis.asyncio as redis
+    from redis.asyncio import ConnectionPool
+
+try:
+    import redis.asyncio as redis
+    from redis.asyncio import ConnectionPool
+
+    HAS_REDIS = True
+except ImportError:  # pragma: no cover
+    redis = None  # type: ignore[assignment]
+    ConnectionPool = None  # type: ignore[assignment]
+    HAS_REDIS = False
 
 from neotask.lock.base import TaskLock
 
@@ -73,15 +85,17 @@ class RedisLock(TaskLock):
         """
         self._redis_url = redis_url
         self._key_prefix = key_prefix
-        self._pool: Optional[ConnectionPool] = None
-        self._client: Optional[redis.Redis] = None
+        self._pool: Optional["ConnectionPool"] = None
+        self._client: Optional["redis.Redis"] = None
         # 注意：_owner 是实例级别的，每个锁实例只能持有一个锁
         # 同时持有多个锁时需要分别管理
         self._owner: Optional[str] = None
         self._owners: Dict[str, str] = {}  # key -> owner 映射，支持多个锁
 
-    async def _get_client(self) -> redis.Redis:
+    async def _get_client(self) -> "redis.Redis":
         """获取Redis客户端"""
+        if not HAS_REDIS:
+            raise RuntimeError("redis not installed. Run: pip install neotask[redis]")
         if self._client is None:
             self._pool = ConnectionPool.from_url(
                 self._redis_url,

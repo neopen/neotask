@@ -1,7 +1,8 @@
 """
 @FileName: path_utils.py.py
 @Description: 最可靠的路径获取方案
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Github: https://github.com/neopen
 @Time: 2026/1/30 17:05
 """

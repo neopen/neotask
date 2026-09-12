@@ -1,7 +1,8 @@
 """
 @FileName: test_distributed_v04.py
 @Description: v0.4 分布式功能 Pytest 测试
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/29
 
 运行方式：

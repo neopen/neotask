@@ -1,16 +1,28 @@
 """
 @FileName: redis.py
 @Description: Redis storage implementation with connection pooling.
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/3/27 23:55
 """
 
 import time
 import json
-from typing import List, Optional, Any, Tuple
+from typing import TYPE_CHECKING, List, Optional, Any, Tuple
 
-import redis.asyncio as redis
-from redis.asyncio import ConnectionPool
+if TYPE_CHECKING:
+    import redis.asyncio as redis
+    from redis.asyncio import ConnectionPool
+
+try:
+    import redis.asyncio as redis
+    from redis.asyncio import ConnectionPool
+
+    HAS_REDIS = True
+except ImportError:  # pragma: no cover
+    redis = None  # type: ignore[assignment]
+    ConnectionPool = None  # type: ignore[assignment]
+    HAS_REDIS = False
 
 from neotask.models.task import Task, TaskStatus
 from neotask.storage.base import TaskRepository, QueueRepository
@@ -22,11 +34,13 @@ class RedisTaskRepository(TaskRepository):
     def __init__(self, redis_url: str, max_connections: int = 10):
         self.redis_url = redis_url
         self.max_connections = max_connections
-        self._pool: Optional[ConnectionPool] = None
-        self._client: Optional[redis.Redis] = None
+        self._pool: Optional["ConnectionPool"] = None
+        self._client: Optional["redis.Redis"] = None
 
-    async def _get_client(self) -> redis.Redis:
+    async def _get_client(self) -> "redis.Redis":
         """Get Redis client with connection pooling."""
+        if not HAS_REDIS:
+            raise RuntimeError("redis not installed. Run: pip install neotask[redis]")
         if self._client is None:
             self._pool = ConnectionPool.from_url(
                 self.redis_url,
@@ -231,14 +245,16 @@ class RedisQueueRepository(QueueRepository):
     def __init__(self, redis_url: str, max_connections: int = 10):
         self.redis_url = redis_url
         self.max_connections = max_connections
-        self._pool: Optional[ConnectionPool] = None
-        self._client: Optional[redis.Redis] = None
+        self._pool: Optional["ConnectionPool"] = None
+        self._client: Optional["redis.Redis"] = None
         self._queue_key = "queue:priority"
         self._delayed_key = "queue:delayed"
         self._pop_script: Optional[Any] = None
 
-    async def _get_client(self) -> redis.Redis:
+    async def _get_client(self) -> "redis.Redis":
         """Get Redis client with connection pooling."""
+        if not HAS_REDIS:
+            raise RuntimeError("redis not installed. Run: pip install neotask[redis]")
         if self._client is None:
             self._pool = ConnectionPool.from_url(
                 self.redis_url,

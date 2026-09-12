@@ -1,7 +1,8 @@
 """
 @FileName: test_integration_v10_standalone.py
 @Description: NeoTask v1.0 独立集成测试 - 完全独立，避免事件循环冲突
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/5/11
 
 运行方式：

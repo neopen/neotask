@@ -1,7 +1,8 @@
 """
 @FileName: coordinator.py
 @Description: 协调器 - 多节点任务分发和协调
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/28
 """
 

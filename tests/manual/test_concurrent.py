@@ -1,7 +1,8 @@
 """
 @FileName: test_concurrent.py
 @Description: 
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/2 19:05
 """
 """Concurrent task execution manual test."""

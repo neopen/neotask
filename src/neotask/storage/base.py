@@ -1,7 +1,8 @@
 """
 @FileName: base.py
 @Description: 数据存储。Storage abstraction using Repository pattern.
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/3/27 23:54
 """
 

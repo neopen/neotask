@@ -41,7 +41,8 @@ examples/
 """
 @FileName: NN_descriptive_name.py
 @Description: 简短中文描述 — 这个示例演示什么
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: YYYY/M/D
 """
 
@@ -113,7 +114,8 @@ python examples/NN_feature_name.py
 """
 @FileName: 11_timeout.py
 @Description: 任务超时示例 — 设置超时时间和超时处理
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/5/7
 """
 

@@ -1,7 +1,8 @@
 """
 @FileName: lifecycle.py
 @Description: 任务生命周期管理 - 单一职责原则
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 

@@ -1,7 +1,8 @@
 """
 @FileName: base.py
 @Description: 执行器接口
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/3/27 23:52
 """
 

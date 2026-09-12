@@ -1,7 +1,8 @@
 """
 @FileName: conftest.py
 @Description: pytest 配置 - 导入所有 fixtures
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/29
 """
 

@@ -1,7 +1,8 @@
 """
 @FileName: 04_events.py
 @Description: 事件回调示例 - 监听任务生命周期事件
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/2 17:24
 """
 

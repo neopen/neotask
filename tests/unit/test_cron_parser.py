@@ -1,7 +1,8 @@
 """
 @FileName: test_cron_parser.py
 @Description: Cron表达式解析器单元测试
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/21
 """
 

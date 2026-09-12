@@ -1,7 +1,8 @@
 """
 @FileName: test_worker_integration.py
 @Description: Worker 集成测试（预取器、回收器）
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/16
 """
 

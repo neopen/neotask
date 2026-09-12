@@ -1,7 +1,8 @@
 """
 @FileName: factory.py
 @Description: 锁工厂 - 创建分布式锁实例
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/3 22:28
 """
 from contextlib import asynccontextmanager
@@ -100,7 +101,7 @@ class LockManager:
 
     使用示例：
         >>> manager = LockManager(TaskLock())
-        >>> async with manager.lock("my_key", ttl=30, auto_extend=True):
+        >>> async with manager.lock("neotask_key", ttl=30, auto_extend=True):
         ...     # 临界区代码
         ...     pass
     """

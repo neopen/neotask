@@ -1,7 +1,8 @@
 """
 @FileName: 02_context_manager.py
 @Description: 上下文管理器示例 - 自动启动和关闭
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/9
 """
 import asyncio

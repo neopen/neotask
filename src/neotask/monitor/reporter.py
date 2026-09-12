@@ -1,7 +1,8 @@
 """
 @FileName: reporter.py
 @Description: 指标上报 - 将指标上报到外部系统
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 

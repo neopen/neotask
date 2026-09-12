@@ -1,7 +1,8 @@
 """
 @FileName: test_integration_v05.py
 @Description: NeoTask v0.5 完整集成测试 - 性能优化
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/5/10
 
 运行方式：

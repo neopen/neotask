@@ -1,7 +1,8 @@
 """
 @FileName: test_exception_scenarios.py
 @Description: 异常场景测试 - 故障注入、恢复测试
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/29
 """
 

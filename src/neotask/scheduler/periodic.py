@@ -1,7 +1,8 @@
 """
 @FileName: periodic.py
 @Description: 周期任务管理器 - 管理周期任务的完整生命周期
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/21
 """
 

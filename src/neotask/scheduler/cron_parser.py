@@ -1,7 +1,8 @@
 """
 @FileName: cron_parser.py
 @Description: Cron表达式解析器 - 基于 croniter 实现
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/21
 """
 

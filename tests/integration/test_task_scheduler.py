@@ -1,7 +1,8 @@
 """
 @FileName: test_task_scheduler.py
 @Description: TaskScheduler 集成测试
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/21
 """
 

@@ -1,7 +1,8 @@
 """
 @FileName: test_priority_queue.py
 @Description: 优先级队列单元测试
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/21
 """
 

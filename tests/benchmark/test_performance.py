@@ -1,7 +1,8 @@
 """
 @FileName: test_performance.py
 @Description: 性能基准测试 - 吞吐量、延迟、扩展性
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/29
 """
 

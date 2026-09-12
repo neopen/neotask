@@ -1,7 +1,8 @@
 """
 @FileName: test_lifecycle.py
 @Description: 任务生命周期管理器单元测试
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/15
 """
 

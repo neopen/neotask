@@ -1,7 +1,8 @@
 """
 @FileName: task_pool.py
 @Description: Function Call接口 - 即时任务入口，专注于立即执行的任务。
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 

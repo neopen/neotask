@@ -1,7 +1,8 @@
 """
 @FileName: test_node_manager.py
 @Description: 节点管理器测试
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/28
 """
 

@@ -1,7 +1,8 @@
 """
 @FileName: dead_letter.py
 @Description: 死信队列 - 处理最终失败的任务
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/5/11
 """
 

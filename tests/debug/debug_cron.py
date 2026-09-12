@@ -1,7 +1,8 @@
 """
 @FileName: debug_cron.py
 @Description: 
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/22 15:01
 """
 import time

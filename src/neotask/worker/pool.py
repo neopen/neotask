@@ -1,7 +1,8 @@
 """
 @FileName: pool.py
 @Description: Worker池 - 管理任务执行器，支持预取器
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 

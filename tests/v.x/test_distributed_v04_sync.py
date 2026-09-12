@@ -1,7 +1,8 @@
 """
 @FileName: test_distributed_v04_sync.py
 @Description: v0.4 分布式功能测试 - 使用同步 API（推荐）
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/29
 
 运行方式：

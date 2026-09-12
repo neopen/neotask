@@ -1,7 +1,8 @@
 """
 @FileName: 09_retry_and_cancel.py
 @Description: 重试和取消示例 - 演示任务重试机制和取消操作
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/9
 """
 

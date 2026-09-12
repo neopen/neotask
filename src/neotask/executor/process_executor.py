@@ -1,7 +1,8 @@
 """
 @FileName: process_executor.py
 @Description: 进程执行器 - 在进程池中执行CPU密集型任务（支持 cloudpickle 处理嵌套函数）
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 

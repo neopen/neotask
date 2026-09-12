@@ -1,7 +1,8 @@
 """
 @FileName: 99_all_features.py
 @Description: 完整功能演示 - 展示所有主要特性
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/9
 """
 

@@ -1,7 +1,8 @@
 """
 @FileName: test_prefetcher.py
 @Description: 预取器测试
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/28
 """
 

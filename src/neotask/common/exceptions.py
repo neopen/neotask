@@ -1,7 +1,8 @@
 """
 @FileName: exceptions.py
 @Description: 异常定义
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/1 19:02
 """
 class TaskSchedulerError(Exception):

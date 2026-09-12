@@ -1,7 +1,8 @@
 """
 @FileName: 01_simple.py
 @Description: 简单使用示例 - 基础任务提交和等待
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/2 17:22
 """
 

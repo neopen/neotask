@@ -13,8 +13,9 @@ permissions:
     - "Bash(mypy *)"
     - "Bash(git *)"
     - "Bash(ls *)"
+    - "Bash(cd *)"
 
-  deny: []
+  deny: ["Bash(rm -rf *)"]
 
 # Hooks for automated behaviors
 hooks: {}

@@ -1,7 +1,8 @@
 """
 @FileName: test_queue.py
 @Description: 队列模块单元测试
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/15
 """
 

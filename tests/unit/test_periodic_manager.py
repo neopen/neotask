@@ -1,7 +1,8 @@
 """
 @FileName: test_periodic_manager.py
 @Description: 周期任务管理器单元测试
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/21
 """
 

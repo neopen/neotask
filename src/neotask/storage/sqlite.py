@@ -1,7 +1,8 @@
 """
 @FileName: sqlite.py
 @Description: SQLite storage implementation.
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/3/27 23:55
 """
 

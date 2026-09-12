@@ -1,7 +1,8 @@
 """
 @FileName: test_e2e.py
 @Description: 端到端集成测试
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/16
 """
 

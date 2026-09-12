@@ -1,7 +1,8 @@
 """
 @FileName: context.py
 @Description: 执行上下文 - 任务执行的上下文信息
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 

@@ -1,7 +1,8 @@
 """
 @FileName: factory.py
 @Description: Storage factory for creating repository instances.
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/2 21:32
 """
 

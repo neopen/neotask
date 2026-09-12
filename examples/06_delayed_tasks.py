@@ -1,7 +1,8 @@
 """
 @FileName: 06_delayed_tasks.py
 @Description: 延时任务示例 - 演示延迟执行和定时任务
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/9
 """
 

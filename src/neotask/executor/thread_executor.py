@@ -1,7 +1,8 @@
 """
 @FileName: thread_executor.py
 @Description: 线程执行器 - 在线程池中执行同步函数
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 

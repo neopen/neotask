@@ -1,7 +1,8 @@
 """
 @FileName: delayed_queue.py
 @Description: 延迟队列实现 - 支持延时任务调度
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 

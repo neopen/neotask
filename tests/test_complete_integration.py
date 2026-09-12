@@ -1,7 +1,8 @@
 """
 @FileName: test_complete_integration.py
 @Description: NeoTask 完整集成测试 - v0.1 到 v0.5 全功能覆盖
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/5/10
 
 运行方式：

@@ -1,7 +1,8 @@
 """
 @FileName: queue.py
 @Description: 队列相关 fixtures
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/29
 """
 

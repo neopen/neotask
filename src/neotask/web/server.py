@@ -1,7 +1,8 @@
 """
 @FileName: server.py
 @Description: UI 服务器管理
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/1 18:19
 """
 

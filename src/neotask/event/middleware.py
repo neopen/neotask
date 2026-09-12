@@ -1,7 +1,8 @@
 """
 @FileName: middleware.py
 @Description: 事件中间件 - 事件处理管道
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 

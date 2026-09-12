@@ -1,7 +1,8 @@
 """
 @FileName: test_shard.py
 @Description: 任务分片测试 - 一致性哈希、取模、范围分片
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/29
 """
 

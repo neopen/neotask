@@ -1,7 +1,8 @@
 """
 @FileName: sharding.py
 @Description: 任务分片 - 一致性哈希分片
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/28
 """
 

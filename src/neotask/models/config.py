@@ -1,7 +1,8 @@
 """
 @FileName: config.py
 @Description: 配置 - 包含所有模块的配置类
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/1 18:23
 """
 
@@ -30,7 +31,7 @@ class StorageConfig:
         return cls(type="redis", redis_url=url)
 
     @classmethod
-    def sqlite(cls, path: str = "tasks.db") -> "StorageConfig":
+    def sqlite(cls, path: str = "neotask.db") -> "StorageConfig":
         """创建SQLite存储配置"""
         return cls(type="sqlite", sqlite_path=path)
 
@@ -347,7 +348,7 @@ class TaskConfig:
         return config
 
     @classmethod
-    def sqlite(cls, path: str = "tasks.db", node_id: Optional[str] = None) -> "TaskConfig":
+    def sqlite(cls, path: str = "neotask.db", node_id: Optional[str] = None) -> "TaskConfig":
         """创建SQLite存储配置"""
         config = cls(
             storage=StorageConfig.sqlite(path),

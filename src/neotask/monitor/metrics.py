@@ -1,7 +1,8 @@
 """
 @FileName: metrics.py
 @Description: 指标收集 - 任务执行指标
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 
@@ -416,10 +417,11 @@ class MetricsCollector:
 
     async def _collect_system_metrics(self) -> None:
         """收集系统指标"""
-        import psutil
         import threading
 
         try:
+            import psutil
+
             process = psutil.Process()
 
             self._system_metrics = SystemMetrics(

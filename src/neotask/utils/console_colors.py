@@ -1,7 +1,8 @@
 """
 @FileName: console_colors.py
 @Description: 控制台颜色输出工具，提供带颜色的日志输出功能
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Github: https://github.com/neopen
 @Time: 2025/08 - 2025/11
 """

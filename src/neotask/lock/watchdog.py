@@ -1,7 +1,8 @@
 """
 @FileName: watchdog.py
 @Description: 看门狗 - 自动续期锁
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 

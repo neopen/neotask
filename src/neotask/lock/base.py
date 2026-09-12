@@ -1,7 +1,8 @@
 """
 @FileName: base.py
 @Description: 锁抽象基类 - 扩展扫描功能
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/15
 """
 

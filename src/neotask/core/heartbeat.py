@@ -1,16 +1,28 @@
 """
 @FileName: heartbeat.py
 @Description: 节点心跳管理
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/15
 """
 
 import asyncio
 import time
-from typing import Optional, Set, Dict, Any, List
+from typing import TYPE_CHECKING, Optional, Set, Dict, Any, List
 
-import redis.asyncio as redis
-from redis.asyncio import ConnectionPool
+if TYPE_CHECKING:
+    import redis.asyncio as redis
+    from redis.asyncio import ConnectionPool
+
+try:
+    import redis.asyncio as redis
+    from redis.asyncio import ConnectionPool
+
+    HAS_REDIS = True
+except ImportError:  # pragma: no cover
+    redis = None  # type: ignore[assignment]
+    ConnectionPool = None  # type: ignore[assignment]
+    HAS_REDIS = False
 
 from neotask.models.config import HeartbeatConfig
 from neotask.models.task import TaskStatus
@@ -41,14 +53,16 @@ class HeartbeatManager:
         self._running = False
         self._heartbeat_task: Optional[asyncio.Task] = None
         self._monitor_task: Optional[asyncio.Task] = None
-        self._client: Optional[redis.Redis] = None
+        self._client: Optional["redis.Redis"] = None
 
         # 统计
         self._reclaimed_nodes: Set[str] = set()
         self._total_reclaimed_tasks = 0
 
-    async def _get_client(self) -> redis.Redis:
+    async def _get_client(self) -> "redis.Redis":
         """获取 Redis 客户端"""
+        if not HAS_REDIS:
+            raise RuntimeError("redis not installed. Run: pip install neotask[redis]")
         if self._client is None:
             pool = ConnectionPool.from_url(self._redis_url, decode_responses=True)
             self._client = redis.Redis(connection_pool=pool)

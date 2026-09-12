@@ -1,7 +1,8 @@
 """
 @FileName: 10_task_query.py
 @Description: 任务查询示例 - 查询任务状态、结果和历史
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/9
 """
 

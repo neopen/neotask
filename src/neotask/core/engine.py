@@ -1,7 +1,8 @@
 """
 @FileName: engine.py
 @Description: 任务引擎 - 统一入口，协调各模块
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 

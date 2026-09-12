@@ -1,7 +1,8 @@
 """
 @FileName: test_task_pool.py
 @Description: TaskPool 单元测试
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 

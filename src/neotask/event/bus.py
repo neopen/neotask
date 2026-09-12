@@ -1,7 +1,8 @@
 """
 @FileName: bus.py
 @Description: 事件总线 - 发布订阅模式
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 

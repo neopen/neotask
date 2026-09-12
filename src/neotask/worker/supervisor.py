@@ -1,7 +1,8 @@
 """
 @FileName: supervisor.py
 @Description: Worker监督者 - 监控和管理worker健康状态
-@Author: HiPeng
+@Author: neopen
+@GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
 

@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neotask"
-version = "1.0.1"
+version = "1.0.2"
 description = "NeoTask - 轻量级 Python 异步任务队列，支持即时/延时/周期任务，内置优先级队列、自动重试 | Lightweight Python Async Task Queue Manager"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "HiPeng", email = "helpenx@gmail.com"}
+    {name = "neopen", email = "helpenx+task@gmail.com"}
 ]
 maintainers = [
-    {name = "HiPeng", email = "helpenx@gmail.com"}
+    {name = "neopen", email = "helpenx+task@gmail.com"}
 ]
 keywords = [
     # 英文关键词
@@ -20,7 +20,7 @@ keywords = [
     "background-tasks", "task-manager", "priority-queue", "cron",
     "scheduled-tasks", "distributed-tasks", "worker-pool",
     # 中文关键词
-    "任务队列", "异步任务", "定时任务", "任务调度", "后台任务",
+    "任务队列", "异步任务", "定时任务", "任务调度", "后台任务", "异常恢复", "错误重试",
     "优先级队列", "周期任务", "分布式任务", "工作池", "嵌入式任务池"
 ]
 classifiers = [
@@ -50,9 +50,7 @@ classifiers = [
 requires-python = ">=3.9"
 dependencies = [
     "aiosqlite>=0.19.0",  # SQLite 存储支持
-    "redis>=4.5.0",       # Redis 分布式支持（可选但推荐）
-    "psutil>=5.9.0",      # 系统指标收集
-    "croniter>=1.0.0",   # 添加 Cron 表达式支持
+    "croniter>=1.0.0",    # Cron 表达式支持
 ]
 
 [project.optional-dependencies]

@@ -1,12 +1,32 @@
-# 分布式任务调度系统（NeoTask）
+<p align="center">
+  <h1 align="center">⚡ NeoTask 分布式任务调度系统</h1>
+  <p align="center">
+    <strong>轻量级 Python 异步任务队列管理器 · 无需外部服务 · 开箱即用，支持分布式多节点任务</strong>
+  </p>
+  <p align="center">
+    <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.8+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
+    <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License"></a>
+  </p>
+  <p align="center">
+    <a href="https://pypi.org/project/neotask/"><img src="https://img.shields.io/pypi/v/neotask.svg?style=flat-square&logo=pypi&logoColor=white" alt="PyPI"></a>
+    <a href="https://pepy.tech/project/neotask"><img src="https://img.shields.io/pepy/dt/neotask?style=flat-square&color=blue" alt="PyPI Downloads"></a>
+    <a href="https://github.com/neopen/neotask"><img src="https://img.shields.io/github/stars/neopen/neotask?style=flat-square&logo=github" alt="GitHub Stars"></a>
+  </p>
+  <p align="center">
+    <a href="./README.md">English</a> •
+    <a href="https://task.helpenx.com">官网演示</a> •
+    <a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5/">官方文档</a> •
+    <a href="https://pypi.org/project/neotask/">PyPI</a> 
+  </p>
+</p>
 
-轻量级 Python 异步任务队列管理器，无需额外服务，开箱即用。
 
-> NeoTask 是一个纯 Python 实现的异步任务队列调度系统，专为耗时任务（AI 生成、视频处理、数据爬取等）设计，支持定时任务、周期任务、延迟任务。无需部署 Redis、PostgreSQL 等外部服务，安装后即可在任意 Python 项目中直接使用。
 
-中文 | [English](./README.md) | [文档](https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5/) | [PyPI](https://pypi.org/project/neotask/) | [官网](https://task.helpenx.com)
+> 🚀 **轻量异步**：纯 Python 实现的异步任务队列，专为 AI 生成、视频处理、数据爬取等高耗时任务设计  
+> 📦 **零依赖部署**：单节点无需配置 Redis、PostgreSQL 等外部服务， 分布式多节点环境需要依赖 Redis 支持  
+> ⏰ **全场景调度**：原生支持定时任务、周期任务（Cron-like）与延迟任务，开箱即用、自动重试与异常恢复  
+> ⚡ 5 分钟上手：`pip install neotask`  3行代码集成，即可使用内部接口
 
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/) [![PyPI](https://img.shields.io/pypi/v/neotask.svg)](https://pypi.org/project/neotask/) [![Downloads](https://static.pepy.tech/badge/neotask)](https://pepy.tech/project/neotask) ![GitHub stars](https://img.shields.io/github/stars/neopen/neotask)
 
 ---
 

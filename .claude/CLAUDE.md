@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-NeoTask is a pure-Python async task queue (v0.4.0). Zero mandatory dependencies — runs on stdlib `asyncio`. Storage backends: memory, SQLite, Redis. Optional Web UI via FastAPI.
+NeoTask is a pure-Python async task queue (v1.0.2, requires Python >= 3.8). Two mandatory dependencies: `aiosqlite` and `croniter`; `redis`, `psutil`, and the FastAPI Web UI are optional extras (`neotask[redis]`, `neotask[monitor]`, `neotask[ui]`). Storage backends: memory, SQLite, Redis.
 
 **Package layout**: `src/neotask/` (install with `pip install -e .`).
 

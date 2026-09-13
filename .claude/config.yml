@@ -16,6 +16,8 @@ permissions:
     - "Bash(uv *)"
     - "Bash(grep *)"
     - "Bash(cd *)"
+    - "Bash(.venv/Scripts/python.exe *)"
+    - "Bash(echo *)"
 
   deny: ["Bash(rm -rf *)"]
 

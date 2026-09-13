@@ -21,7 +21,7 @@
 </p>
 
 > 🚀 **Lightweight & Async**: Pure Python task queue manager designed for time-consuming jobs (AI generation, video processing, data scraping, etc.)  
-> 📦 **Zero External Dependencies**: No extra deployment required (no Redis/PostgreSQL needed). Ready to run out of the box  
+> 📦 **No External Services**: No extra deployment required (no Redis/PostgreSQL needed). Ships with two base dependencies  
 > ⏰ **Flexible Scheduling**: Native support for scheduled, periodic (cron-like), and delayed tasks  
 > ⚡ **Quick Integration**: `pip install neotask` + few lines of configuration
 
@@ -43,14 +43,13 @@
 
 ## Features
 
-- **Zero-Dependency Deployment** - Pure Python implementation, no Redis/PostgreSQL required
+- **No External Services** - Pure Python implementation, no Redis/PostgreSQL required
 - **Immediate Tasks** - Supports priority scheduling, high-priority tasks execute first
 - **Scheduled Tasks** - Supports delayed execution, fixed intervals, and Cron expressions
 - **Asynchronous Concurrency** - Based on asyncio, multi-worker concurrent processing
 - **Automatic Retry** - Failed tasks automatically retry with configurable attempts
 - **Persistence** - Multiple storage backends: Memory/SQLite/Redis
-- **DAG Workflow** - Support for task orchestration, conditional branches, and parallel execution
-- **Distributed Support** - Distributed task scheduling, high availability, and fault tolerance
+- **Distributed Support** - Redis shared queue, distributed lock, node heartbeat, and failed-task reclaim
 - **Event Callbacks** - Supports task lifecycle event listeners
 
 ------
@@ -173,6 +172,8 @@ timeline
 
 ### Installation
 
+**Requirements**: Python ≥ 3.8. The base package depends on `aiosqlite` (SQLite storage) and `croniter` (Cron expressions); Redis, psutil, and the Web UI are optional extras.
+
 ```sh
 # Basic installation
 pip install neotask
@@ -272,8 +273,6 @@ result = pool.wait_for_result(task_id)
 | `scheduler.submit_delayed(data, delay)` | Delayed task |
 | `scheduler.submit_interval(data, interval)` | Periodic task |
 | `scheduler.submit_cron(data, cron)` | Cron task |
-| `engine.submit_workflow(definition)` | Submit workflow (v1.5) |
-| `engine.wait_workflow(execution_id)` | Wait for workflow (v1.5) |
 
 Detailed API documentation can be found [here](https://pengline.cn/2026/04/650ac5bb41c74e26bc4effcec88bf26c/)
 

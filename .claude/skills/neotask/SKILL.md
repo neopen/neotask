@@ -7,9 +7,9 @@ description: 轻量级 Python 异步任务队列管理器 — 帮助用户编写
 
 ## 概述
 
-NeoTask 是一个纯 Python 实现的轻量级异步任务队列调度系统。零依赖部署，无需 Redis/PostgreSQL 即可使用。适用于 AI 生成任务、文件处理、定时报表、延迟通知等场景。
+NeoTask 是一个纯 Python 实现的轻量级异步任务队列调度系统。无需部署 Redis/PostgreSQL 等外部服务（基础依赖仅 aiosqlite、croniter），最低支持 Python 3.8。适用于 AI 生成任务、文件处理、定时报表、延迟通知等场景。
 
-**版本**: 0.4.0 | **作者**: HiPeng | **许可证**: MIT
+**版本**: 1.0.2 | **作者**: neopen | **许可证**: MIT
 
 ## 核心入口
 
@@ -22,11 +22,12 @@ NeoTask 是一个纯 Python 实现的轻量级异步任务队列调度系统。�
 
 ### 安装
 
-```python
-pip install neotask          # 基础安装
-pip install neotask[redis]   # Redis 分布式支持
-pip install neotask[ui]      # Web UI 监控面板
-pip install neotask[full]    # 完整功能
+```bash
+pip install neotask           # 基础安装：内存/SQLite 存储、定时调度、事件总线
+pip install neotask[redis]    # Redis 分布式支持（redis）
+pip install neotask[monitor]  # 系统指标采集（psutil）
+pip install neotask[ui]       # Web UI 监控面板
+pip install neotask[full]     # 完整功能
 ```
 
 ## TaskPool — 即时任务
@@ -495,31 +496,36 @@ setup_default_handlers(event_bus, metrics_collector=metrics)
 
 ## 分布式组件
 
+> 需要 Redis：`pip install "neotask[redis]"`。采用去中心化对等架构，无 Leader 选举——`Elector` 已于 0.4.1 移除，当前版本不存在。
+
 ```python
-from neotask import NodeManager, Coordinator, Elector
+from neotask import NodeManager, Coordinator, CoordinatorConfig
 
 # 节点管理（自动心跳）
 node = NodeManager(redis_url="redis://localhost:6379")
 await node.register(metadata={"role": "worker"})
 active_nodes = await node.get_active_nodes()
 
-# Leader 选举
-elector = Elector(redis_url="redis://localhost:6379")
-if await elector.elect(ttl=30):
-    print("I am the leader")
-leader = await elector.get_leader()
-
-# 负载均衡
-coordinator = Coordinator(strategy="round_robin")  # round_robin | random | least_loaded
-await coordinator.distribute_task(task_data)
+# 负载均衡：需注入 node_manager 与 queue_scheduler
+coordinator = Coordinator(
+    node_manager=node,
+    queue_scheduler=pool.queue_scheduler,
+    config=CoordinatorConfig(
+        load_balance_strategy="round_robin"  # round_robin | random | least_loaded
+    ),
+)
+target_node = await coordinator.distribute_task(task_id="TSK...", priority=2)
 ```
 
 **分片策略：**
 ```python
-from neotask import ConsistentHashSharder, ModuloSharder
+from neotask import ConsistentHashSharder
 
 sharder = ConsistentHashSharder(nodes=["node-1", "node-2", "node-3"])
-shard = sharder.get_shard("task_key_123")  # 一致性哈希路由
+shard = sharder.get_shard("task_key_123")  # 一致性哈希路由，返回节点名
+
+# 另有 ModuloSharder / RangeSharder，需从子模块导入
+from neotask.distributed.sharding import ModuloSharder, RangeSharder
 ```
 
 ## Web UI 监控面板

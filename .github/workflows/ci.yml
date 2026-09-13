@@ -39,16 +39,27 @@ jobs:
   test-and-lint:
     runs-on: ubuntu-latest
 
+    # 🎯 版本矩阵：
+    #   3.8  —— 验证 requires-python 声明的下限（PEP 585 等语法在此版本会真实报错）
+    #   3.10 —— 主力开发版本，额外承担静态检查
+    #   3.12 —— 验证新版本兼容性
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [ "3.8", "3.10", "3.12" ]
+
+    name: Python ${{ matrix.python-version }}
+
     steps:
       # 1. 拉取仓库代码
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. 设置 Python 环境（使用 3.10 版本）
+      # 2. 设置 Python 环境
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: ${{ matrix.python-version }}
           # 开启 pip 依赖缓存，加快后续 CI 执行速度
           cache: 'pip'
 
@@ -58,7 +69,7 @@ jobs:
           python -m pip install --upgrade pip
           # 安装测试工具和必要的依赖包
           pip install flake8 pytest pyyaml
-          
+
           # 优先通过 pyproject.toml 安装项目及 full/dev 组依赖
           if [ -f pyproject.toml ] || [ -f setup.py ]; then
             pip install -e ".[full,dev]" || pip install -e .
@@ -66,13 +77,23 @@ jobs:
             pip install -r requirements.txt
           fi
 
-      # 4. 代码规范与语法检查 (Lint)
+      # 4. 导入冒烟测试（最低版本保护线）
+      #    注意：这一步会真实执行各模块顶层的类型注解与可选依赖守卫，
+      #    因此能捕获 flake8 语法检查无法发现的运行期兼容性问题。
+      - name: Import smoke test
+        run: |
+          python -c "import neotask; print('neotask', neotask.__version__)"
+
+      # 5. 代码规范与语法检查 (Lint) —— 仅主力版本执行，避免重复输出
       - name: Lint with flake8
+        if: matrix.python-version == '3.10'
         run: |
           # flake8 会自动读取根目录下的 .flake8 / setup.cfg 配置文件
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 
-      # 5. 执行单元测试 (Test)
+      # 6. 执行单元测试 (Test)
+      #    暂未启用：tests/distributed/ 下部分用例引用了未实现的 neotask.distributed.elector，
+      #    pytest 会在收集阶段整体中断。待测试目录整理完成后再打开。
       # - name: Run tests with pytest
       #   run: |
       #     pytest

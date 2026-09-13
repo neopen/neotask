@@ -35,6 +35,7 @@ classifiers = [
     "Operating System :: OS Independent",
     # 编程语言
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -47,7 +48,7 @@ classifiers = [
     "Topic :: System :: Distributed Computing",
 ]
 
-requires-python = ">=3.9"
+requires-python = ">=3.8"
 dependencies = [
     "aiosqlite>=0.19.0",  # SQLite 存储支持
     "croniter>=1.0.0",    # Cron 表达式支持
@@ -129,7 +130,7 @@ neotask = ["py.typed", "web/static/*", "web/templates/*"]
 
 [tool.black]
 line-length = 100
-target-version = ['py39', 'py310', 'py311', 'py312']
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -162,7 +163,7 @@ sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
 # ========== 类型检查配置 ==========
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.8"
 warn_return_any = true
 warn_unused_configs = true
 warn_unused_ignores = true
@@ -180,7 +181,7 @@ exclude = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py38"
 select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings
@@ -266,7 +267,7 @@ build-backend = "setuptools.build_meta"
 # ========== 版本管理 ==========
 
 [tool.bumpversion]
-current_version = "1.0.1"
+current_version = "1.0.2"
 commit = true
 tag = true
 tag_name = "v{new_version}"
@@ -290,8 +291,8 @@ username = "__token__"
 [tool.mkdocs]
 site_name = "NeoTask Documentation"
 site_description = "NeoTask - Lightweight Python Async Task Queue Manager"
-site_author = "HiPeng"
-site_url = "https://task.pengline.cn"
+site_author = "neopen"
+site_url = "https://task.helpenx.com"
 docs_dir = "docs"
 site_dir = "site"
 
@@ -320,7 +321,7 @@ repos = [
 # NeoTask - 轻量级 Python 异步任务队列管理器
 #
 # 功能特性：
-# - 零依赖部署，开箱即用
+# - 纯 Python 实现，无外部服务依赖（基础包仅需 aiosqlite、croniter 两个依赖）
 # - 支持即时任务、延时任务、周期任务
 # - 内置优先级队列，支持任务优先级
 # - 失败任务自动重试

@@ -10,6 +10,7 @@ import asyncio
 import inspect
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from typing import Optional, Dict, Any, List, Callable, Union
 
 from neotask.common.logger import error, debug, info
@@ -22,7 +23,7 @@ from neotask.executor.base import TaskExecutor
 from neotask.executor.factory import ExecutorFactory
 from neotask.lock.factory import LockFactory
 from neotask.models.config import StorageConfig, LockConfig, TaskPoolConfig
-from neotask.models.task import TaskPriority
+from neotask.models.task import TaskPriority, TaskStatus
 from neotask.monitor.health import SystemHealthChecker
 from neotask.monitor.metrics import MetricsCollector
 from neotask.monitor.reporter import ReporterManager, ConsoleReporter
@@ -34,6 +35,12 @@ from neotask.worker.supervisor import WorkerSupervisor
 from neotask.worker.reclaimer import TaskReclaimer, ReclaimerConfig
 from neotask.distributed.node import NodeManager
 from neotask.distributed.coordinator import Coordinator, CoordinatorConfig
+
+
+# 健康检查结果的复用窗口（秒）。健康接口通常被探针高频轮询，每次调用都跑一遍
+# 检查（storage ping + psutil 采样，后者还会同步阻塞事件循环约 0.1s）代价过高；
+# 窗口内直接返回上次结果，过期才重新检查。
+HEALTH_CHECK_TTL = 5.0
 
 
 class TaskPool:
@@ -103,7 +110,8 @@ class TaskPool:
             concurrency=self._config.worker_concurrency,
             prefetch_size=self._config.prefetch_size,
             task_timeout=self._config.task_timeout,
-            enable_prefetch=self._config.enable_prefetch
+            enable_prefetch=self._config.enable_prefetch,
+            node_id=self._config.node_id
         )
 
         # 设置重试配置
@@ -165,10 +173,21 @@ class TaskPool:
                 node_id=self._config.node_id,
                 redis_url=self._config.redis_url,  # 直接传 URL
                 task_repo=self._task_repo,
-                config=heartbeat_config
+                config=heartbeat_config,
+                queue_scheduler=self._queue_scheduler
             )
 
-            # 3. 任务回收器
+            # 3. 死信队列，供回收器和 Worker 池投递最终失败的任务
+            self._dead_letter = None
+            if self._config.enable_dead_letter:
+                self._dead_letter = DeadLetterQueue(
+                    redis_url=self._config.redis_url,
+                    max_size=self._config.dead_letter_max_size,
+                    ttl=self._config.dead_letter_ttl
+                )
+                self._worker_pool.set_dead_letter_queue(self._dead_letter)
+
+            # 4. 任务回收器
             reclaimer_config = ReclaimerConfig(
                 interval=30,
                 task_timeout=self._config.task_timeout or 300,
@@ -182,10 +201,12 @@ class TaskPool:
                 queue_scheduler=self._queue_scheduler,
                 lock=self._lock_manager,
                 event_bus=self._event_bus,
-                config=reclaimer_config
+                config=reclaimer_config,
+                node_manager=self._node_manager,
+                dead_letter=self._dead_letter
             )
 
-            # 4. 协调器
+            # 5. 协调器
             coordinator_config = CoordinatorConfig(
                 load_balance_strategy="round_robin",
                 distribution_mode="shared"
@@ -195,15 +216,6 @@ class TaskPool:
                 queue_scheduler=self._queue_scheduler,
                 config=coordinator_config
             )
-
-            # 5. 死信队列
-            self._dead_letter = None
-            if self._config.enable_dead_letter and self._config.storage_type == "redis":
-                self._dead_letter = DeadLetterQueue(
-                    redis_url=self._config.redis_url,
-                    max_size=self._config.dead_letter_max_size,
-                    ttl=self._config.dead_letter_ttl
-                )
 
             info(f"Distributed components initialized for node: {self._config.node_id}")
 
@@ -258,12 +270,17 @@ class TaskPool:
 
     def _setup_event_handlers(self):
         """设置事件处理器"""
-        # 指标收集
+        # 指标收集：全部由生命周期事件推导，覆盖 created→started→completed/failed/retry
         if self._metrics:
             @self._event_bus.subscribe_global
             async def metrics_handler(event: TaskEvent):
+                data = event.data if isinstance(event.data, dict) else {}
+
                 if event.event_type == "task.created":
-                    await self._metrics.record_task_submit(event.task_id)
+                    # task.created 的 payload 是 Task.to_dict()，带 priority
+                    await self._metrics.record_task_submit(
+                        event.task_id, data.get("priority", TaskPriority.NORMAL.value)
+                    )
                 elif event.event_type == "task.started":
                     await self._metrics.record_task_start(event.task_id)
                 elif event.event_type == "task.completed":
@@ -272,6 +289,10 @@ class TaskPool:
                     await self._metrics.record_task_failed(event.task_id)
                 elif event.event_type == "task.cancelled":
                     await self._metrics.record_task_cancelled(event.task_id)
+                elif event.event_type == "task.retry":
+                    await self._metrics.record_task_retry(
+                        event.task_id, data.get("retry_count", 1)
+                    )
 
         # 未来管理器完成
         @self._event_bus.subscribe("task.completed")
@@ -339,6 +360,10 @@ class TaskPool:
                     await self._reclaimer.start()
                     info("Task reclaimer started")
 
+                # 启动指标收集（系统指标采样循环依赖 start()）
+                if self._metrics:
+                    await self._metrics.start()
+
                 # 启动监控上报
                 if self._config.enable_reporter:
                     self._reporter_manager = ReporterManager(interval=60)
@@ -401,6 +426,9 @@ class TaskPool:
 
             if self._reporter_manager:
                 await self._reporter_manager.stop()
+
+            if self._metrics:
+                await self._metrics.stop()
 
             await self._event_bus.stop()
 
@@ -498,6 +526,56 @@ class TaskPool:
         self._ensure_running()
         result = await self._dispatcher.dispatch(data, task_id, priority, delay, ttl)
         return result.task_id if hasattr(result, 'task_id') else result
+
+    def create_pending_task(
+            self,
+            data: Dict[str, Any],
+            task_id: Optional[str] = None,
+            priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+            ttl: int = 3600
+    ) -> str:
+        """创建任务记录但**不入队**（同步）
+
+        供外部调度组件（如时间轮）自行决定入队时机：任务先落库为 PENDING，
+        到期后再调用 :meth:`enqueue_task` 推进队列。
+        """
+        self._ensure_running()
+        return self._run_coroutine(
+            self.create_pending_task_async(data, task_id, priority, ttl)
+        )
+
+    async def create_pending_task_async(
+            self,
+            data: Dict[str, Any],
+            task_id: Optional[str] = None,
+            priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+            ttl: int = 3600
+    ) -> str:
+        """创建任务记录但**不入队**（异步）"""
+        self._ensure_running()
+        task = await self._lifecycle.create_task(
+            data=data,
+            task_id=task_id,
+            priority=priority,
+            node_id=self._config.node_id,
+            ttl=ttl
+        )
+        return task.task_id
+
+    def enqueue_task(self, task_id: str) -> bool:
+        """将已创建的任务放入队列（同步）
+
+        仅接受 PENDING 任务：等待期间被取消/删除/已完成的任务会被拒绝，
+        避免定时组件补入一个不应再执行的任务。
+        """
+        return self._run_coroutine(self.enqueue_task_async(task_id))
+
+    async def enqueue_task_async(self, task_id: str) -> bool:
+        """将已创建的任务放入队列（异步）"""
+        task = await self._lifecycle.get_task(task_id)
+        if not task or task.status != TaskStatus.PENDING:
+            return False
+        return await self._queue_scheduler.push(task_id, task.priority.value)
 
     def submit_batch(
             self,
@@ -673,11 +751,17 @@ class TaskPool:
         }
 
         if self._metrics:
-            result["metrics"] = self._metrics.get_summary()
+            result["metrics"] = self._metrics.get_full_summary()
 
         # 添加回收器统计
         if self._reclaimer:
             result["reclaimer"] = self._reclaimer.get_stats()
+
+        # 添加预取器统计
+        if self._worker_pool.is_prefetch_enabled():
+            result["prefetcher"] = self._run_coroutine(
+                self._worker_pool.get_prefetcher_stats()
+            )
 
         return result
 
@@ -699,10 +783,13 @@ class TaskPool:
         }
 
         if self._metrics:
-            result["metrics"] = await self._metrics.get_summary_async()
+            result["metrics"] = await self._metrics.get_full_summary_async()
 
         if self._reclaimer:
             result["reclaimer"] = self._reclaimer.get_stats()
+
+        if self._worker_pool.is_prefetch_enabled():
+            result["prefetcher"] = await self._worker_pool.get_prefetcher_stats()
 
         return result
 
@@ -711,7 +798,37 @@ class TaskPool:
         return self._worker_pool.get_stats()
 
     def get_health_status(self) -> Dict[str, Any]:
-        """获取健康状态"""
+        """获取健康状态（同步）
+
+        结果超过 ``HEALTH_CHECK_TTL`` 未刷新时先执行一次检查，否则直接复用缓存。
+        """
+        if self._health_checker and self._loop is not None and self._loop.is_running():
+            try:
+                self._run_coroutine(self._refresh_health_if_stale())
+            except Exception as e:
+                error(f"Health check failed: {e}")
+
+        return self._collect_health()
+
+    async def get_health_status_async(self) -> Dict[str, Any]:
+        """获取健康状态（异步）"""
+        if self._health_checker:
+            try:
+                await self._refresh_health_if_stale()
+            except Exception as e:
+                error(f"Health check failed: {e}")
+
+        return self._collect_health()
+
+    async def _refresh_health_if_stale(self) -> None:
+        """检查结果过期（或从未执行）时重新执行一次检查"""
+        last = self._health_checker.last_check
+        if last is not None and (datetime.now() - last).total_seconds() < HEALTH_CHECK_TTL:
+            return
+        await self._health_checker.check()
+
+    def _collect_health(self) -> Dict[str, Any]:
+        """汇总健康状态（不触发检查）"""
         health = {"status": "healthy", "node_id": self._config.node_id}
 
         if self._health_checker:

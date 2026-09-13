@@ -187,10 +187,11 @@ class TaskLifecycleManager:
         debug(f"Task {task_id} completed successfully")
         return True
 
-    async def fail_task(self, task_id: str, error: str) -> bool:
+    async def fail_task(self, task_id: str, error: str, allow_pending: bool = False) -> bool:
         """任务失败
 
-        只有 RUNNING 状态的任务可以标记为失败。
+        正常情况下只有 RUNNING 状态的任务可以标记为失败。`allow_pending=True`
+        用于入队失败的回滚：任务已落库为 PENDING 但从未进入队列，只能在这里终结。
         """
         task = await self.get_task(task_id)
 
@@ -203,9 +204,12 @@ class TaskLifecycleManager:
             warning(f"Cannot fail task {task_id}: already in terminal state {task.status.value}")
             return False
 
-        # 【修复】只有 RUNNING 状态的任务可以失败
-        if task.status != TaskStatus.RUNNING:
-            warning(f"Cannot fail task {task_id}: status={task.status.value}, expected RUNNING")
+        allowed = (TaskStatus.PENDING, TaskStatus.RUNNING) if allow_pending else (TaskStatus.RUNNING,)
+        if task.status not in allowed:
+            warning(
+                f"Cannot fail task {task_id}: status={task.status.value}, "
+                f"expected {'PENDING or RUNNING' if allow_pending else 'RUNNING'}"
+            )
             return False
 
         debug(f"[DEBUG] Failing task {task_id}: {error}")

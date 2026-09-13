@@ -9,8 +9,9 @@
 import asyncio
 import uuid
 from datetime import datetime, timedelta
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Union
 
+from neotask.common.logger import debug
 from neotask.models.schedule import PeriodicTaskDefinition, PeriodicTaskInstance, PeriodicTaskStatus, MissedExecutionPolicy, PeriodicExecutionRecord
 from neotask.scheduler.cron_parser import CronParser
 
@@ -52,6 +53,9 @@ class PeriodicTaskManager:
         >>> # 获取统计
         >>> stats = await manager.get_stats()
     """
+
+    # CATCH_UP 单轮最多补跑次数，防止长时间停机后一次性灌入过多任务造成雪崩
+    MAX_CATCH_UP = 5
 
     def __init__(self, task_pool, storage=None):
         """初始化周期任务管理器
@@ -128,7 +132,9 @@ class PeriodicTaskManager:
             retry_count: int = 3,
             timeout: Optional[float] = None,
             tags: List[str] = None,
-            task_id: Optional[str] = None
+            task_id: Optional[str] = None,
+            missed_policy: Optional[Union[MissedExecutionPolicy, str]] = None,
+            run_immediately: bool = True
     ) -> str:
         """创建固定间隔周期任务
 
@@ -145,6 +151,8 @@ class PeriodicTaskManager:
             timeout: 单次执行超时
             tags: 标签
             task_id: 任务ID（可选）
+            missed_policy: 错过执行策略，默认 SKIP
+            run_immediately: 是否立即执行第一次（start_at 为未来时间时以 start_at 为准）
 
         Returns:
             周期任务ID
@@ -164,11 +172,12 @@ class PeriodicTaskManager:
             retry_count=retry_count,
             timeout=timeout,
             tags=tags or [],
-            ttl=timeout or 3600
+            ttl=timeout or 3600,
+            missed_policy=self._coerce_policy(missed_policy)
         )
 
         # 计算下次执行时间
-        next_run = self._calculate_next_run(definition)
+        next_run = self._calculate_next_run(definition, immediately=run_immediately)
 
         instance = PeriodicTaskInstance(
             task_id=task_id,
@@ -198,7 +207,9 @@ class PeriodicTaskManager:
             retry_count: int = 3,
             timeout: Optional[float] = None,
             tags: List[str] = None,
-            task_id: Optional[str] = None
+            task_id: Optional[str] = None,
+            missed_policy: Optional[Union[MissedExecutionPolicy, str]] = None,
+            run_immediately: bool = False
     ) -> str:
         """创建Cron周期任务
 
@@ -215,6 +226,8 @@ class PeriodicTaskManager:
             timeout: 单次执行超时
             tags: 标签
             task_id: 任务ID（可选）
+            missed_policy: 错过执行策略，默认 SKIP
+            run_immediately: 是否立即执行第一次（默认按 Cron 的下一个匹配时刻）
 
         Returns:
             周期任务ID
@@ -238,11 +251,12 @@ class PeriodicTaskManager:
             retry_count=retry_count,
             timeout=timeout,
             tags=tags or [],
-            ttl=timeout or 3600
+            ttl=timeout or 3600,
+            missed_policy=self._coerce_policy(missed_policy)
         )
 
         # 计算下次执行时间
-        next_run = self._calculate_next_run(definition)
+        next_run = self._calculate_next_run(definition, immediately=run_immediately)
 
         instance = PeriodicTaskInstance(
             task_id=task_id,
@@ -489,19 +503,53 @@ class PeriodicTaskManager:
     async def _execute_periodic_task(self, task_id: str, instance: PeriodicTaskInstance) -> None:
         """执行周期任务
 
+        先按 ``missed_policy`` 决定错过的槽位如何处理，再提交本轮执行：
+
+        - ``IGNORE`` / ``SKIP``：错过的槽位直接丢弃，只把 ``next_run`` 推进到未来，
+          本轮不提交（两者语义相同）。
+        - ``RUN_ONCE``：只提交一次，不补跑错过的槽位。
+        - ``CATCH_UP``：补跑错过的槽位，单轮最多 ``MAX_CATCH_UP`` 次。
+
         Args:
             task_id: 周期任务ID
             instance: 周期任务实例
         """
         definition = instance.definition
+        now = datetime.now()
+        missed_count = self._count_missed_slots(instance, now)
 
-        # 处理错过的执行
-        if instance.next_run:
-            missed_count = self._calculate_missed_count(instance)
-            if missed_count > 1:
-                await self._handle_missed_executions(instance, missed_count)
+        if missed_count > 0 and definition.missed_policy in (
+                MissedExecutionPolicy.IGNORE,
+                MissedExecutionPolicy.SKIP
+        ):
+            debug(
+                f"Periodic task {task_id} skipped {missed_count} missed "
+                f"execution(s) by policy {definition.missed_policy.value}"
+            )
+            instance.next_run = self._calculate_next_run(definition, after=now)
+            instance.updated_at = now
+            await self._save_task(instance)
+            return
 
-        # 更新执行记录
+        run_count = 1
+        if missed_count > 0 and definition.missed_policy == MissedExecutionPolicy.CATCH_UP:
+            run_count = min(missed_count + 1, self.MAX_CATCH_UP)
+
+        for _ in range(run_count):
+            if not await self._submit_once(task_id, instance):
+                break
+
+    async def _submit_once(self, task_id: str, instance: PeriodicTaskInstance) -> bool:
+        """提交一次周期任务执行并推进 next_run
+
+        Returns:
+            是否成功提交（达到 max_runs 时返回 False）
+        """
+        definition = instance.definition
+
+        if definition.max_runs and instance.run_count >= definition.max_runs:
+            return False
+
         execution_id = self._generate_execution_id()
         instance.run_count += 1
         instance.last_run = datetime.now()
@@ -558,70 +606,82 @@ class PeriodicTaskManager:
 
         # 持久化
         await self._save_task(instance)
+        return True
 
-    def _calculate_missed_count(self, instance: PeriodicTaskInstance) -> int:
-        """计算错过的执行次数"""
-        if not instance.next_run:
-            return 0
+    def _count_missed_slots(self, instance: PeriodicTaskInstance, now: datetime) -> int:
+        """统计当前待执行槽位之前还有多少个槽位已经错过
 
-        now = datetime.now()
-        if instance.definition.interval_seconds:
-            # 固定间隔
-            elapsed = (now - instance.next_run).total_seconds()
-            return max(1, int(elapsed / instance.definition.interval_seconds))
-        else:
-            # Cron表达式
-            # 简化处理，只返回1
-            return 1
-
-    async def _handle_missed_executions(
-            self,
-            instance: PeriodicTaskInstance,
-            missed_count: int
-    ) -> None:
-        """处理错过的执行
+        容忍窗口取 ``max(scan_interval * 2, 1.0)``：扫描循环本身最多延迟一个扫描
+        周期（叠加处理抖动），落在容忍窗口内的槽位不算错过，避免正常的秒级抖动被
+        误判为错过执行。
 
         Args:
             instance: 周期任务实例
-            missed_count: 错过次数
+            now: 当前时间
+
+        Returns:
+            错过的执行次数（0 表示没有错过）
         """
-        policy = instance.definition.missed_policy
+        if not instance.next_run:
+            return 0
 
-        if policy == MissedExecutionPolicy.IGNORE:
-            # 忽略，只更新下次执行时间
-            pass
+        tolerance = max(self._scan_interval * 2, 1.0)
+        cutoff = now - timedelta(seconds=tolerance)
+        definition = instance.definition
 
-        elif policy == MissedExecutionPolicy.RUN_ONCE:
-            # 只执行一次
-            pass
+        if definition.interval_seconds:
+            elapsed = (cutoff - instance.next_run).total_seconds()
+            if elapsed <= 0:
+                return 0
+            return int(elapsed / definition.interval_seconds)
 
-        elif policy == MissedExecutionPolicy.CATCH_UP:
-            # 追赶执行（最多5次，避免雪崩）
-            catch_up_count = min(missed_count, 5)
-            for _ in range(catch_up_count):
-                await self._execute_periodic_task(instance.task_id, instance)
+        if definition.cron_obj:
+            missed = 0
+            cursor = instance.next_run
+            # 多探测一个槽位即可判断是否已越过容忍窗口
+            while missed <= self.MAX_CATCH_UP:
+                next_slot = definition.cron_obj.next(after=cursor)
+                if next_slot > cutoff:
+                    break
+                cursor = next_slot
+                missed += 1
+            return missed
 
-        elif policy == MissedExecutionPolicy.SKIP:
-            # 跳过，只更新下次执行时间
-            pass
+        return 0
+
+    @staticmethod
+    def _coerce_policy(
+            policy: Optional[Union[MissedExecutionPolicy, str]]
+    ) -> MissedExecutionPolicy:
+        """把字符串形式的策略归一化为枚举"""
+        if policy is None:
+            return MissedExecutionPolicy.SKIP
+        if isinstance(policy, MissedExecutionPolicy):
+            return policy
+        return MissedExecutionPolicy(str(policy).lower())
 
     # ========== 辅助方法 ==========
 
     def _calculate_next_run(
             self,
             definition: PeriodicTaskDefinition,
-            after: Optional[datetime] = None
+            after: Optional[datetime] = None,
+            immediately: bool = False
     ) -> Optional[datetime]:
         """计算下次执行时间
 
         Args:
             definition: 任务定义
             after: 起始时间
+            immediately: 是否立即执行一次（start_at 在未来时仍以 start_at 为准）
 
         Returns:
             下次执行时间
         """
         now = after or datetime.now()
+
+        if immediately and not (definition.start_at and definition.start_at > now):
+            return now
 
         if definition.interval_seconds:
             # 固定间隔

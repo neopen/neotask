@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional, Union, List
 from neotask.core.lifecycle import TaskLifecycleManager
 from neotask.queue.queue_scheduler import QueueScheduler
 from neotask.models.task import TaskPriority
+from neotask.common.exceptions import QueueFullError
 from neotask.common.logger import debug
 
 
@@ -77,10 +78,19 @@ class TaskDispatcher:
 
         # 如果是延迟任务，使用延迟队列
         if delay > 0:
-            await self._queue.schedule_delayed(task.task_id, priority_value, delay)
+            queued = await self._queue.schedule_delayed(task.task_id, priority_value, delay)
         else:
             # 立即入队
-            await self._queue.push(task.task_id, priority_value)
+            queued = await self._queue.push(task.task_id, priority_value)
+
+        if not queued:
+            reason = "queue is disabled" if self._queue.is_disabled else "queue is full"
+            await self._lifecycle.fail_task(
+                task.task_id,
+                f"Failed to enqueue task: {reason}",
+                allow_pending=True
+            )
+            raise QueueFullError(self._queue.max_size)
 
         debug(f"Task {task.task_id} dispatched successfully")
         return task.task_id
@@ -107,8 +117,5 @@ class TaskDispatcher:
         priority_value = task.priority.value
 
         if delay > 0:
-            await self._queue.schedule_delayed(task_id, priority_value, delay)
-        else:
-            await self._queue.push(task_id, priority_value)
-
-        return True
+            return await self._queue.schedule_delayed(task_id, priority_value, delay)
+        return await self._queue.push(task_id, priority_value)

@@ -24,8 +24,10 @@ except ImportError:  # pragma: no cover
     ConnectionPool = None  # type: ignore[assignment]
     HAS_REDIS = False
 
+from neotask.common.logger import debug, warning
 from neotask.models.config import HeartbeatConfig
-from neotask.models.task import TaskStatus
+from neotask.models.task import Task, TaskStatus
+from neotask.queue.queue_scheduler import QueueScheduler
 from neotask.storage.base import TaskRepository
 
 
@@ -36,19 +38,32 @@ class HeartbeatManager:
     - 定期上报本节点心跳
     - 检测其他节点心跳
     - 发现并回收僵尸节点任务
+
+    与 NodeManager 共用同一份节点注册表（``neotask:node:*`` / ``neotask:nodes``），
+    因此两个组件互相可见，不会各自维护一套节点视图。
     """
+
+    # 与 NodeManager 保持一致的键布局
+    NODE_KEY_PREFIX = "neotask:node:"
+    NODES_SET_KEY = "neotask:nodes"
+
+    STATUS_ACTIVE = "active"
+    STATUS_STOPPED = "stopped"
+    STATUS_RECLAIMED = "reclaimed"
 
     def __init__(
             self,
             node_id: str,
             redis_url: str,  # 直接接收 Redis URL
             task_repo: TaskRepository,
-            config: Optional[HeartbeatConfig] = None
+            config: Optional[HeartbeatConfig] = None,
+            queue_scheduler: Optional[QueueScheduler] = None
     ):
         self._node_id = node_id
         self._redis_url = redis_url
         self._task_repo = task_repo
         self._config = config or HeartbeatConfig()
+        self._queue_scheduler = queue_scheduler
 
         self._running = False
         self._heartbeat_task: Optional[asyncio.Task] = None
@@ -67,6 +82,10 @@ class HeartbeatManager:
             pool = ConnectionPool.from_url(self._redis_url, decode_responses=True)
             self._client = redis.Redis(connection_pool=pool)
         return self._client
+
+    def _node_key(self, node_id: str) -> str:
+        """节点注册信息的键名"""
+        return f"{self.NODE_KEY_PREFIX}{node_id}"
 
     async def start(self) -> None:
         """启动心跳管理器"""
@@ -104,33 +123,33 @@ class HeartbeatManager:
     async def _register_node(self) -> None:
         """注册节点"""
         client = await self._get_client()
-        key = f"node:{self._node_id}"
+        key = self._node_key(self._node_id)
         await client.hset(key, "node_id", self._node_id)
-        await client.hset(key, "status", "active")
+        await client.hset(key, "status", self.STATUS_ACTIVE)
         await client.hset(key, "started_at", str(time.time()))
         await client.hset(key, "last_heartbeat", str(time.time()))
         await client.expire(key, int(self._config.timeout * 2))
 
         # 加入节点集合
-        await client.sadd("neotask:active_nodes", self._node_id)
+        await client.sadd(self.NODES_SET_KEY, self._node_id)
 
     async def _unregister_node(self) -> None:
         """注销节点"""
         if not self._client:
             return
-        key = f"node:{self._node_id}"
-        await self._client.hset(key, "status", "stopped")
+        key = self._node_key(self._node_id)
+        await self._client.hset(key, "status", self.STATUS_STOPPED)
         await self._client.expire(key, 60)
 
         # 从节点集合移除
-        await self._client.srem("neotask:active_nodes", self._node_id)
+        await self._client.srem(self.NODES_SET_KEY, self._node_id)
 
     async def _heartbeat_loop(self) -> None:
         """心跳上报循环"""
         while self._running:
             try:
                 if self._client:
-                    key = f"node:{self._node_id}"
+                    key = self._node_key(self._node_id)
                     await self._client.hset(key, "last_heartbeat", str(time.time()))
                     await self._client.expire(key, int(self._config.timeout * 2))
                 await asyncio.sleep(self._config.interval)
@@ -156,25 +175,25 @@ class HeartbeatManager:
             return
 
         # 获取所有活跃节点
-        node_ids = await self._client.smembers("neotask:active_nodes")
+        node_ids = await self._client.smembers(self.NODES_SET_KEY)
         now = time.time()
 
         for node_id in node_ids:
             if node_id == self._node_id:
                 continue
 
-            key = f"node:{node_id}"
+            key = self._node_key(node_id)
             data = await self._client.hgetall(key)
 
             if not data:
                 continue
 
-            last_heartbeat = float(data.get("last_heartbeat", 0))
+            last_heartbeat = float(data.get("last_heartbeat", 0) or 0)
             status = data.get("status", "")
 
             # 判断节点是否死亡
             is_dead = (
-                    status != "stopped" and
+                    status != self.STATUS_STOPPED and
                     (now - last_heartbeat) > self._config.timeout
             )
 
@@ -184,80 +203,83 @@ class HeartbeatManager:
                 self._reclaimed_nodes.add(node_id)
 
     async def _reclaim_node_tasks(self, node_id: str) -> None:
-        """回收节点任务"""
+        """回收节点任务
+
+        任务状态经由 TaskRepository 读写，不直接操作 Redis 键，
+        因此对 memory / sqlite / redis 三种后端都成立。
+        """
         if not self._client:
             return
 
+        # 获取该节点正在执行的任务
         try:
-            # 获取该节点正在执行的任务
-            running_task_ids = await self._client.smembers(
-                f"status:{TaskStatus.RUNNING.value}"
+            running_tasks = await self._task_repo.list_by_status(
+                TaskStatus.RUNNING,
+                limit=self._config.max_reclaim_per_cycle
             )
+        except Exception as e:
+            warning(f"Failed to list running tasks for reclaim: {e}")
+            return
 
-            reclaimed_count = 0
+        reclaimed_count = 0
 
-            for task_id in running_task_ids:
-                if reclaimed_count >= self._config.max_reclaim_per_cycle:
-                    break
+        for task in running_tasks:
+            if reclaimed_count >= self._config.max_reclaim_per_cycle:
+                break
 
-                # 获取任务详情
-                key = f"task:{task_id}"
-                data = await self._client.hgetall(key)
+            # 只回收属于该死亡节点的任务
+            if task.node_id != node_id:
+                continue
 
-                if not data:
-                    continue
+            if await self._reclaim_single_task(task):
+                reclaimed_count += 1
 
-                # 检查任务是否属于该节点
-                task_node_id = data.get("node_id", "")
-                if task_node_id != node_id:
-                    continue
+        self._total_reclaimed_tasks += reclaimed_count
 
-                # 回收任务
-                success = await self._reclaim_single_task(task_id, data)
-                if success:
-                    reclaimed_count += 1
+        # 标记节点为已回收
+        await self._client.hset(self._node_key(node_id), "status", self.STATUS_RECLAIMED)
 
-            self._total_reclaimed_tasks += reclaimed_count
-
-            # 标记节点为已回收
-            key = f"node:{node_id}"
-            await self._client.hset(key, "status", "reclaimed")
-
-        except Exception:
-            pass
-
-    async def _reclaim_single_task(self, task_id: str, task_data: Dict) -> bool:
+    async def _reclaim_single_task(self, task: Task) -> bool:
         """回收单个任务"""
-        if not self._client:
+        if self._queue_scheduler is None:
+            warning(
+                f"Cannot reclaim task {task.task_id}: "
+                "no queue scheduler configured"
+            )
             return False
 
         try:
-            # 更新任务状态为 PENDING
-            key = f"task:{task_id}"
-            await self._client.hset(key, "status", TaskStatus.PENDING.value)
-            await self._client.hset(key, "node_id", "")
-            await self._client.hset(key, "error", f"Reclaimed from dead node")
-
-            # 获取优先级
-            priority = int(task_data.get("priority", 2))
+            dead_node_id = task.node_id
+            task.status = TaskStatus.PENDING
+            task.node_id = ""
+            task.started_at = None
+            task.error = f"Reclaimed from dead node {dead_node_id}"
+            await self._task_repo.save(task)
 
             # 重新入队
-            await self._client.zadd("queue:priority", {task_id: priority})
+            queued = await self._queue_scheduler.push(task.task_id, task.priority.value)
+            if not queued:
+                warning(
+                    f"Reclaimed task {task.task_id} could not be requeued "
+                    "(queue full or disabled), marking as FAILED"
+                )
+                task.status = TaskStatus.FAILED
+                task.error = "Reclaimed from dead node but requeue failed (queue full/disabled)"
+                await self._task_repo.save(task)
+                return False
 
-            # 更新状态索引
-            await self._client.srem(f"status:{TaskStatus.RUNNING.value}", task_id)
-            await self._client.sadd(f"status:{TaskStatus.PENDING.value}", task_id)
-
+            debug(f"Reclaimed task {task.task_id} from dead node {dead_node_id}")
             return True
 
-        except Exception:
+        except Exception as e:
+            warning(f"Failed to reclaim task {task.task_id}: {e}")
             return False
 
     async def get_active_nodes(self) -> List[str]:
         """获取活跃节点列表"""
         if not self._client:
             return []
-        node_ids = await self._client.smembers("neotask:active_nodes")
+        node_ids = await self._client.smembers(self.NODES_SET_KEY)
         active_nodes = []
 
         for node_id in node_ids:
@@ -270,17 +292,17 @@ class HeartbeatManager:
         """检查节点是否存活"""
         if not self._client:
             return False
-        key = f"node:{node_id}"
+        key = self._node_key(node_id)
         data = await self._client.hgetall(key)
 
         if not data:
             return False
 
-        last_heartbeat = float(data.get("last_heartbeat", 0))
+        last_heartbeat = float(data.get("last_heartbeat", 0) or 0)
         status = data.get("status", "")
 
         is_alive = (
-                status == "active" and
+                status == self.STATUS_ACTIVE and
                 (time.time() - last_heartbeat) < self._config.timeout
         )
 

@@ -87,10 +87,8 @@ class RedisLock(TaskLock):
         self._key_prefix = key_prefix
         self._pool: Optional["ConnectionPool"] = None
         self._client: Optional["redis.Redis"] = None
-        # 注意：_owner 是实例级别的，每个锁实例只能持有一个锁
-        # 同时持有多个锁时需要分别管理
-        self._owner: Optional[str] = None
-        self._owners: Dict[str, str] = {}  # key -> owner 映射，支持多个锁
+        # 一个锁实例可以同时持有多个锁，逐个记录各自的 owner token
+        self._owners: Dict[str, str] = {}  # key -> owner 映射
 
     async def _get_client(self) -> "redis.Redis":
         """获取Redis客户端"""
@@ -131,7 +129,6 @@ class RedisLock(TaskLock):
 
         if result:
             # 存储 owner 用于后续操作
-            self._owner = owner
             self._owners[key] = owner
             return True
         return False
@@ -149,7 +146,7 @@ class RedisLock(TaskLock):
         full_key = self._get_key(key)
 
         # 获取该锁对应的 owner
-        owner = self._owners.get(key, self._owner)
+        owner = self._owners.get(key)
         if not owner:
             return False
 
@@ -162,8 +159,6 @@ class RedisLock(TaskLock):
         if result == 1:
             # 清理本地记录
             self._owners.pop(key, None)
-            if self._owner == owner:
-                self._owner = None
             return True
 
         return False
@@ -171,22 +166,21 @@ class RedisLock(TaskLock):
     async def extend(self, key: str, ttl: int = 30) -> bool:
         """延长锁的生存时间
 
-        注意：这个方法需要正确获取当前锁的持有者
+        只有本实例仍是该锁的持有者时才续期。多把锁各自使用自己的 owner token，
+        因此同时持有多个锁时不会互相干扰。
         """
         client = await self._get_client()
         full_key = self._get_key(key)
 
-        # 获取当前持有者
-        current_owner = await client.get(full_key)
-
-        # 只有当前持有者才能续期
-        if current_owner == self._owner:
-            result = await client.expire(full_key, ttl)
-            return result
-        else:
-            # owner 不匹配，续期失败
-            # 这可能是因为锁已被其他实例持有或已过期
+        # 取出该锁对应的 owner（不存在的 key 说明本实例并未持有）
+        owner = self._owners.get(key)
+        if not owner:
             return False
+
+        # 比较并续期，避免与已接管该锁的其他实例竞争（GET+EXPIRE 非原子）
+        script = client.register_script(self.LUA_EXTEND)
+        result = await script(keys=[full_key], args=[owner, ttl])
+        return result == 1
 
     async def is_locked(self, key: str) -> bool:
         """检查锁是否被持有"""

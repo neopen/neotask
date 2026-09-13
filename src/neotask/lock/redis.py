@@ -90,6 +90,7 @@ class RedisLock(TaskLock):
         # 一个锁实例可以同时持有多个锁，逐个记录各自的 owner token
         self._owners: Dict[str, str] = {}  # key -> owner 映射
 
+
     async def _get_client(self) -> "redis.Redis":
         """获取Redis客户端"""
         if not HAS_REDIS:

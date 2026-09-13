@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     import redis.asyncio as redis
     from redis.asyncio import ConnectionPool
 
+
 try:
     import redis.asyncio as redis
     from redis.asyncio import ConnectionPool

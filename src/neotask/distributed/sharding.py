@@ -67,9 +67,11 @@ class ConsistentHashSharder(Sharder):
     def _hash(self, key: str) -> int:
         """计算哈希值"""
         if self._hash_fn == "md5":
-            return int(hashlib.md5(key.encode()).hexdigest()[:8], 16)
+            digest = hashlib.md5(key.encode(), usedforsecurity=False).hexdigest()
+            return int(digest[:8], 16)
         elif self._hash_fn == "sha1":
-            return int(hashlib.sha1(key.encode()).hexdigest()[:8], 16)
+            digest = hashlib.sha1(key.encode(), usedforsecurity=False).hexdigest()
+            return int(digest[:8], 16)
         else:
             return int(hashlib.sha256(key.encode()).hexdigest()[:8], 16)
 

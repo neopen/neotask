@@ -9,11 +9,13 @@
 import asyncio
 import random
 import threading
+import time
 import uuid
 from datetime import datetime, timedelta
 from typing import Optional, Any, Dict, List, Callable, Union
 
 from neotask.api.task_pool import TaskPool, TaskPoolConfig
+from neotask.common.logger import debug
 from neotask.models.config import SchedulerConfig
 from neotask.models.schedule import PeriodicTask
 from neotask.models.task import TaskPriority
@@ -224,11 +226,10 @@ class TaskScheduler:
         self._scheduler_thread.start()
 
     async def _scheduler_loop(self) -> None:
-        """调度循环
+        """调度循环（仅用于未启用 PeriodicTaskManager 的降级路径）
 
-        职责:
-            - 扫描并执行到期的周期任务
-            - 更新任务统计信息
+        启用 PeriodicTaskManager 时，周期任务由管理器自己的 ``_scheduler_loop``
+        驱动，本循环不做任何调度，避免同一任务被两条循环重复提交。
 
         设计模式: Scheduler Pattern - 定期扫描调度
         """
@@ -236,23 +237,7 @@ class TaskScheduler:
             try:
                 now = datetime.now()
 
-                if self._periodic_manager:
-                    # 使用PeriodicTaskManager获取任务列表
-                    tasks = await self._periodic_manager.list_tasks()
-                    for task_info in tasks:
-                        if not task_info.get("is_paused", False):
-                            next_run_str = task_info.get("next_run")
-                            if next_run_str:
-                                next_run_dt = datetime.fromisoformat(next_run_str)
-                                if next_run_dt <= now:
-                                    # 获取完整的任务实例
-                                    instance = await self._periodic_manager.get_task_instance(task_info["task_id"])
-                                    if instance:
-                                        await self._periodic_manager._execute_periodic_task(
-                                            task_info["task_id"],
-                                            instance
-                                        )
-                else:
+                if not self._periodic_manager:
                     # 使用本地存储的周期任务
                     for task_id, periodic_task in list(self._periodic_tasks.items()):
                         if periodic_task.is_paused:
@@ -308,6 +293,15 @@ class TaskScheduler:
             self._run_async(self._periodic_manager.stop())
 
         if self._time_wheel:
+            # 未到期的任务交还延时队列：时间轮是纯内存结构，直接 stop 会把它们
+            # 静默丢弃（存储里只剩 PENDING 记录，内存模式下再无人推进）
+            remaining = self._run_async(self._time_wheel.drain())
+            for wheel_task in remaining:
+                delay = max(0.0, wheel_task.execute_at - time.time())
+                self._run_async(self._pool.retry_async(wheel_task.task_id, delay))
+            if remaining:
+                debug(f"Drained {len(remaining)} time wheel task(s) back to delayed queue")
+
             self._run_async(self._time_wheel.stop())
 
         self._pool.shutdown(graceful, timeout)
@@ -357,6 +351,10 @@ class TaskScheduler:
         设计模式: Delegation Pattern - 委托给TaskPool
         """
         self._ensure_running()
+        if self._time_wheel and delay_seconds > 0:
+            return self._run_async(self._submit_delayed_via_time_wheel(
+                data, delay_seconds, task_id, priority, ttl
+            ))
         return self._pool.submit(data, task_id, priority, delay_seconds, ttl)
 
     async def submit_delayed_async(
@@ -382,6 +380,10 @@ class TaskScheduler:
         设计模式: Delegation Pattern - 委托给TaskPool
         """
         self._ensure_running()
+        if self._time_wheel and delay_seconds > 0:
+            return await self._submit_delayed_via_time_wheel(
+                data, delay_seconds, task_id, priority, ttl
+            )
         return await self._pool.submit_async(data, task_id, priority, delay_seconds, ttl)
 
     def submit_at(
@@ -421,13 +423,45 @@ class TaskScheduler:
         delay_seconds = max(0.0, (execute_at - datetime.now()).total_seconds())
         return await self.submit_delayed_async(data, delay_seconds, task_id, priority, ttl)
 
+    async def _submit_delayed_via_time_wheel(
+            self,
+            data: Dict[str, Any],
+            delay_seconds: float,
+            task_id: Optional[str],
+            priority: Union[int, TaskPriority],
+            ttl: int
+    ) -> str:
+        """通过时间轮提交延时任务
+
+        任务先落库（PENDING）再进轮，到期时由 :meth:`_on_delayed_task_ready`
+        入队——这样延时期间任务在存储里可见、可用 task_id 查询/取消。
+        超过时间轮量程（槽位数 × tick × max_rounds）时退回 TaskPool 的延时队列。
+        """
+        created_id = await self._pool.create_pending_task_async(
+            data, task_id, priority, ttl
+        )
+
+        priority_value = priority.value if isinstance(priority, TaskPriority) else int(priority)
+        slot = await self._time_wheel.add_task(
+            created_id, priority_value, delay_seconds, data
+        )
+
+        if slot < 0:
+            # 超出量程：退回延时队列，避免任务卡在已落库却永不入队的中间态
+            await self._pool.retry_async(created_id, delay_seconds)
+
+        return created_id
+
     async def _on_delayed_task_ready(
             self,
             task_id: str,
             priority: int,
             data: Optional[Dict] = None
     ) -> None:
-        """时间轮任务到期回调
+        """时间轮任务到期回调：把已存在的任务入队
+
+        任务在提交时已落库，这里只推进队列；等待期间被取消/删除的任务
+        （状态不再是 PENDING）会被拒绝，不会补跑。
 
         Args:
             task_id: 任务ID
@@ -436,10 +470,9 @@ class TaskScheduler:
 
         设计模式: Callback Pattern - 时间轮回调通知
         """
-        if data:
-            await self._pool.submit_async(data, task_id, priority)
-        else:
-            await self._pool.submit_async({}, task_id, priority)
+        enqueued = await self._pool.enqueue_task_async(task_id)
+        if not enqueued:
+            debug(f"Delayed task {task_id} not enqueued (missing or not PENDING)")
 
     # ========== 周期任务 API ==========
 
@@ -451,7 +484,8 @@ class TaskScheduler:
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
             run_immediately: bool = True,
             max_runs: Optional[int] = None,
-            name: str = ""
+            name: str = "",
+            missed_policy: Optional[str] = None
     ) -> str:
         """按固定间隔周期执行任务
 
@@ -461,8 +495,9 @@ class TaskScheduler:
             task_id: 任务ID（可选，自动生成）
             priority: 优先级
             run_immediately: 是否立即执行第一次
-            max_runs: 最大执行次数
+            max_runs: 最大执行次数（默认取 SchedulerConfig.default_max_runs）
             name: 任务名称
+            missed_policy: 错过执行策略，默认取 SchedulerConfig.default_missed_policy
 
         Returns:
             周期任务ID
@@ -473,6 +508,8 @@ class TaskScheduler:
 
         task_id = task_id or self._generate_task_id()
         priority_value = priority.value if isinstance(priority, TaskPriority) else priority
+        max_runs = max_runs if max_runs is not None else self._config.default_max_runs
+        missed_policy = missed_policy or self._config.default_missed_policy
 
         if self._periodic_manager:
             return self._run_async(
@@ -481,7 +518,10 @@ class TaskScheduler:
                     task_data=data,
                     name=name or task_id,
                     priority=priority_value,
-                    max_runs=max_runs
+                    max_runs=max_runs,
+                    missed_policy=missed_policy,
+                    run_immediately=run_immediately,
+                    task_id=task_id
                 )
             )
 
@@ -512,7 +552,8 @@ class TaskScheduler:
             task_id: Optional[str] = None,
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
             max_runs: Optional[int] = None,
-            name: str = ""
+            name: str = "",
+            missed_policy: Optional[str] = None
     ) -> str:
         """
         按Cron表达式周期执行任务
@@ -522,8 +563,9 @@ class TaskScheduler:
             cron_expr: Cron表达式，如 "0 9 * * *" 表示每天9点
             task_id: 任务ID（可选，自动生成）
             priority: 优先级
-            max_runs: 最大执行次数
+            max_runs: 最大执行次数（默认取 SchedulerConfig.default_max_runs）
             name: 任务名称
+            missed_policy: 错过执行策略，默认取 SchedulerConfig.default_missed_policy
 
         Returns:
             周期任务ID
@@ -537,6 +579,8 @@ class TaskScheduler:
 
         task_id = task_id or self._generate_task_id()
         priority_value = priority.value if isinstance(priority, TaskPriority) else priority
+        max_runs = max_runs if max_runs is not None else self._config.default_max_runs
+        missed_policy = missed_policy or self._config.default_missed_policy
 
         if self._periodic_manager:
             return self._run_async(
@@ -545,7 +589,9 @@ class TaskScheduler:
                     task_data=data,
                     name=name or task_id,
                     priority=priority_value,
-                    max_runs=max_runs
+                    max_runs=max_runs,
+                    missed_policy=missed_policy,
+                    task_id=task_id
                 )
             )
 

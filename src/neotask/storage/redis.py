@@ -24,7 +24,7 @@ except ImportError:  # pragma: no cover
     ConnectionPool = None  # type: ignore[assignment]
     HAS_REDIS = False
 
-from neotask.models.task import Task, TaskStatus
+from neotask.models.task import Task, TaskPriority, TaskStatus
 from neotask.storage.base import TaskRepository, QueueRepository
 
 
@@ -54,6 +54,16 @@ class RedisTaskRepository(TaskRepository):
         """保存任务 - 使用 JSON 序列化存储"""
         client = await self._get_client()
         key = f"task:{task.task_id}"
+
+        # 同步状态索引：先移除旧状态的成员关系，否则任务会同时残留在多个 status:* 集合中
+        old_data = await client.get(key)
+        if old_data:
+            try:
+                old_status = json.loads(old_data).get("status")
+            except (ValueError, TypeError):
+                old_status = None
+            if old_status and old_status != task.status.value:
+                await client.srem(f"status:{old_status}", task.task_id)
 
         # 使用 JSON 字符串存储整个任务
         task_dict = task.to_dict()
@@ -291,9 +301,10 @@ class RedisQueueRepository(QueueRepository):
         if delayed_tasks:
             # 移除延迟队列中的任务
             await client.zrem(self._delayed_key, *delayed_tasks)
-            # 加入优先级队列（默认中等优先级）
+            # queue:delayed 只存 task_id 到到期时间的映射 不带优先级字段
+            # 迁移回优先级队列时无法还原 统一按 NORMAL 入队
             for task_id in delayed_tasks:
-                await client.zadd(self._queue_key, {task_id: 5})
+                await client.zadd(self._queue_key, {task_id: TaskPriority.NORMAL.value})
 
         # 2. 从优先级队列弹出
         script = await self._get_pop_script()

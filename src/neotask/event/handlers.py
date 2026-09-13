@@ -10,6 +10,7 @@ import logging
 from typing import Dict, Any, Optional
 
 from neotask.event.bus import TaskEvent, EventBus
+from neotask.models.task import TaskPriority
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +36,28 @@ class MetricsHandler:
         self._metrics = metrics_collector
 
     async def handle(self, event: TaskEvent) -> None:
-        """处理事件"""
-        if event.event_type == "task.started":
-            self._metrics.record_task_start(event.task_id)
+        """处理事件
+
+        MetricsCollector 的记录方法都是协程，必须 await，否则指标不会被写入。
+        """
+        data = event.data if isinstance(event.data, dict) else {}
+
+        if event.event_type == "task.created":
+            await self._metrics.record_task_submit(
+                event.task_id, data.get("priority", TaskPriority.NORMAL.value)
+            )
+        elif event.event_type == "task.started":
+            await self._metrics.record_task_start(event.task_id)
         elif event.event_type == "task.completed":
-            self._metrics.record_task_complete(event.task_id)
+            await self._metrics.record_task_complete(event.task_id)
         elif event.event_type == "task.failed":
-            self._metrics.record_task_failed(event.task_id)
+            await self._metrics.record_task_failed(event.task_id)
+        elif event.event_type == "task.cancelled":
+            await self._metrics.record_task_cancelled(event.task_id)
         elif event.event_type == "task.retry":
-            self._metrics.record_task_retry(event.task_id)
+            await self._metrics.record_task_retry(
+                event.task_id, data.get("retry_count", 1)
+            )
 
 
 class PersistenceHandler:

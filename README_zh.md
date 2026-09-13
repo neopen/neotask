@@ -23,7 +23,7 @@
 
 
 > 🚀 **轻量异步**：纯 Python 实现的异步任务队列，专为 AI 生成、视频处理、数据爬取等高耗时任务设计  
-> 📦 **零依赖部署**：单节点无需配置 Redis、PostgreSQL 等外部服务， 分布式多节点环境需要依赖 Redis 支持  
+> 📦 **无外部服务依赖**：单节点无需配置 Redis、PostgreSQL 等外部服务（基础包仅需 aiosqlite、croniter 两个依赖），分布式多节点环境需要 Redis 支持  
 > ⏰ **全场景调度**：原生支持定时任务、周期任务（Cron-like）与延迟任务，开箱即用、自动重试与异常恢复  
 > ⚡ 5 分钟上手：`pip install neotask`  3行代码集成，即可使用内部接口
 
@@ -32,16 +32,15 @@
 
 ## 特性
 
-- **零依赖部署** - 纯 Python 实现，无需 Redis/PostgreSQL
+- **无外部服务依赖** - 纯 Python 实现，无需 Redis/PostgreSQL
 - **即时任务** - 支持优先级调度，高优先级优先执行
 - **定时任务** - 支持延时执行、固定间隔、Cron 表达式
 - **异步并发** - 基于 asyncio，多 Worker 并发处理
 - **自动重试** - 失败任务自动重试，可配置次数
 - **持久化** - 内存/SQLite/Redis 多种存储后端
-- **分布式** - Redis 队列、分布式锁、多节点协调
+- **分布式** - Redis 共享队列、分布式锁、节点心跳与故障任务回收
 - **高性能** - 预取机制、批量操作
 - **高可用** - 看门狗、超时检测、任务回收、死信队列
-- **任务编排** - DAG工作流引擎，支持复杂任务依赖管理和条件分支
 - **事件回调** - 支持任务生命周期事件监听
 
 ------
@@ -57,8 +56,6 @@
 | **延迟通知**           | 用户操作后5分钟发送提醒      | `delay_seconds=300`     | TaskScheduler  |
 | **心跳检测**           | 每30秒检测服务健康状态       | `interval_seconds=30`   | TaskScheduler  |
 | **后台数据分析**       | 夜间执行数据聚合任务         | `cron="0 2 * * *"`      | TaskScheduler  |
-| **数据处理流水线**     | ETL任务依赖编排              | DAG工作流               | WorkflowEngine |
-| **条件分支处理**       | 根据结果执行不同分支         | `condition` 表达式      | WorkflowEngine |
 
 ---
 
@@ -73,7 +70,6 @@ graph TB
     subgraph NeoTask["NeoTask 核心"]
         TP[TaskPool<br/>即时任务入口 v0.1]
         TS[TaskScheduler<br/>定时任务入口 v0.3]
-        WF[WorkflowEngine<br/>工作流编排入口 v1.5]
         
         subgraph Core["共享核心组件"]
             LM[LifecycleManager<br/>任务生命周期管理]
@@ -99,9 +95,7 @@ graph TB
     
     APP -->|即时任务| TP
     APP -->|定时任务| TS
-    APP -->|工作流| WF
     TS -->|委托| TP
-    WF -->|委托| TP
     TP --> LM
     TP --> QS
     TP --> WP
@@ -170,6 +164,8 @@ timeline
 详细使用方式 请参阅 [文档](https://pengline.cn/2026/04/118be805273f47408bc580c4bd1203d8/)
 
 ### 安装
+
+**环境要求**：Python ≥ 3.8。基础包依赖 `aiosqlite`（SQLite 存储）与 `croniter`（Cron 表达式）两个库；Redis、psutil 等为可选扩展，按需安装。
 
 ```sh
 # 基础安装
@@ -270,8 +266,6 @@ result = pool.wait_for_result(task_id)
 | `scheduler.submit_delayed(data, delay)`      | 延时任务          |
 | `scheduler.submit_interval(data, interval)`  | 周期任务          |
 | `scheduler.submit_cron(data, cron)`          | Cron 任务         |
-| `engine.submit_workflow(definition)`         | Submit workflow   |
-| `engine.wait_workflow(execution_id)`         | Wait for workflow |
 
 详细 API 请参阅 [文档](https://pengline.cn/2026/04/650ac5bb41c74e26bc4effcec88bf26c/)
 
@@ -326,14 +320,20 @@ pytest tests/test_task_scheduler.py -v
 
 ```
 neotask/
-├── api/           # TaskPool, TaskScheduler, WorkflowEngine
-├── core/          # 生命周期、队列、Worker
-├── workflow/      # DAG引擎、条件分支、并行执行
-├── executor/      # 任务执行器
-├── scheduler/     # 定时任务
+├── api/           # TaskPool, TaskScheduler
+├── core/          # 生命周期、调度器、Future
+├── queue/         # 优先级队列、延迟队列
+├── worker/        # Worker 池、监督者、预取
+├── scheduler/     # 定时任务、Cron 解析
+├── executor/      # 异步/线程/进程执行器
 ├── storage/       # 内存/SQLite/Redis
+├── lock/          # 内存/Redis 分布式锁
 ├── event/         # 事件总线
-└── models/        # 数据模型
+├── monitor/       # 指标、健康检查、上报
+├── distributed/   # 节点管理、协调器、分片
+├── web/           # 可选 Web UI
+├── models/        # 任务与配置模型
+└── common/        # 日志、异常
 ```
 
 
@@ -365,11 +365,10 @@ pytest tests/
 # 运行特定模块测试
 pytest tests/test_task_pool.py -v
 pytest tests/test_task_scheduler.py -v
-pytest tests/test_workflow.py -v 
 
 # 运行手动测试
 python examples/01_simple.py
-python examples/05_webui.py
+python examples/05_cron_tasks.py
 ```
 
 ## 问题反馈

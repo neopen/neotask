@@ -7,23 +7,81 @@
 
 ## [Unreleased]
 
-### 计划中 (v0.4+)
-- **分布式核心**
-  - Redis 共享队列支持
-  - 分布式锁实现
-  - 预取机制优化
-- **高可用保障**
-  - 看门狗续期机制
-  - 超时检测
-  - 故障自动恢复
-- **任务编排**
-  - DAG 工作流引擎
+### 计划中 (v1.5 / v2.0)
+- **任务编排（v1.5）**
+  - DAG 工作流引擎（`WorkflowEngine`）
   - 条件分支执行
   - 并行任务编排
-- **企业级功能**
-  - 独立 Web UI 监控面板
-  - Prometheus 指标集成
+- **企业级功能（v2.0）**
+  - 独立 Web UI 监控面板（多进程形态）
+  - Prometheus 指标拉取端点
   - 多租户隔离支持
+
+> v0.4/v0.5/v1.0 的能力（Redis 共享队列、分布式锁、预取、看门狗续期、超时检测、故障自动恢复）均已发布，记录见下。
+
+---
+
+## [1.0.2] - 2026-09-12
+
+### 修复
+
+- **分布式链路缺陷修复**：Redis 延迟队列迁移回优先级队列时丢失优先级的问题——`queue:delayed` 只存 task_id 到到期时间的映射、不带优先级字段，迁移时统一按 `TaskPriority.NORMAL` 入队
+- **延时队列回调静默失败**：`DelayedQueue` 中回调异常被 `except Exception: pass` 吞掉，改为记录错误日志
+- **Python 3.8 运行期阻塞点**：`core/future.py` 的 `self._futures: dict[str, TaskFuture]` 是会在运行期求值的属性注解，PEP 585 泛型在 3.8 抛 `TypeError`；改回 `typing.Dict`
+
+### 变更
+
+- **依赖收敛**：`pip install neotask` 的强制依赖由 4 个（aiosqlite/redis/psutil/croniter）收敛为 2 个（`aiosqlite>=0.19.0`、`croniter>=1.0.0`）；`redis`、`psutil` 移回可选 extra，源码中原有 import 守卫（`HAS_REDIS`、psutil 惰性导入）保证缺失时仍可 `import neotask`
+- **最低 Python 版本统一为 ≥ 3.8**：`requires-python`、classifiers、black/mypy/ruff 的 target-version 全部对齐 3.8
+- **版本号三方对齐**：`pyproject.toml` / `[tool.bumpversion]` / `neotask.__version__` 统一为 `1.0.2`（此前 1.0.0/1.0.1/1.0.2 混用）
+- **CI 矩阵**：`.github/workflows/ci.yml` 改为 3.8 / 3.10 / 3.12 三版本矩阵，并新增 `import neotask` 冒烟测试作为最低版本保护线
+
+### 文档
+
+- 依赖与版本口径统一到 1.0.2 / Python ≥ 3.8，覆盖 `README.md`、`README_zh.md`、`docs/`、示例与系列文章
+- 移除 README 中尚未实现的 `WorkflowEngine` / `engine.submit_workflow` 等 API 条目与「DAG 工作流」特性宣传，改由路线图 timeline 的 `v1.5` 段承载
+- 将「零依赖部署」表述修正为「无外部服务依赖」，并如实标注 2 个基础依赖
+
+---
+
+## [1.0.1] - 2026-08-20
+
+### 修复
+
+- 状态守门、回收判据、心跳契约等行为修复
+
+---
+
+## [1.0.0] - 2026-05-11
+
+### 新增
+
+- 死信队列（`DeadLetterQueue`，Redis 模式默认启用，保留 7 天，支持 `replay`）
+
+---
+
+## [0.5.0] - 2026-05-10
+
+### 变更
+
+- 该 tag 无文件级变化（预取机制与批量操作已在此前版本落地）
+
+---
+
+## [0.4.1] - 2026-05-08
+
+### 移除
+
+- 删除 `distributed/elector`（Redis 主节点选举存活 7 天后弃用）
+
+---
+
+## [0.4.0] - 2026-05-01
+
+### 新增
+
+- `distributed` 包：`node`（节点管理与心跳）、`coordinator`、`elector`、`sharding`
+- Redis 共享队列与分布式锁
 
 ---
 
@@ -290,6 +348,33 @@
 
 ## 升级指南
 
+### 从 1.0.1 升级到 1.0.2
+
+#### 依赖变更（唯一需要动作的地方）
+
+`redis`、`psutil` 不再是强制依赖。如果你的项目此前依赖 `pip install neotask` 顺带装上它们，升级后需显式声明：
+
+```bash
+# 用到 Redis 存储 / 分布式锁 / 去中心化
+pip install "neotask[redis]"
+
+# 用到系统指标采集（get_stats()["metrics"]["system"]、健康检查 system 项）
+pip install "neotask[monitor]"
+
+# 或一次装全
+pip install "neotask[full]"
+```
+
+#### 最低 Python 版本
+
+`requires-python` 由 `>=3.9` 降为 `>=3.8`，对已有环境无影响；Python 3.8 用户此前会被 pip 拒绝安装，现在可用。
+
+#### API 变更
+
+无破坏性变更，完全向后兼容。
+
+---
+
 ### 从 0.2.x 升级到 0.3.0
 
 #### 新增依赖
@@ -387,7 +472,7 @@ lock = LockFactory.create_redis("redis://localhost:6379")
 
 感谢以下贡献者对项目的支持：
 
-- **HiPeng** - 项目创始人和维护者
+- **neopen** - 项目创始人和维护者
 - 欢迎更多开发者参与贡献！
 
 ------

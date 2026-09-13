@@ -6,10 +6,16 @@
 @Time: 2026/4/8 00:00
 """
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Dict, Any, Optional
+
+
+# 单项检查的超时（秒）。存储/队列检查在依赖不可达时可能一直挂到 TCP 超时，
+# 没有这层保护会连带卡住调用健康接口的一方。
+DEFAULT_CHECK_TIMEOUT = 5.0
 
 
 class HealthStatus(Enum):
@@ -36,10 +42,11 @@ class HealthChecker:
     执行各项健康检查，汇总系统状态。
     """
 
-    def __init__(self):
+    def __init__(self, check_timeout: float = DEFAULT_CHECK_TIMEOUT):
         self._checks: Dict[str, callable] = {}
         self._results: Dict[str, CheckResult] = {}
         self._last_check: Optional[datetime] = None
+        self._check_timeout = check_timeout
 
     def register(self, name: str, check_func) -> None:
         """注册健康检查函数
@@ -55,22 +62,36 @@ class HealthChecker:
         self._checks.pop(name, None)
         self._results.pop(name, None)
 
+    @property
+    def last_check(self) -> Optional[datetime]:
+        """上次执行检查的时间（从未执行过为 None）"""
+        return self._last_check
+
     async def check_all(self) -> Dict[str, CheckResult]:
-        """执行所有健康检查"""
+        """执行所有健康检查（逐项串行，单项超时则记 UNHEALTHY）"""
         self._last_check = datetime.now()
 
         for name, check_func in self._checks.items():
+            start = datetime.now()
             try:
-                start = datetime.now()
-                result = await check_func()
-                duration = (datetime.now() - start).total_seconds() * 1000
-                result.duration_ms = duration
+                result = await asyncio.wait_for(
+                    check_func(), timeout=self._check_timeout
+                )
+                result.duration_ms = (datetime.now() - start).total_seconds() * 1000
                 self._results[name] = result
+            except asyncio.TimeoutError:
+                self._results[name] = CheckResult(
+                    name=name,
+                    status=HealthStatus.UNHEALTHY,
+                    message=f"Check timed out after {self._check_timeout}s",
+                    duration_ms=(datetime.now() - start).total_seconds() * 1000
+                )
             except Exception as e:
                 self._results[name] = CheckResult(
                     name=name,
                     status=HealthStatus.UNHEALTHY,
-                    message=str(e)
+                    message=str(e),
+                    duration_ms=(datetime.now() - start).total_seconds() * 1000
                 )
 
         return self._results
@@ -111,11 +132,17 @@ class SystemHealthChecker:
     提供内置的系统健康检查。
     """
 
-    def __init__(self, task_repo=None, queue=None, storage=None):
+    def __init__(
+            self,
+            task_repo=None,
+            queue=None,
+            storage=None,
+            check_timeout: float = DEFAULT_CHECK_TIMEOUT
+    ):
         self._task_repo = task_repo
         self._queue = queue
         self._storage = storage
-        self._checker = HealthChecker()
+        self._checker = HealthChecker(check_timeout=check_timeout)
 
         # 注册内置检查
         self._register_builtin_checks()
@@ -187,11 +214,14 @@ class SystemHealthChecker:
         try:
             import psutil
         except ImportError:
+            # psutil 是可选依赖：缺它只说明这项检查做不了，不代表系统不健康。
+            # 若记为 DEGRADED，默认安装（不带 [monitor] extra）会永远上报 degraded。
             return CheckResult(
                 name="system",
-                status=HealthStatus.DEGRADED,
+                status=HealthStatus.HEALTHY,
                 message="psutil not installed, system check skipped. "
-                        "Install with: pip install neotask[monitor]"
+                        "Install with: pip install neotask[monitor]",
+                details={"available": False}
             )
 
         try:
@@ -241,6 +271,11 @@ class SystemHealthChecker:
     async def check(self) -> Dict[str, CheckResult]:
         """执行所有健康检查"""
         return await self._checker.check_all()
+
+    @property
+    def last_check(self) -> Optional[datetime]:
+        """上次执行检查的时间（从未执行过为 None）"""
+        return self._checker.last_check
 
     def get_status(self) -> HealthStatus:
         """获取整体健康状态"""

@@ -4,7 +4,7 @@
 
 NeoTask 是一个纯 Python 实现的异步任务调度系统，专为耗时任务（AI 生成、视频处理、数据爬取等）设计。无需部署 Redis、PostgreSQL 等外部服务，安装后即可在任意 Python 项目中直接使用。
 
-[中文](../README_zh) | [English](./docs/README-en.md) | [文档](https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5/) | [PyPI](https://pypi.org/project/neotask/) | [官网](https://task.pengline.cn)
+[中文](../README_zh.md) | [English](../README.md) | [文档](https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5/) | [PyPI](https://pypi.org/project/neotask/) | [官网](https://task.helpenx.com)
 
 ---
 
@@ -12,7 +12,7 @@ NeoTask 是一个纯 Python 实现的异步任务调度系统，专为耗时任�
 
 | 功能 | 说明 |
 |------|------|
-| **零依赖部署** | 纯 Python 实现，内置 SQLite 支持，无需启动独立服务 |
+| **无外部服务依赖** | 纯 Python 实现，内置 SQLite 支持，无需启动独立服务（基础包仅需 aiosqlite、croniter 两个依赖） |
 | **即时任务** | 提交后立即进入队列，支持优先级调度 |
 | **延时任务** | 指定延迟时间或具体时间点执行 |
 | **周期任务** | 支持固定间隔和 Cron 表达式周期执行 |
@@ -220,6 +220,8 @@ graph LR
 ## 快速上手
 
 ### 安装
+
+**环境要求**：Python ≥ 3.8。基础包依赖 `aiosqlite`（SQLite 存储）与 `croniter`（Cron 表达式）两个库；Redis、psutil 等为可选扩展，按需安装。
 
 ```sh
 # 基础安装
@@ -747,7 +749,7 @@ python examples/05_webui.py
 
 MIT License - 详见 [LICENSE](https://license/) 文件
 
-Copyright (c) 2024 HiPeng
+Copyright (c) 2024 neopen
 
 ------
 

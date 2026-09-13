@@ -288,3 +288,29 @@ class TestRedisLock:
         for key in keys:
             is_locked = await lock.is_locked(key)
             assert is_locked is False
+
+    @pytest.mark.asyncio
+    async def test_extend_multiple_locks_same_instance(self, lock):
+        """测试同一实例持有多把锁时逐把续期"""
+        keys = ["extend_multi_1", "extend_multi_2", "extend_multi_3"]
+
+        for key in keys:
+            assert await lock.acquire(key, ttl=2) is True
+
+        await asyncio.sleep(0.5)
+
+        # 每把锁都必须能独立续期，不能被后获取的锁覆盖 owner
+        for key in keys:
+            assert await lock.extend(key, ttl=5) is True
+
+        # 原始 TTL(2s) 已过，续期后的锁仍应存活
+        await asyncio.sleep(2)
+
+        for key in keys:
+            assert await lock.is_locked(key) is True
+
+        # 未持有的键不能续期
+        assert await lock.extend("extend_multi_unheld", ttl=5) is False
+
+        for key in keys:
+            assert await lock.release(key) is True

@@ -337,6 +337,13 @@ class MetricsCollector:
             async with self._lock:
                 self._metrics.execution_times.append(execution_time)
 
+        # 记录重试次数：最终失败的任务同样属于 avg_retry_count 的样本，
+        # 只统计成功任务会让该指标系统性偏低（重试最多的恰恰是失败的）
+        if task_id in self._task_retry_counts:
+            retry_count = self._task_retry_counts[task_id]
+            async with self._lock:
+                self._metrics.retry_counts.append(retry_count)
+
         async with self._lock:
             self._metrics.total_failed += 1
             self._metrics.running = max(0, self._metrics.running - 1)

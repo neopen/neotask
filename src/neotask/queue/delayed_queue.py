@@ -12,6 +12,7 @@ import time
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Any, Callable
 
+from neotask.common.logger import error
 from neotask.models.schedule import DelayedTask
 
 
@@ -202,8 +203,10 @@ class DelayedQueue:
                             except TypeError:
                                 # 如果回调只接受两个参数
                                 await self._callback(task_id, priority)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            # 任务已从堆中弹出，回调失败即永久失去触发机会，
+                            # 静默吞掉会让任务停在 PENDING 且无任何线索
+                            error(f"Delayed task {task_id} callback failed: {e}")
 
                 # 计算下次检查时间
                 next_time = self._heap[0][0] if self._heap else now + 1

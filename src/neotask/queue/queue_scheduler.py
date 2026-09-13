@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
 
-from neotask.common.logger import debug
+from neotask.common.logger import debug, error
 from neotask.queue.delayed_queue import DelayedQueue
 from neotask.queue.priority_queue import PriorityQueue
 from neotask.storage.base import QueueRepository
@@ -64,8 +64,10 @@ class QueueScheduler:
     async def _on_delayed_task_ready(self, task_id: str, priority: int, data: Dict = None) -> None:
         """延迟任务到期回调"""
         debug(f"[QUEUE_SCHEDULER] Delayed task ready: {task_id}, priority={priority}")
-        if not self._disabled:
-            await self._priority_queue.push(task_id, priority)
+        if self._disabled:
+            return
+        if not await self._priority_queue.push(task_id, priority):
+            error(f"Delayed task {task_id} could not be promoted: priority queue is full")
 
     async def stop(self) -> None:
         """停止调度器"""
@@ -152,9 +154,9 @@ class QueueScheduler:
         """获取延迟队列大小"""
         return await self._delayed_queue.size()
 
-    async def schedule_delayed(self, task_id: str, priority: int, delay: float) -> None:
+    async def schedule_delayed(self, task_id: str, priority: int, delay: float) -> bool:
         """调度延迟任务（别名方法）"""
-        await self.push(task_id, priority, delay)
+        return await self.push(task_id, priority, delay)
 
     async def is_empty(self) -> bool:
         """检查队列是否为空"""
@@ -233,6 +235,11 @@ class QueueScheduler:
             "started": self._started
         }
 
+
+    @property
+    def max_size(self) -> int:
+        """队列容量上限"""
+        return self._max_size
 
     @property
     def is_paused(self) -> bool:

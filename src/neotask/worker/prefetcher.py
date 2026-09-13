@@ -8,10 +8,12 @@
 
 import asyncio
 import time
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
+from neotask.common.logger import warning
+from neotask.models.task import TaskPriority
 from neotask.queue.queue_scheduler import QueueScheduler
 
 
@@ -20,6 +22,15 @@ class PrefetchStrategy(Enum):
     SIZE_BASED = "size_based"      # 基于队列大小
     TIME_BASED = "time_based"      # 基于时间间隔
     HYBRID = "hybrid"              # 混合策略
+
+
+# 空预取退避：连续拿不到任务时按指数退避，避免队列见底时每节点 10Hz 的空 pop。
+# 上限刻意对齐 worker 侧的 0.5s 退避：预取模式下 worker 只看本地队列，退避上限
+# 就是"新任务到达 → 被预取"的额外延迟，超过 worker 自己的退避会得不偿失
+# （空转省下的查询换来比直接模式更差的响应延迟）。
+EMPTY_BACKOFF_BASE = 0.1        # 首次退避（秒）
+EMPTY_BACKOFF_MAX = 0.5         # 退避上限（秒），与 worker 侧一致
+EMPTY_BACKOFF_MAX_EXPONENT = 6  # 指数封顶（2^6 = 64 倍）
 
 
 @dataclass
@@ -38,7 +49,6 @@ class PrefetchConfig:
     # 策略配置
     strategy: PrefetchStrategy = PrefetchStrategy.HYBRID
     enable_batch_pop: bool = True        # 启用批量弹出
-    enable_priority_filter: bool = True  # 启用优先级过滤
 
     # 统计配置
     enable_stats: bool = True
@@ -100,6 +110,8 @@ class TaskPrefetcher:
         # 统计
         self._stats = PrefetchStats()
         self._prefetch_in_progress = False
+        # 连续空预取次数（用于指数退避）
+        self._empty_streak = 0
 
     async def start(self) -> None:
         """启动预取器"""
@@ -205,18 +217,82 @@ class TaskPrefetcher:
             except asyncio.QueueEmpty:
                 break
 
+    async def drain_back(
+            self,
+            priority_resolver: Optional[Callable[[str], Awaitable[int]]] = None
+    ) -> int:
+        """把本地队列里尚未消费的任务放回共享队列
+
+        优雅停机超时后，本地队列残留的任务已经出队、不在共享队列中，
+        直接丢弃会变成孤儿（只能等回收器按 ttl 兜底重排）。这里在停机时把它们
+        原样放回，避免"停机 1 小时后任务才重跑"。
+
+        Args:
+            priority_resolver: 可选的异步函数 ``(task_id) -> priority``，
+                用于从存储还原任务原始优先级；未提供时按 NORMAL 重新入队。
+
+        Returns:
+            成功放回共享队列的任务数
+        """
+        drained = 0
+
+        while True:
+            try:
+                task_id = self._local_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
+            priority = TaskPriority.NORMAL.value
+            if priority_resolver is not None:
+                try:
+                    priority = await priority_resolver(task_id)
+                except Exception as e:
+                    warning(f"Failed to resolve priority for {task_id}, using NORMAL: {e}")
+
+            if await self._queue.push(task_id, priority):
+                drained += 1
+            else:
+                # 共享队列也满了：放回本地队列，宁可保留也不要凭空丢弃
+                try:
+                    self._local_queue.put_nowait(task_id)
+                except asyncio.QueueFull:
+                    pass
+                warning(
+                    f"Cannot drain task {task_id} back to shared queue "
+                    f"(queue full/disabled); {self._local_queue.qsize()} task(s) remain local"
+                )
+                break
+
+        return drained
+
     async def _prefetch_loop(self) -> None:
-        """预取循环"""
+        """预取循环
+
+        真正尝试预取但一个任务都没拿到（队列见底/队列被禁用/后端异常）时，
+        按指数退避拉长下一轮间隔，避免空转风暴；拿到任务则立即回到正常节奏。
+        """
         while self._running:
             try:
                 current_size = self._local_queue.qsize()
+                attempted = False
+                fetched = 0
 
                 # 检查是否需要预取
                 if self._should_prefetch(current_size):
-                    await self._do_prefetch()
+                    attempted = True
+                    fetched = await self._do_prefetch()
 
-                # 根据策略决定等待时间
-                wait_time = self._calculate_wait_time(current_size)
+                if attempted and fetched == 0:
+                    self._empty_streak += 1
+                    wait_time = min(
+                        EMPTY_BACKOFF_BASE * (2 ** min(self._empty_streak, EMPTY_BACKOFF_MAX_EXPONENT)),
+                        EMPTY_BACKOFF_MAX
+                    )
+                else:
+                    self._empty_streak = 0
+                    # 根据策略决定等待时间
+                    wait_time = self._calculate_wait_time(current_size)
+
                 await asyncio.sleep(wait_time)
 
             except asyncio.CancelledError:
@@ -269,10 +345,15 @@ class TaskPrefetcher:
         else:
             return self._config.prefetch_interval
 
-    async def _do_prefetch(self) -> None:
-        """执行预取"""
+    async def _do_prefetch(self) -> int:
+        """执行一次预取
+
+        Returns:
+            实际取到的任务数（0 表示本轮没拿到任务）
+        """
         self._prefetch_in_progress = True
         start_time = time.time()
+        fetched_count = 0
 
         try:
             # 计算需要预取的数量
@@ -281,7 +362,7 @@ class TaskPrefetcher:
             to_fetch = min(needed, available)
 
             if to_fetch <= 0:
-                return
+                return 0
 
             # 从共享队列获取任务
             if self._config.enable_batch_pop:
@@ -303,13 +384,17 @@ class TaskPrefetcher:
                     # 队列已满，停止放入
                     break
 
-            # 更新统计
-            await self._update_stats(len(task_ids), start_time)
+            fetched_count = len(task_ids)
 
-        except Exception as e:
+            # 更新统计
+            await self._update_stats(fetched_count, start_time)
+
+        except Exception:
             self._stats.total_errors += 1
         finally:
             self._prefetch_in_progress = False
+
+        return fetched_count
 
     async def _update_stats(self, fetched_count: int, start_time: float) -> None:
         """更新统计信息"""
@@ -365,6 +450,7 @@ class TaskPrefetcher:
             "avg_latency_ms": self._stats.avg_latency_ms,
             "p95_latency_ms": self._stats.p95_latency_ms,
             "prefetch_in_progress": self._prefetch_in_progress,
+            "empty_streak": self._empty_streak,
             "is_running": self._running,
             "config": {
                 "prefetch_size": self._config.prefetch_size,
@@ -377,3 +463,4 @@ class TaskPrefetcher:
     def reset_stats(self) -> None:
         """重置统计信息"""
         self._stats = PrefetchStats()
+        self._empty_streak = 0

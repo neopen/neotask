@@ -7,7 +7,7 @@
 """
 
 import asyncio
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 from neotask.common.exceptions import TimeoutError
 from neotask.common.logger import debug
 
@@ -57,7 +57,7 @@ class FutureManager:
     """Manager for task futures."""
 
     def __init__(self):
-        self._futures: dict[str, TaskFuture] = {}
+        self._futures: Dict[str, TaskFuture] = {}
         self._lock = asyncio.Lock()
 
     async def create(self, task_id: str) -> TaskFuture:

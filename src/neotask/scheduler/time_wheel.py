@@ -151,6 +151,23 @@ class TimeWheel:
         async with self._lock:
             return len(self._task_index)
 
+    async def drain(self) -> List[TimeWheelTask]:
+        """取出并清空所有等待中的任务
+
+        时间轮是纯内存结构，停机时若直接丢弃，未到期任务会变成"已落库但永不入队"。
+        调用方可用返回的 ``execute_at`` 重新计算剩余延时，转投延时队列。
+
+        Returns:
+            尚未到期的任务列表
+        """
+        async with self._lock:
+            drained: List[TimeWheelTask] = []
+            for slot in self._slots:
+                drained.extend(slot)
+                slot.clear()
+            self._task_index.clear()
+            return drained
+
     async def _ticker_loop(self) -> None:
         """时间轮转动循环"""
         while self._running:

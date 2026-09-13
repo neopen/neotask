@@ -40,7 +40,7 @@
 
 ### 前置要求
 
-- Python 3.9+
+- Python 3.8+（项目最低支持 3.8，CI 覆盖 3.8 / 3.10 / 3.12）
 - Git
 - pip 或 poetry
 
@@ -587,14 +587,14 @@ Fixes #123
 # 记录所有变更
 
 # 3. 提交变更
-git commit -am "chore: bump version to 0.4.0"
+git commit -am "chore: bump version to 1.0.2"
 
 # 4. 创建标签
-git tag -a v0.4.0 -m "Release v0.4.0"
+git tag -a v1.0.2 -m "Release v1.0.2"
 
 # 5. 推送
 git push origin main
-git push origin v0.4.0
+git push origin v1.0.2
 
 # 6. 构建分发包
 python -m build

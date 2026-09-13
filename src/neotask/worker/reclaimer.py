@@ -13,8 +13,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
 
+from neotask.common.logger import warning
 from neotask.models.task import Task, TaskStatus
 from neotask.storage.base import TaskRepository
+from neotask.queue.dead_letter import DeadLetterQueue, DeadLetterReason
 from neotask.queue.queue_scheduler import QueueScheduler
 from neotask.lock.base import TaskLock
 from neotask.lock.scanner import LockScanner, LockScannerConfig
@@ -94,13 +96,18 @@ class TaskReclaimer:
         queue_scheduler: QueueScheduler,
         lock: Optional[TaskLock] = None,
         event_bus: Optional[EventBus] = None,
-        config: Optional[ReclaimerConfig] = None
+        config: Optional[ReclaimerConfig] = None,
+        node_manager: Optional[Any] = None,
+        dead_letter: Optional[DeadLetterQueue] = None
     ):
         self._task_repo = task_repo
         self._queue = queue_scheduler
         self._lock = lock
         self._event_bus = event_bus
         self._config = config or ReclaimerConfig()
+        self._node_manager = node_manager
+        self._dead_letter = dead_letter
+        self._orphan_reclaim_warned = False
 
         self._running = False
         self._reclaim_loop_task: Optional[asyncio.Task] = None
@@ -241,16 +248,29 @@ class TaskReclaimer:
         """回收孤儿任务（节点宕机）"""
         results = []
 
+        # 无法确定活跃节点时不做孤儿回收，否则会把所有节点的运行中任务误判为孤儿
+        active_nodes = await self._get_active_nodes()
+        if active_nodes is None:
+            if not self._orphan_reclaim_warned:
+                warning(
+                    "Orphan reclaim skipped: no node manager configured, "
+                    "cannot determine active nodes"
+                )
+                self._orphan_reclaim_warned = True
+            return results
+
         # 获取所有 RUNNING 状态的任务
         running_tasks = await self._task_repo.list_by_status(
             TaskStatus.RUNNING,
             limit=self._config.max_reclaim_per_cycle
         )
 
-        # 获取活跃节点
-        active_nodes = await self._get_active_nodes()
+        local_node_id = self._get_local_node_id()
 
         for task in running_tasks:
+            # 本节点正在执行的任务不参与孤儿回收
+            if local_node_id and task.node_id == local_node_id:
+                continue
             # 检查节点是否存活
             if task.node_id and task.node_id not in active_nodes:
                 result = await self._reclaim_single_task(task, ReclaimReason.ORPHAN)
@@ -336,7 +356,32 @@ class TaskReclaimer:
 
                 # 重新入队（带延迟）
                 delay = self._config.retry_delay * new_retry_count
-                await self._queue.push(task.task_id, task.priority.value, delay=delay)
+                requeued = await self._queue.push(task.task_id, task.priority.value, delay=delay)
+
+                if not requeued:
+                    # 队列拒绝入队，标记失败并投递死信
+                    task.status = TaskStatus.FAILED
+                    task.error = f"Reclaim requeue failed (queue full/disabled) after {reason.value}"
+                    task.completed_at = datetime.now()
+                    await self._task_repo.save(task)
+                    await self._send_to_dead_letter(task, reason)
+
+                    if self._lock:
+                        await self._lock.release(f"task:{task.task_id}")
+
+                    if self._event_bus:
+                        await self._event_bus.emit(TaskEvent(
+                            "task.reclaimed",
+                            task.task_id,
+                            {"reason": reason.value, "action": "failed"}
+                        ))
+
+                    return ReclaimResult(
+                        task_id=task.task_id,
+                        reason=reason,
+                        success=False,
+                        message="Requeue failed: queue full/disabled, marked as failed"
+                    )
 
                 # 释放锁
                 if self._lock:
@@ -367,6 +412,9 @@ class TaskReclaimer:
                 task.error = f"Task failed after {retry_count} retries: reclaimed due to {reason.value}"
                 task.completed_at = datetime.now()
                 await self._task_repo.save(task)
+
+                # 投递死信队列
+                await self._send_to_dead_letter(task, reason)
 
                 # 释放锁
                 if self._lock:
@@ -399,6 +447,29 @@ class TaskReclaimer:
                 message=str(e)
             )
 
+    async def _send_to_dead_letter(self, task: Task, reason: ReclaimReason) -> None:
+        """投递最终失败的任务到死信队列（未配置时静默跳过）"""
+        if self._dead_letter is None:
+            return
+
+        mapping = {
+            ReclaimReason.TIMEOUT: DeadLetterReason.TIMEOUT,
+            ReclaimReason.ORPHAN: DeadLetterReason.ORPHANED,
+            ReclaimReason.MAX_RETRIES: DeadLetterReason.MAX_RETRIES,
+            ReclaimReason.CANCELLED: DeadLetterReason.CANCELLED,
+        }
+        dlq_reason = mapping.get(reason, DeadLetterReason.BUSINESS_ERROR)
+
+        try:
+            await self._dead_letter.send(
+                task,
+                dlq_reason,
+                task.error or f"Reclaimed due to {reason.value}",
+                metadata={"reclaim_reason": reason.value, "node_id": task.node_id}
+            )
+        except Exception as e:
+            warning(f"Failed to send task {task.task_id} to dead letter queue: {e}")
+
     def _extract_task_id_from_lock_key(self, lock_key: str) -> Optional[str]:
         """从锁键中提取任务ID
 
@@ -417,14 +488,28 @@ class TaskReclaimer:
         # 如果没有匹配的前缀，返回原键（可能本身就是任务ID）
         return lock_key
 
-    async def _get_active_nodes(self) -> Set[str]:
-        """获取活跃节点列表"""
-        active_nodes = set()
+    def _get_local_node_id(self) -> str:
+        """获取本节点ID"""
+        if self._node_manager is not None:
+            return getattr(self._node_manager, "node_id", "") or ""
+        return ""
 
-        # TODO: 从存储获取活跃节点
-        # 这需要实现节点心跳管理
+    async def _get_active_nodes(self) -> Optional[Set[str]]:
+        """获取活跃节点列表
 
-        return active_nodes
+        Returns:
+            活跃节点ID集合；未配置节点管理器时返回 None（表示无法判定）
+        """
+        if self._node_manager is None:
+            return None
+
+        try:
+            nodes = await self._node_manager.get_active_nodes()
+        except Exception as e:
+            warning(f"Failed to get active nodes: {e}")
+            return None
+
+        return {n.node_id for n in nodes}
 
     async def _update_stats(self, results: List[ReclaimResult]) -> None:
         """更新统计信息"""

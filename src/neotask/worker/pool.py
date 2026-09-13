@@ -16,7 +16,8 @@ from neotask.common.logger import debug, warning, error
 from neotask.core.lifecycle import TaskLifecycleManager
 from neotask.event.bus import EventBus, TaskEvent
 from neotask.executor.base import TaskExecutor
-from neotask.models.task import TaskStatus
+from neotask.models.task import TaskPriority, TaskStatus
+from neotask.queue.dead_letter import DeadLetterQueue, DeadLetterReason
 from neotask.queue.queue_scheduler import QueueScheduler
 from neotask.storage.base import TaskRepository
 from neotask.worker.prefetcher import TaskPrefetcher, PrefetchConfig, PrefetchStrategy
@@ -54,7 +55,8 @@ class WorkerPool:
             prefetch_size: int = 20,
             task_timeout: Optional[float] = None,
             lock_manager = None,
-            enable_prefetch: bool = True  # 新增：是否启用预取器
+            enable_prefetch: bool = True,  # 新增：是否启用预取器
+            node_id: str = "default"
     ):
         self._executor = executor
         self._task_repo = task_repo
@@ -66,6 +68,10 @@ class WorkerPool:
         self._prefetch_size = prefetch_size
         self._task_timeout = task_timeout
         self._enable_prefetch = enable_prefetch
+        self._node_id = node_id
+
+        # 死信队列（由 TaskPool 注入，仅 Redis 模式下存在）
+        self._dead_letter: Optional[DeadLetterQueue] = None
 
         self._workers: Dict[int, asyncio.Task] = {}
         self._running_tasks: Dict[str, asyncio.Task] = {}
@@ -123,6 +129,10 @@ class WorkerPool:
         # 停止预取器
         if self._prefetcher:
             await self._prefetcher.stop(graceful, timeout)
+            # 停机超时后本地队列可能仍有残留：放回共享队列，避免变成孤儿
+            drained = await self._prefetcher.drain_back(self._resolve_task_priority)
+            if drained:
+                debug(f"Drained {drained} prefetched task(s) back to shared queue")
 
         if graceful and self._running_tasks:
             # 等待当前任务完成
@@ -165,16 +175,38 @@ class WorkerPool:
         """获取worker统计信息"""
         stats = self._worker_stats.copy()
 
-        # 添加预取器统计
-        # if self._prefetcher:
-        #     stats[0] = self._prefetcher.get_stats()
-
         return stats
+
+    async def _resolve_task_priority(self, task_id: str) -> int:
+        """从存储还原任务的优先级，供 drain_back 重新入队使用"""
+        task = await self._lifecycle.get_task(task_id)
+        if task is None:
+            return TaskPriority.NORMAL.value
+        return task.priority.value
 
     def set_retry_config(self, max_retries: int, retry_delay: float) -> None:
         """设置重试配置"""
         self._max_retries = max_retries
         self._retry_delay = retry_delay
+
+    def set_dead_letter_queue(self, dead_letter: DeadLetterQueue) -> None:
+        """注入死信队列（仅 Redis 模式下可用）"""
+        self._dead_letter = dead_letter
+
+    async def _send_to_dead_letter(
+            self,
+            task,
+            reason: DeadLetterReason,
+            error_msg: str,
+            metadata: Optional[Dict] = None
+    ) -> None:
+        """投递任务到死信队列（未配置死信队列时静默跳过）"""
+        if self._dead_letter is None:
+            return
+        try:
+            await self._dead_letter.send(task, reason, error_msg, metadata)
+        except Exception as e:
+            warning(f"Failed to send task {task.task_id} to dead letter queue: {e}")
 
     async def _worker_loop(self, worker_id: int) -> None:
         """Worker主循环（支持预取器）"""
@@ -285,7 +317,7 @@ class WorkerPool:
             if not lock_acquired:
                 return
 
-            success = await self._lifecycle.start_task(task_id, f"worker-{worker_id}")
+            success = await self._lifecycle.start_task(task_id, self._node_id)
             if not success:
                 error(f"Failed to start task {task_id}")
                 # 释放锁
@@ -399,7 +431,21 @@ class WorkerPool:
 
             # 重新入队（带延迟）
             delay = self._retry_delay * new_retry_count
-            await self._queue.push(task_id, task.priority.value, delay=delay)
+            requeued = await self._queue.push(task_id, task.priority.value, delay=delay)
+
+            if not requeued:
+                # 队列已满/禁用，无法重试，直接失败并投递死信
+                err = f"{error_msg} (retry requeue failed: queue rejected task)"
+                error(f"Task {task_id} cannot be requeued: {err}")
+                await self._lifecycle.fail_task(task_id, err)
+                self._worker_stats[worker_id].failed_tasks += 1
+                await self._send_to_dead_letter(
+                    task,
+                    DeadLetterReason.MAX_RETRIES,
+                    err,
+                    metadata={"node_id": self._node_id, "worker_id": worker_id}
+                )
+                return
 
             # 发送重试事件
             await self._event_bus.emit(TaskEvent(
@@ -412,6 +458,12 @@ class WorkerPool:
             debug(f"Task {task_id} exceeded max retries ({self._max_retries}), marking as FAILED")
             await self._lifecycle.fail_task(task_id, error_msg)
             self._worker_stats[worker_id].failed_tasks += 1
+            await self._send_to_dead_letter(
+                task,
+                DeadLetterReason.MAX_RETRIES,
+                error_msg,
+                metadata={"node_id": self._node_id, "worker_id": worker_id}
+            )
 
     async def _cleanup_completed_tasks(self) -> None:
         """清理已完成的任务"""

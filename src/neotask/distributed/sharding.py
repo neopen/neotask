@@ -39,17 +39,20 @@ class ConsistentHashSharder(Sharder):
             self,
             nodes: List[str],
             virtual_nodes: int = 150,
-            hash_fn: str = "md5"
+            hash_fn: str = "sha256"
     ):
         """初始化一致性哈希分片器
 
         Args:
             nodes: 节点列表
             virtual_nodes: 每个物理节点的虚拟节点数
-            hash_fn: 哈希函数（md5, sha1, sha256）
+            hash_fn: 哈希函数（sha256, sha3_256）
         """
         self._nodes = nodes
         self._virtual_nodes = virtual_nodes
+        allowed_hash_fns = {"sha256", "sha3_256"}
+        if hash_fn not in allowed_hash_fns:
+            raise ValueError(f"Unsupported hash function: {hash_fn}. Use one of {allowed_hash_fns}.")
         self._hash_fn = hash_fn
         self._ring: Dict[int, str] = {}
         self._build_ring()
@@ -66,14 +69,11 @@ class ConsistentHashSharder(Sharder):
 
     def _hash(self, key: str) -> int:
         """计算哈希值"""
-        if self._hash_fn == "md5":
-            digest = hashlib.md5(key.encode(), usedforsecurity=False).hexdigest()
-            return int(digest[:8], 16)
-        elif self._hash_fn == "sha1":
-            digest = hashlib.sha1(key.encode(), usedforsecurity=False).hexdigest()
-            return int(digest[:8], 16)
+        if self._hash_fn == "sha3_256":
+            digest = hashlib.sha3_256(key.encode()).hexdigest()
         else:
-            return int(hashlib.sha256(key.encode()).hexdigest()[:8], 16)
+            digest = hashlib.sha256(key.encode()).hexdigest()
+        return int(digest[:8], 16)
 
     def get_shard(self, key: str) -> str:
         """获取键对应的节点"""

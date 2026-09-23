@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoTask 去中心化：对等节点 + 抢占式消费 + 无主架构 · NeoTask 文档</title>
+  <meta name="description" content="NeoTask 去中心化架构：对等节点模型与零节点间通信的设计取舍、出队原子与执行加锁分离（pop Lua 只有 ZRANGE+ZREM）、节点注册/心跳/判活的 key 结构与三态模型、NodeManager 与 HeartbeatManager 两套实现共用同一注册表的现状、已预留但未接入主链路的 Coordinator，以及水平扩展与分区容错的实战推演。">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://task.helpenx.com/docs/decentralization.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:title" content="NeoTask 去中心化：对等节点 + 抢占式消费 + 无主架构">
+  <meta property="og:description" content="NeoTask 去中心化架构：对等节点模型与零节点间通信的设计取舍、出队原子与执行加锁分离（pop Lua 只有 ZRANGE+ZREM）、节点注册/心跳/判活的 key 结构与三态模型、NodeManager 与 HeartbeatManager 两套实现共用同一注册表的现状、已预留但未接入主链路的 Coordinator，以及水平扩展与分区容错的实战推演。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://task.helpenx.com/docs/decentralization.html">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>⏱️</text></svg>">
+  <style>
+:root{--brand:#0d9488;--brand-dark:#0f766e;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:var(--ink);background:#fff;line-height:1.75;font-size:16px}
+a{color:var(--brand);text-decoration:none}a:hover{color:var(--brand-dark);text-decoration:underline}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
+.topbar .brand .doc-badge{font-size:12px;font-weight:600;color:#fff;background:var(--brand);border-radius:6px;padding:2px 8px}
+.topbar nav{display:flex;gap:20px;font-size:14.5px}
+.topbar nav a{color:var(--muted);font-weight:500}
+.topbar nav a:hover{color:var(--brand)}
+.wrap{display:flex;max-width:1280px;margin:0 auto;padding:0 16px}
+.sidebar{width:264px;flex-shrink:0;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 40px 0;border-right:1px solid var(--line)}
+.sidebar .side-home{display:block;font-weight:600;color:var(--ink);margin-bottom:16px;font-size:15px}
+.sidebar .side-home:hover{color:var(--brand);text-decoration:none}
+.sidebar h4{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px;font-weight:600}
+.sidebar a{display:block;padding:5px 10px;border-radius:6px;font-size:14px;color:#334155;line-height:1.5}
+.sidebar a:hover{background:var(--bg);color:var(--brand);text-decoration:none}
+.sidebar a.active{background:var(--brand);color:#fff}
+.content{flex:1;min-width:0;padding:32px 20px 60px 36px;max-width:860px}
+.toc-mobile{display:none;margin-bottom:20px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.toc-mobile summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.toc-mobile a{display:block;padding:3px 0;font-size:14px}
+.article h1{font-size:1.9em;line-height:1.35;margin:.4em 0 .8em}
+.article h2{font-size:1.45em;margin:1.8em 0 .7em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
+.article h3{font-size:1.22em;margin:1.5em 0 .6em}
+.article h4{font-size:1.08em;margin:1.3em 0 .5em}
+.article p{margin:.85em 0}
+.article ul,.article ol{padding-left:1.6em;margin:.7em 0}
+.article li{margin:.35em 0}
+.article img{max-width:100%;height:auto;border-radius:8px}
+.article table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:.94em;display:block;overflow-x:auto}
+.article th,.article td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+.article th{background:var(--bg);font-weight:600}
+.article tr:nth-child(even) td{background:#fbfdff}
+.article blockquote{margin:1.1em 0;padding:.7em 1.1em;border-left:4px solid var(--brand);background:var(--bg);border-radius:0 8px 8px 0;color:#334155}
+.article blockquote p{margin:.3em 0}
+.article code:not(pre code){background:#eef2f7;color:#c7254e;padding:.15em .4em;border-radius:4px;font-size:.88em;word-break:break-word}
+.article pre.hljs{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0;line-height:1.6}
+.article pre.hljs code{background:none;padding:0;color:var(--ink);font-size:.9em;font-family:ui-monospace,SFMono-Regular,'Cascadia Code',Consolas,Menlo,monospace}
+.article pre.mermaid{text-align:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0}
+.article hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+.article .success,.article .tips,.article .warning,.article .danger{border-radius:8px;padding:.9em 1.1em;margin:1.1em 0;border:1px solid}
+.article .success{border-color:#a7f3d0;background:#ecfdf5}.article .success p:first-of-type::before{content:'✅ '}
+.article .tips{border-color:#bfdbfe;background:#eff6ff}.article .tips p:first-of-type::before{content:'💡 '}
+.article .warning{border-color:#fde68a;background:#fffbeb}.article .warning p:first-of-type::before{content:'⚠️ '}
+.article .danger{border-color:#fecaca;background:#fef2f2}.article .danger p:first-of-type::before{content:'🚫 '}
+.article .success>p:first-child,.article .tips>p:first-child,.article .warning>p:first-child,.article .danger>p:first-child{margin-top:0}
+.article .success>p:last-child,.article .tips>p:last-child,.article .warning>p:last-child,.article .danger>p:last-child{margin-bottom:0}
+.doc-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--muted)}
+.doc-meta .tag{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+.doc-nav{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
+.doc-nav a{font-weight:600}
+footer{border-top:1px solid var(--line);padding:22px 24px;text-align:center;color:var(--muted);font-size:13.5px}
+footer a{color:var(--muted);margin:0 10px}
+footer a:hover{color:var(--brand)}
+@media (max-width:960px){
+  .sidebar{display:none}
+  .toc-mobile{display:block}
+  .content{padding:20px 6px 50px}
+  .topbar nav{gap:12px}
+}
+</style>
+  <style>
+.hljs{color:#24292e;background:#f6f8fa}
+.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.constant_{color:#d73a49}
+.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}
+.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}
+.hljs-string,.hljs-meta .hljs-string,.hljs-regexp{color:#032f62}
+.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-tag,.hljs-subst,.hljs-symbol{color:#e36209}
+.hljs-built_in,.hljs-class .hljs-title{color:#e36209}
+.hljs-comment,.hljs-meta,.hljs-quote{color:#6a737d}
+.hljs-section{color:#005cc5;font-weight:700}
+.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">⏱️ NeoTask <span class="doc-badge">文档</span></a>
+    <nav>
+      <a href="https://task.helpenx.com" target="_blank" rel="noopener">产品官网</a>
+      <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+  <div class="wrap">
+    <aside class="sidebar">
+      <a class="side-home" href="index.html">⏱️ 分布式任务调度系统 · 文档中心</a>
+      <h4>技术分析</h4><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a>
+<h4>API 与配置参考</h4><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a>
+<h4>实现与源码分析</h4><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a>
+<h4>设计与方案</h4><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a>
+<h4>项目概览</h4><a href="decentralization.html" class="active">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a>
+<h4>入门与使用</h4><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a>
+<h4>性能与评测</h4><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a>
+<h4>实践与运维</h4><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a>
+<h4>架构与核心设计</h4><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a>
+<h4>版本与演进</h4><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a>
+    </aside>
+    <main class="content">
+      <details class="toc-mobile"><summary>📑 文档目录</summary><div><strong style="font-size:13px;color:var(--muted)">技术分析</strong><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a></div><div><strong style="font-size:13px;color:var(--muted)">API 与配置参考</strong><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a></div><div><strong style="font-size:13px;color:var(--muted)">实现与源码分析</strong><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a></div><div><strong style="font-size:13px;color:var(--muted)">设计与方案</strong><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a></div><div><strong style="font-size:13px;color:var(--muted)">项目概览</strong><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a></div><div><strong style="font-size:13px;color:var(--muted)">入门与使用</strong><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a></div><div><strong style="font-size:13px;color:var(--muted)">性能与评测</strong><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a></div><div><strong style="font-size:13px;color:var(--muted)">实践与运维</strong><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a></div><div><strong style="font-size:13px;color:var(--muted)">架构与核心设计</strong><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a></div><div><strong style="font-size:13px;color:var(--muted)">版本与演进</strong><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a></div></details>
+      <article class="article">
+        <div class="doc-meta"><span class="tag">NeoTask</span><span class="tag">更新 2026-05-02</span><a href="https://task.helpenx.com" target="_blank" rel="noopener">task.helpenx.com ↗</a></div>
+        <h1>NeoTask 去中心化：对等节点 + 抢占式消费 + 无主架构</h1>
+<p>📚 <a href="index.html">返回首页</a> | 📖 <a href="quickstart.html">快速上手</a> | 📘 <a href="api-reference.html">API 参考</a> | ⚙️ <a href="configuration.html">配置说明</a> | 🐙 <a href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a href="https://task.helpenx.com">NeoTask 官网</a></p>
+<blockquote>
+<p><strong>文档定位</strong>：这是一篇项目文档。重点是帮助读者快速建立项目能力边界、核心模块和后续阅读路径。<br>
+<strong>事实边界</strong>：实现文档：功能、接口和代码行为以文中标注版本对应的源码为准；仓库后续版本可能发生变化。<br>
+<strong>权威来源</strong>：<a href="https://github.com/neopen/neotask">NeoTask 源码仓库</a>；涉及版本历史时，以仓库 Release / CHANGELOG 为准。<br>
+<strong>代码标记</strong>：如果正文出现“源码/实现”字样，表示对应代码路径可在仓库中核对；示例代码仅用于演示调用方式，不应理解为项目源码原样。<br>
+<strong>版本基线</strong>：本文对照 NeoTask <strong>v1.0.2</strong>（PyPI 发布版）。<br>
+<strong>代码标注约定</strong>：🔧 表示<strong>真实源码</strong>（仓库原样摘录，附文件路径，可自行对照）；📝 表示<strong>示例代码</strong>（用法演示、改进建议或教学代码，不代表仓库实现）。<br>
+<strong>阅读提示</strong>：去中心化是 NeoTask 分布式体系的&quot;世界观&quot;——共享队列模式（shared）下没有主节点，协调靠 Redis 的原子原语完成。本文会点出两处容易误读的现状：节点管理存在 NodeManager 与 HeartbeatManager 两套实现（现已共用同一份节点注册表），以及 Coordinator 虽被实例化、但提交链路并不经过它。</p>
+</blockquote>
+<hr>
+<h2>目录</h2>
+<ol>
+<li class="lvl-3">
+<p><a href="#%E4%B8%80%E4%B8%BA%E4%BB%80%E4%B9%88%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6%E8%A6%81%E9%80%89%E6%97%A0%E4%B8%BB%E6%9E%B6%E6%9E%84">为什么任务调度要选无主架构</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%BA%8C%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84%E5%AD%98%E5%82%A8%E5%B1%82%E6%98%AF%E5%94%AF%E4%B8%80%E7%9A%84%E4%BA%8B%E5%AE%9E%E4%B8%AD%E5%BF%83">整体架构：存储层是唯一的事实中心</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%B8%89%E5%AF%B9%E7%AD%89%E8%8A%82%E7%82%B9%E6%AF%8F%E4%B8%AA%E8%8A%82%E7%82%B9%E9%83%BD%E6%98%AF%E5%AE%8C%E6%95%B4%E7%9A%84%E5%A4%84%E7%90%86%E5%8D%95%E5%85%83">对等节点：每个节点都是完整的处理单元</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E5%9B%9B%E6%8A%A2%E5%8D%A0%E5%BC%8F%E6%B6%88%E8%B4%B9%E7%9A%84%E7%9C%9F%E5%AE%9E%E9%93%BE%E8%B7%AF">抢占式消费的真实链路</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%BA%94%E5%87%BA%E9%98%9F%E5%8E%9F%E5%AD%90--%E6%89%A7%E8%A1%8C%E5%8E%9F%E5%AD%90%E6%A0%B8%E5%BF%83%E8%AE%BE%E8%AE%A1">出队原子 ≠ 执行原子：核心设计</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E5%85%AD%E8%8A%82%E7%82%B9%E6%B3%A8%E5%86%8C%E5%BF%83%E8%B7%B3%E4%B8%8E%E5%88%A4%E6%B4%BB">节点注册、心跳与判活</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%B8%83%E4%B8%BA%E4%BB%80%E4%B9%88%E4%B8%A4%E6%80%81%E5%B0%B1%E5%A4%9F%E4%BA%86ttl-%E5%88%A4%E6%B4%BB%E7%9A%84%E5%93%B2%E5%AD%A6">为什么两态就够了：TTL 判活的哲学</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E5%85%AB%E4%B8%A4%E5%A5%97%E8%8A%82%E7%82%B9%E7%AE%A1%E7%90%86%E5%AE%9E%E7%8E%B0nodemanager-%E4%B8%8E-heartbeatmanager">两套节点管理实现：NodeManager 与 HeartbeatManager</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%B9%9Dcoordinator-%E7%9A%84%E7%9C%9F%E5%AE%9E%E4%BD%8D%E7%BD%AE%E5%B7%B2%E9%A2%84%E7%95%99%E6%9C%AA%E6%8E%A5%E5%85%A5%E4%B8%BB%E9%93%BE%E8%B7%AF">Coordinator 的真实位置：已预留，未接入主链路</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#%E5%8D%81%E6%B0%B4%E5%B9%B3%E6%89%A9%E5%B1%95%E8%B4%9F%E8%BD%BD%E5%A6%82%E4%BD%95%E8%87%AA%E7%84%B6%E5%88%86%E9%85%8D">水平扩展：负载如何自然分配</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#%E5%8D%81%E4%B8%80%E5%88%86%E5%8C%BA%E5%AE%B9%E9%94%99%E4%BB%80%E4%B9%88%E8%83%BD%E6%89%9B%E4%BB%80%E4%B9%88%E4%B8%8D%E8%83%BD%E6%89%9B">分区容错：什么能扛，什么不能扛</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#%E5%8D%81%E4%BA%8C%E6%95%85%E9%9A%9C%E5%9C%BA%E6%99%AF%E5%AE%9E%E6%88%98">故障场景实战</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#%E5%8D%81%E4%B8%89%E6%80%BB%E7%BB%93">总结</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5">相关链接</a></p>
+</li>
+</ol>
+<hr>
+<h2>一、为什么任务调度要选无主架构</h2>
+<h3>1.1 主从架构的隐性成本</h3>
+<p>分布式系统控制平面常见的方案是主从（leader-follower）：一个主节点负责任务分配与调度决策，从节点执行。这套模型的概念足够直观，但随之而来一长串经典难题：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">问题</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">领导者选举</td>
+<td style="text-align:left">谁来当主？需要共识算法（Raft/Paxos 或依赖 etcd/ZooKeeper）</td>
+</tr>
+<tr>
+<td style="text-align:left">脑裂（Split-brain）</td>
+<td style="text-align:left">网络分区导致两个&quot;主&quot;同时决策，任务被双发</td>
+</tr>
+<tr>
+<td style="text-align:left">心跳调优</td>
+<td style="text-align:left">超时太短误杀主节点触发频繁选举，太长则故障转移慢</td>
+</tr>
+<tr>
+<td style="text-align:left">故障转移期间降级</td>
+<td style="text-align:left">换主窗口内新任务可能无人受理</td>
+</tr>
+</tbody>
+</table>
+<p>主从不是不能用，而是<strong>它把&quot;正确性&quot;绑定在一个动态选出的单点上</strong>——为了实现高可用，先要解决一个比业务更难的分布式一致性问题。任务调度场景的值（吞吐、任务完成率）与这套复杂度并不相称。</p>
+<h3>1.2 无主架构：让存储层当&quot;主&quot;</h3>
+<pre class="mermaid">flowchart TB
+    subgraph Decentralized[&quot;去中心化（NeoTask 选择）&quot;]
+        direction TB
+        N1[节点 A] --&gt; R[(Redis&lt;br/&gt;共享存储)]
+        N2[节点 B] --&gt; R
+        N3[节点 C] --&gt; R
+        N1 -.-&gt;|零节点间通信| N2
+        N2 -.-&gt;|零节点间通信| N3
+    end
+
+    subgraph Centralized[&quot;主从（放弃的方案）&quot;]
+        direction TB
+        M[主节点&lt;br/&gt;选举产生] --&gt; S1[从节点 1]
+        M --&gt; S2[从节点 2]
+        M --&gt; S3[从节点 3]
+        E[选举/脑裂/故障转移] -.-&gt;|复杂度| M
+    end
+</pre>
+<p><strong>为什么这么设计：把&quot;谁是主&quot;的问题外包给 Redis，而不是自己实现共识。</strong> Redis 本身就是单线程执行命令的强一致存储——多个节点对同一个 key 的原子操作天然串行。节点间不需要互相通信、不需要选举，因为<strong>所有节点在与同一个&quot;存储主&quot;对话</strong>。代价是 Redis 成为事实上的单点（可用性靠 Redis 自身的 Sentinel/Cluster 保障，见第十一节）。</p>
+<p>这套取舍的本质是<strong>用基础设施换架构</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">维度</th>
+<th style="text-align:left">主从</th>
+<th style="text-align:left">NeoTask 无主</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">正确性保障</td>
+<td style="text-align:left">选举 + 租约 + 脑裂防护</td>
+<td style="text-align:left">Redis 原子原语（ZSET/Lua/SET NX）</td>
+</tr>
+<tr>
+<td style="text-align:left">新增节点</td>
+<td style="text-align:left">发现 + 数据迁移</td>
+<td style="text-align:left">注册 + 抢占（零迁移）</td>
+</tr>
+<tr>
+<td style="text-align:left">节点故障</td>
+<td style="text-align:left">选举新主（秒级~分钟级）</td>
+<td style="text-align:left">锁/任务 TTL 自然过期（回收器接管）</td>
+</tr>
+<tr>
+<td style="text-align:left">运维心智</td>
+<td style="text-align:left">高</td>
+<td style="text-align:left">低（但依赖 Redis 高可用）</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>二、整体架构：存储层是唯一的事实中心</h2>
+<p>NeoTask 的去中心化架构在逻辑上分为三层，但必须强调：<strong>节点层之间不存在任何直接通信通道</strong>，所有协调都发生在存储层。</p>
+<pre class="mermaid">graph TB
+    subgraph NodeLayer[&quot;节点层（对等，无主）&quot;]
+        N1[节点 A&lt;br/&gt;完整处理单元]
+        N2[节点 B]
+        N3[节点 C]
+    end
+
+    subgraph RedisLayer[&quot;存储层 - Redis（唯一事实中心）&quot;]
+        T[(task:{id}&lt;br/&gt;String JSON 任务详情)]
+        Q[(queue:priority&lt;br/&gt;ZSET 优先级队列)]
+        DQ[(queue:delayed&lt;br/&gt;ZSET 延时队列)]
+        L[(lock:task:{id}&lt;br/&gt;String 执行锁)]
+        S[(status:{值}&lt;br/&gt;SET 状态索引)]
+        R[(neotask:node:{id}&lt;br/&gt;Hash 节点注册)]
+        NS[(neotask:nodes&lt;br/&gt;SET 节点集合)]
+    end
+
+    subgraph ObserverLayer[&quot;观测/恢复层&quot;]
+        REC[TaskReclaimer 回收器]
+        WDT[WatchDog 锁续期]
+        HC[健康检查]
+    end
+
+    N1 --&gt;|ZRANGE+ZREM 抢占| Q
+    N2 --&gt;|ZRANGE+ZREM 抢占| Q
+    N3 --&gt;|ZRANGE+ZREM 抢占| Q
+    N1 --&gt;|SET NX EX 加锁| L
+    N2 --&gt;|SET NX EX 加锁| L
+    N1 --&gt;|HSET 心跳| R
+    N2 --&gt;|HSET 心跳| R
+    N1 --&gt;|ZADD 提交| Q
+    Q --&gt;|扫描超时/孤儿| REC
+    L --&gt;|续期| WDT
+    S --&gt;|扫描| REC
+</pre>
+<blockquote>
+<p>注意图中的 Redis key 都是 <strong>v1.0.2 的真实命名</strong>：任务详情是 <strong>String + JSON</strong>（<code>RedisTaskRepository.save</code>），锁是 <code>lock:task:{task_id}</code>，节点注册是 <code>neotask:node:{node_id}</code> + 集合 <code>neotask:nodes</code>。更多细节见 <a href="distributed-lock.html">分布式锁</a> 一文。</p>
+</blockquote>
+<p><strong>为什么这么设计：任务调度的&quot;状态&quot;必须能被任何节点在任何时刻读取。</strong> 若节点各自维护任务归属，宕机即丢状态；全部放 Redis，任何节点崩溃都只损失&quot;正在跑的协程&quot;，不损失任务的真实状态。观测层（回收器、看门狗）因此得以独立于节点运行——这正是故障恢复的基础。</p>
+<hr>
+<h2>三、对等节点：每个节点都是完整的处理单元</h2>
+<p>所有节点进程内跑着同一套组件（v1.0.2 的 <code>TaskPool</code> 即节点的完整化身）。从源码看，一个节点的内部结构如下（组件名为真实类名）：</p>
+<pre class="mermaid">graph TB
+    subgraph NodeInternal[&quot;节点（TaskPool 进程）内部&quot;]
+        subgraph API[&quot;提交面&quot;]
+            DISP[TaskDispatcher&lt;br/&gt;提交分发]
+            LCM[TaskLifecycleManager&lt;br/&gt;状态机]
+        end
+
+        subgraph Exec[&quot;执行面&quot;]
+            WPOOL[WorkerPool&lt;br/&gt;worker 协程池]
+            PSCH[QueueScheduler&lt;br/&gt;队列调度]
+            PREF[TaskPrefetcher&lt;br/&gt;预取器]
+            WDT[WatchDog&lt;br/&gt;锁续期]
+        end
+
+        subgraph Infra[&quot;分布式基础设施&quot;]
+            NM[NodeManager&lt;br/&gt;注册/心跳]
+            HB[HeartbeatManager&lt;br/&gt;心跳/死节点回收]
+            REC[TaskReclaimer&lt;br/&gt;超时/孤儿回收]
+            COORD[Coordinator&lt;br/&gt;预留]
+        end
+
+        DISP --&gt; LCM --&gt; PSCH
+        PSCH --&gt; PREF --&gt; WPOOL
+        WPOOL --&gt; WDT
+        NM --&gt; R[(Redis)]
+        HB --&gt; R
+        REC --&gt; R
+        PSCH --&gt; R
+    end
+</pre>
+<p><strong>为什么这么设计：节点对等 + 组件齐备 = 任意节点可随时接管任意任务。</strong></p>
+<p>关键洞察：节点之间不是&quot;分工&quot;关系而是&quot;冗余&quot;关系——每个节点都能处理每个任务，重复的危险交给锁与状态机消除，而不是靠&quot;任务只发给特定节点&quot;来回避。这样扩容只是增加冗余度，缩容只是减少冗余度，不需要数据迁移。</p>
+<hr>
+<h2>四、抢占式消费的真实链路</h2>
+<h3>4.1 三个阶段的真实代码路径</h3>
+<p>网上的去中心化教程常画一条&quot;提交→原子抢占（出队+加锁）→执行&quot;的顺滑流水线。v1.0.2 的真实链路要微妙得多：</p>
+<pre class="mermaid">sequenceDiagram
+    participant Client as 客户端
+    participant NodeX as 任意节点
+    participant Redis as Redis
+    participant Worker as 另一个节点的 Worker
+
+    Note over Client,Redis: 阶段一：提交（任意节点）
+    Client-&gt;&gt;NodeX: submit(data)
+    NodeX-&gt;&gt;Redis: SET task:{id} JSON  ← String 类型，非 Hash
+    NodeX-&gt;&gt;Redis: ZADD queue:priority {id} 分数
+    NodeX--&gt;&gt;Client: task_id
+
+    Note over Redis,Worker: 阶段二：出队（所有节点都在做）
+    Worker-&gt;&gt;Redis: EVAL pop Lua
+    Redis-&gt;&gt;Redis: ZRANGE queue 0 count-1 + ZREM（原子，但只动队列）
+    Redis--&gt;&gt;Worker: [task_ids]（此刻任务无主！）
+
+    Note over Worker,Redis: 阶段三：执行前加锁（拿到任务之后）
+    Worker-&gt;&gt;Redis: SET lock:task:{id} uuid NX EX 30
+    alt 加锁成功
+        Worker-&gt;&gt;Redis: HSET task:{id} status RUNNING（经状态机）
+        Worker-&gt;&gt;Worker: 启动 WatchDog 续期
+        Worker-&gt;&gt;Worker: 执行业务
+    else 加锁失败（被抢/锁残留）
+        Worker-&gt;&gt;Redis: ZADD queue:priority 重新入队（仅当仍 PENDING）
+        Worker-&gt;&gt;Worker: 放弃，取下一个
+    end
+</pre>
+<h3>4.2 提交阶段：落库与入队分离</h3>
+<p>🔧 v1.0.2 <code>storage/redis.py</code>（<code>RedisTaskRepository.save</code>）与 <code>core/dispatcher.py</code>（<code>TaskDispatcher.dispatch</code>）的真实分工：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 storage/redis.py —— 真实源码摘录</span>
+<span class="hljs-comment"># 任务落库：String + JSON（整个任务一个键），并维护状态索引</span>
+key = <span class="hljs-string">f&quot;task:<span class="hljs-subst">{task.task_id}</span>&quot;</span>
+<span class="hljs-keyword">await</span> client.<span class="hljs-built_in">set</span>(key, json.dumps(task_dict, default=<span class="hljs-built_in">str</span>))
+<span class="hljs-keyword">await</span> client.sadd(<span class="hljs-string">f&quot;status:<span class="hljs-subst">{task.status.value}</span>&quot;</span>, task.task_id)
+
+<span class="hljs-comment"># 🔧 core/dispatcher.py —— 真实源码摘录</span>
+<span class="hljs-comment"># 提交：先 create_task（落库），再入队</span>
+task = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lifecycle.create_task(data=data, task_id=task_id,
+                                         priority=priority_enum, node_id=<span class="hljs-variable language_">self</span>._node_id)
+<span class="hljs-keyword">if</span> delay &gt; <span class="hljs-number">0</span>:
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._queue.schedule_delayed(task.task_id, priority_value, delay)
+<span class="hljs-keyword">else</span>:
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._queue.push(task.task_id, priority_value)
+</code></pre>
+<p>两个动作<strong>不是原子的</strong>（先 SET 后 ZADD，中间崩溃会留下&quot;有记录但不在队列&quot;的孤儿任务，由回收器兜底扫描）。为什么不做成 Lua？因为提交发生在任意节点的进程内、跨两个语义不同的 Redis 结构，且回收器专门设计了孤儿清扫路径——用<strong>补偿兜底</strong>而不是<strong>强行原子</strong>，是任务调度系统与数据库事务系统的又一处分野（详见 <a href="failure-recovery.html">故障恢复</a> 一文）。</p>
+<h3>4.3 抢占阶段：所有节点的消费循环</h3>
+<p>每个节点的 worker 空闲时，通过 <code>QueueScheduler</code> 从共享队列批量拉取任务。真实出队逻辑（🔧 <code>storage/redis.py</code> 中 <code>_get_pop_script</code> 注册的 Lua）：</p>
+<pre class="hljs"><code><span class="hljs-comment">-- 🔧 storage/redis.py —— 真实 Lua 脚本摘录</span>
+<span class="hljs-keyword">local</span> queue_key = KEYS[<span class="hljs-number">1</span>]
+<span class="hljs-keyword">local</span> count = <span class="hljs-built_in">tonumber</span>(ARGV[<span class="hljs-number">1</span>])
+<span class="hljs-keyword">local</span> task_ids = redis.call(<span class="hljs-string">&#x27;ZRANGE&#x27;</span>, queue_key, <span class="hljs-number">0</span>, count<span class="hljs-number">-1</span>)
+<span class="hljs-keyword">if</span> #task_ids &gt; <span class="hljs-number">0</span> <span class="hljs-keyword">then</span>
+    redis.call(<span class="hljs-string">&#x27;ZREM&#x27;</span>, queue_key, <span class="hljs-built_in">unpack</span>(task_ids))
+<span class="hljs-keyword">end</span>
+<span class="hljs-keyword">return</span> task_ids
+</code></pre>
+<p>注意：<strong>这个脚本里没有 SET NX，没有锁</strong>。它只保证&quot;同一批任务不会有两个节点同时取走&quot;（ZRANGE+ZREM 在单线程 Redis 里天然原子），但任务出队后到真正执行前，处于&quot;无主&quot;窗口。</p>
+<h3>4.4 执行阶段：加锁在出队之后</h3>
+<p>🔧 v1.0.2 <code>worker/pool.py</code> 中 <code>WorkerPool._execute_task</code> 的真实顺序（节选）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 worker/pool.py —— 真实源码摘录（顺序还原）</span>
+task = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._task_repo.get(task_id)
+<span class="hljs-keyword">if</span> task <span class="hljs-keyword">is</span> <span class="hljs-literal">None</span> <span class="hljs-keyword">or</span> task.status != TaskStatus.PENDING:
+    <span class="hljs-keyword">return</span>  <span class="hljs-comment"># 状态不是 PENDING 则放弃（幂等闸门）</span>
+
+<span class="hljs-comment"># 执行前才加锁：以 task_id 为锁粒度，TTL=30s</span>
+<span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lock_manager.acquire(<span class="hljs-string">f&quot;task:<span class="hljs-subst">{task_id}</span>&quot;</span>, ttl=<span class="hljs-number">30</span>):
+    <span class="hljs-keyword">return</span>  <span class="hljs-comment"># 加锁失败：任务已被其他节点接管</span>
+
+<span class="hljs-keyword">try</span>:
+    watchdog = WatchDog(<span class="hljs-variable language_">self</span>._lock_manager, <span class="hljs-variable language_">self</span>._logger)
+    <span class="hljs-keyword">await</span> watchdog.start(<span class="hljs-string">f&quot;task:<span class="hljs-subst">{task_id}</span>&quot;</span>, ttl=<span class="hljs-number">30</span>)   <span class="hljs-comment"># 启动自动续期</span>
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._start_task(task)                       <span class="hljs-comment"># 置 RUNNING</span>
+    ...执行任务...
+<span class="hljs-keyword">finally</span>:
+    <span class="hljs-keyword">await</span> watchdog.stop()
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lock_manager.release(<span class="hljs-string">f&quot;task:<span class="hljs-subst">{task_id}</span>&quot;</span>)
+</code></pre>
+<p><strong>&quot;出队&quot;与&quot;加锁&quot;之间隔着一整个网络往返窗口</strong>（从 Lua 返回 → 读任务详情 → 状态检查 → 加锁），这段窗口内任务可以被两个节点同时取出——这正是第六节要展开的核心设计话题。</p>
+<hr>
+<h2>五、出队原子 ≠ 执行原子：核心设计</h2>
+<h3>5.1 为什么不在 Lua 里顺便加锁？</h3>
+<p>有一种常见误解是把抢占描述为&quot;Lua 原子完成出队 + SET NX 加锁&quot;。v1.0.2 的真实设计<strong>不是这样</strong>，而且这是有意为之的取舍，理由有三：</p>
+<p><strong>1. 出队与执行的语义目标不同。</strong> 出队要保证的是&quot;任务只被取出一次&quot;（队列完整性）；加锁要保证的是&quot;任务只被执行一次&quot;（执行互斥）。把两者焊进一个 Lua 脚本，意味着&quot;取出来&quot;与&quot;锁上&quot;必须同时成功——如果锁 SET NX 失败（锁残留），脚本要么把任务放回队列（多一次往返）、要么返回空（白白出队）。在 Redis 脚本里处理这种分支，脚本会越来越像业务代码，失去&quot;最小原子操作&quot;的可维护性。</p>
+<p><strong>2. 锁可能失败，队列操作不能回滚。</strong> 出队一旦发生就必须有去处。若脚本&quot;出队+加锁&quot;中加锁因 TTL 过期残留失败，脚本已 ZREM 的任务还得 ZADD 回去——出现锁过期抖动时，任务会在两个节点之间来回踢皮球（乒乓效应）。</p>
+<p><strong>3. 职责分离让锁的机制可以独立演进。</strong> 看门狗续期、锁扫描清理、锁 TTL 调整，这些只跟&quot;锁&quot;有关；批量出队、延时到期迁移，这些只跟&quot;队列&quot;有关。两者解耦后，<a href="distributed-lock.html">分布式锁</a> 的看门狗与 <a href="prefetch.html">预取机制</a> 的批量拉取才能各自独立优化。</p>
+<h3>5.2 那&quot;无主窗口&quot;的重复执行怎么防？</h3>
+<p>靠<strong>三道防线</strong>而不是一次原子操作：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">防线</th>
+<th style="text-align:left">机制</th>
+<th style="text-align:left">源码位置</th>
+<th style="text-align:left">防什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">① 状态闸门</td>
+<td style="text-align:left">执行前检查任务仍是 PENDING，否则放弃</td>
+<td style="text-align:left"><code>_execute_task</code></td>
+<td style="text-align:left">已被别的节点置 RUNNING 的任务</td>
+</tr>
+<tr>
+<td style="text-align:left">② 分布式锁</td>
+<td style="text-align:left"><code>SET lock:task:{id} NX EX 30</code> + 看门狗续期</td>
+<td style="text-align:left"><code>_execute_task</code> + WatchDog</td>
+<td style="text-align:left">同一任务被两个节点同时执行</td>
+</tr>
+<tr>
+<td style="text-align:left">③ 幂等重入</td>
+<td style="text-align:left">加锁失败的节点把任务放回队列（仅 PENDING 时）</td>
+<td style="text-align:left"><code>_execute_task</code></td>
+<td style="text-align:left">任务因锁竞争被&quot;丢弃&quot;</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么这么设计（三防线）</strong>：分布式系统里&quot;检查-执行&quot;之间永远存在竞态窗口，与其追求一个覆盖全链路的超级原子操作（复杂、脆弱、难调试），不如接受窗口存在，用<strong>状态机 + 锁 + 幂等</strong>分别堵住窗口的每个出口。代价是极端情况下（进程在置 RUNNING 后、释放锁前崩溃）任务会短暂地&quot;既不在队列也不可执行&quot;——这正是回收器扫描锁 TTL 的用武之地，详见 <a href="failure-recovery.html">故障恢复</a>。</p>
+<hr>
+<h2>六、节点注册、心跳与判活</h2>
+<h3>6.1 真实 key 结构与三态模型</h3>
+<p>🔧 v1.0.2 <code>distributed/node.py</code>（<code>NodeManager</code>）是节点管理的现行实现：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 distributed/node.py —— 真实源码摘录</span>
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">NodeStatus</span>(<span class="hljs-title class_ inherited__">Enum</span>):
+    ACTIVE = <span class="hljs-string">&quot;active&quot;</span>    <span class="hljs-comment"># 活跃</span>
+    STOPPED = <span class="hljs-string">&quot;stopped&quot;</span>  <span class="hljs-comment"># 已停止（优雅退出）</span>
+    FAILED = <span class="hljs-string">&quot;failed&quot;</span>    <span class="hljs-comment"># 故障</span>
+
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">NodeManager</span>:
+    NODE_KEY_PREFIX = <span class="hljs-string">&quot;neotask:node:&quot;</span>
+    NODES_SET_KEY = <span class="hljs-string">&quot;neotask:nodes&quot;</span>
+    HEARTBEAT_INTERVAL = <span class="hljs-number">5.0</span>     <span class="hljs-comment"># 心跳间隔 5 秒</span>
+    HEARTBEAT_TIMEOUT = <span class="hljs-number">20.0</span>     <span class="hljs-comment"># 判死阈值 20 秒</span>
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">_generate_node_id</span>(<span class="hljs-params">self</span>) -&gt; <span class="hljs-built_in">str</span>:
+        hostname = socket.gethostname()
+        <span class="hljs-keyword">return</span> <span class="hljs-string">f&quot;<span class="hljs-subst">{hostname}</span>_<span class="hljs-subst">{os.getpid()}</span>_<span class="hljs-subst">{uuid.uuid4().<span class="hljs-built_in">hex</span>[:<span class="hljs-number">8</span>]}</span>&quot;</span>
+</code></pre>
+<p>注册与心跳（🔧 同为 <code>node.py</code> 摘录）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 注册：HSET 逐字段写入 + 加入节点集合 + 键整体 TTL=2×timeout</span>
+<span class="hljs-keyword">await</span> client.hset(key, <span class="hljs-string">&quot;node_id&quot;</span>, <span class="hljs-variable language_">self</span>._node_id)
+<span class="hljs-keyword">await</span> client.hset(key, <span class="hljs-string">&quot;hostname&quot;</span>, <span class="hljs-variable language_">self</span>._node_info.hostname)
+<span class="hljs-keyword">await</span> client.hset(key, <span class="hljs-string">&quot;status&quot;</span>, NodeStatus.ACTIVE.value)
+<span class="hljs-keyword">await</span> client.hset(key, <span class="hljs-string">&quot;last_heartbeat&quot;</span>, <span class="hljs-built_in">str</span>(<span class="hljs-variable language_">self</span>._node_info.last_heartbeat))
+<span class="hljs-keyword">await</span> client.expire(key, <span class="hljs-built_in">int</span>(<span class="hljs-variable language_">self</span>.HEARTBEAT_TIMEOUT * <span class="hljs-number">2</span>))   <span class="hljs-comment"># 40 秒</span>
+<span class="hljs-keyword">await</span> client.sadd(<span class="hljs-variable language_">self</span>.NODES_SET_KEY, <span class="hljs-variable language_">self</span>._node_id)
+
+<span class="hljs-comment"># 心跳：只更新 last_heartbeat 并顺延 TTL</span>
+<span class="hljs-keyword">await</span> client.hset(key, <span class="hljs-string">&quot;last_heartbeat&quot;</span>, <span class="hljs-built_in">str</span>(time.time()))
+<span class="hljs-keyword">await</span> client.expire(key, <span class="hljs-built_in">int</span>(<span class="hljs-variable language_">self</span>.HEARTBEAT_TIMEOUT * <span class="hljs-number">2</span>))
+</code></pre>
+<p>判活条件（🔧 <code>get_active_nodes</code> / <code>is_node_alive</code>）：</p>
+<pre class="hljs"><code>status == <span class="hljs-string">&quot;active&quot;</span> <span class="hljs-keyword">and</span> (now - last_heartbeat) &lt; <span class="hljs-variable language_">self</span>.HEARTBEAT_TIMEOUT
+</code></pre>
+<pre class="mermaid">stateDiagram-v2
+    [*] --&gt; ACTIVE: register() 成功
+    ACTIVE --&gt; STOPPED: 优雅退出 unregister()
+    ACTIVE --&gt; FAILED: 心跳超过 20s 未更新（被他人判定）
+    STOPPED --&gt; [*]: 键 60s 后过期
+    FAILED --&gt; [*]: 键 40s 后过期（TTL 兜底）
+    note right of ACTIVE
+        每 5s 心跳一次
+        TTL 顺延至 40s
+    end note
+</pre>
+<p>节点 ID 形如 <code>hostname_pid_uuid8</code>——<strong>同一主机上重启进程会产生新 ID</strong>，旧注册靠 TTL 自然消失，无需清理逻辑。</p>
+<h3>6.2 心跳与锁的 TTL 参数互相咬合</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">参数</th>
+<th style="text-align:left">值</th>
+<th style="text-align:left">含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">心跳间隔</td>
+<td style="text-align:left">5s</td>
+<td style="text-align:left">活跃节点每 5 秒刷一次</td>
+</tr>
+<tr>
+<td style="text-align:left">判死阈值</td>
+<td style="text-align:left">20s</td>
+<td style="text-align:left">4 个心跳周期没刷 = 判死</td>
+</tr>
+<tr>
+<td style="text-align:left">节点键 TTL</td>
+<td style="text-align:left">40s</td>
+<td style="text-align:left">2×阈值，防 Redis 键堆积</td>
+</tr>
+<tr>
+<td style="text-align:left">任务锁 TTL</td>
+<td style="text-align:left">30s（默认）</td>
+<td style="text-align:left">看门狗每 9s 续期（<code>max(0.5, TTL × 0.3)</code>）</td>
+</tr>
+<tr>
+<td style="text-align:left">回收间隔</td>
+<td style="text-align:left">30s（默认）</td>
+<td style="text-align:left">回收器扫描周期</td>
+</tr>
+</tbody>
+</table>
+<p><strong>参数关系</strong>：判死阈值 20s &gt; 锁续期间隔 9s，且任务锁 TTL 30s &gt; 心跳阈值 20s。这不是巧合——它保证&quot;节点心跳还在&quot;时锁一定不会过期（还能续期），而&quot;节点真死了&quot;之后最多 30s 锁就过期、任务可被回收。</p>
+<hr>
+<h2>七、为什么两态就够了：TTL 判活的哲学</h2>
+<h3>7.1 三态模型：ACTIVE / STOPPED / FAILED</h3>
+<p>v1.0.2 的 <code>NodeStatus</code> 只有 <strong>ACTIVE / STOPPED / FAILED 三态，没有 SUSPECT（可疑）态</strong>；<code>_health_check_loop</code> 里还留着 <code># TODO: 处理故障节点</code>。判活只有一个动作：<strong>读 last_heartbeat 与 now 比大小</strong>。也就是说，运行期虽然区分&quot;优雅停（STOPPED）“与&quot;判死（FAILED）”，但对消费者而言节点只有&quot;活着、能被抢占同一队列&quot;和&quot;死了、任务需回收&quot;两种有效语义——这正是标题所说&quot;两态就够了&quot;的含义。</p>
+<p>为什么可以这么&quot;糙&quot;？因为节点故障检测在这里<strong>不是正确性依赖</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>任务不会丢：节点死后，它持有的锁最多 30s 过期，任务被回收器重新入队；</p>
+</li>
+<li class="lvl-2">
+<p>任务不会重：节点活着但网络抖动，锁还在续期，其他人抢不到；</p>
+</li>
+<li class="lvl-2">
+<p><strong>即使误判一个活节点为死，代价也只是&quot;提前回收&quot;，而回收动作本身有锁保护，不会真把活任务抢走</strong>（回收前要 acquire 同一把锁）。</p>
+</li>
+</ul>
+<p>也就是说：判活只是<strong>优化信号</strong>（早点知道谁死了可以早点回收），不是<strong>正确性闸门</strong>。真正兜底正确性的是锁与任务状态机。既然如此，一个 20s 阈值就够——把 gossip 级别的怀疑-确认机制（φ 探测器、宽限期）留给需要&quot;强一致视图&quot;的系统（如分布式数据库选主），调度器不需要。</p>
+<p><strong>为什么这么设计：系统能容忍&quot;慢回收&quot;，但不能容忍&quot;错回收&quot;。</strong> 慢回收只是延迟几十秒，错回收（把活节点的任务重新入队）会导致双执行。所以判死逻辑宁可保守地靠 TTL，也不引入任何&quot;推定死亡&quot;的激进路径。</p>
+<h3>7.2 优雅退出与崩溃退出的区别</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">退出方式</th>
+<th style="text-align:left">表现</th>
+<th style="text-align:left">Redis 侧</th>
+<th style="text-align:left">任务影响</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">优雅退出</td>
+<td style="text-align:left"><code>shutdown()</code> → 等队列排空 → <code>unregister()</code></td>
+<td style="text-align:left">status=stopped，键 60s 过期，移出节点集合</td>
+<td style="text-align:left">无丢失，锁全部正常释放</td>
+</tr>
+<tr>
+<td style="text-align:left">崩溃/断电</td>
+<td style="text-align:left">无任何动作</td>
+<td style="text-align:left">status 仍是 active，心跳停更，20s 后判死、40s 键过期</td>
+<td style="text-align:left">锁 30s 内过期，任务被回收</td>
+</tr>
+</tbody>
+</table>
+<p>优雅退出的关键在 <code>stop()</code> 中 <code>wait_until_empty</code>——先停止接收新任务并等本地队列清空，再注销。<strong>先断供给、再断身份</strong>，避免&quot;我明明还在收尾，别人却以为我死了&quot;。</p>
+<hr>
+<h2>八、两套节点管理实现：NodeManager 与 HeartbeatManager</h2>
+<p>v1.0.2 源码里存在<strong>两套节点管理实现</strong>，这是阅读源码时必须知道的现实。二者的关键差别不在&quot;格式之争&quot;，而在职责侧重：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">维度</th>
+<th style="text-align:left">NodeManager（<code>distributed/node.py</code>）</th>
+<th style="text-align:left">HeartbeatManager（<code>core/heartbeat.py</code>）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">节点键</td>
+<td style="text-align:left"><code>neotask:node:{id}</code></td>
+<td style="text-align:left"><code>neotask:node:{id}</code>（<strong>共用</strong>）</td>
+</tr>
+<tr>
+<td style="text-align:left">节点集合</td>
+<td style="text-align:left"><code>neotask:nodes</code></td>
+<td style="text-align:left"><code>neotask:nodes</code>（<strong>共用</strong>）</td>
+</tr>
+<tr>
+<td style="text-align:left">心跳配置</td>
+<td style="text-align:left">5s / 超时 20s</td>
+<td style="text-align:left">由 HeartbeatConfig 配置（interval/timeout）</td>
+</tr>
+<tr>
+<td style="text-align:left">任务状态读写</td>
+<td style="text-align:left">经 <code>TaskRepository</code></td>
+<td style="text-align:left">经 <code>TaskRepository</code>（不直接操作 Redis 任务键）</td>
+</tr>
+<tr>
+<td style="text-align:left">死节点任务回收</td>
+<td style="text-align:left">无（回收交给 TaskReclaimer）</td>
+<td style="text-align:left">自带 <code>_check_and_reclaim_dead_nodes</code></td>
+</tr>
+</tbody>
+</table>
+<p>关键事实（🔧 <code>api/task_pool.py</code> 启动段）：TaskPool 分布式模式下<strong>两者同时 start</strong>：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 api/task_pool.py —— 真实源码摘录</span>
+<span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._node_manager:
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._node_manager.start()
+<span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._heartbeat_manager:
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._heartbeat_manager.start()
+<span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._reclaimer:
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._reclaimer.start()
+</code></pre>
+<p><strong>两套实现不是&quot;各写各的&quot;。</strong> HeartbeatManager 刻意采用与 NodeManager 一致的键布局（<code>NODE_KEY_PREFIX = &quot;neotask:node:&quot;</code> / <code>NODES_SET_KEY = &quot;neotask:nodes&quot;</code>），因此二者读写同一批注册键、互相可见，不会各自维护一套节点视图。回收任务时 HeartbeatManager 也从 <code>TaskRepository.list_by_status(RUNNING)</code> 读任务，再按 <code>task.node_id == 死亡节点</code> 过滤——这条路径对 memory / sqlite / redis 三种后端都成立，不会出现&quot;以不兼容格式读写同一批 key&quot;的问题。</p>
+<p>实践启示：</p>
+<ol>
+<li class="lvl-3">
+<p>两套实现同时在跑，<strong>回收能力有重叠</strong>：TaskReclaimer 负责超时/孤儿回收，HeartbeatManager 负责&quot;归属已死节点&quot;的任务回收。排障时要两份日志都看；</p>
+</li>
+<li class="lvl-3">
+<p>HeartbeatManager 通过 <code>TaskRepository</code> 访问任务状态，而非直接操作 Redis 键——这保证它不会与存储后端的任务格式脱节；</p>
+</li>
+<li class="lvl-3">
+<p>生产排障时若发现&quot;死节点任务迟迟不回收&quot;，除回收器外，还要确认 HeartbeatManager 的监控循环是否有正常上报 <code>get_stats()</code>。</p>
+</li>
+</ol>
+<hr>
+<h2>九、Coordinator 的真实位置：已预留，未接入主链路</h2>
+<h3>9.1 共享模式下 Coordinator 的&quot;存在感&quot;很低</h3>
+<p>🔧 v1.0.2 <code>distributed/coordinator.py</code>：Coordinator 依赖 NodeManager + QueueScheduler，支持 shared/partitioned 两种分发模式。共享模式下它的 <code>distribute_task</code> 逻辑是：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 distributed/coordinator.py —— 真实源码摘录</span>
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">distribute_task</span>(<span class="hljs-params">self, task_id, priority, affinity_key=<span class="hljs-literal">None</span>, delay=<span class="hljs-number">0</span></span>):
+    <span class="hljs-string">&quot;&quot;&quot;在共享队列模式下，所有节点从同一个队列消费任务，
+    因此不需要指定目标节点。负载均衡由消费者自然实现。&quot;&quot;&quot;</span>
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._queue.push(task_id, priority, delay)
+    <span class="hljs-keyword">if</span> affinity_key <span class="hljs-keyword">and</span> <span class="hljs-variable language_">self</span>._config.enable_affinity:
+        <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._store_affinity(task_id, affinity_key)
+    <span class="hljs-keyword">return</span> <span class="hljs-literal">None</span>  <span class="hljs-comment"># 共享模式不指定目标节点</span>
+</code></pre>
+<p>而更彻底的事实是：<strong>TaskPool 的真实提交链（dispatcher.dispatch）根本没走 Coordinator</strong>——Coordinator 在 TaskPool 中被实例化，但提交直接走 <code>TaskDispatcher</code>（<code>create_task</code> + <code>queue.push</code>）。Coordinator 的 <code>_select_node</code>（round_robin/random/least_loaded）、<code>rebalance()</code>、<code>handle_node_failure()</code> 全部是<strong>预留/占位（多处 TODO）</strong>。</p>
+<h3>9.2 设计取舍：为什么预留而不接入</h3>
+<pre class="mermaid">flowchart LR
+    subgraph Today[&quot;v1.0.2 现状（shared）&quot;]
+        A[submit] --&gt; B[TaskDispatcher] --&gt; C[(queue:priority)] --&gt; D[各节点自由抢占]
+    end
+    subgraph Reserved[&quot;为分区/亲和预留的接口&quot;]
+        E[Coordinator.distribute_task_to_node] --&gt; F[记录 neotask:node_task:{id}]
+        E --&gt; G[仍入共享队列]
+        H[affinity 记录] --&gt; I[neotask:affinity:{id}]
+    end
+    subgraph Future[&quot;将来（partitioned）&quot;]
+        J[按 node_id/affinity 定向分发] --&gt; K[节点专属队列]
+    end
+</pre>
+<p><strong>为什么这么设计：把&quot;路由能力&quot;与&quot;默认无路由&quot;做成同一个类的两面。</strong> 无主架构的价值主张是&quot;消费者自取，无需路由&quot;——一旦引入定向分发（分区模式、节点亲和），就重新引入了&quot;谁来路由&quot;的问题。NeoTask 的策略是：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>默认路径不经过协调器</strong>——让最简架构保持最简（零路由代码进入主链路）；</p>
+</li>
+<li class="lvl-3">
+<p><strong>协调器作为可插拔门面预留在侧</strong>——将来要分区模式时，把 <code>dispatcher.push</code> 换成 <code>coordinator.distribute_task_to_node</code> 即可，节点专属队列 + 定向分发的原语（<code>neotask:node_task:{id}</code>）已经备好；</p>
+</li>
+<li class="lvl-3">
+<p>需要定向分发/亲和性的用户可以手动调用 Coordinator API（<code>distribute_task_to_node</code> 等原语已实现），但它默认不参与主链路，<code>rebalance()</code> 与 <code>handle_node_failure()</code> 目前仍是 <code>pass</code> 占位（源码中标注 <code># TODO</code>）。</p>
+</li>
+</ol>
+<p>对读者的提示：<strong>看到架构图里有、而代码主链路没有的组件，先确认它的&quot;接入点&quot;，再看它的&quot;实现&quot;。</strong> Coordinator 属于&quot;已预留、未接入&quot;这一类；<a href="dag-workflow.html">任务编排</a> 一文中的 DAG 引擎则更进一步——它目前仍是路线图规划，源码中尚无对应模块。</p>
+<hr>
+<h2>十、水平扩展：负载如何自然分配</h2>
+<h3>10.1 为什么&quot;谁快谁多干&quot;能自动成立</h3>
+<p>无主系统的负载均衡不靠调度器分配，而靠<strong>队列水位差</strong>自然形成：</p>
+<pre class="mermaid">flowchart TB
+    subgraph NodeA[&quot;节点 A（处理快）&quot;]
+        A1[本地队列空得快] --&gt; A2[频繁触发批量抢占] --&gt; A3[拿到更多任务]
+    end
+    subgraph NodeB[&quot;节点 B（处理慢）&quot;]
+        B1[本地队列积压] --&gt; B2[达到高水位暂停抢占] --&gt; B3[拿不到新任务]
+    end
+    subgraph Queue[&quot;共享队列&quot;]
+        Q[queue:priority]
+    end
+    A2 --&gt; Q
+    B2 -.-&gt;|暂停| Q
+</pre>
+<p>每个节点的预取循环以<strong>本地队列水位</strong>为准（低于低水位拉一批、高于高水位暂停）——于是处理快的节点队列总是先空、总是先抢，处理慢的节点自然少抢。<strong>系统吞吐量由所有节点的消费速率之和决定，任何单节点都不是瓶颈</strong>；新节点注册后立刻加入抢占，无需重新分片、无需迁移存量任务（存量任务在共享队列里，谁抢到算谁的）。</p>
+<h3>10.2 线性扩展的边界条件</h3>
+<p>&quot;吞吐随节点线性增长&quot;有两个隐含前提，缺一不可：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>Redis 不是瓶颈</strong>——出队/加锁/心跳都集中在 Redis，节点多了 Redis 命令量线性上涨（单实例 Redis 约 10 万级命令/秒，抢占频率要按 <code>节点数 × 每节点 QPS</code> 估算）；</p>
+</li>
+<li class="lvl-3">
+<p><strong>任务可并行</strong>——同一任务无写冲突（否则要靠锁串行化，扩展收益被锁竞争吃掉）。</p>
+</li>
+</ol>
+<p>实践上，达到这两个边界前更早出现的通常是：锁竞争（热点任务）、心跳风暴（数百节点同时 5s 一次 HSET 尚可，但回收器扫描是全量 <code>smembers</code> + 逐节点 <code>hgetall</code>，节点数上千时单次扫描变慢）。</p>
+<hr>
+<h2>十一、分区容错：什么能扛，什么不能扛</h2>
+<pre class="mermaid">graph TB
+    subgraph Case1[&quot;情况一：节点 ↔ Redis 断连&quot;]
+        N[节点] -.-x|断连| R[(Redis)]
+        N --&gt;|本地队列还能执行已取任务| LOCAL[已取任务继续跑]
+        N --&gt;|新任务/心跳/续期全部失败| LOST[锁 30s 后过期&lt;br/&gt;看门狗停摆]
+        LOST --&gt; REC[其他节点回收重跑]
+    end
+
+    subgraph Case2[&quot;情况二：Redis 自身不可用&quot;]
+        R2[(Redis)] -.-x|宕机/分区| ALL[所有节点失去队列与状态]
+        ALL --&gt; DOWN[全系统停摆&lt;br/&gt;无任务可抢、无状态可写]
+    end
+</pre>
+<p><strong>结论一：单节点失联 = 局部自愈。</strong> 节点与 Redis 断连时：已取出（出队成功）的任务仍能在本地执行完成（任务数据在出队后由 <code>task:{id}</code> 读取，若断连发生在读任务之后）；但<strong>锁续期会失败</strong>，30s 后锁过期，若任务还没执行完，其他节点可能重新抢占——这时看门狗续期失败的处理策略就至关重要（详见 <a href="distributed-lock.html">分布式锁</a> 的&quot;锁续期失败后任务怎么办&quot;）。</p>
+<p><strong>结论二：Redis 不可用 = 全系统停摆（这是无主架构的固有代价）。</strong> 去中心化把一致性负担外包给了 Redis，也把可用性押在了 Redis 上。节点层的无主不改变存储层是事实单点的事实。因此生产建议不是&quot;Redis 单机 + 自求多福&quot;，而是：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">部署形态</th>
+<th style="text-align:left">适用规模</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">Redis 单机 + AOF</td>
+<td style="text-align:left">开发/试验</td>
+<td style="text-align:left">数据不丢但可用性无保障</td>
+</tr>
+<tr>
+<td style="text-align:left">Redis Sentinel</td>
+<td style="text-align:left">生产单集群</td>
+<td style="text-align:left">主从切换秒级，客户端透明</td>
+</tr>
+<tr>
+<td style="text-align:left">Redis Cluster</td>
+<td style="text-align:left">多分片大规模</td>
+<td style="text-align:left">注意锁键需在同一 slot（<code>{task}</code> hash tag）</td>
+</tr>
+</tbody>
+</table>
+<p>Redis 发生 failover 时锁的丢失语义（双主窗口）与对策，见 <a href="distributed-lock.html">分布式锁</a> 故障场景四。</p>
+<hr>
+<h2>十二、故障场景实战</h2>
+<h3>场景一：节点&quot;假死&quot;——GC 长停顿导致心跳中断</h3>
+<p><strong>现象</strong>：某节点执行大任务时 JVM/Python 进程 GC 或 CPU 打满，心跳 20s 没刷。其他节点判定其死亡，任务锁 30s 过期，正在跑的任务被重新入队并被别的节点抢走执行——<strong>原节点 GC 结束后继续跑旧任务，同一任务双执行</strong>。</p>
+<p><strong>根因</strong>：心跳中断 ≠ 任务停止。锁 TTL 一到，保护就没了。</p>
+<p><strong>处置</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p>大任务必须用<strong>子任务进度上报 + 长 TTL</strong> 或切分小任务，避免单任务执行超过锁 TTL（30s）；</p>
+</li>
+<li class="lvl-3">
+<p>关键业务任务实现<strong>幂等键</strong>（业务侧去重），把&quot;双执行&quot;从事故降级为&quot;重复调用&quot;；</p>
+</li>
+<li class="lvl-3">
+<p>监控节点 GC 停顿与心跳延迟，把&quot;心跳 20s 阈值&quot;与&quot;业务任务最长执行时间&quot;对齐设计。</p>
+</li>
+</ol>
+<p><strong>启示</strong>：这是无主架构&quot;自动恢复&quot;的阴暗面——恢复动作本身可能制造双执行。自动化的回收必须配合幂等消费，否则&quot;高可用&quot;变成&quot;高重复&quot;。</p>
+<h3>场景二：回收器扫到&quot;还活着的节点&quot;的任务</h3>
+<p><strong>现象</strong>：网络抖动 25s（&gt;20s 阈值但 &lt;30s 锁 TTL？或节点只是到 Redis 的链路抖动而本地任务在跑），节点被判死，回收器尝试回收它的 RUNNING 任务——但任务锁还没过期，acquire 失败，任务安全。</p>
+<p><strong>根因</strong>：判活（20s）比锁 TTL（30s）更激进，制造了&quot;判定死亡但任务仍在保护中&quot;的窗口。</p>
+<p><strong>处置</strong>：这个场景的正确结局是<strong>回收失败即安全</strong>——回收必须走&quot;先加锁、后改状态、再入队&quot;的顺序，加锁失败就跳过。<strong>不要</strong>为回收写绕过锁的强制路径（如直接 HSET 改状态），那会把最后的保护也拆掉。</p>
+<p><strong>启示</strong>：多组件协作的分布式系统，<strong>每个&quot;善后&quot;动作都必须重新走一遍主人物的授权检查</strong>（锁），否则善后者就是新的破坏者。</p>
+<h3>场景三：扩容高峰期的&quot;抢占风暴&quot;</h3>
+<p><strong>现象</strong>：业务高峰紧急扩容 10 个节点，所有新节点本地队列为空，同时触发批量抢占 + 大量 task 读取，Redis 命令量瞬时 ×10，出现超时与连接池占满，老节点续期延迟，部分锁提前过期。</p>
+<p><strong>根因</strong>：冷启动节点没有预取退避（队列空 = 立即抢），同步放大 Redis 压力形成正反馈。</p>
+<p><strong>处置</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p>节点启动后先做<strong>预热等待</strong>（等待心跳注册 + 首轮延迟抢占据），参考框架中 <code>start()</code> 后 <code>await asyncio.sleep</code> 的现有节奏；</p>
+</li>
+<li class="lvl-3">
+<p>分批扩容（每批 2~3 个），观察 Redis 延迟稳定后再加；</p>
+</li>
+<li class="lvl-3">
+<p>连接池 max_connections 按峰值节点数规划（<code>RedisTaskRepository(max_connections=10)</code> 默认偏小，多节点时需调大）。</p>
+</li>
+</ol>
+<p><strong>启示</strong>：去中心化的扩展是&quot;自组织&quot;的，但<strong>自组织只在稳态成立</strong>；瞬态（冷启动、风暴）需要外部节流，框架提供原语，容量规划还是人的事。</p>
+<h3>场景四：误删 Redis 中的节点键或任务键</h3>
+<p><strong>现象</strong>：运维误执行 <code>DEL neotask:node:*</code> 或清库脚本误伤 <code>task:*</code>，节点注册信息全部消失。节点本身还活着，心跳每 5s 会把 <code>neotask:node:{id}</code> 重新 HSET 吗？——注意：<strong>心跳只更新已有键的字段，不重建被删的键</strong>（<code>heartbeat()</code> 里只有 HSET + EXPIRE，没有重建字段），且节点集合 <code>neotask:nodes</code> 若也被删，新节点的注册集就丢了。</p>
+<p><strong>根因</strong>：注册信息是&quot;软状态&quot;，依赖键存在；删除键后节点不会自愈重建（除非重启）。</p>
+<p><strong>处置</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p>对 Redis 高危命令（FLUSHDB/DEL/KEYS）做审计与权限收敛；</p>
+</li>
+<li class="lvl-3">
+<p>节点监控加&quot;注册键存在性&quot;自检，发现缺失自动 <code>register()</code>（源码未内置，需业务侧兜底或二次开发）；</p>
+</li>
+<li class="lvl-3">
+<p>误删后的恢复路径：重启节点（最可靠）或手动重放 register。</p>
+</li>
+</ol>
+<p><strong>启示</strong>：以 Redis 为事实中心的系统，<strong>Redis 中的数据要当&quot;数据库&quot;对待</strong>：有备份、有审计、有重建路径。把状态全放 Redis 的便利，代价是 Redis 的每一个误操作都是全局事故。</p>
+<hr>
+<h2>十三、总结</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">主题</th>
+<th style="text-align:left">结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">为什么无主</td>
+<td style="text-align:left">把&quot;谁是主&quot;外包给 Redis 原子性，省掉选举/脑裂/故障转移整套复杂度</td>
+</tr>
+<tr>
+<td style="text-align:left">事实中心</td>
+<td style="text-align:left">Redis 是唯一共享状态源；节点间零通信</td>
+</tr>
+<tr>
+<td style="text-align:left">提交链路</td>
+<td style="text-align:left">create_task（SET String JSON）+ ZADD，落库与入队不原子，孤儿靠回收兜底</td>
+</tr>
+<tr>
+<td style="text-align:left">出队与加锁</td>
+<td style="text-align:left">pop Lua 只 ZRANGE+ZREM，<strong>不含加锁</strong>；锁在 worker 执行前独立 acquire</td>
+</tr>
+<tr>
+<td style="text-align:left">防重三防线</td>
+<td style="text-align:left">状态闸门（PENDING 检查）+ 分布式锁（NX EX 30s）+ 幂等重入</td>
+</tr>
+<tr>
+<td style="text-align:left">节点管理</td>
+<td style="text-align:left">NodeManager：<code>neotask:node:{id}</code> HSET + 5s 心跳 + 20s 判死 + 40s TTL，三态模型</td>
+</tr>
+<tr>
+<td style="text-align:left">两态哲学</td>
+<td style="text-align:left">判活只是优化信号；正确性由锁与状态机兜底，容忍慢回收、严防错回收</td>
+</tr>
+<tr>
+<td style="text-align:left">节点管理实现</td>
+<td style="text-align:left">NodeManager 与 HeartbeatManager 两套实现共用同一注册表（<code>neotask:node:{id}</code> / <code>neotask:nodes</code>），任务状态经 TaskRepository 读写；Coordinator 已预留但未接入主链路</td>
+</tr>
+<tr>
+<td style="text-align:left">扩展边界</td>
+<td style="text-align:left">自然负载分配靠队列水位差；瓶颈通常在 Redis 与锁竞争而非节点数</td>
+</tr>
+<tr>
+<td style="text-align:left">容错边界</td>
+<td style="text-align:left">单节点失联局部自愈；Redis 不可用 = 全局停摆，必须上 Sentinel/Cluster</td>
+</tr>
+</tbody>
+</table>
+<p><strong>一句结语</strong>：去中心化不是&quot;没有中心&quot;，而是<strong>把中心从&quot;会选主的节点&quot;换成&quot;不会犯错的存储&quot;</strong>。NeoTask 的架构之美在于承认了这一点——所有节点的行为都退化到最简单：抢队列、拿锁、执行、刷心跳。系统级复杂度没有消失，它被转移到了 Redis 的原子原语与回收器的补偿逻辑里——那才是真正的&quot;分布式系统代码&quot;所在之处。</p>
+<hr>
+<h2>版本与验证说明</h2>
+<p>本文属于项目文档而不是永久不变的 API 契约。以下情况发生时，应重新核对源码或发布说明：</p>
+<ol>
+<li class="lvl-3">
+<p>项目版本升级，尤其是公开 API、配置模型、存储实现和工作流发生变化；</p>
+</li>
+<li class="lvl-3">
+<p>本文中的默认值、性能数据或示例依赖外部服务版本；</p>
+</li>
+<li class="lvl-3">
+<p>运行环境与本文案例不同，例如 Python 版本、Redis/数据库版本、模型供应商或操作系统不同。</p>
+</li>
+</ol>
+<p>如果你要把本文内容用于生产环境，请优先使用仓库当前版本的 README、源码、测试和 Release 记录进行最终确认。</p>
+<h2>相关链接</h2>
+<p><a href="index.html">返回首页</a></p>
+<p><strong>入门与参考</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="quickstart.html">快速上手</a> - 5 分钟入门</p>
+</li>
+<li class="lvl-2">
+<p><a href="api-reference.html">API 参考</a> - 完整 API 文档</p>
+</li>
+<li class="lvl-2">
+<p><a href="configuration.html">配置说明</a> - 配置参数详解</p>
+</li>
+<li class="lvl-2">
+<p><a href="best-practices.html">最佳实践</a> - 生产环境建议</p>
+</li>
+</ul>
+<p><strong>架构与设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="architecture.html">架构设计</a> - 整体架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="core-features.html">核心实现</a> - 功能设计</p>
+</li>
+<li class="lvl-2">
+<p><a href="evolution.html">版本演进</a> - 演进历程</p>
+</li>
+</ul>
+<p><strong>分布式核心</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="decentralization.html">去中心化</a> - 对等架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="failure-recovery.html">故障恢复</a> - 高可用保障</p>
+</li>
+<li class="lvl-2">
+<p><a href="prefetch.html">预取机制</a> - 高吞吐性能</p>
+</li>
+<li class="lvl-2">
+<p><a href="distributed-lock.html">分布式锁</a> - 并发控制</p>
+</li>
+</ul>
+<p><strong>存储与监控</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="persistence.html">持久化</a> - 多存储后端</p>
+</li>
+<li class="lvl-2">
+<p><a href="priority-queue.html">优先级</a> - 优先级队列</p>
+</li>
+<li class="lvl-2">
+<p><a href="delayed-tasks.html">延时任务</a> - 时间轮 + Redis 持久化</p>
+</li>
+<li class="lvl-2">
+<p><a href="monitoring.html">节点监控</a> - 可观测性</p>
+</li>
+</ul>
+<p><strong>资源</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/neotask">GitHub</a> - 源代码仓库</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://task.helpenx.com">NeoTask 官网</a> - 官方网站</p>
+</li>
+</ul>
+
+      </article>
+    </main>
+  </div>
+  <footer>
+    <a href="https://task.helpenx.com" target="_blank" rel="noopener">NeoTask 官网</a>·
+    <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>·
+    <a href="index.html">文档中心</a>
+    <div style="margin-top:6px">© 2026 helpenx.com · 文档基线以文中标注版本对应的源码为准</div>
+  </footer>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</body>
+</html>

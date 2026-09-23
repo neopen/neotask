@@ -1,277 +1,598 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>快速上手 - NeoTask</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="../assets/css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关 · NeoTask 文档</title>
+  <meta name="description" content="NeoTask 实测版入门指南：真实依赖与安装方式、任务执行器定义、同步/异步/上下文管理器三种使用范式、优先级与延迟/周期/Cron 定时提交、事件回调与常见问题，所有代码均对照 v1.0.2 源码验证。">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://task.helpenx.com/docs/quickstart.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:title" content="NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关">
+  <meta property="og:description" content="NeoTask 实测版入门指南：真实依赖与安装方式、任务执行器定义、同步/异步/上下文管理器三种使用范式、优先级与延迟/周期/Cron 定时提交、事件回调与常见问题，所有代码均对照 v1.0.2 源码验证。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://task.helpenx.com/docs/quickstart.html">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>⏱️</text></svg>">
+  <style>
+:root{--brand:#0d9488;--brand-dark:#0f766e;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:var(--ink);background:#fff;line-height:1.75;font-size:16px}
+a{color:var(--brand);text-decoration:none}a:hover{color:var(--brand-dark);text-decoration:underline}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
+.topbar .brand .doc-badge{font-size:12px;font-weight:600;color:#fff;background:var(--brand);border-radius:6px;padding:2px 8px}
+.topbar nav{display:flex;gap:20px;font-size:14.5px}
+.topbar nav a{color:var(--muted);font-weight:500}
+.topbar nav a:hover{color:var(--brand)}
+.wrap{display:flex;max-width:1280px;margin:0 auto;padding:0 16px}
+.sidebar{width:264px;flex-shrink:0;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 40px 0;border-right:1px solid var(--line)}
+.sidebar .side-home{display:block;font-weight:600;color:var(--ink);margin-bottom:16px;font-size:15px}
+.sidebar .side-home:hover{color:var(--brand);text-decoration:none}
+.sidebar h4{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px;font-weight:600}
+.sidebar a{display:block;padding:5px 10px;border-radius:6px;font-size:14px;color:#334155;line-height:1.5}
+.sidebar a:hover{background:var(--bg);color:var(--brand);text-decoration:none}
+.sidebar a.active{background:var(--brand);color:#fff}
+.content{flex:1;min-width:0;padding:32px 20px 60px 36px;max-width:860px}
+.toc-mobile{display:none;margin-bottom:20px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.toc-mobile summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.toc-mobile a{display:block;padding:3px 0;font-size:14px}
+.article h1{font-size:1.9em;line-height:1.35;margin:.4em 0 .8em}
+.article h2{font-size:1.45em;margin:1.8em 0 .7em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
+.article h3{font-size:1.22em;margin:1.5em 0 .6em}
+.article h4{font-size:1.08em;margin:1.3em 0 .5em}
+.article p{margin:.85em 0}
+.article ul,.article ol{padding-left:1.6em;margin:.7em 0}
+.article li{margin:.35em 0}
+.article img{max-width:100%;height:auto;border-radius:8px}
+.article table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:.94em;display:block;overflow-x:auto}
+.article th,.article td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+.article th{background:var(--bg);font-weight:600}
+.article tr:nth-child(even) td{background:#fbfdff}
+.article blockquote{margin:1.1em 0;padding:.7em 1.1em;border-left:4px solid var(--brand);background:var(--bg);border-radius:0 8px 8px 0;color:#334155}
+.article blockquote p{margin:.3em 0}
+.article code:not(pre code){background:#eef2f7;color:#c7254e;padding:.15em .4em;border-radius:4px;font-size:.88em;word-break:break-word}
+.article pre.hljs{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0;line-height:1.6}
+.article pre.hljs code{background:none;padding:0;color:var(--ink);font-size:.9em;font-family:ui-monospace,SFMono-Regular,'Cascadia Code',Consolas,Menlo,monospace}
+.article pre.mermaid{text-align:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0}
+.article hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+.article .success,.article .tips,.article .warning,.article .danger{border-radius:8px;padding:.9em 1.1em;margin:1.1em 0;border:1px solid}
+.article .success{border-color:#a7f3d0;background:#ecfdf5}.article .success p:first-of-type::before{content:'✅ '}
+.article .tips{border-color:#bfdbfe;background:#eff6ff}.article .tips p:first-of-type::before{content:'💡 '}
+.article .warning{border-color:#fde68a;background:#fffbeb}.article .warning p:first-of-type::before{content:'⚠️ '}
+.article .danger{border-color:#fecaca;background:#fef2f2}.article .danger p:first-of-type::before{content:'🚫 '}
+.article .success>p:first-child,.article .tips>p:first-child,.article .warning>p:first-child,.article .danger>p:first-child{margin-top:0}
+.article .success>p:last-child,.article .tips>p:last-child,.article .warning>p:last-child,.article .danger>p:last-child{margin-bottom:0}
+.doc-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--muted)}
+.doc-meta .tag{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+.doc-nav{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
+.doc-nav a{font-weight:600}
+footer{border-top:1px solid var(--line);padding:22px 24px;text-align:center;color:var(--muted);font-size:13.5px}
+footer a{color:var(--muted);margin:0 10px}
+footer a:hover{color:var(--brand)}
+@media (max-width:960px){
+  .sidebar{display:none}
+  .toc-mobile{display:block}
+  .content{padding:20px 6px 50px}
+  .topbar nav{gap:12px}
+}
+</style>
+  <style>
+.hljs{color:#24292e;background:#f6f8fa}
+.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.constant_{color:#d73a49}
+.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}
+.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}
+.hljs-string,.hljs-meta .hljs-string,.hljs-regexp{color:#032f62}
+.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-tag,.hljs-subst,.hljs-symbol{color:#e36209}
+.hljs-built_in,.hljs-class .hljs-title{color:#e36209}
+.hljs-comment,.hljs-meta,.hljs-quote{color:#6a737d}
+.hljs-section{color:#005cc5;font-weight:700}
+.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
+</style>
 </head>
 <body>
-    <nav class="navbar" id="navbar">
-        <div class="nav-container">
-            <div class="logo">
-                <div class="logo-icon"><i class="fas fa-tasks"></i></div>
-                <span>NeoTask</span>
-            </div>
-            <div class="menu-btn" id="menuBtn"><i class="fas fa-bars"></i></div>
-            <div class="nav-links" id="navLinks">
-                <a href="../index.html">首页</a>
-                <a href="quickstart.html" class="active">文档</a>
-                <a href="https://pengline.cn/2026/04/118be805273f47408bc580c4bd1203d8" class="blog-btn">
-                    <i class="fas fa-blog"></i>
-                    博客
-                </a>
-                <a href="https://github.com/neopen/neotask" class="github-btn">
-                    <i class="fab fa-github"></i> GitHub
-                </a>
-            </div>
-        </div>
+  <header class="topbar">
+    <a class="brand" href="index.html">⏱️ NeoTask <span class="doc-badge">文档</span></a>
+    <nav>
+      <a href="https://task.helpenx.com" target="_blank" rel="noopener">产品官网</a>
+      <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
     </nav>
-
-    <div class="docs-container">
-        <aside class="docs-sidebar">
-            <h4>文档导航</h4>
-            <ul>
-                <li><a href="quickstart.html" class="active">快速上手</a></li>
-                <li><a href="api-reference.html">API 参考</a></li>
-                <li><a href="configuration.html">配置说明</a></li>
-                <li><a href="architecture.html">架构设计</a></li>
-            </ul>
-            <div class="toc"></div>
-        </aside>
-
-        <main class="docs-content">
-            <h1>快速上手</h1>
-            <p>5 分钟快速入门 NeoTask 任务调度系统。</p>
-
-            <h2>安装</h2>
-            <pre><code># 基础安装（内存存储，适合开发测试）
+  </header>
+  <div class="wrap">
+    <aside class="sidebar">
+      <a class="side-home" href="index.html">⏱️ 分布式任务调度系统 · 文档中心</a>
+      <h4>技术分析</h4><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a>
+<h4>API 与配置参考</h4><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a>
+<h4>实现与源码分析</h4><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a>
+<h4>设计与方案</h4><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a>
+<h4>项目概览</h4><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a>
+<h4>入门与使用</h4><a href="quickstart.html" class="active">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a>
+<h4>性能与评测</h4><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a>
+<h4>实践与运维</h4><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a>
+<h4>架构与核心设计</h4><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a>
+<h4>版本与演进</h4><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a>
+    </aside>
+    <main class="content">
+      <details class="toc-mobile"><summary>📑 文档目录</summary><div><strong style="font-size:13px;color:var(--muted)">技术分析</strong><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a></div><div><strong style="font-size:13px;color:var(--muted)">API 与配置参考</strong><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a></div><div><strong style="font-size:13px;color:var(--muted)">实现与源码分析</strong><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a></div><div><strong style="font-size:13px;color:var(--muted)">设计与方案</strong><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a></div><div><strong style="font-size:13px;color:var(--muted)">项目概览</strong><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a></div><div><strong style="font-size:13px;color:var(--muted)">入门与使用</strong><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a></div><div><strong style="font-size:13px;color:var(--muted)">性能与评测</strong><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a></div><div><strong style="font-size:13px;color:var(--muted)">实践与运维</strong><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a></div><div><strong style="font-size:13px;color:var(--muted)">架构与核心设计</strong><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a></div><div><strong style="font-size:13px;color:var(--muted)">版本与演进</strong><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a></div></details>
+      <article class="article">
+        <div class="doc-meta"><span class="tag">NeoTask</span><span class="tag">更新 2026-04-09</span><a href="https://task.helpenx.com" target="_blank" rel="noopener">task.helpenx.com ↗</a></div>
+        <h1>NeoTask 快速上手</h1>
+<p>📚 <a href="index.html">返回首页</a> | 📖 <a href="quickstart.html">快速上手</a> | 📘 <a href="api-reference.html">API 参考</a> | ⚙️ <a href="configuration.html">配置说明</a> | 🐙  <a href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a href="https://task.helpenx.com">NeoTask 官网</a></p>
+<blockquote>
+<p><strong>文档定位</strong>：这是一篇面向实际使用者的入门文档。重点是把项目从“知道是什么”推进到“能够跑起来”，因此优先给出前置条件、最小可运行路径、输入输出和常见失败点，而不是重复项目宣传信息。<br>
+<strong>事实边界</strong>：实现文档：功能、接口和代码行为以文中标注版本对应的源码为准；仓库后续版本可能发生变化。<br>
+<strong>权威来源</strong>：<a href="https://github.com/neopen/neotask">NeoTask 源码仓库</a>；涉及版本历史时，以仓库 Release / CHANGELOG 为准。<br>
+<strong>代码标记</strong>：如果正文出现“源码/实现”字样，表示对应代码路径可在仓库中核对；示例代码仅用于演示调用方式，不应理解为项目源码原样。<br>
+<strong>版本基线</strong>：本文对照 NeoTask <strong>v1.0.2</strong>（PyPI 发布版），所有 API 调用均经源码验证。<br>
+<strong>代码标注约定</strong>：🔧 表示<strong>真实源码</strong>（仓库原样摘录，附文件路径，可自行对照）；📝 表示<strong>示例代码</strong>（用法演示、改进建议或教学代码，不代表仓库实现）。</p>
+</blockquote>
+<hr>
+<h2>一、安装：真实依赖清单</h2>
+<p>NeoTask 1.0.2 支持 <strong>Python ≥ 3.8</strong>。<strong>注意：它并非“零依赖”</strong>——基础包会无条件安装两个库（🔧 <code>pyproject.toml</code>）；Redis、psutil、Web UI 等能力改为可选 extra，按需加装：</p>
+<p><strong>基础依赖（<code>pip install neotask</code> 即可用）</strong></p>
+<table>
+<thead>
+<tr>
+<th>依赖</th>
+<th>用途</th>
+<th>最低版本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>aiosqlite</code></td>
+<td>SQLite 存储后端</td>
+<td>≥0.19.0</td>
+</tr>
+<tr>
+<td><code>croniter</code></td>
+<td>Cron 表达式解析（周期任务）</td>
+<td>≥1.0.0</td>
+</tr>
+</tbody>
+</table>
+<p><strong>可选扩展（按需安装）</strong></p>
+<table>
+<thead>
+<tr>
+<th>extra</th>
+<th>依赖</th>
+<th>用途</th>
+<th>最低版本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>neotask[redis]</code></td>
+<td><code>redis</code></td>
+<td>Redis 存储 / 分布式锁 / 去中心化</td>
+<td>≥4.5.0</td>
+</tr>
+<tr>
+<td><code>neotask[monitor]</code></td>
+<td><code>psutil</code></td>
+<td>系统指标采集（健康检查用）</td>
+<td>≥5.9.0</td>
+</tr>
+<tr>
+<td><code>neotask[ui]</code></td>
+<td><code>fastapi</code>、<code>uvicorn</code>、<code>jinja2</code>、<code>python-multipart</code></td>
+<td>Web UI 监控面板</td>
+<td>fastapi ≥0.100.0</td>
+</tr>
+<tr>
+<td><code>neotask[full]</code></td>
+<td>上述全部</td>
+<td>完整功能</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<pre class="hljs"><code><span class="hljs-comment"># 基础安装：内存 + SQLite 存储、定时调度、事件总线开箱可用（官方主推）</span>
 pip install neotask
 
-# 带 SQLite 持久化（适合单机生产）
-pip install neotask[sqlite]
-
-# 带 Redis 分布式支持（适合多节点部署）
+<span class="hljs-comment"># 加装 Redis 分布式支持（存储 / 分布式锁 / 去中心化）</span>
 pip install neotask[redis]
 
-# 完整安装（包含所有扩展）
-pip install neotask[full]</code></pre>
+<span class="hljs-comment"># 加装系统指标采集（psutil）</span>
+pip install neotask[monitor]
 
-            <h2>5 分钟入门</h2>
-            
-            <h3>1. 定义任务处理函数</h3>
-            <pre><code>from neotask import TaskPool
+<span class="hljs-comment"># 附加 Web UI 面板依赖（fastapi + uvicorn 等）</span>
+pip install neotask[ui]
 
-async def process_image(data: dict) -> dict:
-    """处理图片任务"""
-    print(f"开始处理图片: {data['url']}")
-    import asyncio
-    await asyncio.sleep(1)
-    return {
-        "status": "success",
-        "url": data['url'],
-        "size": 1024
-    }</code></pre>
+<span class="hljs-comment"># 完整安装：等价于 [ui,redis,sqlite,monitor]</span>
+pip install neotask[full]
+</code></pre>
+<blockquote>
+<p>说明：SQLite 存储所需的 <code>aiosqlite</code> 与 Cron 解析所需的 <code>croniter</code> 已在基础包内，无需额外选择；Redis、psutil、Web UI 都必须显式加装对应 extra 才可用。</p>
+</blockquote>
+<hr>
+<h2>二、三分钟通关：最小可用链路</h2>
+<p>NeoTask 的使用心智模型只有四步：<strong>定义执行器 → 建池 → 提交 → 等待</strong>。</p>
+<h3>第 1 步：定义任务执行器</h3>
+<p>执行器就是一个&quot;吃 dict、吐 dict&quot;的 async 函数（同步函数也支持，会被执行器包装）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码</span>
+<span class="hljs-keyword">import</span> asyncio
 
-            <h3>2. 创建任务池并提交任务</h3>
-            <pre><code># 创建任务池
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">process_image</span>(<span class="hljs-params">data: <span class="hljs-built_in">dict</span></span>) -&gt; <span class="hljs-built_in">dict</span>:
+    <span class="hljs-string">&quot;&quot;&quot;处理图片：模拟下载+压缩+上传&quot;&quot;&quot;</span>
+    <span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;处理图片: <span class="hljs-subst">{data[<span class="hljs-string">&#x27;url&#x27;</span>]}</span>&quot;</span>)
+    <span class="hljs-keyword">await</span> asyncio.sleep(<span class="hljs-number">1</span>)          <span class="hljs-comment"># 模拟耗时</span>
+    <span class="hljs-keyword">return</span> {<span class="hljs-string">&quot;status&quot;</span>: <span class="hljs-string">&quot;success&quot;</span>, <span class="hljs-string">&quot;size&quot;</span>: <span class="hljs-number">1024</span>}
+</code></pre>
+<h3>第 2 步：创建任务池并提交</h3>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码</span>
+<span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskPool
+
+pool = TaskPool(executor=process_image)      <span class="hljs-comment"># 只需传执行器</span>
+task_id = pool.submit({<span class="hljs-string">&quot;url&quot;</span>: <span class="hljs-string">&quot;https://example.com/a.jpg&quot;</span>})
+<span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;任务已提交: <span class="hljs-subst">{task_id}</span>&quot;</span>)
+<span class="hljs-comment"># 输出形如: TSK2026090901010201234567 之类的时间戳+随机ID</span>
+</code></pre>
+<p>🔧 关键行为：<code>submit()</code> 内部会调用 <code>_ensure_running()</code>——<strong>第一次提交时任务池自动启动</strong>（<code>api/task_pool.py:482</code>），无需手动 <code>start()</code>。任务池在独立线程的事件循环中运行，<code>submit</code> 通过 <code>run_coroutine_threadsafe</code> 投递任务后同步返回 <code>task_id</code>。</p>
+<h3>第 3 步：等待结果并关闭</h3>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码</span>
+result = pool.wait_for_result(task_id, timeout=<span class="hljs-number">30</span>)   <span class="hljs-comment"># 同步阻塞等待（默认超时 300s）</span>
+<span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;任务结果: <span class="hljs-subst">{result}</span>&quot;</span>)                          <span class="hljs-comment"># {&#x27;status&#x27;: &#x27;success&#x27;, &#x27;size&#x27;: 1024}</span>
+pool.shutdown()                                      <span class="hljs-comment"># 优雅关闭，等待在跑任务结束</span>
+</code></pre>
+<p>🔧 补充事实：<code>wait_all(task_ids)</code> 也是同步 API，但它<strong>逐个串行等待</strong>且内部吞掉超时——某个任务等待超时不会抛异常，而是以 <code>{&quot;error&quot;: &quot;...&quot;}</code> 字典形式出现在结果里（<code>api/task_pool.py:537</code>）。</p>
+<hr>
+<h2>三、三种使用范式</h2>
+<h3>范式 A：同步风格（脚本/服务初始化用）</h3>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码</span>
+<span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskPool
+
 pool = TaskPool(executor=process_image)
+pool.submit({<span class="hljs-string">&quot;url&quot;</span>: <span class="hljs-string">&quot;a.jpg&quot;</span>})
+task_id = pool.submit({<span class="hljs-string">&quot;url&quot;</span>: <span class="hljs-string">&quot;b.jpg&quot;</span>}, priority=<span class="hljs-number">1</span>)   <span class="hljs-comment"># 数字越小越先执行</span>
+result = pool.wait_for_result(task_id, timeout=<span class="hljs-number">60</span>)
+pool.shutdown()
+</code></pre>
+<h3>范式 B：异步风格（在 async 应用内混用）</h3>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码</span>
+<span class="hljs-keyword">import</span> asyncio
+<span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskPool
 
-# 提交任务
-task_id = pool.submit({
-    "url": "https://example.com/image.jpg"
-})
-print(f"任务已提交: {task_id}")</code></pre>
-
-            <h3>3. 等待并获取结果</h3>
-            <pre><code># 同步等待（阻塞当前线程）
-result = pool.wait_for_result(task_id, timeout=30)
-print(f"任务结果: {result}")
-
-# 关闭任务池
-pool.shutdown()</code></pre>
-
-            <h3>4. 异步方式（推荐）</h3>
-            <pre><code>import asyncio
-
-async def main():
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">main</span>():
     pool = TaskPool(executor=process_image)
-    pool.start()
-    
-    task_id = await pool.submit_async({"url": "https://example.com/image.jpg"})
-    result = await pool.wait_for_result_async(task_id)
-    print(f"任务结果: {result}")
-    
-    await pool.shutdown_async()
+    pool.start()                                        <span class="hljs-comment"># 显式启动</span>
 
-asyncio.run(main())</code></pre>
+    task_id = <span class="hljs-keyword">await</span> pool.submit_async({<span class="hljs-string">&quot;url&quot;</span>: <span class="hljs-string">&quot;a.jpg&quot;</span>}) <span class="hljs-comment"># async 版本</span>
+    result = <span class="hljs-keyword">await</span> pool.wait_for_result_async(task_id)
+    <span class="hljs-built_in">print</span>(result)
 
-            <h3>5. 使用上下文管理器（最简洁）</h3>
-            <pre><code>with TaskPool(executor=process_image) as pool:
-    task_id = pool.submit({"url": "https://example.com/image.jpg"})
+    pool.shutdown()                                     <span class="hljs-comment"># ⚠️ 没有 shutdown_async！</span>
+    <span class="hljs-comment"># 同步 shutdown 内部通过 run_coroutine_threadsafe 投递,在异步代码中同样可用</span>
+
+asyncio.run(main())
+</code></pre>
+<blockquote>
+<p>⚠️ 易错点：网上资料流传的 <code>await pool.shutdown_async()</code> <strong>不存在</strong>（1.0.2 无此 API，会抛 AttributeError）。同步/异步 API 的对偶关系仅存在于 submit/wait/查询族，生命周期方法 <code>start()</code>/<code>shutdown()</code> 只有同步版本。</p>
+</blockquote>
+<h3>范式 C：上下文管理器（最简洁，推荐入门）</h3>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码</span>
+<span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskPool
+
+<span class="hljs-keyword">with</span> TaskPool(executor=process_image) <span class="hljs-keyword">as</span> pool:   <span class="hljs-comment"># __enter__ 自动 start</span>
+    task_id = pool.submit({<span class="hljs-string">&quot;url&quot;</span>: <span class="hljs-string">&quot;a.jpg&quot;</span>})
     result = pool.wait_for_result(task_id)
-    print(result)
-# 自动关闭</code></pre>
+    <span class="hljs-built_in">print</span>(result)
+<span class="hljs-comment"># __exit__ 自动优雅 shutdown</span>
+</code></pre>
+<p>🔧 三种范式背后的统一事实：<code>__enter__</code> 调 <code>start()</code>、<code>__exit__</code> 调 <code>shutdown()</code>（<code>api/task_pool.py:444</code>），所以范式 A 不写 <code>start()</code> 也能跑——是 <code>submit</code> 的自动启动兜底，而不是&quot;不需要启动&quot;。</p>
+<hr>
+<h2>四、提交选项速查</h2>
+<p><code>submit</code> 的完整签名（🔧 <code>api/task_pool.py:473</code>，async 版本同参）：</p>
+<pre class="hljs"><code>submit(data: <span class="hljs-built_in">dict</span>, task_id: <span class="hljs-built_in">str</span> | <span class="hljs-literal">None</span> = <span class="hljs-literal">None</span>,
+       priority: <span class="hljs-built_in">int</span> | TaskPriority = TaskPriority.NORMAL,
+       delay: <span class="hljs-built_in">float</span> = <span class="hljs-number">0</span>, ttl: <span class="hljs-built_in">int</span> = <span class="hljs-number">3600</span>) -&gt; <span class="hljs-built_in">str</span>
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>默认</th>
+<th>说明</th>
+<th>详见</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>task_id</code></td>
+<td>自动生成</td>
+<td>自定义 ID；重复会抛 TaskAlreadyExistsError</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>priority</code></td>
+<td>NORMAL</td>
+<td>0~3 四级（CRITICAL/HIGH/NORMAL/LOW），支持枚举或数字</td>
+<td><a href="priority-queue.html">优先级任务</a></td>
+</tr>
+<tr>
+<td><code>delay</code></td>
+<td>0</td>
+<td>延迟秒数，&gt;0 走延迟通道</td>
+<td><a href="delayed-tasks.html">延时任务</a></td>
+</tr>
+<tr>
+<td><code>ttl</code></td>
+<td>3600</td>
+<td><strong>双语义</strong>：执行超时 + 终态保留时长</td>
+<td><a href="persistence.html">持久化</a></td>
+</tr>
+</tbody>
+</table>
+<p>批量与优先级示例（📝）：</p>
+<pre class="hljs"><code><span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskPool, TaskPriority
 
-            <h2>定时任务快速入门</h2>
-            <pre><code>from neotask import TaskScheduler
+<span class="hljs-keyword">with</span> TaskPool(executor=process_image) <span class="hljs-keyword">as</span> pool:
+    <span class="hljs-comment"># 批量提交（同一优先级）</span>
+    ids = pool.submit_batch([
+        {<span class="hljs-string">&quot;url&quot;</span>: <span class="hljs-string">&quot;1.jpg&quot;</span>}, {<span class="hljs-string">&quot;url&quot;</span>: <span class="hljs-string">&quot;2.jpg&quot;</span>}, {<span class="hljs-string">&quot;url&quot;</span>: <span class="hljs-string">&quot;3.jpg&quot;</span>},
+    ], priority=TaskPriority.HIGH)
 
-async def send_report(data: dict) -> dict:
-    """发送报表"""
-    print(f"发送报表: {data['type']}")
-    return {"status": "sent"}
+    <span class="hljs-comment"># 单个提交时指定优先级（枚举或数字等价）</span>
+    pool.submit({<span class="hljs-string">&quot;url&quot;</span>: <span class="hljs-string">&quot;urgent.jpg&quot;</span>}, priority=TaskPriority.CRITICAL)  <span class="hljs-comment"># 或 priority=0</span>
 
-# 创建调度器
-scheduler = TaskScheduler(executor=send_report)
+    <span class="hljs-comment"># 等待全部完成（串行逐个等待，见上文说明）</span>
+    results = pool.wait_all(ids)
+</code></pre>
+<p>🔧 优先级枚举真实定义：<code>CRITICAL=0 / HIGH=1 / NORMAL=2 / LOW=3</code>（<code>models/task.py</code>），数字越小越先出队；非法数字（如 7）在 dispatcher 转枚举时会抛 ValueError。</p>
+<hr>
+<h2>五、定时任务：TaskScheduler</h2>
+<p><code>TaskScheduler</code> 是 <code>TaskPool</code> 的超集——内部持有一个 TaskPool，在其上叠加<strong>延时 / 指定时刻 / 周期 / Cron</strong> 四类提交（🔧 <code>api/task_scheduler.py</code>）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码</span>
+<span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskScheduler
+<span class="hljs-keyword">from</span> datetime <span class="hljs-keyword">import</span> datetime, timedelta
 
-# 延时 60 秒执行
-task_id = scheduler.submit_delayed(
-    {"type": "daily"},
-    delay_seconds=60
-)
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">send_report</span>(<span class="hljs-params">data: <span class="hljs-built_in">dict</span></span>) -&gt; <span class="hljs-built_in">dict</span>:
+    <span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;发送报表: <span class="hljs-subst">{data[<span class="hljs-string">&#x27;type&#x27;</span>]}</span>&quot;</span>)
+    <span class="hljs-keyword">return</span> {<span class="hljs-string">&quot;status&quot;</span>: <span class="hljs-string">&quot;sent&quot;</span>}
 
-# 每 5 分钟执行一次
-task_id = scheduler.submit_interval(
-    {"type": "heartbeat"},
-    interval_seconds=300
-)
+scheduler = TaskScheduler(executor=send_report)   <span class="hljs-comment"># 构造即含底层 TaskPool</span>
 
-# 每天 9 点执行
-task_id = scheduler.submit_cron(
-    {"type": "daily_report"},
-    cron_expr="0 9 * * *"
-)
+<span class="hljs-comment"># 1. 延时 60 秒后执行一次</span>
+scheduler.submit_delayed({<span class="hljs-string">&quot;type&quot;</span>: <span class="hljs-string">&quot;remind&quot;</span>}, delay_seconds=<span class="hljs-number">60</span>)
 
-# 等待结果
-result = scheduler.wait_for_result(task_id)
+<span class="hljs-comment"># 2. 指定时刻执行一次（内部换算成延时秒数）</span>
+scheduler.submit_at({<span class="hljs-string">&quot;type&quot;</span>: <span class="hljs-string">&quot;once&quot;</span>}, execute_at=datetime.now() + timedelta(minutes=<span class="hljs-number">5</span>))
 
-# 关闭调度器
-scheduler.shutdown()</code></pre>
+<span class="hljs-comment"># 3. 每 5 分钟执行一次（首次执行时机见下方提示）</span>
+scheduler.submit_interval({<span class="hljs-string">&quot;type&quot;</span>: <span class="hljs-string">&quot;heartbeat&quot;</span>}, interval_seconds=<span class="hljs-number">300</span>)
 
-            <h2>优先级任务</h2>
-            <pre><code>from neotask import TaskPriority
+<span class="hljs-comment"># 4. Cron 表达式周期执行（依赖 croniter）</span>
+scheduler.submit_cron({<span class="hljs-string">&quot;type&quot;</span>: <span class="hljs-string">&quot;daily&quot;</span>}, cron_expr=<span class="hljs-string">&quot;0 9 * * *&quot;</span>)
 
-# 高优先级任务（数字越小优先级越高）
-high_priority_id = pool.submit(
-    {"task": "urgent"},
-    priority=TaskPriority.HIGH   # 或 priority=1
-)
+scheduler.shutdown()
+</code></pre>
+<h3>定时任务的三个真实行为（对照源码）</h3>
+<ol>
+<li class="lvl-3">
+<p><strong>延时任务</strong>：<code>submit_delayed</code> 直接委托底层 <code>pool.submit(delay=delay_seconds)</code>，到期触发依赖内存堆 + 事件循环调度；<strong>触发计划不落库</strong>，重启即失（详见 <a href="delayed-tasks.html">延时任务</a>）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>周期任务首次执行</strong>：<code>submit_interval</code> 的 <code>run_immediately</code> 默认 <code>True</code>，控制首次是否立即执行；若传入未来的 <code>start_at</code>，则指定时刻优先（🔧 <code>scheduler/periodic.py</code>）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>周期/Cron 任务是&quot;计划&quot;而非&quot;任务&quot;</strong>：每次触发会向底层池提交一个<strong>全新 task_id 的即时任务</strong>；<code>wait_for_result</code> 等的是单次执行结果。取消请用 <code>scheduler.cancel(name/id)</code> 类接口（周期任务名可通过 <code>name</code> 参数指定，便于管理）。</p>
+</li>
+</ol>
+<hr>
+<h2>六、事件回调：监听任务生命周期</h2>
+<p>事件回调注册在 TaskPool 上（🔧 <code>api/task_pool.py:813</code>，handler 是 async 函数、收 TaskEvent）：<code>on_created / on_started / on_completed / on_failed / on_cancelled / on_progress / on_reclaimed</code>。</p>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码</span>
+<span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskPool
 
-# 普通优先级（默认）
-normal_id = pool.submit({"task": "normal"})
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">my_task</span>(<span class="hljs-params">data</span>):
+    <span class="hljs-keyword">return</span> {<span class="hljs-string">&quot;result&quot;</span>: <span class="hljs-string">&quot;done&quot;</span>}
 
-# 低优先级
-low_id = pool.submit(
-    {"task": "background"},
-    priority=TaskPriority.LOW    # 或 priority=3
-)</code></pre>
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">on_completed</span>(<span class="hljs-params">event</span>):
+    <span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;完成: <span class="hljs-subst">{event.task_id}</span>, 结果: <span class="hljs-subst">{event.data}</span>&quot;</span>)
 
-            <h3>优先级说明</h3>
-            <table>
-                <thead>
-                    <tr><th>优先级</th><th>值</th><th>说明</th></tr>
-                </thead>
-                <tbody>
-                    <tr><td>CRITICAL</td><td>0</td><td>最高优先级</td></tr>
-                    <tr><td>HIGH</td><td>1</td><td>高优先级</td></tr>
-                    <tr><td>NORMAL</td><td>2</td><td>普通优先级（默认）</td></tr>
-                    <tr><td>LOW</td><td>3</td><td>低优先级</td></tr>
-                </tbody>
-            </table>
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">on_failed</span>(<span class="hljs-params">event</span>):
+    <span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;失败: <span class="hljs-subst">{event.task_id}</span>, 错误: <span class="hljs-subst">{event.data}</span>&quot;</span>)
 
-            <h2>批量提交</h2>
-            <pre><code># 批量提交任务
-tasks = [
-    {"id": 1, "url": "image1.jpg"},
-    {"id": 2, "url": "image2.jpg"},
-    {"id": 3, "url": "image3.jpg"},
-]
+<span class="hljs-keyword">with</span> TaskPool(executor=my_task) <span class="hljs-keyword">as</span> pool:
+    pool.on_completed(on_completed)
+    pool.on_failed(on_failed)
+    pool.submit({<span class="hljs-string">&quot;id&quot;</span>: <span class="hljs-number">1</span>})
+</code></pre>
+<p>🔧 说明：事件在任务池内部的事件总线上<strong>异步分发</strong>，回调与指标收集同链路；<code>event.data</code> 的内容因事件而异（completed 带 result、failed 带 error、progress 带 progress/message/timestamp）。回调异常会被总线捕获，不影响任务主流程——别指望回调抛错能阻断任务。</p>
+<hr>
+<h2>七、存储与部署档位切换</h2>
+<p>默认配置是内存存储（开发友好、重启即失）。三个工厂方法一键切换（🔧 <code>models/config.py</code>，真实签名）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码</span>
+<span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskPool, TaskPoolConfig
 
-# 同步批量提交
-task_ids = pool.submit_batch(tasks)
+<span class="hljs-comment"># 单机生产：SQLite 持久化到本地文件</span>
+pool = TaskPool(executor=process_image,
+                config=TaskPoolConfig.sqlite(path=<span class="hljs-string">&quot;neotask.db&quot;</span>))
 
-# 异步批量提交
-task_ids = await pool.submit_batch_async(tasks)
+<span class="hljs-comment"># 分布式生产：Redis（唯一启用去中心化组件集群的档位）</span>
+pool = TaskPool(executor=process_image,
+                config=TaskPoolConfig.redis(url=<span class="hljs-string">&quot;redis://localhost:6379&quot;</span>))
 
-# 等待所有任务完成
-results = pool.wait_all(task_ids)
-for task_id, result in results.items():
-    print(f"{task_id}: {result}")</code></pre>
+pool.submit({<span class="hljs-string">&quot;url&quot;</span>: <span class="hljs-string">&quot;a.jpg&quot;</span>})
+pool.shutdown()
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>档位</th>
+<th>数据存活</th>
+<th>多进程/多节点</th>
+<th>典型场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>memory（默认）</td>
+<td>进程重启即失</td>
+<td>❌</td>
+<td>开发测试</td>
+</tr>
+<tr>
+<td>sqlite</td>
+<td>磁盘文件</td>
+<td>⚠️ 仅单进程（多进程有重复领取窗口）</td>
+<td>单机生产</td>
+</tr>
+<tr>
+<td>redis</td>
+<td>独立服务</td>
+<td>✅ 完整分布式</td>
+<td>集群生产</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>⚠️ 切档前必读 <a href="persistence.html">持久化</a>：SQLite 档勿开多进程；Redis 档需同配 <code>lock_type=&quot;redis&quot;</code>（默认锁类型是 memory，与存储档位独立）。完整参数表见 <a href="configuration.html">配置说明</a>。</p>
+</blockquote>
+<hr>
+<h2>八、完整示例：批量图片处理服务</h2>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码</span>
+<span class="hljs-keyword">import</span> asyncio
+<span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskPool, TaskPriority
 
-            <h2>事件回调</h2>
-            <pre><code># 定义事件处理器
-async def on_created(event):
-    print(f"任务创建: {event.task_id}")
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">process_image</span>(<span class="hljs-params">data: <span class="hljs-built_in">dict</span></span>) -&gt; <span class="hljs-built_in">dict</span>:
+    <span class="hljs-string">&quot;&quot;&quot;处理图片：下载 -&gt; 压缩 -&gt; 上传（模拟）&quot;&quot;&quot;</span>
+    url = data[<span class="hljs-string">&#x27;url&#x27;</span>]
+    <span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;[1/3] 下载: <span class="hljs-subst">{url}</span>&quot;</span>); <span class="hljs-keyword">await</span> asyncio.sleep(<span class="hljs-number">0.5</span>)
+    <span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;[2/3] 压缩: <span class="hljs-subst">{url}</span>&quot;</span>); <span class="hljs-keyword">await</span> asyncio.sleep(<span class="hljs-number">0.5</span>)
+    <span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;[3/3] 上传: <span class="hljs-subst">{url}</span>&quot;</span>); <span class="hljs-keyword">await</span> asyncio.sleep(<span class="hljs-number">0.5</span>)
+    <span class="hljs-keyword">return</span> {<span class="hljs-string">&quot;status&quot;</span>: <span class="hljs-string">&quot;success&quot;</span>, <span class="hljs-string">&quot;url&quot;</span>: url,
+            <span class="hljs-string">&quot;compressed_size&quot;</span>: data.get(<span class="hljs-string">&#x27;size&#x27;</span>, <span class="hljs-number">1024</span>) // <span class="hljs-number">2</span>}
 
-async def on_started(event):
-    print(f"任务开始: {event.task_id}")
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">batch_process</span>():
+    images = [
+        {<span class="hljs-string">&quot;url&quot;</span>: <span class="hljs-string">&quot;https://example.com/img1.jpg&quot;</span>, <span class="hljs-string">&quot;size&quot;</span>: <span class="hljs-number">2048</span>},
+        {<span class="hljs-string">&quot;url&quot;</span>: <span class="hljs-string">&quot;https://example.com/img2.jpg&quot;</span>, <span class="hljs-string">&quot;size&quot;</span>: <span class="hljs-number">3072</span>},
+        {<span class="hljs-string">&quot;url&quot;</span>: <span class="hljs-string">&quot;https://example.com/img3.jpg&quot;</span>, <span class="hljs-string">&quot;size&quot;</span>: <span class="hljs-number">1536</span>},
+    ]
+    <span class="hljs-keyword">with</span> TaskPool(executor=process_image, config=TaskPoolConfig.memory()) <span class="hljs-keyword">as</span> pool:
+        task_ids = []
+        <span class="hljs-keyword">for</span> i, img <span class="hljs-keyword">in</span> <span class="hljs-built_in">enumerate</span>(images):
+            <span class="hljs-comment"># 第一张图高优先级</span>
+            pri = TaskPriority.HIGH <span class="hljs-keyword">if</span> i == <span class="hljs-number">0</span> <span class="hljs-keyword">else</span> TaskPriority.NORMAL
+            task_ids.append(pool.submit(img, priority=pri))
 
-async def on_completed(event):
-    print(f"任务完成: {event.task_id}")
+        results = pool.wait_all(task_ids)
+        <span class="hljs-keyword">for</span> tid, r <span class="hljs-keyword">in</span> results.items():
+            <span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;<span class="hljs-subst">{tid}</span>: <span class="hljs-subst">{r}</span>&quot;</span>)
 
-# 注册事件回调
-pool.on_created(on_created)
-pool.on_started(on_started)
-pool.on_completed(on_completed)</code></pre>
+asyncio.run(batch_process())
+</code></pre>
+<hr>
+<h2>九、常见问题</h2>
+<p><strong>Q: 同步 API 和异步 API 怎么选？</strong></p>
+<p>A: 两者行为等价（都会自动启动）。<code>submit()</code>/<code>wait_for_result()</code> 是线程安全的同步包装——内部把协程投递到任务池的事件循环线程并<strong>阻塞等待结果</strong>，适合普通脚本与 Web 框架同步代码；<code>submit_async()</code>/<code>wait_for_result_async()</code> 适合 async 应用内联使用，避免阻塞线程。<strong>生命周期方法没有 async 版本</strong>（没有 shutdown_async）。</p>
+<p><strong>Q: 任务池需要手动 start() 吗？</strong></p>
+<p>A: 不需要。第一次 <code>submit</code>/<code>submit_async</code> 会通过 <code>_ensure_running()</code> 自动启动（🔧 <code>api/task_pool.py:295</code>）。<code>start()</code> 存在的意义是提前初始化（如配合周期任务注册）；上下文管理器自动 start/shutdown。</p>
+<p><strong>Q: 任务失败会自动重试吗？</strong></p>
+<p>A: 会，但有精确边界（🔧 <code>worker/pool.py:372</code>）：执行器<strong>抛异常或超时</strong>时，若 <code>retry_count &lt; max_retries</code>（默认 3），任务回到 PENDING 并以 <code>retry_delay × 新重试次数</code> 的递增延迟重新入队（1s/2s/3s…）；超过上限才置 FAILED。注意：通过 <code>pool.cancel()</code> 取消的任务不走重试。每次重试都会发布 <code>task.retry</code> 事件并计入指标（<code>avg_retry_count</code>），监控面可见，详见 <a href="monitoring.html">节点监控</a>。</p>
+<p><strong>Q: 任务超时怎么设置？</strong></p>
+<p>A: <code>TaskPoolConfig(task_timeout=30)</code>（默认 None=不限制）。超时用 <code>asyncio.wait_for</code> 实现（🔧 <code>pool.py:302</code>），<strong>超时走失败处理链路</strong>：未超重试上限 → 按递增延迟重试；超上限 → FAILED。注意 ttl 是另一个独立概念（提交级参数），别混淆。</p>
+<p><strong>Q: 如何选择存储类型？如何监控运行状态？</strong></p>
+<p>A: 存储按 第七节 三档切换。监控三件套：事件回调（业务感知）、<code>pool.get_stats()</code>（队列深度 + 各状态计数 + 指标摘要）、<code>pool.get_worker_stats()</code> / <code>get_health_status()</code>（Worker 明细与健康视图）。<code>get_health_status()</code> 为<strong>读时刷新</strong>——结果在 <code>HEALTH_CHECK_TTL=5.0</code> 秒内直接复用缓存，超时即重新执行检查；<code>enable_health_check=False</code> 时结果不含 <code>checks</code> 键。详见 <a href="monitoring.html">节点监控</a>。</p>
+<p><strong>Q: 提交队列满了会怎样？</strong></p>
+<p>A: 队列上限 <code>queue_max_size=10000</code>（内存/Redis 队列通用）。队列满时 <code>TaskDispatcher.dispatch</code> 会抛出 <code>QueueFullError</code>（<code>neotask.common.exceptions.QueueFullError</code>，已导出）——调用方直接拿到异常，按可重试错误处理即可，不会留下静默滞留的任务。详见 <a href="priority-queue.html">优先级任务</a> 故障场景。</p>
+<p><strong>Q: Web UI 可用吗？</strong></p>
+<p>A: <code>WebUIServer</code>（FastAPI，<code>/api/stats</code> 端点）是独立组件，v1.0.2 <strong>不会自动启动</strong>——需 <code>pip install neotask[ui]</code> 后自行实例化。开箱即用的面板不存在，请先依赖事件回调 + get_stats 自建可观测性。</p>
+<hr>
+<h2>版本与验证说明</h2>
+<p>本文属于项目文档而不是永久不变的 API 契约。以下情况发生时，应重新核对源码或发布说明：</p>
+<ol>
+<li class="lvl-3">
+<p>项目版本升级，尤其是公开 API、配置模型、存储实现和工作流发生变化；</p>
+</li>
+<li class="lvl-3">
+<p>本文中的默认值、性能数据或示例依赖外部服务版本；</p>
+</li>
+<li class="lvl-3">
+<p>运行环境与本文案例不同，例如 Python 版本、Redis/数据库版本、模型供应商或操作系统不同。</p>
+</li>
+</ol>
+<p>如果你要把本文内容用于生产环境，请优先使用仓库当前版本的 README、源码、测试和 Release 记录进行最终确认。</p>
+<h2>相关链接</h2>
+<p><a href="index.html">返回首页</a></p>
+<p><strong>入门与参考</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="quickstart.html">快速上手</a> - 5 分钟入门</p>
+</li>
+<li class="lvl-2">
+<p><a href="api-reference.html">API 参考</a> - 完整 API 文档</p>
+</li>
+<li class="lvl-2">
+<p><a href="configuration.html">配置说明</a> - 配置参数详解</p>
+</li>
+<li class="lvl-2">
+<p><a href="best-practices.html">最佳实践</a> - 生产环境建议</p>
+</li>
+</ul>
+<p><strong>架构与设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="architecture.html">架构设计</a> - 整体架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="core-features.html">核心实现</a> - 功能设计</p>
+</li>
+<li class="lvl-2">
+<p><a href="evolution.html">版本演进</a> - 演进历程</p>
+</li>
+</ul>
+<p><strong>分布式核心</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="decentralization.html">去中心化</a> - 对等架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="failure-recovery.html">故障恢复</a> - 高可用保障</p>
+</li>
+<li class="lvl-2">
+<p><a href="prefetch.html">预取机制</a> - 高吞吐性能</p>
+</li>
+<li class="lvl-2">
+<p><a href="distributed-lock.html">分布式锁</a> - 并发控制</p>
+</li>
+</ul>
+<p><strong>存储与监控</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="persistence.html">持久化</a> - 多存储后端</p>
+</li>
+<li class="lvl-2">
+<p><a href="priority-queue.html">优先级</a> - 优先级队列</p>
+</li>
+<li class="lvl-2">
+<p><a href="delayed-tasks.html">延时任务</a> - 时间轮 + Redis 持久化</p>
+</li>
+<li class="lvl-2">
+<p><a href="monitoring.html">节点监控</a> - 可观测性</p>
+</li>
+</ul>
+<p><strong>资源</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/neotask">GitHub</a> - 源代码仓库</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://task.helpenx.com">NeoTask 官网</a> - 官方网站</p>
+</li>
+</ul>
 
-            <h2>常见问题</h2>
-            
-            <h3>Q: 同步和异步 API 有什么区别？</h3>
-            <p>同步 API（如 <code>submit</code>）会阻塞当前线程直到操作完成；异步 API（如 <code>submit_async</code>）返回 awaitable，需要在 async 函数中使用。</p>
-            
-            <h3>Q: 如何选择存储类型？</h3>
-            <ul>
-                <li><code>memory</code>：开发测试，进程重启丢失</li>
-                <li><code>sqlite</code>：单机生产，持久化存储</li>
-                <li><code>redis</code>：分布式部署，多节点共享</li>
-            </ul>
-            
-            <h3>Q: 任务失败后会自动重试吗？</h3>
-            <p>会。可通过 <code>max_retries</code> 配置重试次数，<code>retry_delay</code> 配置重试延迟。</p>
-            
-            <h3>Q: 如何监控任务执行情况？</h3>
-            <p>使用事件回调监听任务生命周期；调用 <code>get_stats()</code> 获取实时统计；启用 Web UI（规划中）。</p>
-        </main>
-    </div>
-
-    <footer class="footer">
-        <div class="footer-container">
-            <div class="footer-column">
-                <div class="footer-logo">
-                    <div class="logo-icon"><i class="fas fa-tasks"></i></div>
-                    <span>NeoTask</span>
-                </div>
-                <p>下一代分布式任务调度框架</p>
-            </div>
-            <div class="footer-column">
-                <h4>文档</h4>
-                <a href="quickstart.html">快速上手</a>
-                <a href="api-reference.html">API 参考</a>
-                <a href="configuration.html">配置说明</a>
-                <a href="architecture.html">架构设计</a>
-            </div>
-            <div class="footer-column">
-                <h4>社区</h4>
-                <a href="https://github.com/neopen/neotask">GitHub</a>
-                <a href="https://github.com/neopen/neotask/issues">Issues</a>
-                <a href="https://github.com/neopen/neotask/discussions">Discussions</a>
-            </div>
-            <div class="footer-column">
-                <h4>资源</h4>
-                <a href="https://pypi.org/project/neotask/">PyPI</a>
-                <a href="https://github.com/neopen/neotask/blob/main/LICENSE">License</a>
-                <a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5">详细文档</a>
-            </div>
-        </div>
-        <div class="footer-bottom">
-            <p>&copy; 2026 NeoTask. 基于 MIT 协议开源.</p>
-        </div>
-    </footer>
-
-    <script src="../assets/js/main.js"></script>
+      </article>
+    </main>
+  </div>
+  <footer>
+    <a href="https://task.helpenx.com" target="_blank" rel="noopener">NeoTask 官网</a>·
+    <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>·
+    <a href="index.html">文档中心</a>
+    <div style="margin-top:6px">© 2026 helpenx.com · 文档基线以文中标注版本对应的源码为准</div>
+  </footer>
 </body>
 </html>

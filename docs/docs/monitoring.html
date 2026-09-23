@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoTask 节点监控：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成 · NeoTask 文档</title>
+  <meta name="description" content="源码级拆解 NeoTask 可观测性：事件总线驱动的任务指标与滑动窗口统计、按需触发且带 TTL 复用与单项超时的三态健康检查、60 秒批量的推式上报，以及节点状态与 Prometheus 集成的真实能力边界。">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://task.helpenx.com/docs/monitoring.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:title" content="NeoTask 节点监控：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成">
+  <meta property="og:description" content="源码级拆解 NeoTask 可观测性：事件总线驱动的任务指标与滑动窗口统计、按需触发且带 TTL 复用与单项超时的三态健康检查、60 秒批量的推式上报，以及节点状态与 Prometheus 集成的真实能力边界。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://task.helpenx.com/docs/monitoring.html">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>⏱️</text></svg>">
+  <style>
+:root{--brand:#0d9488;--brand-dark:#0f766e;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:var(--ink);background:#fff;line-height:1.75;font-size:16px}
+a{color:var(--brand);text-decoration:none}a:hover{color:var(--brand-dark);text-decoration:underline}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
+.topbar .brand .doc-badge{font-size:12px;font-weight:600;color:#fff;background:var(--brand);border-radius:6px;padding:2px 8px}
+.topbar nav{display:flex;gap:20px;font-size:14.5px}
+.topbar nav a{color:var(--muted);font-weight:500}
+.topbar nav a:hover{color:var(--brand)}
+.wrap{display:flex;max-width:1280px;margin:0 auto;padding:0 16px}
+.sidebar{width:264px;flex-shrink:0;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 40px 0;border-right:1px solid var(--line)}
+.sidebar .side-home{display:block;font-weight:600;color:var(--ink);margin-bottom:16px;font-size:15px}
+.sidebar .side-home:hover{color:var(--brand);text-decoration:none}
+.sidebar h4{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px;font-weight:600}
+.sidebar a{display:block;padding:5px 10px;border-radius:6px;font-size:14px;color:#334155;line-height:1.5}
+.sidebar a:hover{background:var(--bg);color:var(--brand);text-decoration:none}
+.sidebar a.active{background:var(--brand);color:#fff}
+.content{flex:1;min-width:0;padding:32px 20px 60px 36px;max-width:860px}
+.toc-mobile{display:none;margin-bottom:20px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.toc-mobile summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.toc-mobile a{display:block;padding:3px 0;font-size:14px}
+.article h1{font-size:1.9em;line-height:1.35;margin:.4em 0 .8em}
+.article h2{font-size:1.45em;margin:1.8em 0 .7em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
+.article h3{font-size:1.22em;margin:1.5em 0 .6em}
+.article h4{font-size:1.08em;margin:1.3em 0 .5em}
+.article p{margin:.85em 0}
+.article ul,.article ol{padding-left:1.6em;margin:.7em 0}
+.article li{margin:.35em 0}
+.article img{max-width:100%;height:auto;border-radius:8px}
+.article table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:.94em;display:block;overflow-x:auto}
+.article th,.article td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+.article th{background:var(--bg);font-weight:600}
+.article tr:nth-child(even) td{background:#fbfdff}
+.article blockquote{margin:1.1em 0;padding:.7em 1.1em;border-left:4px solid var(--brand);background:var(--bg);border-radius:0 8px 8px 0;color:#334155}
+.article blockquote p{margin:.3em 0}
+.article code:not(pre code){background:#eef2f7;color:#c7254e;padding:.15em .4em;border-radius:4px;font-size:.88em;word-break:break-word}
+.article pre.hljs{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0;line-height:1.6}
+.article pre.hljs code{background:none;padding:0;color:var(--ink);font-size:.9em;font-family:ui-monospace,SFMono-Regular,'Cascadia Code',Consolas,Menlo,monospace}
+.article pre.mermaid{text-align:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0}
+.article hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+.article .success,.article .tips,.article .warning,.article .danger{border-radius:8px;padding:.9em 1.1em;margin:1.1em 0;border:1px solid}
+.article .success{border-color:#a7f3d0;background:#ecfdf5}.article .success p:first-of-type::before{content:'✅ '}
+.article .tips{border-color:#bfdbfe;background:#eff6ff}.article .tips p:first-of-type::before{content:'💡 '}
+.article .warning{border-color:#fde68a;background:#fffbeb}.article .warning p:first-of-type::before{content:'⚠️ '}
+.article .danger{border-color:#fecaca;background:#fef2f2}.article .danger p:first-of-type::before{content:'🚫 '}
+.article .success>p:first-child,.article .tips>p:first-child,.article .warning>p:first-child,.article .danger>p:first-child{margin-top:0}
+.article .success>p:last-child,.article .tips>p:last-child,.article .warning>p:last-child,.article .danger>p:last-child{margin-bottom:0}
+.doc-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--muted)}
+.doc-meta .tag{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+.doc-nav{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
+.doc-nav a{font-weight:600}
+footer{border-top:1px solid var(--line);padding:22px 24px;text-align:center;color:var(--muted);font-size:13.5px}
+footer a{color:var(--muted);margin:0 10px}
+footer a:hover{color:var(--brand)}
+@media (max-width:960px){
+  .sidebar{display:none}
+  .toc-mobile{display:block}
+  .content{padding:20px 6px 50px}
+  .topbar nav{gap:12px}
+}
+</style>
+  <style>
+.hljs{color:#24292e;background:#f6f8fa}
+.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.constant_{color:#d73a49}
+.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}
+.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}
+.hljs-string,.hljs-meta .hljs-string,.hljs-regexp{color:#032f62}
+.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-tag,.hljs-subst,.hljs-symbol{color:#e36209}
+.hljs-built_in,.hljs-class .hljs-title{color:#e36209}
+.hljs-comment,.hljs-meta,.hljs-quote{color:#6a737d}
+.hljs-section{color:#005cc5;font-weight:700}
+.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">⏱️ NeoTask <span class="doc-badge">文档</span></a>
+    <nav>
+      <a href="https://task.helpenx.com" target="_blank" rel="noopener">产品官网</a>
+      <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+  <div class="wrap">
+    <aside class="sidebar">
+      <a class="side-home" href="index.html">⏱️ 分布式任务调度系统 · 文档中心</a>
+      <h4>技术分析</h4><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a>
+<h4>API 与配置参考</h4><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a>
+<h4>实现与源码分析</h4><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html" class="active">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a>
+<h4>设计与方案</h4><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a>
+<h4>项目概览</h4><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a>
+<h4>入门与使用</h4><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a>
+<h4>性能与评测</h4><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a>
+<h4>实践与运维</h4><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a>
+<h4>架构与核心设计</h4><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a>
+<h4>版本与演进</h4><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a>
+    </aside>
+    <main class="content">
+      <details class="toc-mobile"><summary>📑 文档目录</summary><div><strong style="font-size:13px;color:var(--muted)">技术分析</strong><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a></div><div><strong style="font-size:13px;color:var(--muted)">API 与配置参考</strong><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a></div><div><strong style="font-size:13px;color:var(--muted)">实现与源码分析</strong><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a></div><div><strong style="font-size:13px;color:var(--muted)">设计与方案</strong><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a></div><div><strong style="font-size:13px;color:var(--muted)">项目概览</strong><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a></div><div><strong style="font-size:13px;color:var(--muted)">入门与使用</strong><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a></div><div><strong style="font-size:13px;color:var(--muted)">性能与评测</strong><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a></div><div><strong style="font-size:13px;color:var(--muted)">实践与运维</strong><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a></div><div><strong style="font-size:13px;color:var(--muted)">架构与核心设计</strong><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a></div><div><strong style="font-size:13px;color:var(--muted)">版本与演进</strong><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a></div></details>
+      <article class="article">
+        <div class="doc-meta"><span class="tag">NeoTask</span><span class="tag">更新 2026-05-02</span><a href="https://task.helpenx.com" target="_blank" rel="noopener">task.helpenx.com ↗</a></div>
+        <h1>NeoTask 节点监控详解</h1>
+<p>📚 <a href="index.html">返回首页</a> | 📖 <a href="quickstart.html">快速上手</a> | 📘 <a href="api-reference.html">API 参考</a> | ⚙️ <a href="configuration.html">配置说明</a> | 🐙  <a href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a href="https://task.helpenx.com">NeoTask 官网</a></p>
+<blockquote>
+<p><strong>文档定位</strong>：这是一篇实现细节文档。重点放在源码路径、状态变化、数据结构和异常边界，方便开发者从“能用”进一步理解“为什么这样实现”。<br>
+<strong>事实边界</strong>：实现文档：功能、接口和代码行为以文中标注版本对应的源码为准；仓库后续版本可能发生变化。<br>
+<strong>权威来源</strong>：<a href="https://github.com/neopen/neotask">NeoTask 源码仓库</a>；涉及版本历史时，以仓库 Release / CHANGELOG 为准。<br>
+<strong>代码标记</strong>：如果正文出现“源码/实现”字样，表示对应代码路径可在仓库中核对；示例代码仅用于演示调用方式，不应理解为项目源码原样。<br>
+<strong>版本基线</strong>：本文对照 NeoTask <strong>v1.0.2</strong>（PyPI 发布版）。<br>
+<strong>代码标注约定</strong>：🔧 表示<strong>真实源码</strong>（仓库原样摘录，附文件路径，可自行对照）；📝 表示<strong>示例代码</strong>（用法演示、改进建议或教学代码，不代表仓库实现）。</p>
+</blockquote>
+<hr>
+<h2>概述</h2>
+<p>可观测性文章最容易写成&quot;理想架构图&quot;，所以先明确 NeoTask 的监控资产实际是哪几件：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>MetricsCollector</strong>（🔧 <code>monitor/metrics.py</code>）：进程内指标收集器，靠<strong>事件总线驱动</strong>记录任务生命周期指标，带滑动窗口分布统计与 Prometheus 文本导出方法。</p>
+</li>
+<li class="lvl-3">
+<p><strong>SystemHealthChecker</strong>（🔧 <code>monitor/health.py</code>）：注册制健康检查器，内置 storage/queue/system 三项检查，逐项串行执行并按三态聚合出结论。</p>
+</li>
+<li class="lvl-3">
+<p><strong>ReporterManager 族</strong>（🔧 <code>monitor/reporter.py</code>）：周期性把指标推到控制台/文件/<strong>Prometheus Pushgateway</strong>（推模式，不是拉模式）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>节点状态记录</strong>（🔧 <code>distributed/node.py</code>）：Redis Hash 上的节点注册与心跳时间戳，仅 Redis 模式存在。</p>
+</li>
+</ol>
+<p>指标与健康检查都已接入运行链路：TaskPool 初始化时装配全局事件订阅器（重试、优先级都在内），启动时拉起 <code>MetricsCollector.start()</code> 采样循环；健康检查则在每次读取 <code>get_health_status()</code> 时按 TTL 决定是否重新执行。</p>
+<p>能力边界同样需要说清——以下三处在 1.0.x 中确实不存在，属于&quot;基础设施只建了一半&quot;的形态：</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>缺口</th>
+<th>表现</th>
+<th>详见</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>NodeManager._health_check_loop</code> 只留 TODO</td>
+<td>心跳过期只让节点从&quot;活跃列表&quot;消失，无标记、无告警</td>
+<td>第六节</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>contrib/prometheus.py</code> 是空壳 + 无 HTTP 端点</td>
+<td>&quot;标准 /metrics 拉取&quot;不存在，只有推模式与手工导出</td>
+<td>第七节</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>WebUIServer</code> 无实例化调用方</td>
+<td>只有 <code>/</code> 与 <code>/api/stats</code> 两个端点，且要自己启动</td>
+<td>第七节</td>
+</tr>
+</tbody>
+</table>
+<p>真正掌握 NeoTask 的可观测性边界，靠的是分清&quot;已接线&quot;与&quot;需自建&quot;这条线。</p>
+<hr>
+<h2>一、架构概览：事件驱动 + 进程内统计，没有聚合层</h2>
+<p>数据流只有两跳：</p>
+<pre class="mermaid">flowchart LR
+    subgraph Producer[&quot;事件产生方&quot;]
+        A[dispatcher/worker/lifecycle&lt;br/&gt;emit TaskEvent]
+    end
+    subgraph Bus[&quot;事件总线&quot;]
+        B[subscribe_global&lt;br/&gt;全局订阅]
+    end
+    subgraph Local[&quot;进程内（无跨节点聚合）&quot;]
+        C[MetricsCollector&lt;br/&gt;计数器+滑动窗口]
+        D[SystemHealthChecker&lt;br/&gt;三态健康检查]
+    end
+    subgraph Export[&quot;导出（按需/周期）&quot;]
+        E[get_stats API&lt;br/&gt;同步阻塞拉取]
+        F[ReporterManager 60s&lt;br/&gt;Console/File/Pushgateway]
+    end
+    A --&gt; B
+    B --&gt; C
+    C --&gt; E
+    C --&gt; F
+    D --&gt; E
+</pre>
+<p>事件挂钩装配在 TaskPool 初始化时（🔧 <code>api/task_pool.py</code> 的 <code>_setup_event_handlers</code>）：一个 <code>subscribe_global</code> 的处理器监听 6 种事件，翻译成指标记录调用：</p>
+<table>
+<thead>
+<tr>
+<th>事件</th>
+<th>指标调用</th>
+<th>效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>task.created</code></td>
+<td>record_task_submit</td>
+<td>total_submitted+1、pending+1、priority_counts+1（优先取自 payload）</td>
+</tr>
+<tr>
+<td><code>task.started</code></td>
+<td>record_task_start</td>
+<td>记排队时间、pending-1、running+1</td>
+</tr>
+<tr>
+<td><code>task.completed</code></td>
+<td>record_task_complete</td>
+<td>记执行时间/重试次数、total_completed+1、running-1</td>
+</tr>
+<tr>
+<td><code>task.failed</code></td>
+<td>record_task_failed</td>
+<td>记执行时间/重试次数、total_failed+1、running-1</td>
+</tr>
+<tr>
+<td><code>task.cancelled</code></td>
+<td>record_task_cancelled</td>
+<td>total_cancelled+1、running-1</td>
+</tr>
+<tr>
+<td><code>task.retry</code></td>
+<td>record_task_retry</td>
+<td>total_retried+1、累计该任务重试次数</td>
+</tr>
+<tr>
+<td><code>task.reclaimed</code></td>
+<td>仅 debug 日志</td>
+<td>无指标</td>
+</tr>
+</tbody>
+</table>
+<p>要点：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>指标是事件推导值</strong>，不是存储扫描值。事件丢（总线异常、处理器抛错被吞）则计数漂移。</p>
+</li>
+<li class="lvl-2">
+<p><strong>无跨节点聚合</strong>：每个进程的 MetricsCollector 只统计本进程执行的事件，集群总览需要外部系统自己做（比如 Pushgateway 按 job 聚合，见第七节）。</p>
+</li>
+<li class="lvl-2">
+<p>事件处理器是<strong>异步协程</strong>，挂在事件总线上串行执行：高吞吐下指标记录本身参与任务关键路径的调度（每次记录还带 <code>asyncio.Lock</code>），这是使用指标时需要权衡的开销。</p>
+</li>
+</ul>
+<hr>
+<h2>二、任务指标：真实的字段族与两个口径注意点</h2>
+<h3>2.1 TaskMetrics 字段全景</h3>
+<p>指标容器 <code>TaskMetrics</code>（🔧 <code>metrics.py:24</code>）分三族，<code>get_summary()</code>/<code>to_dict()</code> 输出 21 个键：</p>
+<p><strong>累计计数器</strong>：<code>total_submitted</code> / <code>total_completed</code> / <code>total_failed</code> / <code>total_cancelled</code> / <code>total_retried</code></p>
+<p><strong>瞬时量</strong>：<code>pending</code>（事件推导的排队中）/ <code>running</code> / <code>scheduled</code>（保留字段，恒 0，见 2.3）</p>
+<p><strong>滑动窗口分布</strong>（deque maxlen=1000，窗口内样本自动淘汰）：</p>
+<table>
+<thead>
+<tr>
+<th>属性</th>
+<th>含义</th>
+<th>输出键</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>avg_execution_time</code></td>
+<td>执行时间均值</td>
+<td>avg_execution_time</td>
+</tr>
+<tr>
+<td><code>p50/p90/p95/p99_execution_time</code></td>
+<td>执行时间分位数（线性插值法）</td>
+<td>同名</td>
+</tr>
+<tr>
+<td><code>avg_queue_time</code> / <code>p95_queue_time</code></td>
+<td>排队时间（提交→开始）</td>
+<td>同名</td>
+</tr>
+<tr>
+<td><code>avg_retry_count</code></td>
+<td>重试次数均值</td>
+<td>avg_retry_count</td>
+</tr>
+<tr>
+<td><code>throughput</code></td>
+<td><strong>1/平均执行时间</strong>（见 2.2）</td>
+<td>throughput</td>
+</tr>
+<tr>
+<td><code>success_rate</code> / <code>failure_rate</code></td>
+<td>完成/（完成+失败），<strong>未完成任务不参与分母</strong></td>
+<td>同名</td>
+</tr>
+<tr>
+<td><code>priority_counts</code></td>
+<td>按优先级分布（取自 <code>task.created</code> 的 payload）</td>
+<td>同名</td>
+</tr>
+</tbody>
+</table>
+<p>执行时间的均值与中位/90/95/99 分位都在，实现是标准线性插值（🔧 <code>metrics.py</code>）；&quot;排队时间&quot;的定义是 <code>record_task_start</code> 时用提交时间戳作差，窗口上限 1000 条。</p>
+<h3>2.2 吞吐量的定义</h3>
+<p><code>throughput = 1.0 / avg_execution_time</code>（🔧 <code>metrics.py</code>）。它不是&quot;每秒实际完成任务数&quot;（这里没有时间窗计数），而是**“若每个任务都耗时等于均值、且单 worker 无并发损耗时的理论单流速率”**——假设 avg 100ms 得 10 任务/秒。真实吞吐 = 完成数 ÷ 观察时长，需要外部系统用 <code>total_completed</code> 增量自己算：<strong>该公式与节点数、并发度、观察窗口无关</strong>，只随执行时间均值变化。</p>
+<blockquote>
+<p>用于横向对比&quot;哪个版本更快&quot;尚可；用于容量规划（“集群每秒能吞多少”）会系统性偏离——多 worker 并发时实际吞吐高于 1/均值，瓶颈通常不在单任务耗时。</p>
+</blockquote>
+<h3>2.3 两个口径注意点：两套 pending 与恒 0 的 scheduled</h3>
+<p><strong>注意点一：两个 pending 并存且口径不同。</strong></p>
+<table>
+<thead>
+<tr>
+<th>来源</th>
+<th>定义</th>
+<th>特征</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>get_stats()[&quot;pending&quot;]</code></td>
+<td>生命周期管理器全库扫描 PENDING 状态任务（每状态 limit 10000，🔧 <code>lifecycle.py:340</code>）</td>
+<td>反映<strong>存储真实状态</strong>，成本高（全表/全键扫描）</td>
+</tr>
+<tr>
+<td><code>get_stats()[&quot;metrics&quot;][&quot;pending&quot;]</code></td>
+<td>事件推导：submit+1 / start-1</td>
+<td>反映<strong>本进程事件流</strong>，漂移可能（进程重启清零、事件丢失）</td>
+</tr>
+</tbody>
+</table>
+<p>SQLite/Redis 模式下两者数值可能不一致（例如节点 A 提交、节点 B 执行时，B 的 metrics.pending 会是负数——因为 B 没收到 submit 事件就收到了 start！<code>record_task_start</code> 里 <code>pending = max(0, pending-1)</code> 的防御只保证不为负，不保证准确）。集群模式下<strong>metrics.pending 天然不可信</strong>，应以 <code>stats.pending</code> 为准。</p>
+<p><strong>注意点二：<code>scheduled</code> 恒为 0。</strong> <code>TaskMetrics.scheduled</code> 只在 <code>record_task_scheduled()</code> 时递增，但这个记录方法在全库检索中没有任何调用方（延迟任务走的是队列重投，不经这条指标），字段因此长期停在 0。它目前是个保留字段，不要当&quot;待执行的延时任务数&quot;使用——那个数字在 <code>DelayedQueue</code> 与时间轮各自的 <code>size()</code> 里。</p>
+<h3>2.4 系统指标：60 秒一次的 psutil 采样</h3>
+<p><code>MetricsCollector</code> 顺带收集系统指标（<code>SystemMetrics</code>：cpu_percent / memory_percent / memory_used_mb / thread_count / task_count / uptime_seconds）。采样循环 <code>_collect_system_metrics_loop</code> 由 <code>MetricsCollector.start()</code> 拉起，TaskPool 的 <code>start_components()</code> 会调用它，<code>shutdown_components()</code> 对称调用 <code>stop()</code>——所以启用指标后系统指标是自动采集的，无需手动启动。三点使用须知：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>默认间隔 60 秒</strong>（<code>system_metrics_interval=60.0</code>），不是&quot;每五秒采集一次&quot;。</p>
+</li>
+<li class="lvl-3">
+<p><strong>系统指标只在 <code>get_full_summary()</code> 出现</strong>，<code>get_summary()</code> 不含 <code>system</code> 键。TaskPool 的 <code>get_stats()</code> 走的是前者（🔧 <code>api/task_pool.py</code>），因此 <code>stats[&quot;metrics&quot;][&quot;system&quot;]</code> 可直接取到。</p>
+</li>
+<li class="lvl-3">
+<p><strong>依赖 psutil</strong>：缺失时 <code>import psutil</code> 失败 → 返回空 <code>SystemMetrics()</code> 且无日志告警，<code>system</code> 字段会是 None。它属于 <code>[monitor]</code> 可选依赖，需要该指标时记得安装。另外 <code>cpu_percent(interval=0.1)</code> 是<strong>同步阻塞调用</strong>，每次采样会卡事件循环约 0.1 秒——60 秒一次，可忽略。</p>
+</li>
+</ol>
+<p><code>task_count</code> 字段实为 <code>len(self._task_start_times)</code>——“正在本进程执行的并发任务数”，命名与直觉不符，别当任务总量用。</p>
+<hr>
+<h2>三、健康检查：注册制三态模型</h2>
+<p>健康检查的设计是<strong>一个注册表 + 三态聚合</strong>（🔧 <code>monitor/health.py</code>）。</p>
+<p><code>HealthChecker</code> 提供注册/注销/执行/聚合：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>register(name, check_func)</code> 注册任意异步检查函数；<code>check_all()</code> <strong>串行执行</strong>所有检查（逐项、无并发），每项用 <code>asyncio.wait_for</code> 包了单项超时（<code>check_timeout</code>，默认 <code>DEFAULT_CHECK_TIMEOUT = 5.0</code> 秒），超时或异常 → 该项记 UNHEALTHY；</p>
+</li>
+<li class="lvl-2">
+<p>聚合规则（🔧 <code>health.py</code>）：任一 UNHEALTHY → UNHEALTHY；否则任一 DEGRADED → DEGRADED；全 HEALTHY → HEALTHY；<strong>从未执行过 → UNHEALTHY</strong>。</p>
+</li>
+</ul>
+<p><code>SystemHealthChecker</code> 内置三项（🔧 <code>health.py</code>）：</p>
+<table>
+<thead>
+<tr>
+<th>检查</th>
+<th>实现</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>storage</td>
+<td><code>task_repo.exists(&quot;health_check&quot;)</code> ping 一次真实查询</td>
+<td>异常 → UNHEALTHY</td>
+</tr>
+<tr>
+<td>queue</td>
+<td><code>queue.size()</code></td>
+<td>&gt;10000 → DEGRADED；异常 → UNHEALTHY</td>
+</tr>
+<tr>
+<td>system</td>
+<td>psutil：CPU / 内存 / 磁盘使用率</td>
+<td>任一 &gt;90% → DEGRADED</td>
+</tr>
+</tbody>
+</table>
+<p>超时段与阈值是硬编码的&quot;一刀切&quot;（5 秒 / 90% / 10000），阈值无参数化配置，<code>check_timeout</code> 只能经 <code>SystemHealthChecker(check_timeout=...)</code> 调整。检查项通过 <code>register</code> 开放扩展——业务可以追加&quot;Redis 延迟 &gt; 阈值 → DEGRADED&quot;之类的自定义项。</p>
+<p><strong>psutil 缺失时 system 记 HEALTHY 而非 DEGRADED</strong>（message 里带 <code>available: false</code>）：psutil 现在是 <code>[monitor]</code> 可选依赖，若缺它就把整体拉成 degraded，默认安装在没装 extra 时会永远上报 degraded，这个信号也就没用了。</p>
+<h4>为什么这么设计：注册制而非硬编码分层</h4>
+<p>liveness/readiness/deep 分层隐含&quot;部署平台按层消费&quot;的假设（K8s 探针语义），而 NeoTask 的健康检查消费方只有一个——<code>get_health_status()</code> 调用者。注册制让检查项按需堆叠、聚合规则统一，比预定义分层更省事；代价是&quot;分层消费&quot;能力不存在：没有独立暴露 liveness 与 readiness 的入口，想接 K8s 探针只能自己包装。</p>
+<hr>
+<h2>四、健康检查的触发：按需执行 + TTL 复用</h2>
+<p>健康检查不是后台周期任务，而是**“读时检查、窗口内复用”**：TaskPool 读取健康状态时先判断上次结果是否过期，过期（或从未执行）才真正跑一遍检查。</p>
+<p>装配与触发链路：</p>
+<ol>
+<li class="lvl-3">
+<p><code>SystemHealthChecker</code> 在 TaskPool 装配（<code>enable_health_check=True</code> 默认，🔧 <code>task_pool.py</code>）；</p>
+</li>
+<li class="lvl-3">
+<p><code>get_health_status()</code> / <code>get_health_status_async()</code> 先调用 <code>_refresh_health_if_stale()</code>：若 <code>last_check</code> 距今小于 <code>HEALTH_CHECK_TTL</code>（5 秒）直接返回，否则 <code>await check()</code> 执行全部内置检查；</p>
+</li>
+<li class="lvl-3">
+<p>随后 <code>_collect_health()</code> 汇总结果，并拼上分布式组件的字段（<code>active_nodes</code> / <code>heartbeat</code> / <code>reclaimer</code>），这些字段来源独立、与检查无关。</p>
+</li>
+</ol>
+<p>设计动机：健康接口通常被探针<strong>高频轮询</strong>，每次调用都跑 storage ping + psutil 采样（后者还会同步阻塞事件循环约 0.1s）代价过高；用一个 TTL 窗口把&quot;探针频率&quot;与&quot;检查频率&quot;解耦，5 秒内的连续轮询只打一次真实检查。</p>
+<p>因此默认配置下 <code>get_health_status()</code> 会返回真实结论：</p>
+<pre class="hljs"><code><span class="hljs-punctuation">{</span>
+  <span class="hljs-attr">&quot;status&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;healthy&quot;</span><span class="hljs-punctuation">,</span>            <span class="hljs-comment">// ← 由 storage/queue/system 三项聚合而来</span>
+  <span class="hljs-attr">&quot;last_check&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-string">&quot;2026-09-12T...&quot;</span><span class="hljs-punctuation">,</span> <span class="hljs-comment">// ← 最近一次检查时间，非 null</span>
+  <span class="hljs-attr">&quot;checks&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">{</span> <span class="hljs-attr">&quot;storage&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">{</span>...<span class="hljs-punctuation">}</span><span class="hljs-punctuation">,</span> <span class="hljs-attr">&quot;queue&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">{</span>...<span class="hljs-punctuation">}</span><span class="hljs-punctuation">,</span> <span class="hljs-attr">&quot;system&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">{</span>...<span class="hljs-punctuation">}</span> <span class="hljs-punctuation">}</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">&quot;active_nodes&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-number">2</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">&quot;heartbeat&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">{</span> ... <span class="hljs-punctuation">}</span><span class="hljs-punctuation">,</span>
+  <span class="hljs-attr">&quot;reclaimer&quot;</span><span class="hljs-punctuation">:</span> <span class="hljs-punctuation">{</span> ... <span class="hljs-punctuation">}</span>
+<span class="hljs-punctuation">}</span>
+</code></pre>
+<p><code>enable_health_check=False</code> 时 <code>_health_checker</code> 为 None，<code>_collect_health()</code> 只返回 <code>{status, node_id}</code> 加分布式字段，不会出现 <code>checks</code>。</p>
+<blockquote>
+<p>两个已知成本：<code>_check_system</code> 里 <code>psutil.cpu_percent(interval=0.1)</code> 的同步阻塞会在每次真实检查时卡事件循环约 0.1s；storage 检查在 Redis 故障时可能挂到 TCP 超时。后者已由单项超时兜住（默认 5 秒 → 该检查记 UNHEALTHY），前者是 5 秒最多一次、每次 0.1s 的抖动，可接受。</p>
+</blockquote>
+<hr>
+<h2>五、Reporter：60 秒批量的推式上报</h2>
+<p><code>enable_reporter=False</code>（默认关）。开启后 TaskPool 启动流程会装配（🔧 <code>task_pool.py</code>）：</p>
+<pre class="hljs"><code><span class="hljs-variable language_">self</span>._reporter_manager = ReporterManager(interval=<span class="hljs-number">60</span>)
+<span class="hljs-variable language_">self</span>._reporter_manager.add_reporter(ConsoleReporter())   <span class="hljs-comment"># 只挂控制台</span>
+<span class="hljs-variable language_">self</span>._reporter_manager.set_metrics_callback(<span class="hljs-variable language_">self</span>.get_stats)
+</code></pre>
+<p>真实的上报链路（🔧 <code>monitor/reporter.py</code>）：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>ReporterManager._report_loop</code>：每 1 秒 tick，指标<strong>攒批</strong>（满 10 条或距上次 flush 超 60 秒）后整体推送——批量上报设计，非每秒一条；</p>
+</li>
+<li class="lvl-2">
+<p><code>ConsoleReporter</code>：<code>print(json.dumps(metrics, indent=2))</code>，默认唯一挂载；</p>
+</li>
+<li class="lvl-2">
+<p>另有现成上报器可自行 <code>add_reporter</code>：<code>FileReporter</code>（JSON Lines 追加写文件）、<code>PrometheusReporter</code>（推 <strong>Pushgateway</strong>：POST <code>{url}/metrics/job/{job}</code>，🔧 <code>reporter.py:73</code>）。</p>
+</li>
+</ul>
+<p>注意三点：回调是同步方法 <code>get_stats</code>（内部 <code>run_coroutine</code> 跨线程阻塞等待），上报循环每 tick 都会完整执行一次全库状态扫描 + 指标快照——开启 reporter 后每 60 秒至少一次 O(状态数) 的存储扫描，大库时上报本身成为间歇性负载源；Reporter 的批量语义对 Pushgateway 不友好（Gateway 只保留最后一次推送，batch 中间态无意义，但代码对每个 reporter 逐个 report，行为等价于最后一条覆盖）。</p>
+<hr>
+<h2>六、节点状态监控：三态、心跳时间戳、无故障发现</h2>
+<p>节点状态记录存在于 Redis 模式（🔧 <code>distributed/node.py</code>）：</p>
+<p><strong>状态只有三态</strong>：<code>ACTIVE</code> / <code>STOPPED</code> / <code>FAILED</code>（🔧 <code>node.py</code>）。没有&quot;可疑（SUSPECT）“过渡态，没有&quot;恢复中”，也没有分级超时策略——心跳过期只是让节点从活跃视图里消失。</p>
+<p>节点记录是 <strong>Hash</strong>：<code>neotask:node:{node_id}</code> 存 7 个字段（node_id/hostname/pid/status/started_at/last_heartbeat/metadata），节点 ID 生成式 <code>{hostname}_{pid}_{uuid4前8位}</code>。<code>register</code> 写入后立即 <code>expire(40s)</code>（心跳超时 20s × 2），加入 <code>neotask:nodes</code> SET；心跳每 5 秒 <code>hset last_heartbeat</code> + 续期；<code>unregister</code> 只置 stopped + 60s 过期，<strong>不删除 SET 成员</strong>。</p>
+<p><strong>&quot;活跃节点&quot;是过滤出来的，不是标记出来的</strong>：<code>get_active_nodes()</code> 对 SET 全量成员逐个 <code>HGETALL</code>，过滤条件 <code>status == ACTIVE 且 now - last_heartbeat &lt; 20s</code>（🔧 <code>node.py</code>）。心跳过期只意味着&quot;该节点从活跃列表消失&quot;，<strong>没有任何代码把它标记为 FAILED 或触发告警</strong>——<code>_health_check_loop</code> 每 20 秒醒来一次，调用 <code>get_active_nodes()</code> 后只留下一行 <code># TODO: 处理故障节点</code>：循环存在，逻辑缺席。真正&quot;发现故障并善后&quot;的职责在 HeartbeatManager 与 TaskReclaimer（互链 <a href="failure-recovery.html">故障恢复</a>），但那是任务回收语义，不是监控告警语义：<strong>节点死亡不会产生任何事件或告警输出</strong>。</p>
+<p>另外 NodeInfo 只有身份与心跳字段，没有&quot;当前负载、活跃任务数&quot;之类的落点；<code>get_active_nodes()</code> 对外只暴露 <code>node_id/hostname/pid</code>（🔧 <code>api/task_pool.py</code>）。节点维度的负载视图需要指标层自己拼。</p>
+<hr>
+<h2>七、Prometheus 集成：推模式已就绪，拉模式需自建</h2>
+<p>NeoTask 不内置 HTTP 拉取端点（&quot;HTTP 端点 /metrics 供 Prometheus 抓取&quot;需要自己搭）。现成素材是三条：</p>
+<table>
+<thead>
+<tr>
+<th>素材</th>
+<th>位置</th>
+<th>形态</th>
+<th>打通方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>to_prometheus_format()</code></td>
+<td>🔧 <code>monitor/metrics.py</code></td>
+<td>输出完整文本（HELP/TYPE/字段齐全，含 counter/gauge 分类、毫秒换算、priority label）</td>
+<td>手工暴露：自建 HTTP 端点返回该文本，或配合 exporter</td>
+</tr>
+<tr>
+<td><code>PrometheusReporter</code></td>
+<td>🔧 <code>monitor/reporter.py</code></td>
+<td><strong>推 Pushgateway</strong>：<code>POST {url}/metrics/job/{job}</code>（aiohttp）</td>
+<td><code>reporter_manager.add_reporter(PrometheusReporter(&quot;http://pushgateway:9091&quot;))</code></td>
+</tr>
+<tr>
+<td><code>contrib/prometheus.py</code></td>
+<td>🔧 文件只有 docstring</td>
+<td><strong>空壳占位</strong>，无实现</td>
+<td>自行填充或忽略</td>
+</tr>
+</tbody>
+</table>
+<p>集成判断（📝）：单机/少节点用 <strong>Pushgateway 推模式</strong>最省事（ReporterManager 已内置批量循环）；多节点集群且已有 Prometheus 拉取基建时，自起一个极薄 HTTP 端点包 <code>to_prometheus_format()</code> 即可（📝）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 自建 /metrics 拉取端点（NeoTask 内置无此端点）</span>
+<span class="hljs-keyword">from</span> aiohttp <span class="hljs-keyword">import</span> web
+
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">metrics_handler</span>(<span class="hljs-params">request</span>):
+    pool = request.app[<span class="hljs-string">&quot;pool&quot;</span>]
+    <span class="hljs-keyword">return</span> web.Response(text=pool._metrics.to_prometheus_format(),
+                        content_type=<span class="hljs-string">&quot;text/plain&quot;</span>)
+
+app = web.Application()
+app[<span class="hljs-string">&quot;pool&quot;</span>] = pool            <span class="hljs-comment"># 内部组件直连,版本间可能变动</span>
+app.router.add_get(<span class="hljs-string">&quot;/metrics&quot;</span>, metrics_handler)
+</code></pre>
+<p><code>WebUIServer</code>（🔧 <code>web/server.py</code>，FastAPI + uvicorn 后台线程，提供 <code>/</code> 与 <code>/api/stats</code> 两个端点，默认 127.0.0.1:8080）同样未接入：<code>SchedulerConfig.webui</code> 默认 disable，没有任何组件实例化它。若要一个现成的 REST 入口，目前只有手动启动它拿到的 <code>/api/stats</code>，没有 <code>/health</code>、没有 <code>/metrics</code>。</p>
+<hr>
+<h2>八、公开监控 API 速查</h2>
+<p>TaskPool 暴露的监控查询入口（全部同步阻塞跨线程调用，见 <a href="api-reference.html">API 参考</a>）：</p>
+<table>
+<thead>
+<tr>
+<th>API</th>
+<th>返回要点</th>
+<th>口径注意</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>get_stats()</code></td>
+<td>queue_size、total/pending/running/completed/failed/cancelled（<strong>存储扫描</strong>）、success_rate、node_id、metrics 子对象（<strong>事件推导</strong>，含 system）、prefetcher（启用预取时）、reclaimer</td>
+<td>两套 pending 并存（见 2.3）</td>
+</tr>
+<tr>
+<td><code>get_worker_stats()</code></td>
+<td>每个 worker 的 WorkerStats（worker_id/active_tasks/completed_tasks/failed_tasks/is_busy）；预取统计走 <code>get_stats()[&quot;prefetcher&quot;]</code>，见 <a href="prefetch.html">预取机制</a></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>get_health_status()</code></td>
+<td>status/last_check/checks + active_nodes/heartbeat/reclaimer</td>
+<td>读取时按 5 秒 TTL 决定是否重跑检查（见第四节）</td>
+</tr>
+<tr>
+<td><code>get_active_nodes()</code></td>
+<td><code>[{node_id, hostname, pid}]</code>（仅 Redis 模式，其余返回 []）</td>
+<td>心跳过滤视图，非全量注册</td>
+</tr>
+</tbody>
+</table>
+<pre class="hljs"><code>stats = pool.get_stats()
+<span class="hljs-comment"># stats[&quot;metrics&quot;][&quot;execution_times&quot;] 窗口数据不在输出里,只有聚合值</span>
+<span class="hljs-built_in">print</span>(stats[<span class="hljs-string">&quot;metrics&quot;</span>][<span class="hljs-string">&quot;p95_execution_time&quot;</span>], stats[<span class="hljs-string">&quot;metrics&quot;</span>][<span class="hljs-string">&quot;success_rate&quot;</span>])
+</code></pre>
+<hr>
+<h2>九、实战：取数、探针与集成</h2>
+<h3>场景一：正确取重试率与优先级分布</h3>
+<p><strong>目标</strong>：在监控面板展示&quot;重试总量&quot;与&quot;各优先级提交占比&quot;。</p>
+<p><strong>取数</strong>：这两个指标已由 TaskPool 的内联事件处理器写入，直接读即可：</p>
+<pre class="hljs"><code>m = pool.get_stats()[<span class="hljs-string">&quot;metrics&quot;</span>]
+<span class="hljs-built_in">print</span>(m[<span class="hljs-string">&quot;total_retried&quot;</span>], m[<span class="hljs-string">&quot;avg_retry_count&quot;</span>])   <span class="hljs-comment"># 重试总量 / 平均重试次数</span>
+<span class="hljs-built_in">print</span>(m[<span class="hljs-string">&quot;priority_counts&quot;</span>])                        <span class="hljs-comment"># 例如 {1: 20, 2: 100, 3: 5}</span>
+<span class="hljs-built_in">print</span>(m[<span class="hljs-string">&quot;system&quot;</span>][<span class="hljs-string">&quot;cpu_percent&quot;</span>])                  <span class="hljs-comment"># 系统指标（需装 psutil）</span>
+</code></pre>
+<p><strong>口径提醒</strong>：<code>avg_retry_count</code> 的样本同时来自成功与最终失败的任务——只统计成功侧会让这个值系统性偏低（重试最多的恰恰是失败任务）。</p>
+<h3>场景二：把健康接口接到探针</h3>
+<p><strong>目标</strong>：用 <code>get_health_status()[&quot;status&quot;]</code> 做存活/就绪判定，且不让探针变成负载源。</p>
+<p><strong>正确接法</strong>：直接把 <code>get_health_status()</code> 暴露给探针即可，它自带 5 秒 TTL：</p>
+<pre class="hljs"><code>h = pool.get_health_status()
+<span class="hljs-comment"># {&quot;status&quot;: &quot;healthy&quot;, &quot;last_check&quot;: &quot;...&quot;, &quot;checks&quot;: {&quot;storage&quot;: ..., &quot;queue&quot;: ..., &quot;system&quot;: ...}, ...}</span>
+</code></pre>
+<p>探针频率高于 5 秒时，只有窗口外的第一次会真正执行检查，其余直接复用——所以可以放心用 1 秒级的探针间隔。<strong>不要</strong>改成每次调用都 <code>await check()</code>：那会让 storage ping + psutil 采样跟着探针频率跑，<code>cpu_percent(interval=0.1)</code> 的同步阻塞还会按次累积。</p>
+<p><strong>排查</strong>：若 <code>checks</code> 为空对象，说明 <code>enable_health_check=False</code>（此时 <code>_collect_health</code> 不会附加检查摘要）；若某项为 <code>unhealthy</code> 且 message 含 <code>timed out</code>，说明该依赖在 <code>check_timeout</code>（默认 5 秒）内没返回。</p>
+<h3>场景三：集成 Prometheus 时发现没有 /metrics 可抓</h3>
+<p><strong>现象</strong>：找 “prometheus_enabled / prometheus_port / /metrics” 配置项，四处没有；给容器加 Prometheus 注解抓 9090 端口，连接被拒。</p>
+<p><strong>根因</strong>：NeoTask 不内置拉取端点；真实只有 (1) <code>MetricsCollector.to_prometheus_format()</code> 文本方法（无 HTTP 载体）、(2) <code>PrometheusReporter</code> 推 Pushgateway（需自己 add_reporter 且依赖 aiohttp）、(3) <code>contrib/prometheus.py</code> 空壳。<code>enable_reporter=True</code> 默认也只挂 ConsoleReporter，不会产生任何网络流量。</p>
+<p><strong>排查</strong>：grep 源码确认无 http server 启动代码；确认 aiohttp / psutil 等可选依赖是否安装。</p>
+<p><strong>解决</strong>：按第七节选路——临时验证用 Pushgateway 推模式（最贴合内置代码）；生产拉模式自建 /metrics 薄端点包 <code>to_prometheus_format()</code>。</p>
+<p><strong>本质教训</strong>：选推还是拉，先确认框架里有没有现成的 HTTP 端点。NeoTask 没有，所以推模式（<code>PrometheusReporter</code>）最省事，拉模式必须自建薄端点。</p>
+<hr>
+<h2>版本与验证说明</h2>
+<p>本文属于项目文档而不是永久不变的 API 契约。以下情况发生时，应重新核对源码或发布说明：</p>
+<ol>
+<li class="lvl-3">
+<p>项目版本升级，尤其是公开 API、配置模型、存储实现和工作流发生变化；</p>
+</li>
+<li class="lvl-3">
+<p>本文中的默认值、性能数据或示例依赖外部服务版本；</p>
+</li>
+<li class="lvl-3">
+<p>运行环境与本文案例不同，例如 Python 版本、Redis/数据库版本、模型供应商或操作系统不同。</p>
+</li>
+</ol>
+<p>如果你要把本文内容用于生产环境，请优先使用仓库当前版本的 README、源码、测试和 Release 记录进行最终确认。</p>
+<h2>总结</h2>
+<p>NeoTask 的可观测性是<strong>采集与调度已通、导出按需焊接</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>事件驱动的指标模型</strong>：生命周期事件 → 计数器/瞬时量/滑动窗口分位，重试与优先级都取自真实 payload，字段全、口径清楚（两个使用注意点见 2.3）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>健康检查</strong>：注册制三态 + 逐项超时，读取时按 5 秒 TTL 触发执行，默认配置下返回真实结论；</p>
+</li>
+<li class="lvl-2">
+<p><strong>导出链路</strong>：内置推模式（Pushgateway）与 Prometheus 文本导出，拉取端点需自建薄壳；</p>
+</li>
+<li class="lvl-2">
+<p><strong>节点状态</strong>：三态 + 心跳时间戳，无状态机、无故障发现——死亡判定交给回收链路，监控语义的告警需要自建。</p>
+</li>
+</ul>
+<p>一句话收束：<strong>采集（真实）与调度（执行）都已接线，导出（打通）按你的监控栈选一条路</strong>。具体接法见第九节，配合 <a href="configuration.html">配置说明</a> 与 <a href="best-practices.html">最佳实践</a> 食用更佳。</p>
+<hr>
+<h2>相关链接</h2>
+<p><a href="index.html">返回首页</a></p>
+<p><strong>入门与参考</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="quickstart.html">快速上手</a> - 5 分钟入门</p>
+</li>
+<li class="lvl-2">
+<p><a href="api-reference.html">API 参考</a> - 完整 API 文档</p>
+</li>
+<li class="lvl-2">
+<p><a href="configuration.html">配置说明</a> - 配置参数详解</p>
+</li>
+<li class="lvl-2">
+<p><a href="best-practices.html">最佳实践</a> - 生产环境建议</p>
+</li>
+</ul>
+<p><strong>架构与设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="architecture.html">架构设计</a> - 整体架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="core-features.html">核心实现</a> - 功能设计</p>
+</li>
+<li class="lvl-2">
+<p><a href="evolution.html">版本演进</a> - 演进历程</p>
+</li>
+</ul>
+<p><strong>分布式核心</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="decentralization.html">去中心化</a> - 对等架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="failure-recovery.html">故障恢复</a> - 高可用保障</p>
+</li>
+<li class="lvl-2">
+<p><a href="prefetch.html">预取机制</a> - 高吞吐性能</p>
+</li>
+<li class="lvl-2">
+<p><a href="distributed-lock.html">分布式锁</a> - 并发控制</p>
+</li>
+</ul>
+<p><strong>存储与监控</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="persistence.html">持久化</a> - 多存储后端</p>
+</li>
+<li class="lvl-2">
+<p><a href="priority-queue.html">优先级</a> - 优先级队列</p>
+</li>
+<li class="lvl-2">
+<p><a href="delayed-tasks.html">延时任务</a> - 时间轮 + Redis 持久化</p>
+</li>
+<li class="lvl-2">
+<p><a href="monitoring.html">节点监控</a> - 可观测性</p>
+</li>
+</ul>
+<p><strong>资源</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/neotask">GitHub</a> - 源代码仓库</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://task.helpenx.com">NeoTask 官网</a> - 官方网站</p>
+</li>
+</ul>
+
+      </article>
+    </main>
+  </div>
+  <footer>
+    <a href="https://task.helpenx.com" target="_blank" rel="noopener">NeoTask 官网</a>·
+    <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>·
+    <a href="index.html">文档中心</a>
+    <div style="margin-top:6px">© 2026 helpenx.com · 文档基线以文中标注版本对应的源码为准</div>
+  </footer>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</body>
+</html>

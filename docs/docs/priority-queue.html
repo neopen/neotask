@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoTask 优先级任务：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移 · NeoTask 文档</title>
+  <meta name="description" content="NeoTask 优先级任务详解：四级枚举的真实语义、内存二叉堆与 Redis ZSET 双实现的排序差异、同优先级 FIFO 在两种实现下的不同保证、延迟任务迁移的优先级丢失缺陷，以及队列打满时快速失败的故障实战。">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://task.helpenx.com/docs/priority-queue.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:title" content="NeoTask 优先级任务：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移">
+  <meta property="og:description" content="NeoTask 优先级任务详解：四级枚举的真实语义、内存二叉堆与 Redis ZSET 双实现的排序差异、同优先级 FIFO 在两种实现下的不同保证、延迟任务迁移的优先级丢失缺陷，以及队列打满时快速失败的故障实战。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://task.helpenx.com/docs/priority-queue.html">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>⏱️</text></svg>">
+  <style>
+:root{--brand:#0d9488;--brand-dark:#0f766e;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:var(--ink);background:#fff;line-height:1.75;font-size:16px}
+a{color:var(--brand);text-decoration:none}a:hover{color:var(--brand-dark);text-decoration:underline}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
+.topbar .brand .doc-badge{font-size:12px;font-weight:600;color:#fff;background:var(--brand);border-radius:6px;padding:2px 8px}
+.topbar nav{display:flex;gap:20px;font-size:14.5px}
+.topbar nav a{color:var(--muted);font-weight:500}
+.topbar nav a:hover{color:var(--brand)}
+.wrap{display:flex;max-width:1280px;margin:0 auto;padding:0 16px}
+.sidebar{width:264px;flex-shrink:0;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 40px 0;border-right:1px solid var(--line)}
+.sidebar .side-home{display:block;font-weight:600;color:var(--ink);margin-bottom:16px;font-size:15px}
+.sidebar .side-home:hover{color:var(--brand);text-decoration:none}
+.sidebar h4{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px;font-weight:600}
+.sidebar a{display:block;padding:5px 10px;border-radius:6px;font-size:14px;color:#334155;line-height:1.5}
+.sidebar a:hover{background:var(--bg);color:var(--brand);text-decoration:none}
+.sidebar a.active{background:var(--brand);color:#fff}
+.content{flex:1;min-width:0;padding:32px 20px 60px 36px;max-width:860px}
+.toc-mobile{display:none;margin-bottom:20px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.toc-mobile summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.toc-mobile a{display:block;padding:3px 0;font-size:14px}
+.article h1{font-size:1.9em;line-height:1.35;margin:.4em 0 .8em}
+.article h2{font-size:1.45em;margin:1.8em 0 .7em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
+.article h3{font-size:1.22em;margin:1.5em 0 .6em}
+.article h4{font-size:1.08em;margin:1.3em 0 .5em}
+.article p{margin:.85em 0}
+.article ul,.article ol{padding-left:1.6em;margin:.7em 0}
+.article li{margin:.35em 0}
+.article img{max-width:100%;height:auto;border-radius:8px}
+.article table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:.94em;display:block;overflow-x:auto}
+.article th,.article td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+.article th{background:var(--bg);font-weight:600}
+.article tr:nth-child(even) td{background:#fbfdff}
+.article blockquote{margin:1.1em 0;padding:.7em 1.1em;border-left:4px solid var(--brand);background:var(--bg);border-radius:0 8px 8px 0;color:#334155}
+.article blockquote p{margin:.3em 0}
+.article code:not(pre code){background:#eef2f7;color:#c7254e;padding:.15em .4em;border-radius:4px;font-size:.88em;word-break:break-word}
+.article pre.hljs{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0;line-height:1.6}
+.article pre.hljs code{background:none;padding:0;color:var(--ink);font-size:.9em;font-family:ui-monospace,SFMono-Regular,'Cascadia Code',Consolas,Menlo,monospace}
+.article pre.mermaid{text-align:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0}
+.article hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+.article .success,.article .tips,.article .warning,.article .danger{border-radius:8px;padding:.9em 1.1em;margin:1.1em 0;border:1px solid}
+.article .success{border-color:#a7f3d0;background:#ecfdf5}.article .success p:first-of-type::before{content:'✅ '}
+.article .tips{border-color:#bfdbfe;background:#eff6ff}.article .tips p:first-of-type::before{content:'💡 '}
+.article .warning{border-color:#fde68a;background:#fffbeb}.article .warning p:first-of-type::before{content:'⚠️ '}
+.article .danger{border-color:#fecaca;background:#fef2f2}.article .danger p:first-of-type::before{content:'🚫 '}
+.article .success>p:first-child,.article .tips>p:first-child,.article .warning>p:first-child,.article .danger>p:first-child{margin-top:0}
+.article .success>p:last-child,.article .tips>p:last-child,.article .warning>p:last-child,.article .danger>p:last-child{margin-bottom:0}
+.doc-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--muted)}
+.doc-meta .tag{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+.doc-nav{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
+.doc-nav a{font-weight:600}
+footer{border-top:1px solid var(--line);padding:22px 24px;text-align:center;color:var(--muted);font-size:13.5px}
+footer a{color:var(--muted);margin:0 10px}
+footer a:hover{color:var(--brand)}
+@media (max-width:960px){
+  .sidebar{display:none}
+  .toc-mobile{display:block}
+  .content{padding:20px 6px 50px}
+  .topbar nav{gap:12px}
+}
+</style>
+  <style>
+.hljs{color:#24292e;background:#f6f8fa}
+.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.constant_{color:#d73a49}
+.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}
+.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}
+.hljs-string,.hljs-meta .hljs-string,.hljs-regexp{color:#032f62}
+.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-tag,.hljs-subst,.hljs-symbol{color:#e36209}
+.hljs-built_in,.hljs-class .hljs-title{color:#e36209}
+.hljs-comment,.hljs-meta,.hljs-quote{color:#6a737d}
+.hljs-section{color:#005cc5;font-weight:700}
+.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">⏱️ NeoTask <span class="doc-badge">文档</span></a>
+    <nav>
+      <a href="https://task.helpenx.com" target="_blank" rel="noopener">产品官网</a>
+      <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+  <div class="wrap">
+    <aside class="sidebar">
+      <a class="side-home" href="index.html">⏱️ 分布式任务调度系统 · 文档中心</a>
+      <h4>技术分析</h4><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a>
+<h4>API 与配置参考</h4><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a>
+<h4>实现与源码分析</h4><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html" class="active">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a>
+<h4>设计与方案</h4><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a>
+<h4>项目概览</h4><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a>
+<h4>入门与使用</h4><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a>
+<h4>性能与评测</h4><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a>
+<h4>实践与运维</h4><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a>
+<h4>架构与核心设计</h4><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a>
+<h4>版本与演进</h4><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a>
+    </aside>
+    <main class="content">
+      <details class="toc-mobile"><summary>📑 文档目录</summary><div><strong style="font-size:13px;color:var(--muted)">技术分析</strong><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a></div><div><strong style="font-size:13px;color:var(--muted)">API 与配置参考</strong><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a></div><div><strong style="font-size:13px;color:var(--muted)">实现与源码分析</strong><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a></div><div><strong style="font-size:13px;color:var(--muted)">设计与方案</strong><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a></div><div><strong style="font-size:13px;color:var(--muted)">项目概览</strong><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a></div><div><strong style="font-size:13px;color:var(--muted)">入门与使用</strong><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a></div><div><strong style="font-size:13px;color:var(--muted)">性能与评测</strong><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a></div><div><strong style="font-size:13px;color:var(--muted)">实践与运维</strong><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a></div><div><strong style="font-size:13px;color:var(--muted)">架构与核心设计</strong><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a></div><div><strong style="font-size:13px;color:var(--muted)">版本与演进</strong><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a></div></details>
+      <article class="article">
+        <div class="doc-meta"><span class="tag">NeoTask</span><span class="tag">更新 2026-04-21</span><a href="https://task.helpenx.com" target="_blank" rel="noopener">task.helpenx.com ↗</a></div>
+        <h1>NeoTask 优先级任务：四级优先级 + 堆/ZSET 双实现</h1>
+<p>📚 <a href="index.html">返回首页</a> | 📖 <a href="quickstart.html">快速上手</a> | 📘 <a href="api-reference.html">API 参考</a> | ⚙️ <a href="configuration.html">配置说明</a> | 🐙  <a href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a href="https://task.helpenx.com">NeoTask 官网</a></p>
+<blockquote>
+<p><strong>文档定位</strong>：这是一篇实现细节文档。重点放在源码路径、状态变化、数据结构和异常边界，方便开发者从“能用”进一步理解“为什么这样实现”。<br>
+<strong>事实边界</strong>：实现文档：功能、接口和代码行为以文中标注版本对应的源码为准；仓库后续版本可能发生变化。<br>
+<strong>权威来源</strong>：<a href="https://github.com/neopen/neotask">NeoTask 源码仓库</a>；涉及版本历史时，以仓库 Release / CHANGELOG 为准。<br>
+<strong>代码标记</strong>：如果正文出现“源码/实现”字样，表示对应代码路径可在仓库中核对；示例代码仅用于演示调用方式，不应理解为项目源码原样。<br>
+<strong>版本基线</strong>：本文对照 NeoTask <strong>v1.0.2</strong>（PyPI 发布版）。<br>
+<strong>代码标注约定</strong>：🔧 表示<strong>真实源码</strong>（仓库原样摘录，附文件路径，可自行对照）；📝 表示<strong>示例代码</strong>（用法演示、改进建议或教学代码，不代表仓库实现）。<br>
+<strong>相关阅读</strong>：<a href="decentralization.html">去中心化</a>、<a href="prefetch.html">预取机制</a>、<a href="delayed-tasks.html">延时任务</a>。</p>
+</blockquote>
+<hr>
+<h2>概述：先划清&quot;承诺的边界&quot;</h2>
+<p>NeoTask 的优先级保障只覆盖&quot;提交 → 入队排序&quot;这一段，不包含&quot;执行时抢占&quot;：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>✅ <strong>入队排序成立</strong>：任务提交时按优先级进入有序队列，高优任务必然排在共享队列头部；</p>
+</li>
+<li class="lvl-2">
+<p>❌ <strong>没有&quot;执行时抢占&quot;</strong>：worker 从本地队列 FIFO 取任务，正在执行的任务不会被新到的高优任务打断（无抢占式调度）；</p>
+</li>
+<li class="lvl-2">
+<p>⚠️ <strong>&quot;同优先级 FIFO&quot;有条件成立</strong>：内存实现靠序列号严格保证；Redis 实现只做到<strong>近似 FIFO</strong>（详见下文）；</p>
+</li>
+<li class="lvl-2">
+<p>⚠️ <strong>没有&quot;饥饿避免/动态提权&quot;</strong>：队列模块中不存在任何按等待时间提升优先级的逻辑。</p>
+</li>
+</ul>
+<p>本文对照源码逐层拆解：<strong>优先级从哪定义、队列如何排序、两种存储实现的行为差异在哪、边界处有什么坑</strong>。</p>
+<hr>
+<h2>四级优先级的真实定义</h2>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 src/neotask/models/task.py</span>
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">TaskPriority</span>(<span class="hljs-title class_ inherited__">Enum</span>):
+    <span class="hljs-string">&quot;&quot;&quot;Task priority enumeration.&quot;&quot;&quot;</span>
+    CRITICAL = <span class="hljs-number">0</span>
+    HIGH = <span class="hljs-number">1</span>
+    NORMAL = <span class="hljs-number">2</span>
+    LOW = <span class="hljs-number">3</span>
+
+<span class="hljs-meta">    @classmethod</span>
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">from_value</span>(<span class="hljs-params">cls, value: <span class="hljs-built_in">int</span></span>) -&gt; <span class="hljs-string">&quot;TaskPriority&quot;</span>:
+        <span class="hljs-string">&quot;&quot;&quot;Create from integer value.&quot;&quot;&quot;</span>
+        <span class="hljs-keyword">for</span> priority <span class="hljs-keyword">in</span> cls:
+            <span class="hljs-keyword">if</span> priority.value == value:
+                <span class="hljs-keyword">return</span> priority
+        <span class="hljs-keyword">return</span> cls.NORMAL      <span class="hljs-comment"># ← 非法值回退普通，不抛错</span>
+</code></pre>
+<p>关键语义如下：</p>
+<table>
+<thead>
+<tr>
+<th>枚举名</th>
+<th>数值</th>
+<th>文档场景</th>
+<th>排序位置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CRITICAL</td>
+<td>0</td>
+<td>健康检查、监控告警、故障恢复类系统任务</td>
+<td>ZSET 最前</td>
+</tr>
+<tr>
+<td>HIGH</td>
+<td>1</td>
+<td>用户触发任务：API 请求、订单、支付</td>
+<td>次前</td>
+</tr>
+<tr>
+<td>NORMAL</td>
+<td>2</td>
+<td>常规业务：数据处理、报表、消息推送</td>
+<td>中部</td>
+</tr>
+<tr>
+<td>LOW</td>
+<td>3</td>
+<td>后台维护：日志清理、数据归档</td>
+<td>末尾</td>
+</tr>
+</tbody>
+</table>
+<p><strong>数值即分数</strong>：优先级直接作为 Redis ZSET 的 score（<code>score = priority.value</code>），“数字越小越靠前”。Task 实体的默认优先级是 NORMAL；任务入队时的分值由 <code>TaskDispatcher.dispatch</code> 统一归一化（🔧）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># src/neotask/core/dispatcher.py</span>
+<span class="hljs-keyword">if</span> <span class="hljs-built_in">isinstance</span>(priority, <span class="hljs-built_in">int</span>):
+    priority_enum = TaskPriority(priority)   <span class="hljs-comment"># ← 注意：非法 int 直接抛 ValueError</span>
+<span class="hljs-keyword">else</span>:
+    priority_enum = priority
+...
+priority_value = task.priority.value
+<span class="hljs-keyword">if</span> delay &gt; <span class="hljs-number">0</span>:
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._queue.schedule_delayed(task.task_id, priority_value, delay)
+<span class="hljs-keyword">else</span>:
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._queue.push(task.task_id, priority_value)
+</code></pre>
+<p><strong>为什么用四档离散枚举，而不是连续权重（如 1~100）？</strong> 三点工程考量：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>语义可读性</strong>：score 直接就是业务语义（0=紧急），Redis 里 <code>ZRANGE queue:priority 0 10</code> 排查问题时一眼可读；权重分（如 73/58）无法从分数反推业务含义；</p>
+</li>
+<li class="lvl-3">
+<p><strong>档位即配额思想</strong>：分布式调度里，优先级本质是&quot;相对次序&quot;而非&quot;绝对数值&quot;。0~3 四档把任务分到四个&quot;车道&quot;，任何一档内部 FIFO。如果分数连续，业务方会倾向用&quot;差一分&quot;表达微妙差别，最终退化成&quot;人人都是 99 分&quot;，排序失去意义；</p>
+</li>
+<li class="lvl-3">
+<p><strong>与 ZSET 升序语义天然对齐</strong>：<code>ZRANGE 0 count-1</code> 取最小 score 即最高优先级，无需反向索引。若采用&quot;数字大=优先&quot;的体系，则必须引入 <code>ZREVRANGE</code>/<code>ZREVRANK</code>，脚本与索引都要绕一层——选择与 Redis 惯例一致，少一个出错面。</p>
+</li>
+</ol>
+<p><strong>两个入口的行为不一致值得注意</strong>：<code>dispatcher.dispatch</code> 用 <code>TaskPriority(priority)</code> 直接构造——传入 5 会抛 <code>ValueError</code>（快速失败）；而 <code>from_value()</code> 类方法对非法值<strong>静默回退 NORMAL</strong>（容错）。v1.0.2 中这两个入口同时存在但语义不同：submit 链路走前者（严格），from_value 尚未被主链路使用（预留的宽松解析器）。<strong>在提交层快速失败是对的</strong>：优先级写错是程序 bug，静默降级会把 bug 藏进队列里。</p>
+<hr>
+<h2>队列架构：策略模式下的双实现</h2>
+<pre class="mermaid">graph TB
+    subgraph API[&quot;提交层&quot;]
+        S[TaskPool.submit]
+        D[TaskDispatcher.dispatch&lt;br/&gt;优先级归一化]
+    end
+    subgraph QS[&quot;QueueScheduler（门面）&quot;]
+        PQ[PriorityQueue&lt;br/&gt;优先级队列]
+        DQ[DelayedQueue&lt;br/&gt;延迟队列]
+    end
+    subgraph Repo[&quot;QueueRepository（策略）&quot;]
+        M[MemoryQueue&lt;br/&gt;单机/测试]
+        R[RedisQueue&lt;br/&gt;分布式]
+        S2[SQLite 队列&lt;br/&gt;可选]
+    end
+    S --&gt; D
+    D --&gt;|delay=0| PQ
+    D --&gt;|delay&gt;0| DQ
+    DQ --&gt;|到期回调| PQ
+    PQ --&gt; M
+    PQ --&gt; R
+    PQ --&gt; S2
+</pre>
+<p><code>PriorityQueue</code> 是门面下的核心组件（🔧 <code>src/neotask/queue/priority_queue.py</code>），构造时决定存储策略：</p>
+<pre class="hljs"><code><span class="hljs-keyword">def</span> <span class="hljs-title function_">__init__</span>(<span class="hljs-params">self, repository: <span class="hljs-type">Optional</span>[QueueRepository] = <span class="hljs-literal">None</span>, max_size: <span class="hljs-built_in">int</span> = <span class="hljs-number">10000</span></span>):
+    <span class="hljs-variable language_">self</span>._repository = repository
+    <span class="hljs-variable language_">self</span>._heap: <span class="hljs-type">List</span>[<span class="hljs-type">Tuple</span>[<span class="hljs-built_in">int</span>, <span class="hljs-built_in">float</span>, <span class="hljs-built_in">str</span>]] = []  <span class="hljs-comment"># (priority, sequence, task_id)</span>
+    <span class="hljs-variable language_">self</span>._use_repository = repository <span class="hljs-keyword">is</span> <span class="hljs-keyword">not</span> <span class="hljs-literal">None</span>
+    <span class="hljs-variable language_">self</span>._max_size = max_size
+    <span class="hljs-variable language_">self</span>._sequence = <span class="hljs-number">0</span>          <span class="hljs-comment"># 用于稳定排序（相同优先级时 FIFO）</span>
+    <span class="hljs-variable language_">self</span>._task_index: <span class="hljs-type">Dict</span>[<span class="hljs-built_in">str</span>, <span class="hljs-type">Tuple</span>[<span class="hljs-built_in">int</span>, <span class="hljs-built_in">float</span>, <span class="hljs-built_in">str</span>]] = {}  <span class="hljs-comment"># task_id -&gt; item</span>
+</code></pre>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>无 repository（内存模式）</strong>：本地 <code>heapq</code> 二叉堆，单机/测试用；</p>
+</li>
+<li class="lvl-2">
+<p><strong>有 repository（Redis/SQLite 模式）</strong>：操作委托给存储层，<code>_heap</code> 不参与。</p>
+</li>
+</ul>
+<p><strong>注意 <code>delay &gt; 0</code> 的任务根本不会进 PriorityQueue</strong>（入队直接返回 False），它们由 QueueScheduler 分流到 DelayedQueue——这也是为什么 <code>push</code> 接口里还带一个 <code>delay</code> 参数（历史兼容），但真实的延迟分流发生在更上层。</p>
+<hr>
+<h2>内存实现：二叉堆 + 序列号 = 严格 FIFO</h2>
+<h3>入队/出队（🔧）</h3>
+<pre class="hljs"><code><span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">push</span>(<span class="hljs-params">self, task_id: <span class="hljs-built_in">str</span>, priority: <span class="hljs-built_in">int</span>, delay: <span class="hljs-built_in">float</span> = <span class="hljs-number">0</span></span>) -&gt; <span class="hljs-built_in">bool</span>:
+    <span class="hljs-keyword">if</span> delay &gt; <span class="hljs-number">0</span>:
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>                    <span class="hljs-comment"># 延迟任务不直接入优先级队列</span>
+    <span class="hljs-keyword">if</span> <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>.size() &gt;= <span class="hljs-variable language_">self</span>._max_size:
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>                    <span class="hljs-comment"># ← 满队列返回 False（dispatcher 快速失败，见故障场景 4）</span>
+    ...
+    <span class="hljs-keyword">async</span> <span class="hljs-keyword">with</span> <span class="hljs-variable language_">self</span>._lock:
+        <span class="hljs-variable language_">self</span>._sequence += <span class="hljs-number">1</span>
+        item = (priority, <span class="hljs-variable language_">self</span>._sequence, task_id)
+        heapq.heappush(<span class="hljs-variable language_">self</span>._heap, item)   <span class="hljs-comment"># O(log n)</span>
+        <span class="hljs-variable language_">self</span>._task_index[task_id] = item
+
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">pop</span>(<span class="hljs-params">self, count: <span class="hljs-built_in">int</span> = <span class="hljs-number">1</span></span>) -&gt; <span class="hljs-type">List</span>[<span class="hljs-built_in">str</span>]:
+    ...
+    <span class="hljs-keyword">async</span> <span class="hljs-keyword">with</span> <span class="hljs-variable language_">self</span>._lock:
+        result = []
+        <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">min</span>(count, <span class="hljs-built_in">len</span>(<span class="hljs-variable language_">self</span>._heap))):
+            priority, seq, task_id = heapq.heappop(<span class="hljs-variable language_">self</span>._heap)  <span class="hljs-comment"># O(log n)</span>
+            result.append(task_id)
+        <span class="hljs-keyword">return</span> result
+</code></pre>
+<p>堆元素是三元组 <code>(priority, sequence, task_id)</code>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>heapq</code> 按元组字典序比较：<strong>先比 priority，再比 sequence</strong>；</p>
+</li>
+<li class="lvl-2">
+<p><code>_sequence</code> 全局递增 → 同优先级任务按入队顺序出队，<strong>严格 FIFO</strong>；</p>
+</li>
+<li class="lvl-2">
+<p>这就是&quot;二叉堆 + 序列号避免同优先级乱序&quot;的真实出处——它只在<strong>内存实现</strong>中成立。</p>
+</li>
+</ul>
+<h3>为什么是堆而不是别的结构？</h3>
+<table>
+<thead>
+<tr>
+<th>结构</th>
+<th>入队</th>
+<th>出队</th>
+<th>同优先级 FIFO</th>
+<th>其他</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>二叉堆 (heapq)</td>
+<td>O(log n)</td>
+<td>O(log n)</td>
+<td>加 seq 即可</td>
+<td>无</td>
+</tr>
+<tr>
+<td>有序数组</td>
+<td>O(n)</td>
+<td>O(1)</td>
+<td>✓</td>
+<td>插入搬移成本高</td>
+</tr>
+<tr>
+<td>桶队列（按优先级分 list）</td>
+<td>O(1)</td>
+<td>O(1)</td>
+<td>✓</td>
+<td>只有 4 档时最简</td>
+</tr>
+</tbody>
+</table>
+<p><strong>四档优先级下&quot;桶队列&quot;其实更快，为什么还用堆？</strong> 两个原因：① 内存队列可能收到任意 int 优先级（<code>pop_with_priority</code>、<code>delay</code> 通道、repository 直连），堆对任意分值健壮，桶则依赖&quot;档位有限&quot;这个前提；② 与 Redis ZSET 的语义对齐——堆序 = ZSET 升序，代码迁移成本低。<strong>通用性优先于微优化</strong>，这是框架代码的典型取舍。</p>
+<h3>remove：被遗忘的 O(n)</h3>
+<pre class="hljs"><code><span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">remove</span>(<span class="hljs-params">self, task_id: <span class="hljs-built_in">str</span></span>) -&gt; <span class="hljs-built_in">bool</span>:
+    ...
+    <span class="hljs-comment"># 重建堆（延迟删除策略）</span>
+    <span class="hljs-variable language_">self</span>._heap = [item <span class="hljs-keyword">for</span> item <span class="hljs-keyword">in</span> <span class="hljs-variable language_">self</span>._heap <span class="hljs-keyword">if</span> item[<span class="hljs-number">2</span>] != task_id]
+    heapq.heapify(<span class="hljs-variable language_">self</span>._heap)          <span class="hljs-comment"># ← O(n)，不是 O(log n)</span>
+    <span class="hljs-keyword">del</span> <span class="hljs-variable language_">self</span>._task_index[task_id]
+</code></pre>
+<p>注释写着&quot;延迟删除策略&quot;，实际是<strong>全量重建</strong>：先列表过滤再 <code>heapify</code>（O(n)）。对于&quot;按 task_id 取消任务&quot;这种低频操作（API 层 cancel 用），O(n) 可接受——框架明确用空间（<code>_task_index</code>）换快速存在性判断，把复杂删除留给了低频路径。</p>
+<hr>
+<h2>Redis 实现：ZSET 全局有序</h2>
+<h3>真实数据结构</h3>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 src/neotask/storage/redis.py</span>
+<span class="hljs-variable language_">self</span>._queue_key = <span class="hljs-string">&quot;queue:priority&quot;</span>      <span class="hljs-comment"># 即时任务：ZSET，score = 优先级数值</span>
+<span class="hljs-variable language_">self</span>._delayed_key = <span class="hljs-string">&quot;queue:delayed&quot;</span>     <span class="hljs-comment"># 延迟任务：ZSET，score = 到期时间戳</span>
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>操作</th>
+<th>命令</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>入队</td>
+<td><code>ZADD queue:priority {task_id: priority}</code></td>
+<td>score 直接是 0~3</td>
+</tr>
+<tr>
+<td>出队（单）</td>
+<td>走 Lua（见下）</td>
+<td><strong>不是 ZPOPMIN</strong></td>
+</tr>
+<tr>
+<td>窥视队首</td>
+<td><code>ZRANGE queue:priority 0 count-1</code></td>
+<td>peek</td>
+</tr>
+<tr>
+<td>移除</td>
+<td><code>ZREM</code></td>
+<td>remove</td>
+</tr>
+</tbody>
+</table>
+<p>v1.0.2 的出队<strong>不使用 <code>ZPOPMIN</code> 命令</strong>（那是 Redis 6.2+ 的独立命令，且每次只弹一个）。真实实现是注册的 Lua 脚本，批量时一次往返完成&quot;取+删&quot;（🔧）：</p>
+<pre class="hljs"><code><span class="hljs-comment">-- redis.py _get_pop_script</span>
+<span class="hljs-keyword">local</span> queue_key = KEYS[<span class="hljs-number">1</span>]
+<span class="hljs-keyword">local</span> count = <span class="hljs-built_in">tonumber</span>(ARGV[<span class="hljs-number">1</span>])
+<span class="hljs-keyword">local</span> task_ids = redis.call(<span class="hljs-string">&#x27;ZRANGE&#x27;</span>, queue_key, <span class="hljs-number">0</span>, count<span class="hljs-number">-1</span>)
+<span class="hljs-keyword">if</span> #task_ids &gt; <span class="hljs-number">0</span> <span class="hljs-keyword">then</span>
+    redis.call(<span class="hljs-string">&#x27;ZREM&#x27;</span>, queue_key, <span class="hljs-built_in">unpack</span>(task_ids))
+<span class="hljs-keyword">end</span>
+<span class="hljs-keyword">return</span> task_ids
+</code></pre>
+<p><code>ZRANGE 0 count-1</code> 按 score 升序取队首 count 个 → <code>ZREM</code> 移除 → 返回。整个脚本原子执行，多节点不会重复取到同一任务（无锁，但原子出队；执行期互斥靠执行前抢锁，详见<a href="decentralization.html">去中心化</a>与<a href="distributed-lock.html">分布式锁</a>）。</p>
+<p><strong>为什么 ZRANGE+ZREM 而不是 ZPOPMIN？</strong> 兼容性与批量：<code>ZPOPMIN</code> 一次只弹 1 个（Redis 7 才支持 count），每弹一个都要一次 RTT；Lua 里 <code>ZRANGE count 个 + 一次 ZREM</code> 把&quot;批量取+删&quot;压成一次往返——这正是预取机制批量拉货的底层支撑。<strong>单条命令的简洁性让位于批量场景的往返次数</strong>。</p>
+<h3>同优先级 FIFO 的边界 ⚠</h3>
+<p>Redis ZSET 的排序规则：<strong>先按 score，score 相同按成员（member）字典序</strong>。score 相同的任务（同为 CRITICAL）谁先出队，取决于 task_id 的字典序——与入队顺序无关！</p>
+<p>而 NeoTask 的 task_id 生成规则（🔧 <code>core/lifecycle.py</code>）：</p>
+<pre class="hljs"><code><span class="hljs-keyword">def</span> <span class="hljs-title function_">_generate_task_id</span>(<span class="hljs-params">self</span>) -&gt; <span class="hljs-built_in">str</span>:
+    <span class="hljs-keyword">return</span> <span class="hljs-string">f&quot;TSK<span class="hljs-subst">{datetime.now().strftime(<span class="hljs-string">&#x27;%y%m%d%H%M%S%f&#x27;</span>)}</span><span class="hljs-subst">{random.randint(<span class="hljs-number">100000</span>, <span class="hljs-number">999999</span>)}</span>&quot;</span>
+</code></pre>
+<p><code>TSK + 提交时间（微秒级）+ 6 位随机数</code>——于是同分任务的字典序近似等于提交序：</p>
+<table>
+<thead>
+<tr>
+<th>提交间隔</th>
+<th>字典序行为</th>
+<th>FIFO 保证</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>&gt; 1 微秒</td>
+<td>时间戳前缀主导，先提交的 task_id 更小</td>
+<td>✅ 基本 FIFO</td>
+</tr>
+<tr>
+<td>同一微秒内</td>
+<td>6 位随机数定序，随机</td>
+<td>❌ 乱序（概率极低）</td>
+</tr>
+<tr>
+<td>不同节点（时钟偏差）</td>
+<td>时间戳来自各自节点时钟</td>
+<td>⚠️ 时钟快的节点任务&quot;插队&quot;</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论：Redis 模式是&quot;近似 FIFO&quot;，不是内存模式的&quot;严格 FIFO&quot;。</strong> 对顺序敏感的业务（同优先级下的流水线任务），要么业务侧自带序号校验，要么接受微秒级窗口的乱序。内存版用序列号实现严格 FIFO，Redis 版却直接拿 task_id 当序——<strong>为什么两套实现不一致？</strong> 因为 Redis 的 ZSET 不支持&quot;每成员独立二级序&quot;：若要把 seq 编进 score，就得用浮点编码（如 <code>score = priority*10^12 + seq</code>），代价是：① score 失去可读性（不再是 0~3）；② 浮点精度有限，seq 超过 2^12 就开始丢精度；③ 每次出队后还要维护 seq 水位。<strong>框架选择了&quot;近似 FIFO + 明确边界说明&quot;而不是&quot;复合 score + 复杂度&quot;</strong>——这是典型的 80/20 取舍，但对顺序敏感的业务是必须知道的边界。</p>
+<hr>
+<h2>延迟任务与优先级：两条通道，一个魔法数</h2>
+<p>延迟任务涉及两条通道，优先级保留情况完全不同（这是延时与优先级联动的核心坑）：</p>
+<pre class="mermaid">flowchart TB
+    subgraph ChannelA[&quot;通道 A：主链路 QueueScheduler（Redis 模式）&quot;]
+        A1[dispatcher.dispatch delay&gt;0] --&gt; A2[QueueScheduler.push&lt;br/&gt;delay&gt;0]
+        A2 --&gt; A3[DelayedQueue.schedule&lt;br/&gt;内存定时管理]
+        A3 --&gt;|到期回调| A4[push task_id, priority&lt;br/&gt;score = 原优先级 ✓]
+    end
+    subgraph ChannelB[&quot;通道 B：repository 直连（绕过 QueueScheduler）&quot;]
+        B1[RedisQueueRepository.push&lt;br/&gt;delay&gt;0] --&gt; B2[ZADD queue:delayed&lt;br/&gt;score=到期时间戳]
+        B2 --&gt; B3[pop 时惰性迁移&lt;br/&gt;ZRANGEBYSCORE 到期]
+        B3 --&gt; B4[ZADD queue:priority&lt;br/&gt;score = 5 ⚠ 魔法数]
+    end
+</pre>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>通道 A（主链路）</strong>：<code>QueueScheduler.push(task_id, priority, delay)</code> 把任务交给内存 <code>DelayedQueue</code>，到期回调 <code>_on_delayed_task_ready</code> 用<strong>原始 priority</strong> 重新入队——<strong>优先级完整保留</strong>（🔧 <code>queue/queue_scheduler.py</code>）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>通道 B（repository 层）</strong>：<code>RedisQueueRepository.push(delay&gt;0)</code> 直接写入 <code>queue:delayed</code>（score=到期时间戳）；下游 <code>pop()</code> 时惰性迁移到期任务——但迁移分数是<strong>硬编码 5</strong>（🔧 <code>storage/redis.py</code>）：</p>
+</li>
+</ul>
+<pre class="hljs"><code><span class="hljs-comment"># 加入优先级队列（默认中等优先级）</span>
+<span class="hljs-keyword">for</span> task_id <span class="hljs-keyword">in</span> delayed_tasks:
+    <span class="hljs-keyword">await</span> client.zadd(<span class="hljs-variable language_">self</span>._queue_key, {task_id: <span class="hljs-number">5</span>})
+</code></pre>
+<p>score=5 意味着什么？优先级枚举只有 0~3，<strong>5 是一个不存在的&quot;第五档&quot;，比 LOW(3) 还低</strong>——从通道 B 迁出的延迟任务会永远排在所有即时任务之后；且代码注释写&quot;默认中等优先级&quot;，中等（NORMAL）应该是 2，实现却写 5，注释与代码不一致。同款魔法数还出现在 <code>PriorityQueue.pop_with_priority</code> 的 repository 分支（硬编码返回 <code>(tid, 5)</code>，🔧 <code>queue/priority_queue.py</code>）——<strong>&quot;5&quot;在 v1.0.2 中已经符号化：凡是需要&quot;取不到真实优先级&quot;的地方，都用 5 兜底</strong>。</p>
+<p><strong>这是缺陷还是设计？</strong> 从&quot;默认中等优先级&quot;注释看是<strong>缺陷</strong>（数值错 + 注释不符）；但更深一层，它也暴露了真实约束：迁移时刻<strong>确实读不到原任务的优先级</strong>（<code>queue:delayed</code> 里只存了 task_id 与到期时间，没有 priority 字段；要恢复原优先级必须回查 <code>task:{id}</code> 的 JSON）。修复的正确姿势不是改 5 为 2，而是迁移时回查任务实体的 priority（📝 改进建议：pop 迁移前 <code>GET task:{id}</code> 拿 <code>priority.value</code>，或入 delayed 时把 priority 编码进 score 高位）。<strong>主链路（通道 A）不受此缺陷影响</strong>——只有绕过 QueueScheduler 直用 repository 的集成场景会踩中，集成方需自查。</p>
+<hr>
+<h2>预取与优先级：批量拉取如何影响公平性</h2>
+<p>预取机制把&quot;全局 ZSET 有序&quot;打散成&quot;各节点本地 FIFO 队列&quot;，对优先级的影响链条（详见<a href="prefetch.html">预取机制</a>一文，此处只给结论）：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>共享队列内部永远有序</strong>：新提交的 CRITICAL 任务 score=0，任何节点下一轮 <code>pop</code> 都会先取到它——不会被埋在共享队列；</p>
+</li>
+<li class="lvl-3">
+<p><strong>反转窗口在节点本地</strong>：某节点已预取 60 个 LOW 任务后，新到的 CRITICAL 只能等别的节点来取，或等本节点在途任务排空。等待上界 ≈ 在途量 × 平均执行时长；</p>
+</li>
+<li class="lvl-3">
+<p><strong>预取不做按优先级裁剪</strong>：<code>PrefetchConfig</code> 里没有优先级过滤字段，预取器按共享队列的全局顺序批量拉货、不区分优先级——<strong>唯一的调节杠杆是 <code>prefetch_size</code>（批量大小）与 <code>max_threshold</code>（本地队列水位）</strong>，把在途量压小即可缩短反转窗口；</p>
+</li>
+<li class="lvl-3">
+<p><strong>HYBRID 高水位让位</strong>：本地队列 ≥ 3×prefetch_size 时节点停止预取，把全局头部让给有空的节点——这是唯一结构性的&quot;防囤积&quot;机制；</p>
+</li>
+<li class="lvl-3">
+<p><strong>停机回灌不丢优先级</strong>：优雅停机时 <code>WorkerPool.stop()</code> 会调用 <code>prefetcher.drain_back(priority_resolver)</code>，把本地队列里尚未消费的任务按<strong>存储中的真实优先级</strong>放回共享队列，避免残留任务变成孤儿或被降级。</p>
+</li>
+</ol>
+<p><strong>结论</strong>：NeoTask 的优先级是&quot;全局队列级&quot;的（谁先被取走），不是&quot;节点执行级&quot;的（谁先被执行完）。高优任务的最坏延迟由&quot;其他节点在途低优任务量&quot;决定，<strong>需要硬优先级保证的场景，请用独立 TaskPool 隔离，而不是依赖队列排序</strong>。</p>
+<hr>
+<h2>优先级反转与饥饿：真实的边界与不存在的机制</h2>
+<h3>优先级反转：哪些成立、哪些不成立</h3>
+<p>经典&quot;优先级反转&quot;（低优持锁阻塞高优）需要<strong>资源锁竞争 + 优先级抢占</strong>两个前提。NeoTask 的任务模型里：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>任务之间<strong>没有资源依赖声明</strong>（编排层 v1.5 才规划），不存在&quot;任务 A 等任务 B 释放锁&quot;的调度层模型；</p>
+</li>
+<li class="lvl-2">
+<p>worker 是<strong>非抢占式</strong>的：正在执行的任务不会被高优任务打断，锁（<code>lock:task:{id}</code>）只互斥&quot;同一任务被两个节点执行&quot;，与优先级无关。</p>
+</li>
+</ul>
+<p>因此&quot;数据库锁导致订单任务等库存任务&quot;这种 OS 教科书例子<strong>不适用于 NeoTask 的调度语义</strong>——那属于业务层资源竞争，应由业务数据库的行锁/队列去解决，调度器管不到也不该管。</p>
+<p>NeoTask 的真实优先级风险只有两类：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>队列饥饿</strong>：低优任务洪峰期间，高优任务虽有绝对优先权（score 最小），但 CRITICAL 提交流量本身过大时，HIGH/NORMAL 会持续让位——这是<strong>正确行为</strong>（高优就该先走），真正需要观察的是低优任务的最长等待；</p>
+</li>
+<li class="lvl-3">
+<p><strong>本地队列滞留</strong>：预取批量把低优任务锁进节点缓冲后，全局对高优任务的响应依赖&quot;有空的节点&quot;，多节点全部满载时高优也会等。</p>
+</li>
+</ol>
+<h3>饥饿避免：NeoTask 不做动态提权</h3>
+<p><strong>NeoTask 没有 aging/动态提权逻辑</strong>：队列模块只有 push/pop/remove/peek/pause/disable，不存在任何按等待时间调整 score 的代码路径。低优任务不会因为等得久而自动升档。</p>
+<p><strong>为什么 NeoTask 不做优先级老化？</strong> 分布式环境下做 aging 的代价被放大了：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>写放大</strong>：Redis 版要周期性扫描 ZSET 里每个低优任务、按等待时长上调 score——每次调整是一次 ZADD（O(log n)），扫描+调整会与高吞吐出队抢 Redis 带宽；</p>
+</li>
+<li class="lvl-2">
+<p><strong>全局等待时间不可得</strong>：任务在&quot;共享队列 + 本地队列 + 执行中&quot;三态间流转，等待时间跨节点累计，单点无法准确度量；回收器的孤儿判定依赖节点注册表——未配置节点管理器时直接跳过回收并打一次警告，配置了也只按&quot;活跃节点集合 + 本地节点豁免&quot;判定，并不维护每个任务的等待时长；</p>
+</li>
+<li class="lvl-2">
+<p><strong>老化会破坏语义</strong>：按等待时间提权本质是&quot;时间换公平&quot;，但调度器无法区分&quot;低优任务等了 10 分钟&quot;和&quot;这个任务本来就该最后跑&quot;（比如凌晨的数据归档），误提权反而挤占真正的 CRITICAL。</p>
+</li>
+</ul>
+<p><strong>工程结论</strong>：NeoTask 的选择是&quot;不做老化，用档位+容量控制饥饿&quot;——低优任务需要严格 SLA 时，用独立 TaskPool + 定时器提交，而不是依赖优先级系统兜底。这是框架边界，不是 bug。</p>
+<hr>
+<h2>配置与使用建议</h2>
+<h3>提交任务（真实 API 🔧）</h3>
+<pre class="hljs"><code><span class="hljs-keyword">from</span> neotask.api <span class="hljs-keyword">import</span> TaskPool
+<span class="hljs-keyword">from</span> neotask.models.task <span class="hljs-keyword">import</span> TaskPriority
+
+pool = TaskPool.redis(<span class="hljs-string">&quot;redis://127.0.0.1:6379&quot;</span>)
+
+<span class="hljs-comment"># 推荐：枚举传参，类型可查</span>
+task_id = pool.submit(
+    data={<span class="hljs-string">&quot;order_id&quot;</span>: <span class="hljs-number">12345</span>},
+    priority=TaskPriority.HIGH,
+)
+
+<span class="hljs-comment"># 兼容：int 传参（0~3，越界抛 ValueError）</span>
+task_id = pool.submit(data={<span class="hljs-string">&quot;x&quot;</span>: <span class="hljs-number">1</span>}, priority=<span class="hljs-number">1</span>)
+
+<span class="hljs-comment"># 完整签名（🔧 api/task_pool.py）</span>
+<span class="hljs-comment"># submit(data, task_id=None, priority=TaskPriority.NORMAL, delay=0, ttl=3600) -&gt; str</span>
+</code></pre>
+<h3>分档建议</h3>
+<table>
+<thead>
+<tr>
+<th>档位</th>
+<th>放什么</th>
+<th>不放什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CRITICAL</td>
+<td>故障恢复、配额内告警（<strong>严控流量</strong>）</td>
+<td>高频业务——CRITICAL 洪峰会饿死其他档</td>
+</tr>
+<tr>
+<td>HIGH</td>
+<td>用户可感知链路：下单、支付、实时查询</td>
+<td>批处理（会造成用户任务排队）</td>
+</tr>
+<tr>
+<td>NORMAL</td>
+<td>常规异步：消息推送、报表、同步</td>
+<td>无</td>
+</tr>
+<tr>
+<td>LOW</td>
+<td>归档、清理、统计、预热</td>
+<td>有时效性要求的任务</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么 CRITICAL 要控流？</strong> 0~3 档的排序语义下，CRITICAL 无限插队，其他三档在 CRITICAL 洪峰时集体饥饿；且同一档内部是 FIFO，CRITICAL 一多，它自己也会排队。<strong>档位不是 QOS 令牌，是相对次序</strong>——高优任务总量必须远小于系统容量。</p>
+<hr>
+<h2>故障场景实战</h2>
+<h3>场景 1：延迟任务到期后变成&quot;第五档&quot;，永远垫底</h3>
+<p><strong>现象</strong>：通过某直连 repository 的集成组件提交的延迟任务，到期后迟迟不执行；Redis 里 <code>ZRANGE queue:priority 0 -1 WITHSCORES</code> 能看到 score=5 的任务（正常任务 score 只有 0~3）。</p>
+<p><strong>根因</strong>：走了通道 B（repository 层惰性迁移），迁移代码硬编码 <code>zadd score=5</code>（比 LOW=3 还低）；任务实体里的 priority 字段虽然是原值，但 ZSET 排序只看 score。</p>
+<p><strong>排查</strong>：<code>ZCARD queue:delayed</code> 与 <code>ZRANGEBYSCORE queue:delayed -inf now</code> 找到期未迁出的任务；检查调用链是否绕过 <code>QueueScheduler</code> 直用 <code>RedisQueueRepository.push(delay=...)</code>。</p>
+<p><strong>解决</strong>：主链路（<code>submit(delay=N)</code>）无此问题，无需处理；直连 repository 的集成方应改为走 <code>QueueScheduler.push(task_id, priority, delay)</code>；或自行在迁移后修正 score（📝：<code>ZADD queue:priority N task_id</code>，N 取任务实体的 priority.value）。</p>
+<h3>场景 2：同优先级任务&quot;乱序&quot;被业务方投诉</h3>
+<p><strong>现象</strong>：同一优先级大批量提交的流水线任务（如逐条状态流转），处理顺序偶尔与提交顺序不符；单机压测复现不了，多节点一上就出现。</p>
+<p><strong>根因</strong>：Redis 模式同分任务按 task_id 字典序出队，task_id 前缀是<strong>各节点本地时钟</strong>生成的提交时间戳——节点时钟偏差大的，后提交的任务反而 task_id 更小、先出队；同微秒内提交的任务由随机数定序。</p>
+<p><strong>排查</strong>：<code>ZRANGE queue:priority 0 20</code> 观察同分任务顺序 vs 提交日志顺序；对比节点间时钟偏差（<code>ntpdate</code>/<code>w32tm</code>）。</p>
+<p><strong>解决</strong>：需要严格顺序的业务——① 业务数据里带业务序号，消费端排序/校验；② 需要&quot;同档严格 FIFO&quot;时给提交方传<strong>单调递增的自定义 task_id</strong>（<code>submit(task_id=&quot;TSK0000000001&quot;)</code>，注意 task_id 需全局唯一，且要短于 64 字节、避免特殊字符）；③ 接受近似 FIFO 语义（多数场景足够）。</p>
+<h3>场景 3：提交 priority=7，任务&quot;消失&quot;且无任何错误日志</h3>
+<p><strong>现象</strong>：调用方按旧版 0~10 的理解传了优先级 7，submit 调用抛 <code>ValueError: 7 is not a valid TaskPriority</code>——这是<strong>快速失败</strong>，任务根本没创建。但如果调用方捕获了异常继续跑，会误以为任务已提交。</p>
+<p><strong>根因</strong>：<code>TaskPriority(priority)</code> 严格枚举构造。注意与 <code>from_value()</code> 的区别：后者对非法值回退 NORMAL（容错），主链路用前者（严格）——<strong>行为分叉是有意的：提交时暴露错误，解析时容忍脏数据</strong>。</p>
+<p><strong>解决</strong>：提交层做参数校验与告警，不要吞异常；跨版本升级时先查调用的优先级数值体系是否仍是 0~3。</p>
+<h3>场景 4：队列打满 10000，提交抛 QueueFullError</h3>
+<p><strong>现象</strong>：洪峰期大批量提交后，submit 直接抛 <code>neotask.QueueFullError</code>；<code>ZCARD queue:priority</code> 长期顶在 10000。</p>
+<p><strong>根因链</strong>：<code>QueueScheduler.push</code>/<code>PriorityQueue.push</code> 在 <code>size() &gt;= max_size</code> 时返回 <code>False</code>（🔧），<code>dispatcher.dispatch</code> 检测到入队失败后<strong>立即把任务标记为 FAILED 并抛出 <code>QueueFullError</code></strong>：</p>
+<pre class="hljs"><code><span class="hljs-comment"># dispatcher.py —— create_task 已先成功保存任务</span>
+task = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lifecycle.create_task(...)
+...
+queued = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._queue.push(task.task_id, priority_value)
+
+<span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> queued:
+    reason = <span class="hljs-string">&quot;queue is disabled&quot;</span> <span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._queue.is_disabled <span class="hljs-keyword">else</span> <span class="hljs-string">&quot;queue is full&quot;</span>
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lifecycle.fail_task(
+        task.task_id,
+        <span class="hljs-string">f&quot;Failed to enqueue task: <span class="hljs-subst">{reason}</span>&quot;</span>,
+        allow_pending=<span class="hljs-literal">True</span>,
+    )
+    <span class="hljs-keyword">raise</span> QueueFullError(<span class="hljs-variable language_">self</span>._queue.max_size)
+</code></pre>
+<p>也就是说，任务不会停在 PENDING：实体被回写为 FAILED（带 <code>Failed to enqueue task</code> 错误原因），调用方立刻收到异常。延迟任务的 <code>schedule_delayed</code> 走同一条失败分支，push 层返回 <code>False</code> 的失败也会被记录为错误日志。</p>
+<p><strong>排查</strong>：捕获 <code>QueueFullError</code>（<code>from neotask import QueueFullError</code>）；结合 <code>pool.get_stats()[&quot;queue_size&quot;]</code> 与 <code>ZCARD queue:priority</code> 确认水位。</p>
+<p><strong>解决</strong>：提交侧捕获 <code>QueueFullError</code> 做退避重试或限流；持续打满说明吞吐不足，应扩容 worker 或提高 <code>queue_max_size</code>（📝 同时保留队列水位告警）。任务不会静默丢失，但被拒绝的任务需要调用方自行决定重提策略。</p>
+<hr>
+<h2>版本与验证说明</h2>
+<p>本文属于项目文档而不是永久不变的 API 契约。以下情况发生时，应重新核对源码或发布说明：</p>
+<ol>
+<li class="lvl-3">
+<p>项目版本升级，尤其是公开 API、配置模型、存储实现和工作流发生变化；</p>
+</li>
+<li class="lvl-3">
+<p>本文中的默认值、性能数据或示例依赖外部服务版本；</p>
+</li>
+<li class="lvl-3">
+<p>运行环境与本文案例不同，例如 Python 版本、Redis/数据库版本、模型供应商或操作系统不同。</p>
+</li>
+</ol>
+<p>如果你要把本文内容用于生产环境，请优先使用仓库当前版本的 README、源码、测试和 Release 记录进行最终确认。</p>
+<h2>总结</h2>
+<table>
+<thead>
+<tr>
+<th>主题</th>
+<th>真实实现</th>
+<th>边界/坑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>优先级定义</td>
+<td>TaskPriority 0~3 四档枚举</td>
+<td>分数即 ZSET score；非法 int 提交抛错</td>
+</tr>
+<tr>
+<td>内存队列</td>
+<td>heapq + 全局序列号</td>
+<td>严格同档 FIFO；remove 是 O(n) 重建</td>
+</tr>
+<tr>
+<td>Redis 队列</td>
+<td>ZSET + Lua ZRANGE/ZREM</td>
+<td>出队不用 ZPOPMIN；同档仅&quot;近似 FIFO&quot;</td>
+</tr>
+<tr>
+<td>同档 FIFO</td>
+<td>内存严格 / Redis 靠 task_id 时间戳前缀</td>
+<td>同微秒随机序、跨节点时钟漂移乱序</td>
+</tr>
+<tr>
+<td>延迟迁移</td>
+<td>主链路保留优先级；repository 层 score=5</td>
+<td>&quot;5&quot;是魔法数，注释写&quot;中等&quot;实为最低档</td>
+</tr>
+<tr>
+<td>执行抢占</td>
+<td>不存在（worker FIFO + 非抢占）</td>
+<td>高优最坏延迟 = 其他节点在途量×时长</td>
+</tr>
+<tr>
+<td>饥饿避免</td>
+<td>无 aging/动态提权代码</td>
+<td>低优任务需严格 SLA 时用独立池隔离</td>
+</tr>
+<tr>
+<td>队列容量</td>
+<td>max_size=10000 满则 push False</td>
+<td>dispatcher 标记 FAILED 并抛 QueueFullError</td>
+</tr>
+</tbody>
+</table>
+<p>优先级系统在 NeoTask 里的定位要准确：<strong>它保证&quot;全局队列谁先被取&quot;，不保证&quot;谁先执行完&quot;</strong>。理解这个边界后，四级枚举 + ZSET 的实现是清晰且恰当的——真正的风险从来不在排序本身，而在排序之外的接力点：延迟迁移的魔法数、队列满时的拒绝、预取缓冲的滞留。</p>
+<hr>
+<h2>相关链接</h2>
+<p><a href="index.html">返回首页</a></p>
+<p><strong>入门与参考</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="quickstart.html">快速上手</a> - 5 分钟入门</p>
+</li>
+<li class="lvl-2">
+<p><a href="api-reference.html">API 参考</a> - 完整 API 文档</p>
+</li>
+<li class="lvl-2">
+<p><a href="configuration.html">配置说明</a> - 配置参数详解</p>
+</li>
+<li class="lvl-2">
+<p><a href="best-practices.html">最佳实践</a> - 生产环境建议</p>
+</li>
+</ul>
+<p><strong>架构与设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="architecture.html">架构设计</a> - 整体架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="core-features.html">核心实现</a> - 功能设计</p>
+</li>
+<li class="lvl-2">
+<p><a href="evolution.html">版本演进</a> - 演进历程</p>
+</li>
+</ul>
+<p><strong>分布式核心</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="decentralization.html">去中心化</a> - 对等架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="failure-recovery.html">故障恢复</a> - 高可用保障</p>
+</li>
+<li class="lvl-2">
+<p><a href="prefetch.html">预取机制</a> - 高吞吐性能</p>
+</li>
+<li class="lvl-2">
+<p><a href="distributed-lock.html">分布式锁</a> - 并发控制</p>
+</li>
+</ul>
+<p><strong>存储与监控</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="persistence.html">持久化</a> - 多存储后端</p>
+</li>
+<li class="lvl-2">
+<p><a href="priority-queue.html">优先级</a> - 优先级队列</p>
+</li>
+<li class="lvl-2">
+<p><a href="delayed-tasks.html">延时任务</a> - 时间轮 + Redis 持久化</p>
+</li>
+<li class="lvl-2">
+<p><a href="monitoring.html">节点监控</a> - 可观测性</p>
+</li>
+</ul>
+<p><strong>资源</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/neotask">GitHub</a> - 源代码仓库</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://task.helpenx.com">NeoTask 官网</a> - 官方网站</p>
+</li>
+</ul>
+
+      </article>
+    </main>
+  </div>
+  <footer>
+    <a href="https://task.helpenx.com" target="_blank" rel="noopener">NeoTask 官网</a>·
+    <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>·
+    <a href="index.html">文档中心</a>
+    <div style="margin-top:6px">© 2026 helpenx.com · 文档基线以文中标注版本对应的源码为准</div>
+  </footer>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</body>
+</html>

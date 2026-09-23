@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解 · NeoTask 文档</title>
+  <meta name="description" content="NeoTask 核心功能：模块全景、TaskPool 两阶段装配、任务提交/执行/调度/回收四条链路，以及 Redis 模式的故障回收、死信投递、时间轮与监控接线的真实行为。">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://task.helpenx.com/docs/core-features.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:title" content="NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解">
+  <meta property="og:description" content="NeoTask 核心功能：模块全景、TaskPool 两阶段装配、任务提交/执行/调度/回收四条链路，以及 Redis 模式的故障回收、死信投递、时间轮与监控接线的真实行为。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://task.helpenx.com/docs/core-features.html">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>⏱️</text></svg>">
+  <style>
+:root{--brand:#0d9488;--brand-dark:#0f766e;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:var(--ink);background:#fff;line-height:1.75;font-size:16px}
+a{color:var(--brand);text-decoration:none}a:hover{color:var(--brand-dark);text-decoration:underline}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
+.topbar .brand .doc-badge{font-size:12px;font-weight:600;color:#fff;background:var(--brand);border-radius:6px;padding:2px 8px}
+.topbar nav{display:flex;gap:20px;font-size:14.5px}
+.topbar nav a{color:var(--muted);font-weight:500}
+.topbar nav a:hover{color:var(--brand)}
+.wrap{display:flex;max-width:1280px;margin:0 auto;padding:0 16px}
+.sidebar{width:264px;flex-shrink:0;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 40px 0;border-right:1px solid var(--line)}
+.sidebar .side-home{display:block;font-weight:600;color:var(--ink);margin-bottom:16px;font-size:15px}
+.sidebar .side-home:hover{color:var(--brand);text-decoration:none}
+.sidebar h4{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px;font-weight:600}
+.sidebar a{display:block;padding:5px 10px;border-radius:6px;font-size:14px;color:#334155;line-height:1.5}
+.sidebar a:hover{background:var(--bg);color:var(--brand);text-decoration:none}
+.sidebar a.active{background:var(--brand);color:#fff}
+.content{flex:1;min-width:0;padding:32px 20px 60px 36px;max-width:860px}
+.toc-mobile{display:none;margin-bottom:20px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.toc-mobile summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.toc-mobile a{display:block;padding:3px 0;font-size:14px}
+.article h1{font-size:1.9em;line-height:1.35;margin:.4em 0 .8em}
+.article h2{font-size:1.45em;margin:1.8em 0 .7em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
+.article h3{font-size:1.22em;margin:1.5em 0 .6em}
+.article h4{font-size:1.08em;margin:1.3em 0 .5em}
+.article p{margin:.85em 0}
+.article ul,.article ol{padding-left:1.6em;margin:.7em 0}
+.article li{margin:.35em 0}
+.article img{max-width:100%;height:auto;border-radius:8px}
+.article table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:.94em;display:block;overflow-x:auto}
+.article th,.article td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+.article th{background:var(--bg);font-weight:600}
+.article tr:nth-child(even) td{background:#fbfdff}
+.article blockquote{margin:1.1em 0;padding:.7em 1.1em;border-left:4px solid var(--brand);background:var(--bg);border-radius:0 8px 8px 0;color:#334155}
+.article blockquote p{margin:.3em 0}
+.article code:not(pre code){background:#eef2f7;color:#c7254e;padding:.15em .4em;border-radius:4px;font-size:.88em;word-break:break-word}
+.article pre.hljs{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0;line-height:1.6}
+.article pre.hljs code{background:none;padding:0;color:var(--ink);font-size:.9em;font-family:ui-monospace,SFMono-Regular,'Cascadia Code',Consolas,Menlo,monospace}
+.article pre.mermaid{text-align:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0}
+.article hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+.article .success,.article .tips,.article .warning,.article .danger{border-radius:8px;padding:.9em 1.1em;margin:1.1em 0;border:1px solid}
+.article .success{border-color:#a7f3d0;background:#ecfdf5}.article .success p:first-of-type::before{content:'✅ '}
+.article .tips{border-color:#bfdbfe;background:#eff6ff}.article .tips p:first-of-type::before{content:'💡 '}
+.article .warning{border-color:#fde68a;background:#fffbeb}.article .warning p:first-of-type::before{content:'⚠️ '}
+.article .danger{border-color:#fecaca;background:#fef2f2}.article .danger p:first-of-type::before{content:'🚫 '}
+.article .success>p:first-child,.article .tips>p:first-child,.article .warning>p:first-child,.article .danger>p:first-child{margin-top:0}
+.article .success>p:last-child,.article .tips>p:last-child,.article .warning>p:last-child,.article .danger>p:last-child{margin-bottom:0}
+.doc-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--muted)}
+.doc-meta .tag{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+.doc-nav{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
+.doc-nav a{font-weight:600}
+footer{border-top:1px solid var(--line);padding:22px 24px;text-align:center;color:var(--muted);font-size:13.5px}
+footer a{color:var(--muted);margin:0 10px}
+footer a:hover{color:var(--brand)}
+@media (max-width:960px){
+  .sidebar{display:none}
+  .toc-mobile{display:block}
+  .content{padding:20px 6px 50px}
+  .topbar nav{gap:12px}
+}
+</style>
+  <style>
+.hljs{color:#24292e;background:#f6f8fa}
+.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.constant_{color:#d73a49}
+.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}
+.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}
+.hljs-string,.hljs-meta .hljs-string,.hljs-regexp{color:#032f62}
+.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-tag,.hljs-subst,.hljs-symbol{color:#e36209}
+.hljs-built_in,.hljs-class .hljs-title{color:#e36209}
+.hljs-comment,.hljs-meta,.hljs-quote{color:#6a737d}
+.hljs-section{color:#005cc5;font-weight:700}
+.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">⏱️ NeoTask <span class="doc-badge">文档</span></a>
+    <nav>
+      <a href="https://task.helpenx.com" target="_blank" rel="noopener">产品官网</a>
+      <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+  <div class="wrap">
+    <aside class="sidebar">
+      <a class="side-home" href="index.html">⏱️ 分布式任务调度系统 · 文档中心</a>
+      <h4>技术分析</h4><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a>
+<h4>API 与配置参考</h4><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a>
+<h4>实现与源码分析</h4><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a>
+<h4>设计与方案</h4><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a>
+<h4>项目概览</h4><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a>
+<h4>入门与使用</h4><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a>
+<h4>性能与评测</h4><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a>
+<h4>实践与运维</h4><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a>
+<h4>架构与核心设计</h4><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html" class="active">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a>
+<h4>版本与演进</h4><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a>
+    </aside>
+    <main class="content">
+      <details class="toc-mobile"><summary>📑 文档目录</summary><div><strong style="font-size:13px;color:var(--muted)">技术分析</strong><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a></div><div><strong style="font-size:13px;color:var(--muted)">API 与配置参考</strong><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a></div><div><strong style="font-size:13px;color:var(--muted)">实现与源码分析</strong><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a></div><div><strong style="font-size:13px;color:var(--muted)">设计与方案</strong><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a></div><div><strong style="font-size:13px;color:var(--muted)">项目概览</strong><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a></div><div><strong style="font-size:13px;color:var(--muted)">入门与使用</strong><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a></div><div><strong style="font-size:13px;color:var(--muted)">性能与评测</strong><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a></div><div><strong style="font-size:13px;color:var(--muted)">实践与运维</strong><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a></div><div><strong style="font-size:13px;color:var(--muted)">架构与核心设计</strong><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a></div><div><strong style="font-size:13px;color:var(--muted)">版本与演进</strong><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a></div></details>
+      <article class="article">
+        <div class="doc-meta"><span class="tag">NeoTask</span><span class="tag">更新 2026-03-29</span><a href="https://task.helpenx.com" target="_blank" rel="noopener">task.helpenx.com ↗</a></div>
+        <h1>NeoTask 核心功能详解：组件树与两阶段装配 + 链路全解</h1>
+<p>📚 <a href="index.html">返回首页</a> | 📖 <a href="quickstart.html">快速上手</a> | 📘 <a href="api-reference.html">API 参考</a> | ⚙️ <a href="configuration.html">配置说明</a> | 🐙  <a href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a href="https://task.helpenx.com">NeoTask 官网</a></p>
+<blockquote>
+<p><strong>文档定位</strong>：这是一篇架构文档。重点是解释组件之间的职责、数据流和关键设计取舍，并区分当前实现与设计层面的推演。<br>
+<strong>事实边界</strong>：实现文档：功能、接口和代码行为以文中标注版本对应的源码为准；仓库后续版本可能发生变化。<br>
+<strong>权威来源</strong>：<a href="https://github.com/neopen/neotask">NeoTask 源码仓库</a>；涉及版本历史时，以仓库 Release / CHANGELOG 为准。<br>
+<strong>代码标记</strong>：如果正文出现“源码/实现”字样，表示对应代码路径可在仓库中核对；示例代码仅用于演示调用方式，不应理解为项目源码原样。<br>
+<strong>版本基线</strong>：本文对照 NeoTask <strong>v1.0.2</strong>（PyPI 发布版）。<br>
+<strong>代码标注约定</strong>：🔧 表示<strong>真实源码</strong>（仓库原样摘录，附文件路径，可自行对照）；📝 表示<strong>示例代码</strong>（用法演示、改进建议或教学代码，不代表仓库实现）。<br>
+本文是 NeoTask 系列&quot;核心实现&quot;篇，按源码实际结构讲述 <strong>TaskPool 两阶段装配 → 提交 → 队列 → 执行 → 回收</strong> 五条链路。源码中<strong>不存在</strong> WorkflowEngine / DAG 编排层 / DistributedLock 类；Redis 任务存储是 <code>SET task:{id}</code> 的 JSON 字符串而非 HSET。文中凡涉及&quot;未接线&quot;的能力（如 <code>task.progress</code> 事件）都会直接标注。</p>
+</blockquote>
+<hr>
+<h2>概述</h2>
+<p>NeoTask 是一个纯 Python 实现的轻量级异步任务调度系统，专为耗时任务（AI 生成、视频处理、数据爬取等）设计。无需部署 Redis、PostgreSQL 等外部服务，安装后即可在任意 Python 项目中直接使用。</p>
+<ol>
+<li class="lvl-3">
+<p><strong>没有编排层，也没有 WorkflowEngine</strong>。v1.0.2 全部代码位于 <code>neotask/</code> 包下 16 个子包、约 60 个模块，顶层 API 只有 <code>TaskPool</code>（即时任务）与 <code>TaskScheduler</code>（定时任务）两个门面，外加一个未导出的 <code>TaskEngine</code>。工作流/DAG 尚在规划阶段。</p>
+</li>
+<li class="lvl-3">
+<p><strong>TaskPool 是&quot;构造期全量装配 + 启动期分批拉起&quot;的两阶段门面</strong>。构造时在调用方进程完成 10 类组件初始化（不建事件循环）；<code>start()</code> 才创建<strong>后台守护线程 + 独立事件循环</strong>，按 事件总线 → 队列 → Worker → 监督者 → 心跳 → 回收器 的顺序启动组件。同步 API 与异步内核之间靠 <code>run_coroutine_threadsafe</code> 桥接。</p>
+</li>
+<li class="lvl-3">
+<p><strong>Redis 模式下的&quot;故障回收&quot;链路已闭环，且以 TaskRepository 为唯一任务读写通道</strong>：<code>HeartbeatManager</code> 与 <code>NodeManager</code> 共用同一份节点注册表（<code>neotask:node:*</code> / <code>neotask:nodes</code>），并经由 <code>TaskRepository</code> 读取 RUNNING 任务、按 <code>node_id</code> 只回收死亡节点自己的任务；<code>TaskReclaimer</code> 的活跃节点来自 <code>NodeManager.get_active_nodes()</code>，未配置节点管理器时返回 <code>None</code> 并<strong>跳过</strong>孤儿回收（而不是把全部任务误判为孤儿），且本节点任务被显式跳过。两条路径的失败任务都会投递死信队列。</p>
+</li>
+</ol>
+<h3>设计目标</h3>
+<table>
+<thead>
+<tr>
+<th>目标</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>无外部服务依赖</strong></td>
+<td>纯 Python 实现，内置 SQLite 支持（基础依赖仅 aiosqlite、croniter）</td>
+</tr>
+<tr>
+<td><strong>高易用性</strong></td>
+<td>简单的 API 设计，开箱即用</td>
+</tr>
+<tr>
+<td><strong>可扩展性</strong></td>
+<td>支持内存/SQLite/Redis 多种存储后端</td>
+</tr>
+<tr>
+<td><strong>高可用</strong></td>
+<td>支持分布式部署、故障恢复</td>
+</tr>
+<tr>
+<td><strong>高性能</strong></td>
+<td>异步并发处理，支持多 Worker</td>
+</tr>
+</tbody>
+</table>
+<h3>核心特性</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>即时任务</strong>：优先级队列，立即执行</p>
+</li>
+<li class="lvl-2">
+<p><strong>延时任务</strong>：指定延迟时间执行</p>
+</li>
+<li class="lvl-2">
+<p><strong>周期任务</strong>：固定间隔重复执行</p>
+</li>
+<li class="lvl-2">
+<p><strong>Cron 表达式</strong>：复杂时间规则调度</p>
+</li>
+<li class="lvl-2">
+<p><strong>自动重试</strong>：失败任务自动重试</p>
+</li>
+<li class="lvl-2">
+<p><strong>持久化存储</strong>：内存/SQLite/Redis 多种后端</p>
+</li>
+<li class="lvl-2">
+<p><strong>事件总线</strong>：任务生命周期监听</p>
+</li>
+<li class="lvl-2">
+<p><strong>分布式锁</strong>：防止任务重复执行</p>
+</li>
+<li class="lvl-2">
+<p><strong>同步/异步等待</strong>：灵活的结果获取方式</p>
+</li>
+</ul>
+<hr>
+<h2>系统架构</h2>
+<pre class="mermaid">graph TB
+    subgraph User[&quot;👤 用户应用层&quot;]
+        APP[用户代码]
+    end
+    
+    subgraph Entry[&quot;🚪 入口层&quot;]
+        TP[TaskPool&lt;br/&gt;即时任务入口]
+        TS[TaskScheduler&lt;br/&gt;定时任务入口]
+    end
+    
+    subgraph Core[&quot;⚙️ 核心层&quot;]
+        direction TB
+        
+        subgraph Management[&quot;📋 任务管理&quot;]
+            LM[LifecycleManager]
+            FM[FutureManager]
+        end
+        
+        subgraph Queue[&quot;📊 队列系统&quot;]
+            QS[QueueScheduler]
+            PQ[PriorityQueue]
+            DQ[DelayedQueue]
+        end
+        
+        subgraph Execute[&quot;🔧 执行层&quot;]
+            WP[WorkerPool]
+            SP[Supervisor]
+        end
+        
+        subgraph Support[&quot;🔌 支撑组件&quot;]
+            EB[EventBus]
+            MC[MetricsCollector]
+            LF[LockFactory]
+        end
+    end
+    
+    subgraph Storage[&quot;💾 存储层&quot;]
+        MEM[(Memory)]
+        SQLITE[(SQLite)]
+        REDIS[(Redis)]
+    end
+    
+    subgraph Business[&quot;🏭 业务层&quot;]
+        EXEC[TaskExecutor]
+    end
+    
+    APP --&gt; TP &amp; TS
+    TS --&gt; TP
+    TP --&gt; LM &amp; QS &amp; WP &amp; FM
+    LM --&gt; MEM &amp; SQLITE &amp; REDIS
+    QS --&gt; PQ &amp; DQ
+    WP --&gt; EXEC &amp; EB &amp; MC &amp; LF
+    SP --&gt; WP
+</pre>
+<p><strong>装配形态说明</strong></p>
+<p>真实结构不是线性分层，而是 <strong>TaskPool 门面 + 星型组合</strong>：TaskPool 在构造期装配 10 类组件（生命周期、分发器、队列、Worker 池、监督者、事件总线、锁、以及 Redis 形态下的节点管理/心跳/回收器/死信），启动期在后台线程的事件循环里按依赖序拉起 8 个异步部件。TaskScheduler 内部持有一个 TaskPool 并全量委托，是它的客户而非兄弟节点。组件间不做互相查找，全部通过构造函数注入共享实例。详细拓扑见 1.2 节与<a href="architecture.html">架构设计</a>篇。</p>
+<hr>
+<h2>一、模块全景：没有编排层的真实组件树</h2>
+<h3>1.1 源码模块地图</h3>
+<p>v1.0.2 源码（<code>neotask-1.0.2/src/neotask/</code>）按职责分为 16 个子包：</p>
+<pre class="hljs"><code>neotask/
+├── api/          # 对外门面：task_pool.py(TaskPool)、task_scheduler.py(TaskScheduler)
+├── core/         # 内核：lifecycle(生命周期) dispatcher(分发) future(等待)
+│                 #      engine(未导出的 TaskEngine) heartbeat(节点心跳) context
+├── queue/        # 队列：queue_scheduler(调度器门面) priority_queue(优先堆)
+│                 #      delayed_queue(延迟堆) dead_letter(死信) factory
+├── worker/       # 执行：pool(Worker池) prefetcher(预取器) supervisor(监督者)
+│                 #      reclaimer(回收器) strategy
+├── scheduler/    # 定时：periodic(周期任务) time_wheel(时间轮) cron_parser(Cron)
+├── executor/     # 执行器：base async class thread process factory exceptions
+├── storage/      # 存储：base memory sqlite redis factory exceptions
+├── lock/         # 锁：base memory redis factory watchdog(看门狗) scanner(锁扫描)
+├── event/        # 事件：bus(总线) handlers middleware
+├── distributed/  # 分布式：node(节点) coordinator(协调) sharding(分片)
+├── monitor/      # 监控：metrics collector health reporter
+├── common/       # 通用：logger exceptions constants
+├── models/       # 模型：task config schedule
+├── config/       # 静态配置：logging.yaml settings.py
+├── cli/          # 命令行入口（含 webui 子命令）
+├── web/          # 内置 Web 控制台（路由/WebSocket）
+└── contrib/      # 生态集成：prometheus.py
+</code></pre>
+<p>几个容易记错的真实路径：<strong>QueueScheduler 在 <code>queue/queue_scheduler.py</code></strong>；<strong>锁在 <code>lock/</code> 包下分 6 个模块</strong>（base/memory/redis/factory/watchdog/scanner）；<strong>FutureManager 在 <code>core/future.py</code></strong>；<strong>HeartbeatManager 在 <code>core/heartbeat.py</code></strong>（不是 distributed 下）。<code>workflow/engine.py</code>、<code>workflow/dag.py</code>、<code>lock/distributed.py</code> 在源码中不存在。</p>
+<h3>1.2 任务在组件间如何流动</h3>
+<pre class="mermaid">graph TB
+    subgraph Entry[&quot;入口层（用户可见）&quot;]
+        POOL[TaskPool&lt;br/&gt;同步/异步双 API]
+        SCHED[TaskScheduler&lt;br/&gt;延时/周期/Cron]
+    end
+
+    subgraph Core[&quot;core 内核&quot;]
+        DISP[TaskDispatcher&lt;br/&gt;分发器]
+        LIFE[TaskLifecycleManager&lt;br/&gt;生命周期/缓存]
+        FUT[FutureManager&lt;br/&gt;等待通知]
+        HB[HeartbeatManager&lt;br/&gt;节点心跳]
+    end
+
+    subgraph QueueSys[&quot;queue 队列系统&quot;]
+        QS[QueueScheduler]
+        PQ[PriorityQueue&lt;br/&gt;heapq/ZSET]
+        DQ[DelayedQueue&lt;br/&gt;到期转正]
+        DLQ[DeadLetterQueue]
+    end
+
+    subgraph WorkerSys[&quot;worker 执行体系&quot;]
+        WP[WorkerPool&lt;br/&gt;Semaphore 并发]
+        PF[TaskPrefetcher&lt;br/&gt;本地缓冲]
+        SV[WorkerSupervisor&lt;br/&gt;健康检查]
+        RC[TaskReclaimer&lt;br/&gt;超时/孤儿回收]
+    end
+
+    subgraph Support[&quot;支撑组件&quot;]
+        EB[EventBus]
+        LOCK[LockFactory&lt;br/&gt;Memory/Redis]
+        WD[WatchDog&lt;br/&gt;锁续期]
+        MON[MetricsCollector/HealthChecker/Reporter]
+    end
+
+    subgraph StorageLayer[&quot;storage 存储层&quot;]
+        REPO[(TaskRepository&lt;br/&gt;+QueueRepository)]
+    end
+
+    POOL --&gt; DISP &amp; LIFE &amp; WP &amp; FUT
+    SCHED --&gt; POOL
+    DISP --&gt; LIFE
+    DISP --&gt; QS
+    QS --&gt; PQ &amp; DQ
+    QS --&gt; REPO
+    WP --&gt; PF &amp; LIFE &amp; EB &amp; LOCK &amp; WD
+    WP --&gt; SV
+    SV --&gt; WP
+    RC --&gt; LIFE &amp; QS &amp; LOCK
+    HB --&gt; REPO
+    LIFE --&gt; REPO &amp; EB
+    FUT --&gt; EB
+    EB --&gt; MON
+</pre>
+<p>这张图即真实组件树：入口只有 TaskPool/TaskScheduler；<code>WorkerSupervisor</code> 存在但健康检查粒度是&quot;整池重启&quot;（见 5.6 节），不是逐 Worker 拉起；<code>DeadLetterQueue</code> 既被装配也被 Worker/回收器调用（见 6.3 节）；<code>HeartbeatManager</code> 与存储层通过 <code>TaskRepository</code> 交互，不直接操作任务键。</p>
+<h3>1.3 组件装配的完整清单</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">组件</th>
+<th style="text-align:left">真实位置</th>
+<th style="text-align:left">TaskPool 中的持有者</th>
+<th style="text-align:left">启用条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">TaskDispatcher</td>
+<td style="text-align:left"><code>core/dispatcher.py</code></td>
+<td style="text-align:left"><code>_dispatcher</code></td>
+<td style="text-align:left">始终</td>
+</tr>
+<tr>
+<td style="text-align:left">TaskLifecycleManager</td>
+<td style="text-align:left"><code>core/lifecycle.py</code></td>
+<td style="text-align:left"><code>_lifecycle</code></td>
+<td style="text-align:left">始终</td>
+</tr>
+<tr>
+<td style="text-align:left">FutureManager</td>
+<td style="text-align:left"><code>core/future.py</code></td>
+<td style="text-align:left"><code>_future_manager</code>（内部还嵌一份）</td>
+<td style="text-align:left">始终</td>
+</tr>
+<tr>
+<td style="text-align:left">QueueScheduler</td>
+<td style="text-align:left"><code>queue/queue_scheduler.py</code></td>
+<td style="text-align:left"><code>_queue_scheduler</code></td>
+<td style="text-align:left">始终</td>
+</tr>
+<tr>
+<td style="text-align:left">WorkerPool</td>
+<td style="text-align:left"><code>worker/pool.py</code></td>
+<td style="text-align:left"><code>_worker_pool</code></td>
+<td style="text-align:left">始终</td>
+</tr>
+<tr>
+<td style="text-align:left">TaskPrefetcher</td>
+<td style="text-align:left"><code>worker/prefetcher.py</code></td>
+<td style="text-align:left">WorkerPool 内部</td>
+<td style="text-align:left"><code>enable_prefetch=True</code>（默认）</td>
+</tr>
+<tr>
+<td style="text-align:left">WorkerSupervisor</td>
+<td style="text-align:left"><code>worker/supervisor.py</code></td>
+<td style="text-align:left"><code>_supervisor</code></td>
+<td style="text-align:left">始终</td>
+</tr>
+<tr>
+<td style="text-align:left">EventBus</td>
+<td style="text-align:left"><code>event/bus.py</code></td>
+<td style="text-align:left"><code>_event_bus</code></td>
+<td style="text-align:left">始终</td>
+</tr>
+<tr>
+<td style="text-align:left">锁（MemoryLock/RedisLock）</td>
+<td style="text-align:left"><code>lock/memory.py</code>、<code>lock/redis.py</code></td>
+<td style="text-align:left"><code>_lock_manager</code></td>
+<td style="text-align:left">按 <code>lock_type</code></td>
+</tr>
+<tr>
+<td style="text-align:left">NodeManager</td>
+<td style="text-align:left"><code>distributed/node.py</code></td>
+<td style="text-align:left"><code>_node_manager</code></td>
+<td style="text-align:left"><code>storage_type=&quot;redis&quot;</code></td>
+</tr>
+<tr>
+<td style="text-align:left">HeartbeatManager</td>
+<td style="text-align:left"><code>core/heartbeat.py</code></td>
+<td style="text-align:left"><code>_heartbeat_manager</code></td>
+<td style="text-align:left"><code>storage_type=&quot;redis&quot;</code></td>
+</tr>
+<tr>
+<td style="text-align:left">TaskReclaimer</td>
+<td style="text-align:left"><code>worker/reclaimer.py</code></td>
+<td style="text-align:left"><code>_reclaimer</code></td>
+<td style="text-align:left"><code>storage_type=&quot;redis&quot;</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Coordinator</td>
+<td style="text-align:left"><code>distributed/coordinator.py</code></td>
+<td style="text-align:left"><code>_coordinator</code></td>
+<td style="text-align:left"><code>storage_type=&quot;redis&quot;</code>；<strong>已实例化但未接线</strong>：真实提交走 TaskDispatcher，其 <code>_select_node</code>/<code>rebalance</code>/<code>handle_node_failure</code> 为占位实现</td>
+</tr>
+<tr>
+<td style="text-align:left">DeadLetterQueue</td>
+<td style="text-align:left"><code>queue/dead_letter.py</code></td>
+<td style="text-align:left"><code>_dead_letter</code></td>
+<td style="text-align:left">Redis + <code>enable_dead_letter</code>（默认开启）；已注入 WorkerPool 与 Reclaimer</td>
+</tr>
+<tr>
+<td style="text-align:left">MetricsCollector / HealthChecker / Reporter</td>
+<td style="text-align:left"><code>monitor/</code></td>
+<td style="text-align:left"><code>_metrics</code> 等</td>
+<td style="text-align:left">对应 enable 配置</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>二、TaskPool 装配解剖：构造十步 + 启动八步</h2>
+<p>TaskPool 的设计是典型的 <strong>Facade + 两阶段生命周期</strong>：构造阶段只组装对象图（纯内存操作，不碰事件循环）；启动阶段才在专用线程里创建事件循环并拉起全部异步组件。</p>
+<h3>2.1 构造阶段：10 类组件依次初始化 🔧</h3>
+<p>真实源码 <code>TaskPool.__init__</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/api/task_pool.py">api/task_pool.py:52-146</a>）的装配顺序：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 摘录自 task_pool.py __init__（顺序即依赖顺序）</span>
+<span class="hljs-variable language_">self</span>._config = config <span class="hljs-keyword">or</span> TaskPoolConfig()
+
+<span class="hljs-comment"># 1. 执行器（默认 executor 或用户函数，经 ExecutorFactory 包装）</span>
+<span class="hljs-variable language_">self</span>._executor = <span class="hljs-variable language_">self</span>._init_executor(executor)
+
+<span class="hljs-comment"># 2. 存储：一次调用同时产出 TaskRepository + QueueRepository</span>
+<span class="hljs-variable language_">self</span>._task_repo, <span class="hljs-variable language_">self</span>._queue_repo = <span class="hljs-variable language_">self</span>._init_storage()
+
+<span class="hljs-comment"># 3. 锁管理器（memory / redis 两种后端）</span>
+<span class="hljs-variable language_">self</span>._lock_manager = <span class="hljs-variable language_">self</span>._init_lock()
+
+<span class="hljs-comment"># 4. 事件总线（此后所有组件共享同一实例）</span>
+<span class="hljs-variable language_">self</span>._event_bus = EventBus()
+
+<span class="hljs-comment"># 5. 等待管理器</span>
+<span class="hljs-variable language_">self</span>._future_manager = FutureManager()
+
+<span class="hljs-comment"># 6. 队列调度器（内存 heap 或 Redis ZSET，由 QueueRepository 决定）</span>
+<span class="hljs-variable language_">self</span>._queue_scheduler = QueueScheduler(
+    queue_repo=<span class="hljs-variable language_">self</span>._queue_repo,
+    max_size=<span class="hljs-variable language_">self</span>._config.queue_max_size
+)
+
+<span class="hljs-comment"># 7. 生命周期管理器（含任务缓存）</span>
+<span class="hljs-variable language_">self</span>._lifecycle = TaskLifecycleManager(
+    task_repo=<span class="hljs-variable language_">self</span>._task_repo, event_bus=<span class="hljs-variable language_">self</span>._event_bus)
+
+<span class="hljs-comment"># 8. 分发器（提交入口，node_id 打标）</span>
+<span class="hljs-variable language_">self</span>._dispatcher = TaskDispatcher(
+    lifecycle_manager=<span class="hljs-variable language_">self</span>._lifecycle,
+    queue_scheduler=<span class="hljs-variable language_">self</span>._queue_scheduler,
+    node_id=<span class="hljs-variable language_">self</span>._config.node_id)
+
+<span class="hljs-comment"># 9. Worker 池 + 监督者 + 重试参数</span>
+<span class="hljs-variable language_">self</span>._worker_pool = WorkerPool(...)          <span class="hljs-comment"># executor/repo/queue/event/lock/lifecycle</span>
+<span class="hljs-variable language_">self</span>._worker_pool.set_retry_config(max_retries=..., retry_delay=...)
+<span class="hljs-variable language_">self</span>._supervisor = WorkerSupervisor(<span class="hljs-variable language_">self</span>._worker_pool)
+
+<span class="hljs-comment"># 10. 仅 Redis 模式：节点管理/心跳/死信队列/回收器/协调器</span>
+<span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._config.storage_type == <span class="hljs-string">&quot;redis&quot;</span> <span class="hljs-keyword">and</span> <span class="hljs-variable language_">self</span>._config.redis_url:
+    <span class="hljs-variable language_">self</span>._init_distributed_components()
+</code></pre>
+<p>注意第 10 步只在 <strong>Redis 存储</strong> 下执行（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/api/task_pool.py">task_pool.py:134</a>）：内存与 SQLite 模式<strong>没有</strong>心跳、回收器、协调器——&quot;单机模式无分布式组件&quot;是刻意的分层，不是遗漏。其中死信队列在 <code>enable_dead_letter=True</code>（默认）时创建，并注入 WorkerPool 与 Reclaimer（见 6.3 节）。</p>
+<h3>2.2 线程模型：同步 API 背后有一个独立事件循环 🔧</h3>
+<p>这是理解 NeoTask 一切行为的关键。<code>start()</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/api/task_pool.py">task_pool.py:310-367</a>）不在调用方线程跑 asyncio，而是：</p>
+<pre class="hljs"><code><span class="hljs-keyword">def</span> <span class="hljs-title function_">start</span>(<span class="hljs-params">self</span>) -&gt; <span class="hljs-literal">None</span>:
+    <span class="hljs-comment"># 创建独立的事件循环线程</span>
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">run_loop</span>():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        <span class="hljs-variable language_">self</span>._loop = loop
+        loop.run_until_complete(start_components())   <span class="hljs-comment"># 拉起组件</span>
+        loop.run_forever()                            <span class="hljs-comment"># 常驻</span>
+
+    <span class="hljs-variable language_">self</span>._loop_thread = threading.Thread(target=run_loop, daemon=<span class="hljs-literal">True</span>)
+    <span class="hljs-variable language_">self</span>._loop_thread.start()
+    <span class="hljs-comment"># 轮询等待 _loop 就绪，5 秒超时抛 RuntimeError</span>
+</code></pre>
+<p>由此产生三个推论（后文故障实战会用到）：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>提交方线程 ≠ 执行方线程</strong>。任何线程调用 <code>pool.submit()</code> 都会走 <code>run_coroutine_threadsafe(coro, self._loop)</code> 把协程投递到后台循环执行（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/api/task_pool.py">task_pool.py:300-306</a>）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>主线程可以安全阻塞等待</strong>，同步 <code>wait_for_result</code> 不会卡死执行循环。</p>
+</li>
+<li class="lvl-3">
+<p><strong><code>asyncio.run()</code> 包不住的坑</strong>：如果用户代码运行在某个事件循环内（如 FastAPI），TaskPool 的&quot;线程+自带循环&quot;模型依然独立工作——但若在未 <code>start()</code> 时调用任何 API，会得到 <code>RuntimeError: TaskPool not started. Call start() first.</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/api/task_pool.py">task_pool.py:303</a>）。部分 API 内部有 <code>_ensure_running()</code> 兜底自动 start（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/api/task_pool.py">task_pool.py:295-298</a>），这也是&quot;任务偶尔自启动&quot;的源码级原因。</p>
+</li>
+</ol>
+<h3>2.3 启动顺序：组件的严格依赖序 🔧</h3>
+<p>后台线程的 <code>start_components()</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/api/task_pool.py">task_pool.py:343-374</a>）按依赖序拉起：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">顺序</th>
+<th style="text-align:left">组件</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">1</td>
+<td style="text-align:left"><code>event_bus.start()</code></td>
+<td style="text-align:left">总线先行，后续组件的事件才有接收方</td>
+</tr>
+<tr>
+<td style="text-align:center">2</td>
+<td style="text-align:left"><code>queue_scheduler.start()</code></td>
+<td style="text-align:left">内存模式下启动 DelayedQueue 的内部调度循环</td>
+</tr>
+<tr>
+<td style="text-align:center">3</td>
+<td style="text-align:left"><code>worker_pool.start()</code></td>
+<td style="text-align:left">启动预取器 + 全部 worker 协程</td>
+</tr>
+<tr>
+<td style="text-align:center">4</td>
+<td style="text-align:left"><code>supervisor.start()</code></td>
+<td style="text-align:left">监督者开始周期健康检查</td>
+</tr>
+<tr>
+<td style="text-align:center">5</td>
+<td style="text-align:left"><code>node_manager.start()</code></td>
+<td style="text-align:left">仅 Redis 模式，注册节点</td>
+</tr>
+<tr>
+<td style="text-align:center">6</td>
+<td style="text-align:left"><code>heartbeat_manager.start()</code></td>
+<td style="text-align:left">仅 Redis 模式，上报心跳 + 监控死节点</td>
+</tr>
+<tr>
+<td style="text-align:center">7</td>
+<td style="text-align:left"><code>reclaimer.start()</code></td>
+<td style="text-align:left">仅 Redis 模式，启动回收循环与锁扫描器</td>
+</tr>
+<tr>
+<td style="text-align:center">8</td>
+<td style="text-align:left"><code>metrics.start()</code></td>
+<td style="text-align:left">仅 <code>enable_metrics=True</code>（默认），启动系统指标采样循环</td>
+</tr>
+<tr>
+<td style="text-align:center">9</td>
+<td style="text-align:left"><code>reporter_manager.start()</code></td>
+<td style="text-align:left">仅 <code>enable_reporter=True</code>，默认关闭</td>
+</tr>
+</tbody>
+</table>
+<p>对应地，<code>shutdown()</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/api/task_pool.py">task_pool.py:395-471</a>）是<strong>逆向优雅关闭</strong>：先 <code>queue_scheduler.disable()</code> 停止接收新任务，<code>graceful=True</code> 时 <code>wait_until_empty(timeout)</code> 等队列清空，然后依次停 回收器 → 心跳 → 节点管理 → 关闭死信队列 → 监督者 → Worker（带超时强杀）→ 队列 → 上报器 → 指标收集 → 事件总线，最后关闭存储连接并<strong>捕获 “different loop” 异常</strong>（存储对象可能与调用方共用循环导致关闭冲突）。</p>
+<h3>2.4 为什么这么设计</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">问题</th>
+<th style="text-align:left">答案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">为什么不直接在 <code>__init__</code> 启动组件？</td>
+<td style="text-align:left">门面 API 需要支持&quot;先建对象、后决定何时跑&quot;，也避免 import 即产生线程；同时让 <code>submit()</code> 自动 <code>_ensure_running()</code> 成为可能</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么要独立线程 + 独立事件循环？</td>
+<td style="text-align:left">要让 <code>submit()</code> / <code>wait_for_result()</code> 是<strong>线程安全同步方法</strong>——这是&quot;嵌入式调度器&quot;的核心卖点：任意线程池代码可直接调用，无需手动管理 loop</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么事件总线最先启动？</td>
+<td style="text-align:left"><code>task.created</code> 等事件在 submit 时即发出，若总线未启动，早期事件会丢失；总线先行的代价是 <code>start()</code> 之前提交的任务事件全部不可达</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么 Worker 启动在队列之后？</td>
+<td style="text-align:left">Worker 一启动就进入取任务循环，队列必须已可服务；预取器在 Worker 之前启动，避免首批空转</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>三、提交链路：提交 → 调度→ 任务 → 入队</h2>
+<h3>3.1 一次提交的完整旅程 🔧</h3>
+<p>真实提交路径（同步方法 <code>submit</code> → <code>run_coroutine_threadsafe(submit_async)</code> → <code>TaskDispatcher.dispatch</code> → <code>TaskLifecycleManager.create_task</code> → <code>QueueScheduler.push</code>）：</p>
+<pre class="mermaid">sequenceDiagram
+    participant U as 任意线程
+    participant TP as TaskPool.submit()
+    participant D as TaskDispatcher.dispatch()
+    participant L as LifecycleManager.create_task()
+    participant R as TaskRepository
+    participant Q as QueueScheduler.push()
+    participant EB as EventBus
+
+    U-&gt;&gt;TP: submit(data, task_id?, priority?, delay?, ttl?)
+    TP-&gt;&gt;TP: _ensure_running()（未启动则自动 start）
+    TP-&gt;&gt;D: 通过线程桥投递协程
+    D-&gt;&gt;D: priority 归一化为 TaskPriority 枚举
+    D-&gt;&gt;L: create_task(data, task_id, priority, node_id, ttl)
+    L-&gt;&gt;L: task_id 缺省则生成；查重已存在抛 TaskAlreadyExistsError
+    L-&gt;&gt;R: repo.save(task)（PENDING 落库）
+    L-&gt;&gt;EB: 发布 task.created（载荷 task.to_dict()）
+    D-&gt;&gt;Q: delay&gt;0 ? schedule_delayed() : push()
+    Q-&gt;&gt;Q: 延迟任务进 DelayedQueue；否则进 PriorityQueue
+    TP--&gt;&gt;U: 返回 task_id
+</pre>
+<h3>3.2 dispatch()：提交的真正入口 🔧</h3>
+<p><code>TaskDispatcher.dispatch</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/core/dispatcher.py">core/dispatcher.py:37-85</a>）做三件事：<strong>归一化优先级、创建任务记录、按 delay 选择入队路径</strong>。</p>
+<pre class="hljs"><code><span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">dispatch</span>(<span class="hljs-params">self, data, task_id=<span class="hljs-literal">None</span>,
+                   priority=TaskPriority.NORMAL, delay=<span class="hljs-number">0</span>, ttl=<span class="hljs-number">3600</span></span>) -&gt; <span class="hljs-built_in">str</span>:
+    <span class="hljs-comment"># 1. 整数优先级转枚举（越界会抛 ValueError）</span>
+    priority_enum = TaskPriority(priority) <span class="hljs-keyword">if</span> <span class="hljs-built_in">isinstance</span>(priority, <span class="hljs-built_in">int</span>) <span class="hljs-keyword">else</span> priority
+
+    <span class="hljs-comment"># 2. 创建任务（存在性检查/事件/缓存都在这里）</span>
+    task = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lifecycle.create_task(
+        data=data, task_id=task_id, priority=priority_enum,
+        node_id=<span class="hljs-variable language_">self</span>._node_id, ttl=ttl)
+
+    <span class="hljs-comment"># 3. 入队：延迟任务走 schedule_delayed，其余走 push</span>
+    <span class="hljs-keyword">if</span> delay &gt; <span class="hljs-number">0</span>:
+        <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._queue.schedule_delayed(task.task_id, priority_enum.value, delay)
+    <span class="hljs-keyword">else</span>:
+        <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._queue.push(task.task_id, priority_enum.value)
+    <span class="hljs-keyword">return</span> task.task_id
+</code></pre>
+<p>关键语义：<strong>create_task 是入队前的硬前置</strong>——它做存在性检查（重复 task_id 抛 <code>TaskAlreadyExistsError</code>，与存储后端无关）、先落库再发事件；<strong>入队失败时任务记录不删除，而是被标记 FAILED 并抛 <code>QueueFullError</code></strong>（详见 3.4）。</p>
+<h3>3.3 create_task 与生命周期管理器的缓存层 🔧</h3>
+<p><code>TaskLifecycleManager</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/core/lifecycle.py">core/lifecycle.py</a>）是全部状态变更的唯一入口，内部结构是<strong>存储接口 + 事件总线 + 二级缓存字典</strong>三件套。</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>get_task()</code>（86-101 行）：先查缓存，未命中读存储并回填缓存；所有状态方法基于 <code>get_task</code> 拿到<strong>最新对象</strong>后再改字段、<code>save</code>、更新缓存、发事件。</p>
+</li>
+<li class="lvl-2">
+<p><code>create_task()</code>（46-84 行）：查重 → 构造 Task → <code>repo.save</code> → 缓存 → <strong>发 <code>task.created</code>，载荷为 <code>task.to_dict()</code></strong>（82 行）。注意：<code>to_dict()</code> 会把 <code>data</code>/<code>result</code> 序列化成 JSON 字符串——<strong>即使 data 是纯 Python 对象、即使存储是内存后端</strong>，只要对象不可 JSON 序列化，这一行就会抛异常（内存模式的序列化坑不在存储层，而在这里）。</p>
+</li>
+<li class="lvl-2">
+<p><code>update_status()</code>（103-134 行）：通用改状态 + 发 <code>task.status_changed</code>（含 old/new），但它<strong>不做状态机校验</strong>——任何状态到任何状态都允许，真正的状态守门在 start_task/complete_task/fail_task 内部。</p>
+</li>
+</ul>
+<h3>3.4 队列满：入队失败即抛 QueueFullError 🔧</h3>
+<p><code>QueueScheduler.push</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/queue/queue_scheduler.py">queue/queue_scheduler.py:77-99</a>）的真实行为：</p>
+<pre class="hljs"><code><span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">push</span>(<span class="hljs-params">self, task_id, priority, delay=<span class="hljs-number">0</span></span>) -&gt; <span class="hljs-built_in">bool</span>:
+    <span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._disabled:
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>                       <span class="hljs-comment"># 停服期间一律拒绝</span>
+    current_size = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>.size()
+    <span class="hljs-keyword">if</span> current_size &gt;= <span class="hljs-variable language_">self</span>._max_size:
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>                       <span class="hljs-comment"># 队列满 → 返回 False</span>
+    <span class="hljs-keyword">if</span> delay &gt; <span class="hljs-number">0</span>:
+        <span class="hljs-keyword">return</span> <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._delayed_queue.schedule(task_id, priority, delay)
+    <span class="hljs-keyword">return</span> <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._priority_queue.push(task_id, priority)
+</code></pre>
+<p><code>TaskDispatcher.dispatch</code> 会检查返回值：<code>push</code> 返回 False（队列满或调度器已 disabled）时，先把已落库的 PENDING 任务 <code>fail_task</code> 置为 FAILED，再抛 <strong><code>QueueFullError</code></strong>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/core/dispatcher.py">core/dispatcher.py:86-93</a>）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 core/dispatcher.py —— 真实源码摘录</span>
+<span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> queued:
+    reason = <span class="hljs-string">&quot;queue is disabled&quot;</span> <span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._queue.is_disabled <span class="hljs-keyword">else</span> <span class="hljs-string">&quot;queue is full&quot;</span>
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lifecycle.fail_task(
+        task.task_id, <span class="hljs-string">f&quot;Failed to enqueue task: <span class="hljs-subst">{reason}</span>&quot;</span>, allow_pending=<span class="hljs-literal">True</span>
+    )
+    <span class="hljs-keyword">raise</span> QueueFullError(<span class="hljs-variable language_">self</span>._queue.max_size)
+</code></pre>
+<p><code>QueueFullError</code> 从 <code>neotask</code> 顶层导出（<code>neotask.common.exceptions.QueueFullError</code>），携带队列容量。于是：</p>
+<blockquote>
+<p>队列满（默认 <code>queue_max_size=10000</code>）或调度器已 disabled 时，提交方会收到 <code>QueueFullError</code>，任务被标记 FAILED——<strong>不再出现&quot;记录为 PENDING 但永远无人消费&quot;的幽灵任务</strong>。</p>
+</blockquote>
+<p><strong>生产对策</strong>：捕获 <code>QueueFullError</code> 做退避重试或上游限流；也可以用 <code>pool.get_queue_size()</code> 提前感知水位。延迟到期转正时若优先队列已满，<code>_on_delayed_task_ready</code> 会记录一条 error 日志（<code>Delayed task {id} could not be promoted: priority queue is full</code>）。</p>
+<hr>
+<h2>四、队列系统：内存 heapq 与 Redis ZSET 的两套实现</h2>
+<p>QueueScheduler 是 <code>PriorityQueue + DelayedQueue</code> 的门面，但结构细节容易记错——DelayedQueue 是独立的内存堆 + 自循环（不是 Redis 结构），满队列由上层抛 <code>QueueFullError</code>。真实实现如下。</p>
+<h3>4.1 内存模式：两个 heapq 堆 🔧</h3>
+<p>内存模式下 <code>QueueRepository</code> 不用（storage 的 memory 模块只负责 TaskRepository），<strong>PriorityQueue 与 DelayedQueue 各自持有堆</strong>，它们都被包在 <code>queue_scheduler.py</code> 的 QueueScheduler 门面后面：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>PriorityQueue</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/queue/priority_queue.py">queue/priority_queue.py:34-52</a>）：堆元素是 <code>(priority, sequence, task_id)</code> 三元组，<code>sequence</code> 自增保证同优先级 FIFO；<code>push</code> 时 <code>delay &gt; 0</code> 直接返回 False（延迟任务禁止直入优先队列）；满队列同样返回 False。</p>
+</li>
+<li class="lvl-2">
+<p><code>DelayedQueue</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/queue/delayed_queue.py">queue/delayed_queue.py</a>）：堆元素是 <code>(execute_time, priority, task_id)</code>，另存 <code>task_id -&gt; DelayedTask</code> 字典；<strong>自带调度循环</strong>，每 <code>check_interval=0.1s</code> 醒来一次，把 <code>heap[0][0] &lt;= now</code> 的到期任务全部弹出并回调；<code>cancel</code> 采用&quot;重建堆&quot;的延迟删除策略；回调兼容两种签名，回调异常会被<strong>记录为 error 日志</strong>（<code>Delayed task {id} callback failed: {e}</code>），不再静默吞掉。</p>
+</li>
+</ul>
+<pre class="hljs"><code><span class="hljs-comment"># 摘录自 queue_scheduler.start / _on_delayed_task_ready（真实组合方式）</span>
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">start</span>(<span class="hljs-params">self</span>) -&gt; <span class="hljs-literal">None</span>:
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._delayed_queue.start(<span class="hljs-variable language_">self</span>._on_delayed_task_ready)
+
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">_on_delayed_task_ready</span>(<span class="hljs-params">self, task_id, priority, data=<span class="hljs-literal">None</span></span>) -&gt; <span class="hljs-literal">None</span>:
+    <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> <span class="hljs-variable language_">self</span>._disabled:
+        <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._priority_queue.push(task_id, priority)   <span class="hljs-comment"># 到期转正</span>
+</code></pre>
+<p>即：<strong>延迟任务到期后由 DelayedQueue 的循环唤醒，再推入 PriorityQueue 等待 Worker</strong>——不存在&quot;延迟队列直接派发给 Worker&quot;的路径。</p>
+<h3>4.2 Redis 模式：两个 ZSET + 原子弹出脚本 🔧</h3>
+<p>Redis 模式的队列实现在 <code>storage/redis.py</code> 的 <code>RedisQueueRepository</code>（215-378 行）：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>queue:priority</code>：member=task_id，score=priority（<strong>score 越小越先出队</strong>）；</p>
+</li>
+<li class="lvl-2">
+<p><code>queue:delayed</code>：member=task_id，score=execute_at 时间戳；</p>
+</li>
+<li class="lvl-2">
+<p><code>pop()</code>（265-286 行）：先 <code>ZRANGEBYSCORE(queue:delayed, 0, now)</code> 取到期任务 → <code>ZREM</code> → 以 <strong>score=5</strong> 写入 <code>queue:priority</code>（280 行），再用 Lua 脚本原子执行 <code>ZRANGE + ZREM</code> 弹出队首。</p>
+</li>
+</ul>
+<p>⚠️ <strong>两个值得注意的实现细节</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>到期转正的 score 是写死的 5</strong>，而 <code>TaskPriority</code> 的四档取值是 0-3——延迟任务转正后排在所有四档即时任务之后（score 越大越靠后），即**“延时到期任务优先级恒低于任意新提交的即时任务”**。这是源码行为，设计意图疑似为&quot;延迟任务不该插队&quot;；注意它与内存模式 DelayedQueue 的到期回调（按原 priority 推入优先队列）行为不同。</p>
+</li>
+<li class="lvl-3">
+<p>pop 用 <code>ZRANGE ... 0 count-1</code> + <code>ZREM</code>，两个命令包在 <strong>Lua 脚本</strong>里原子执行（238-252 行），避免多节点同时取到同一任务——这是去中心化消费的正确性基础，也解释了为什么直接调 <code>QueueRepository.pop</code> 是安全的。</p>
+</li>
+</ol>
+<h3>4.3 QueueScheduler 门面的完整职责 🔧</h3>
+<p><code>QueueScheduler</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/queue/queue_scheduler.py">queue/queue_scheduler.py</a>）对外提供约 20 个方法，除 push/pop 外还包括：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>pause/resume</code>、<code>disable/enable</code>：<strong>队列级开关</strong>。disable 后 push 一律返回 False（shutdown 第一步就是 disable，见 2.3 节）；pause 由底层队列实现决定是否生效。</p>
+</li>
+<li class="lvl-2">
+<p><code>wait_until_empty(timeout)</code>：优雅关闭时轮询等待队列清空。</p>
+</li>
+<li class="lvl-2">
+<p><code>pop(count)</code> / <code>pop_with_priority(count)</code>：前者只返回 task_id 列表，后者连优先级一起返回（Worker 直连模式用前者，预取器用后者）。</p>
+</li>
+<li class="lvl-2">
+<p><code>get_stats()</code> / <code>get_detailed_stats()</code>：上报给监控组件的水位数据。</p>
+</li>
+</ul>
+<h3>4.4 为什么这么设计</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">问题</th>
+<th style="text-align:left">答案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">为什么内存和 Redis 都选堆/ZSET 而不是 List？</td>
+<td style="text-align:left">优先级队列需要&quot;按分数取最小&quot;的有序语义，List 只能 FIFO；ZSET 天然支持 score 排序 + 原子范围删除，内存 heapq 是同构实现，切换后端不必改上层</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么延迟队列单独一个堆 + 独立循环，而不是塞进时间轮？</td>
+<td style="text-align:left"><code>scheduler/time_wheel.py</code> 的 TimeWheel 由 TaskScheduler 装配，<code>enable_time_wheel=True</code> 时才承接 <code>submit_delayed</code>/<code>submit_at</code>；默认（未启用时间轮）下延时任务直接进 TaskPool 的 DelayedQueue——它服务于<strong>一次性</strong>延时任务，100ms 粒度的最小堆足够且实现最简</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么到期转正写死 score=5？</td>
+<td style="text-align:left">源码注释未给出理由。可观察到的效果：延迟到期任务不会挤压即时任务——但这与&quot;延迟任务原本的优先级&quot;语义冲突，属 v1.0.2 的隐蔽行为，多延迟场景需实测排队顺序</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>五、执行链路：Worker 循环的八个阶段</h2>
+<p>Worker 是纯 asyncio 协程，没有线程池——并发上限由 <code>asyncio.Semaphore(worker_concurrency)</code> 控制（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/worker/pool.py">worker/pool.py:72</a>），预取器负责把&quot;共享队列竞争&quot;变成&quot;本地缓冲消费&quot;。</p>
+<h3>5.1 worker_loop：两种取任务模式 🔧</h3>
+<p><code>_worker_loop</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/worker/pool.py">worker/pool.py:178-236</a>）根据是否启用预取器走两条分支：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>预取模式</strong>（默认）：<code>task_id = await self._prefetcher.get(timeout=0.1)</code>，从本地缓冲取一个；取到则 <code>create_task(_execute_task)</code> 并登记到 <code>_running_tasks</code>。</p>
+</li>
+<li class="lvl-2">
+<p><strong>直接模式</strong>：<code>task_ids = await self._queue.pop(self._prefetch_size)</code>，一批取出再逐个创建执行协程。</p>
+</li>
+</ul>
+<p>两种模式的空转退避都是 <code>sleep_time = min(0.01 * (1 &lt;&lt; min(consecutive_empty, 6)), 0.5)</code>（203、223 行）——空转等待指数增长但封顶 0.5 秒，避免空队列时 CPU 空转。</p>
+<h3>5.2 _execute_task：一次执行的完整生命 🔧</h3>
+<p><code>_execute_task</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/worker/pool.py">worker/pool.py:238-346</a>）是任务执行的<strong>心脏</strong>，八步流程：</p>
+<pre class="hljs"><code><span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">_execute_task</span>(<span class="hljs-params">self, worker_id: <span class="hljs-built_in">int</span>, task_id: <span class="hljs-built_in">str</span></span>) -&gt; <span class="hljs-literal">None</span>:
+    <span class="hljs-keyword">async</span> <span class="hljs-keyword">with</span> <span class="hljs-variable language_">self</span>._semaphore:                       <span class="hljs-comment"># ① 并发闸门</span>
+        task = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lifecycle.get_task(task_id)
+        <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> task:
+            <span class="hljs-keyword">return</span>                                    <span class="hljs-comment"># ② 任务不存在直接返回</span>
+
+        <span class="hljs-keyword">if</span> task.status != TaskStatus.PENDING:
+            <span class="hljs-keyword">return</span>                                    <span class="hljs-comment"># ③ 状态守门：非 PENDING 拒绝执行</span>
+
+        <span class="hljs-comment"># ④ 分布式锁（仅 lock_manager 存在时；内存模式无锁直通）</span>
+        lock_key = <span class="hljs-string">f&quot;task:<span class="hljs-subst">{task_id}</span>&quot;</span>
+        lock_acquired = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lock_manager.acquire(lock_key, ttl=<span class="hljs-number">30</span>)
+        <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> lock_acquired:
+            <span class="hljs-keyword">return</span>                                    <span class="hljs-comment"># 抢锁失败：任务留在 PENDING，等别的 Worker</span>
+        watchdog = WatchDog(<span class="hljs-variable language_">self</span>._lock_manager, interval_ratio=<span class="hljs-number">0.3</span>)
+        <span class="hljs-keyword">await</span> watchdog.start(lock_key, ttl=<span class="hljs-number">30</span>)        <span class="hljs-comment"># 看门狗自动续期</span>
+
+        <span class="hljs-comment"># ⑤ 标记 RUNNING（start_task 内部会再次校验 PENDING；node_id 来自 TaskPoolConfig）</span>
+        success = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lifecycle.start_task(task_id, <span class="hljs-variable language_">self</span>._node_id)
+        <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> success:
+            ...                                       <span class="hljs-comment"># 释放锁后返回</span>
+
+        <span class="hljs-comment"># ⑥ 执行（带 task_timeout 时包 wait_for）</span>
+        result = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._executor.execute(task.data)
+
+        <span class="hljs-comment"># ⑦ 成功路径：直接 complete，无二次状态检查</span>
+        <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lifecycle.complete_task(task_id, result)
+        ...
+    <span class="hljs-keyword">finally</span>:
+        <span class="hljs-comment"># ⑧ 无论成败：停看门狗、释放锁、更新 Worker 统计</span>
+        <span class="hljs-keyword">if</span> watchdog:
+            <span class="hljs-keyword">await</span> watchdog.stop(lock_key)
+        <span class="hljs-keyword">if</span> lock_acquired <span class="hljs-keyword">and</span> <span class="hljs-variable language_">self</span>._lock_manager:
+            <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lock_manager.release(lock_key)
+</code></pre>
+<h3>5.3 锁与看门狗的真实参数 🔧</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>锁 TTL 硬编码 <strong>30 秒</strong>（<a href="http://pool.py:268">pool.py:268</a>），来自 <code>acquire(lock_key, ttl=30)</code>——不是配置项，<code>lock_timeout</code> 配置只影响 LockFactory 构造的锁实例默认 TTL，执行路径写死 30。</p>
+</li>
+<li class="lvl-2">
+<p>看门狗（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/lock/watchdog.py">lock/watchdog.py</a>）续期间隔为 <code>interval = max(0.5, ttl * interval_ratio)</code>，<code>interval_ratio=0.3</code> → 每 9 秒 <code>extend(key, ttl)</code> 一次；续期失败立即停止（117-119 行），但<strong>不会中断任务</strong>——任务继续跑，锁到期后被别人抢走，出现双重执行窗口（这正是<a href="distributed-lock.html">分布式锁</a>篇排障场景一的根源）。</p>
+</li>
+<li class="lvl-2">
+<p>内存模式 <code>lock_manager</code> 为 MemoryLock（无锁语义直通），因此<strong>单机重复执行防护实际由状态守门完成</strong>，分布式锁只在 Redis 锁后端下生效。</p>
+</li>
+</ul>
+<h3>5.4 失败与重试：线性退避，不是指数退避 🔧</h3>
+<p><code>_handle_task_failure</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/worker/pool.py">worker/pool.py:372-413</a>）：</p>
+<pre class="hljs"><code><span class="hljs-keyword">if</span> retry_count &lt; <span class="hljs-variable language_">self</span>._max_retries:
+    new_retry_count = retry_count + <span class="hljs-number">1</span>
+    <span class="hljs-comment"># 状态复位为 PENDING、记录错误、清空 node_id，落库</span>
+    task.retry_count = new_retry_count
+    task.status = TaskStatus.PENDING
+    task.node_id = <span class="hljs-string">&quot;&quot;</span>
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._task_repo.save(task)
+
+    <span class="hljs-comment"># 重新入队：delay = retry_delay × 新重试次数（线性！）</span>
+    delay = <span class="hljs-variable language_">self</span>._retry_delay * new_retry_count
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._queue.push(task.task_id, task.priority.value, delay=delay)
+
+    <span class="hljs-comment"># 发 task.retry 事件</span>
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._event_bus.emit(TaskEvent(<span class="hljs-string">&quot;task.retry&quot;</span>, task_id, {...}))
+<span class="hljs-keyword">else</span>:
+    <span class="hljs-comment"># 超过 max_retries → fail_task（要求 RUNNING 状态才允许）</span>
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lifecycle.fail_task(task_id, error_msg)
+</code></pre>
+<p>要点：<strong>重试延迟 = retry_delay × 重试次数（第 1 次重试 1×、第 2 次 2×……）</strong>，线性递增而非指数退避；每次重试都会复位 PENDING 再重新入队（走 DelayedQueue），所以重试任务不会饿死即时任务……不会——它到期后转正 score=5，反而排在所有即时任务之后（见 4.2）。</p>
+<p>执行超时（<code>asyncio.TimeoutError</code>）与业务异常（<code>Exception</code>）走同一条失败路径，但<strong>任务级取消（CancelledError）例外</strong>：直接 <code>cancel_task</code> 落库为 CANCELLED 后返回（317-320 行）——不消耗重试次数。</p>
+<h3>5.5 状态守门的两个漏洞（v1.0.2 事实） 🔧</h3>
+<ol>
+<li class="lvl-3">
+<p><strong>RUNNING 任务的 cancel 会被覆盖</strong>：cancel 语义只对 PENDING 可靠。Worker 在 ③ 处检查 PENDING 后即不再看状态；若任务在 RUNNING 期间被外部 <code>cancel()</code>（lifecycle 允许取消 PENDING/RUNNING），执行成功后 <code>complete_task</code> 依然把状态写成 SUCCESS（⑤→⑦ 无二次检查）。<code>cancel()</code> 的&quot;成功&quot;只是把 Future 置为 error 通知等待方，<strong>落库状态随后被执行结果覆盖</strong>。</p>
+</li>
+<li class="lvl-3">
+<p><strong>complete_task/fail_task 只认 RUNNING</strong>：<code>complete_task</code> 要求当前状态恰为 RUNNING（lifecycle.py:169-171），否则返回 False 并告警——这意味着重试链路中若任务仍处于 PENDING（如被回收器抢先复位），旧 Worker 的成功回调会静默失效，而任务会再被消费一次（配合回收器缺陷，见 6.2 节）。</p>
+</li>
+</ol>
+<h3>5.6 Supervisor：整池重启的&quot;监督者&quot; 🔧</h3>
+<p><code>WorkerSupervisor</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/worker/supervisor.py">worker/supervisor.py</a>）默认配置：健康检查间隔 30s、Worker 挂起判定 300s、自动重启开启、最多 5 次、重启间隔 5s。<code>_health_check</code>（74-90 行）只做两件事：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>挂起检查</strong>：某 Worker <code>is_busy</code> 且超过 <code>worker_timeout=300s</code> 无 <code>last_active</code> 更新 → 判为 timeout；</p>
+</li>
+<li class="lvl-2">
+<p><strong>失败率检查</strong>：完成数+失败数 &gt; 10 且失败率 &gt; 50% → 判为 high_failure_rate。</p>
+</li>
+</ul>
+<p>而 <code>_restart_worker</code>（92-115 行）的&quot;重启&quot;是<strong>停掉整个 WorkerPool 再启动</strong>（<code>await self._worker_pool.stop(graceful=False)</code> + <code>start()</code>）——不是重启单个 Worker！多 Worker 场景下，一个坏 Worker 会拖垮全池并中断所有在途任务。配合&quot;任务执行期间重启 = 在途任务变成孤儿&quot;的连锁反应，这是 Redis 多节点部署时必须知晓的行为。</p>
+<hr>
+<h2>六、调度与回收链路：Redis 模式</h2>
+<h3>6.1 TaskScheduler：默认走 PeriodicTaskManager 的扫描式调度 🔧</h3>
+<p><code>TaskScheduler</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/api/task_scheduler.py">api/task_scheduler.py</a>）与 TaskPool 同线程模型（自带守护线程 + 事件循环）。关键事实：默认配置（<code>enable_periodic_manager=True</code>）下，<code>submit_interval</code> / <code>submit_cron</code> / <code>cancel_periodic</code> 等全部委托给 <strong>PeriodicTaskManager</strong>（task_scheduler.py:476-485、540-549），它是 TaskScheduler.start 时以 <code>storage=None</code>（纯内存）创建的实例；仅当该管理器未启用时，才回落本地 <code>_periodic_tasks</code> 字典分支。调度线程的 <code>_scheduler_loop</code>（225 行起）每隔 <code>scan_interval=1.0s</code> 扫描，从 <code>periodic_manager.list_tasks()</code> 取任务，到期则执行（含 missed 补偿计算），每次执行都是独立 task_id。</p>
+<p>要点：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>延时单次任务（<code>submit_delayed</code> 等）：未启用时间轮时直接调 <code>pool.submit(delay=...)</code>，进 DelayedQueue 后由 4.1 节的 0.1s 循环驱动，与扫描循环无关。</p>
+</li>
+<li class="lvl-2">
+<p><strong>时间轮已接线</strong>（<code>enable_time_wheel</code> 默认 False）：启用后，<code>submit_delayed</code> / <code>submit_at</code> 会走 <code>_submit_delayed_via_time_wheel</code>——<strong>先 <code>create_pending_task_async</code> 落库为 PENDING</strong>，再 <code>time_wheel.add_task</code>；到期回调只对仍为 PENDING 的任务 <code>enqueue_task_async</code>（等待期间被取消/删除的任务不会补跑）。延迟超出量程（槽位数 × max_rounds × tick，默认 tick=1.0 → 约 6000s）时 <code>add_task</code> 返回 <code>-1</code>，自动退回延时队列（<code>retry_async</code>）。<code>shutdown()</code> 会把未到期任务 <code>drain()</code> 出来、按重算后的剩余延迟交还延时队列，避免内存轮里的任务被静默丢弃。</p>
+</li>
+<li class="lvl-2">
+<p>周期任务实例由 PeriodicTaskManager 保存在<strong>进程内存</strong>（storage=None）——<strong>进程重启后周期任务全部丢失</strong>（尚未做周期任务持久化，<code>periodic.py</code> 的 <code>_load_tasks</code>/<code>_save_task</code> 仍是 TODO）。</p>
+</li>
+<li class="lvl-2">
+<p>扫描循环的粒度是 1 秒（非事件驱动），含 missed 补偿逻辑，周期实例与单次任务完全解耦。</p>
+</li>
+</ul>
+<h3>6.2 回收链路：HeartbeatManager 与 TaskReclaimer 🔧</h3>
+<p>Redis 模式下存在<strong>两条已闭环的回收路径</strong>，都被装配进 TaskPool（task_pool.py:157-218）：</p>
+<p><strong>路径 A：HeartbeatManager 死节点回收</strong>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/core/heartbeat.py">core/heartbeat.py</a>）</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>节点注册：与 <code>NodeManager</code> <strong>共用同一份注册表</strong>——<code>HSET neotask:node:{node_id}</code>（node_id/status/last_heartbeat）+ <code>SADD neotask:nodes</code>，键 TTL 为 <code>timeout × 2</code>（默认 40s）。两个组件互相可见，不会各维护一套节点视图；</p>
+</li>
+<li class="lvl-2">
+<p>心跳上报：每 <code>interval=5s</code> 更新 <code>last_heartbeat</code>（并续期 TTL）；</p>
+</li>
+<li class="lvl-2">
+<p>死节点检测：<code>_monitor_loop</code> 每 <code>cleanup_interval=30s</code> 扫描 <code>neotask:nodes</code>，<code>status != stopped</code> 且 <code>now - last_heartbeat &gt; timeout(20s)</code> 判死；</p>
+</li>
+<li class="lvl-2">
+<p>任务回收：<code>_reclaim_node_tasks</code> 经 <strong><code>TaskRepository.list_by_status(RUNNING)</code></strong> 取任务（不直接操作任务键），<strong>只回收 <code>task.node_id == 死亡节点 id</code> 的任务</strong>；对每个命中任务：置 PENDING、清 node_id、清 started_at、写 <code>error = &quot;Reclaimed from dead node {id}&quot;</code>、<code>repo.save</code>，然后 <code>queue_scheduler.push</code> 重新入队；若 <code>push</code> 失败（队列满/禁用），警告并改判 FAILED。最后把死亡节点状态标为 <code>reclaimed</code>。任务状态全程走 <code>TaskRepository</code>，对 memory/sqlite/redis 三种后端都成立。</p>
+</li>
+</ul>
+<p><strong>路径 B：TaskReclaimer 周期回收</strong>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/worker/reclaimer.py">worker/reclaimer.py</a>）</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>每 <code>interval=30s</code> 执行一次 <code>_execute_reclaim</code>：先回收超时任务，再回收孤儿任务（僵尸锁由内部 LockScanner 的独立 60s 循环处理）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>超时回收</strong>：取全部 RUNNING 任务，<code>elapsed &gt; task.ttl</code>（注意是任务自己的 ttl，默认 3600s，不是执行超时 task_timeout）→ 走 <code>_reclaim_single_task</code>：未超最大重试则复位 PENDING + retry_count+1 + <code>delay=retry_delay × 新次数</code> 重新入队 + <strong>释放锁</strong> + 发 <code>task.reclaimed</code> 事件；入队被拒则置 FAILED + 投递死信；超限则置 FAILED + 投递死信；</p>
+</li>
+<li class="lvl-2">
+<p><strong>孤儿回收</strong>：活跃节点来自 <code>NodeManager.get_active_nodes()</code>；<code>_get_active_nodes</code> 在<strong>未配置节点管理器时返回 <code>None</code></strong>（不是空集合），此时整轮孤儿回收被跳过并打印一次性警告 <code>Orphan reclaim skipped: no node manager configured, cannot determine active nodes</code>。配置了节点管理器时，<code>_reclaim_orphan_tasks</code> 会<strong>跳过 <code>node_id == 本节点</code> 的任务</strong>，只回收 <code>node_id</code> 非空且不在活跃集合中的 RUNNING 任务。</p>
+</li>
+<li class="lvl-2">
+<p>node_id 口径统一：任务打标（Dispatcher）、Worker 标记（<code>start_task(task_id, self._node_id)</code>）、NodeManager 注册、回收跳过共用同一个 <code>TaskPoolConfig.node_id</code>（默认主机名），不存在两套命名错位。</p>
+</li>
+</ul>
+<blockquote>
+<p>✅ 结论：判死 → 回收 → 重入队 → 重执行 的链条已闭环，且不会误伤正常执行的任务（本节点跳过 + 存活节点跳过）。<strong>唯一仍需注意的既有事实</strong>：<code>NodeManager._health_check_loop</code> 内的 <code># TODO: 处理故障节点</code> 尚未实现——那是节点管理器自身的健康巡检，与上面两条回收路径无关。</p>
+</blockquote>
+<h3>6.3 DeadLetterQueue：已接线的死信 🔧</h3>
+<p><code>queue/dead_letter.py</code> 提供完整的死信能力（<code>DeadLetterReason</code> 枚举、<code>send/get/list/replay/remove/count/clear</code>、<code>set_alert_callback</code>），且已接入主链路。Redis + <code>enable_dead_letter=True</code>（默认）时，TaskPool 创建实例并<strong>注入 WorkerPool</strong>（<code>set_dead_letter_queue</code>）与 <strong>Reclaimer</strong>（构造参数 <code>dead_letter</code>）；默认 <code>max_size=10000</code>、<code>ttl=604800</code>（7 天）：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>Worker 侧</strong>：<code>_handle_task_failure</code> 在&quot;重试次数耗尽&quot;或&quot;重试重新入队被拒&quot;时调用 <code>_send_to_dead_letter</code>（原因 <code>MAX_RETRIES</code>）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>回收器侧</strong>：<code>_reclaim_single_task</code> 在&quot;回收重试超限&quot;或&quot;重试入队被拒&quot;时调用 <code>_send_to_dead_letter</code>，原因按回收原因映射（TIMEOUT→<code>TIMEOUT</code>、ORPHAN→<code>ORPHANED</code>、CANCELLED→<code>CANCELLED</code>，未知→<code>BUSINESS_ERROR</code>）；</p>
+</li>
+<li class="lvl-2">
+<p>未注入死信实例（内存/SQLite 形态或关闭开关）时，投递方法静默跳过，不报错。</p>
+</li>
+</ul>
+<hr>
+<h2>七、事件总线与订阅关系</h2>
+<h3>7.1 EventBus 的两种订阅 🔧</h3>
+<p><a href="https://github.com/neopen/neotask/blob/main/src/neotask/event/bus.py">event/bus.py</a> 提供 <code>subscribe(event_type, handler)</code>（按类型订阅）与 <code>subscribe_global(handler)</code>（全量订阅）两种方式。TaskPool 内部的订阅关系（task_pool.py:258-293）：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">事件</th>
+<th style="text-align:left">订阅方</th>
+<th style="text-align:left">动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code>task.completed</code></td>
+<td style="text-align:left">FutureManager</td>
+<td style="text-align:left"><code>complete(task_id, result)</code> 唤醒等待方</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>task.failed</code></td>
+<td style="text-align:left">FutureManager</td>
+<td style="text-align:left"><code>complete(task_id, error=...)</code> 让等待方抛异常</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>task.cancelled</code></td>
+<td style="text-align:left">FutureManager</td>
+<td style="text-align:left"><code>complete(task_id, error=&quot;Task cancelled&quot;)</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>task.created/started/completed/failed/cancelled/retry</code></td>
+<td style="text-align:left">MetricsCollector</td>
+<td style="text-align:left">指标计数（<code>enable_metrics=True</code> 时）；<code>task.created</code> 载荷带 <code>priority</code>，<code>task.retry</code> 载荷带 <code>retry_count</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>task.reclaimed</code></td>
+<td style="text-align:left">内置 handler</td>
+<td style="text-align:left">仅 debug 日志（监控用途）</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>task.progress</code></td>
+<td style="text-align:left"><strong>无发布方</strong></td>
+<td style="text-align:left"><code>_update_task_progress</code>（<a href="http://pool.py:381">pool.py:381</a>）全库无调用点（断链）</td>
+</tr>
+</tbody>
+</table>
+<p>注意事件流与生命周期是<strong>两条独立的通知通道</strong>：状态落库走 lifecycle → repository，通知走 lifecycle → future_manager（<code>complete</code> 是直接方法调用，181、220、245 行）+ event_bus（事件）。<code>wait_for_result</code> 依赖的是 FutureManager 通道而非事件通道，因此事件断链不影响等待语义——但<strong>监控/告警若依赖 <code>task.progress</code> 事件，将永远收不到数据</strong>（<code>task.retry</code> 已由指标采集器订阅，可正常收到）。</p>
+<h3>7.2 为什么这么设计</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">问题</th>
+<th style="text-align:left">答案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">为什么等待不直接轮询存储？</td>
+<td style="text-align:left">Future 通道是内存 asyncio.Event，O(1) 唤醒、零存储压力；等待方在任务终态前只挂起不空转。<code>wait_for_task</code> 在超时/异常后还会二次读状态兜底（lifecycle.py:291-306），防 Future 漏通知</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么已有 Future 通道还要事件总线？</td>
+<td style="text-align:left">事件总线面向<strong>外部扩展</strong>（用户可订阅任务生命周期做审计/通知），且支持多订阅者；Future 是 1:1 的内部机制。代价是双通道状态必须保持一致——目前 <code>task.progress</code> 仍是唯一未接线的环节</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么任务进度事件被实现却没接线？</td>
+<td style="text-align:left"><code>_update_task_progress</code> 已具备&quot;更新存储 + 发事件&quot;的完整逻辑，但 Worker 执行路径从未调用它——进度功能是&quot;预留接口&quot;，需要用户自行在 executor 中通过其他方式实现进度上报</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>八、存储层三个后端的真实实现</h2>
+<p>三个后端的实现差异集中在键格式、状态索引与写策略上，Redis 部分最容易记错——它是 <code>SET+JSON</code> 而非 HSET。</p>
+<h3>8.1 三后端真实行为对照 🔧</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">维度</th>
+<th style="text-align:left">Memory</th>
+<th style="text-align:left">SQLite</th>
+<th style="text-align:left">Redis</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">TaskRepository</td>
+<td style="text-align:left"><code>dict[task_id, Task]</code></td>
+<td style="text-align:left"><code>tasks</code> 表 14 列</td>
+<td style="text-align:left"><code>SET task:{id}</code> JSON 字符串</td>
+</tr>
+<tr>
+<td style="text-align:left">写策略</td>
+<td style="text-align:left"><code>deepcopy(task)</code>（memory.py:29-37）</td>
+<td style="text-align:left"><code>INSERT OR REPLACE</code></td>
+<td style="text-align:left">直接覆盖 SET</td>
+</tr>
+<tr>
+<td style="text-align:left">状态索引</td>
+<td style="text-align:left">无（dict 全量）</td>
+<td style="text-align:left"><code>idx_tasks_status</code> 索引</td>
+<td style="text-align:left"><code>SET status:{value}</code>（SADD/SREM 维护；<code>save</code> 会先移除旧状态的集合成员再加入新状态）</td>
+</tr>
+<tr>
+<td style="text-align:left">读</td>
+<td style="text-align:left">内存命中</td>
+<td style="text-align:left">SELECT 全列</td>
+<td style="text-align:left">GET + <code>json.loads</code></td>
+</tr>
+<tr>
+<td style="text-align:left">跨进程</td>
+<td style="text-align:left">不支持</td>
+<td style="text-align:left">单写进程约束</td>
+<td style="text-align:left">支持（唯一分布式后端）</td>
+</tr>
+<tr>
+<td style="text-align:left">队列</td>
+<td style="text-align:left">两个内存堆</td>
+<td style="text-align:left">同 Memory（单进程）</td>
+<td style="text-align:left">ZSET <code>queue:priority</code>/<code>queue:delayed</code></td>
+</tr>
+<tr>
+<td style="text-align:left">锁</td>
+<td style="text-align:left">MemoryLock（空实现）</td>
+<td style="text-align:left">MemoryLock</td>
+<td style="text-align:left">RedisLock（SET NX + 看门狗续期）</td>
+</tr>
+<tr>
+<td style="text-align:left">分布式组件</td>
+<td style="text-align:left">不装配</td>
+<td style="text-align:left">不装配</td>
+<td style="text-align:left">全装配（6.2 节）；HeartbeatManager/Reclaimer 经 TaskRepository 读写任务</td>
+</tr>
+</tbody>
+</table>
+<h3>8.2 SQLite 表结构（14 列，含进度字段） 🔧</h3>
+<pre class="hljs"><code><span class="hljs-keyword">CREATE TABLE</span> IF <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">EXISTS</span> tasks (
+    task_id          TEXT <span class="hljs-keyword">PRIMARY KEY</span>,
+    data             TEXT <span class="hljs-keyword">NOT NULL</span>,      <span class="hljs-comment">-- JSON 字符串</span>
+    status           TEXT <span class="hljs-keyword">NOT NULL</span>,
+    priority         <span class="hljs-type">INTEGER</span> <span class="hljs-keyword">NOT NULL</span>,
+    node_id          TEXT <span class="hljs-keyword">NOT NULL</span>,
+    retry_count      <span class="hljs-type">INTEGER</span>,            <span class="hljs-comment">-- 默认 0</span>
+    ttl              <span class="hljs-type">INTEGER</span>,            <span class="hljs-comment">-- 默认 3600</span>
+    created_at       TEXT <span class="hljs-keyword">NOT NULL</span>,
+    started_at       TEXT,
+    completed_at     TEXT,
+    <span class="hljs-keyword">result</span>           TEXT,               <span class="hljs-comment">-- JSON 字符串</span>
+    error            TEXT,
+    progress         <span class="hljs-type">REAL</span> <span class="hljs-keyword">DEFAULT</span> <span class="hljs-number">0.0</span>,   <span class="hljs-comment">-- 进度字段确实存在</span>
+    progress_message TEXT <span class="hljs-keyword">DEFAULT</span> <span class="hljs-string">&#x27;&#x27;</span>     <span class="hljs-comment">-- （storage/sqlite.py:32-49）</span>
+);
+<span class="hljs-keyword">CREATE</span> INDEX IF <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">EXISTS</span> idx_tasks_status  <span class="hljs-keyword">ON</span> tasks(status);
+<span class="hljs-keyword">CREATE</span> INDEX IF <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">EXISTS</span> idx_tasks_priority <span class="hljs-keyword">ON</span> tasks(priority);
+</code></pre>
+<p>表结构关键点：共 14 列，含 <code>progress</code> / <code>progress_message</code> 两列；索引为 status、priority 双索引（<code>idx_tasks_status</code> / <code>idx_tasks_priority</code>）。</p>
+<h3>8.3 与任务模型的映射约束 🔧</h3>
+<p><code>Task.to_dict()</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/models/task.py">models/task.py</a>）是全部存储与事件共用的序列化通道：<code>data</code>/<code>result</code> 在 to_dict 时 <code>json.dumps</code> 成字符串；<code>from_dict</code> 反向解析。因此：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>data/result 必须是 JSON 可序列化对象</strong>（dict/list/str/数字/None + 组合），datetime 等对象需 <code>default=str</code> 兜底（存储层 save 时带 <code>default=str</code>，但 create_task 的事件载荷 to_dict 调用不带兜底——见 3.3 节）；</p>
+</li>
+<li class="lvl-2">
+<p>内存后端虽然只做 <code>deepcopy</code> 不落盘，但<strong>创建路径仍会序列化</strong>（事件载荷），所以&quot;内存模式可以传任意对象&quot;是误解；</p>
+</li>
+<li class="lvl-2">
+<p>Task 的 <code>progress</code>/<code>progress_message</code> 字段存在，SQLite/Redis 均支持读写，只是执行链路从不更新（7.1 节断链）。</p>
+</li>
+</ul>
+<hr>
+<h2>九、实现现状速查表</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">#</th>
+<th style="text-align:left">易混淆点</th>
+<th style="text-align:left">当前真实情况</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">1</td>
+<td style="text-align:left">是否存在 WorkflowEngine/DAG 编排层</td>
+<td style="text-align:left">不存在；顶层入口只有 TaskPool/TaskScheduler（外加未导出的 TaskEngine）</td>
+</tr>
+<tr>
+<td style="text-align:center">2</td>
+<td style="text-align:left">是否存在 <code>DistributedLock</code> 类</td>
+<td style="text-align:left">无此类；锁体系为 lock/ 包：base+memory+redis+factory+watchdog+scanner</td>
+</tr>
+<tr>
+<td style="text-align:center">3</td>
+<td style="text-align:left">Redis 任务存储格式</td>
+<td style="text-align:left"><code>SET task:{id}</code> 存 JSON 字符串，无 EXPIRE；另有 SADD 状态索引</td>
+</tr>
+<tr>
+<td style="text-align:center">4</td>
+<td style="text-align:left">任务状态机</td>
+<td style="text-align:left">只有 pending/running/success/failed/cancelled/scheduled 六态；创建即 PENDING，延迟任务在 DelayedQueue 等待而非 SCHEDULED 状态</td>
+</tr>
+<tr>
+<td style="text-align:center">5</td>
+<td style="text-align:left">SQLite tasks 表列数</td>
+<td style="text-align:left">14 列（含 progress/progress_message）+ status/priority 双索引</td>
+</tr>
+<tr>
+<td style="text-align:center">6</td>
+<td style="text-align:left">队列满时的行为</td>
+<td style="text-align:left"><code>dispatcher</code> 检测 push 返回 False → <code>fail_task</code> + 抛 <code>QueueFullError</code>（不再是&quot;幽灵任务&quot;）</td>
+</tr>
+<tr>
+<td style="text-align:center">7</td>
+<td style="text-align:left">WorkerPool 消费模型</td>
+<td style="text-align:left">Semaphore + TaskPrefetcher（本地队列在预取器内部，参数由 prefetch_size 派生；无优先级过滤字段）</td>
+</tr>
+<tr>
+<td style="text-align:center">8</td>
+<td style="text-align:left">分布式锁续期间隔</td>
+<td style="text-align:left">WatchDog <code>interval_ratio=0.3</code>：TTL30s → 每 9s 续期；无锁管理器时直通</td>
+</tr>
+<tr>
+<td style="text-align:center">9</td>
+<td style="text-align:left">重试退避</td>
+<td style="text-align:left">线性：<code>delay = retry_delay × 重试次数</code>（<a href="http://pool.py:433">pool.py:433</a>、<a href="http://reclaimer.py:358">reclaimer.py:358</a>）</td>
+</tr>
+<tr>
+<td style="text-align:center">10</td>
+<td style="text-align:left">等待通知链路</td>
+<td style="text-align:left">Future 通道 + 事件总线双通道；等待先查终态再挂 Future，异常后二次检查兜底</td>
+</tr>
+<tr>
+<td style="text-align:center">11</td>
+<td style="text-align:left">调度循环细节</td>
+<td style="text-align:left"><code>_scheduler_loop</code> 按 scan_interval=1s 扫描；EXEC ID 为 <code>EXEC_{task_id}_{run_count}_{uuid4hex4}</code></td>
+</tr>
+<tr>
+<td style="text-align:center">12</td>
+<td style="text-align:left">回收链路</td>
+<td style="text-align:left">Redis 模式装配 HeartbeatManager + Reclaimer，两条路径均已闭环，失败任务自动投递死信（6.2/6.3 节）；<code>NodeManager._health_check_loop</code> 的 <code># TODO: 处理故障节点</code> 仍未实现</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>十、故障场景实战</h2>
+<h3>场景 1：节点失联后任务被其他节点接管，出现重复执行 📝</h3>
+<p><strong>现象</strong>：Redis 模式多节点，B 节点因网络抖动超过 20s 未上报心跳（或进程卡死），其 RUNNING 任务被其他节点判为孤儿回收，任务被再次执行——而 B 节点其实还在跑，出现重复执行。</p>
+<p><strong>根因链</strong>：B 的 node_id 落入 <code>NodeManager.get_active_nodes()</code> 之外 → 其他节点的 Reclaimer 判定 <code>task.node_id not in active_nodes</code> → 复位 PENDING + 重新入队 + 释放锁（<a href="http://reclaimer.py">reclaimer.py</a> <code>_reclaim_single_task</code>）；同时 HeartbeatManager 判死后也会按 <code>task.node_id == 死亡节点</code> 回收同一批任务。B 若仍存活且持有锁，新执行者 acquire 失败；但若 B 的锁已因抖动过期，则新执行者会真的再跑一遍。</p>
+<p><strong>对策</strong>：① <strong>业务侧幂等是唯一根治手段</strong>（框架只保证&quot;调度层面不双跑&quot;）；② 调大 <code>heartbeat_timeout</code> 与锁 TTL 可降低网络抖动引发的误判概率；③ 不要把本节点任务误判的风险寄托在&quot;回收器不会动本地任务&quot;上——本地跳过只保护同一进程内的回收器，跨节点仍以心跳为准。</p>
+<h3>场景 2：同步函数把事件循环堵死 📝</h3>
+<p><strong>现象</strong>：默认 <code>executor_type=ASYNC</code>，提交同步函数任务后，全部任务排队不执行，心跳与监控也停止刷新。</p>
+<p><strong>根因</strong>：<code>ExecutorFactory</code> 对同步函数做静默包装（task_pool.py:223-226 包装为 <code>async def wrapped_executor</code>，但<strong>包内是同步调用</strong>）——在 ASYNC 模式下该包装协程运行于 TaskPool 的事件循环线程，同步阻塞直接卡死整个循环（包括 DelayedQueue 的 0.1s 调度循环与心跳上报）。</p>
+<p><strong>对策</strong>：同步函数显式配置 <code>executor_type=&quot;thread&quot;</code>（或 “process”），让 ExecutorFactory 交给 <code>ThreadPoolExecutor</code>/进程执行器；异步函数保持默认。判断当前生效执行器：提交一个含 <code>time.sleep(2)</code> 的同步任务，若期间其他任务全部停滞即命中本场景。</p>
+<h3>场景 3：wait_for_result 永不返回、队列里却堆满 PENDING 📝</h3>
+<p><strong>现象</strong>：调用方捕获/吞掉了入队异常（或使用批量提交未逐条检查），随后拿到一个 task_id 去 <code>wait_for_result</code> 却一直挂起；<code>get_stats()</code> 显示队列积压，任务状态停留 PENDING。</p>
+<p><strong>排查顺序</strong>：① 先确认任务是否真实入队：队列满时 <code>submit</code> 会抛 <code>QueueFullError</code> 并已把任务置 FAILED（3.4 节），若未捕获该异常需在日志里核对，同时检查 <code>queue_max_size</code> 是否被调小；② 再看 Worker 是否存活：执行器类型与任务函数不匹配（场景 2）时队列只进不出；③ 最后核对 <code>max_retries</code>：重试任务 delay 线性增长 + 转正 score=5（4.2 节），大量重试任务会排在即时任务之后造成&quot;饿死&quot;假象——用 <code>get_stats()</code> 区分 failed 与 pending 的数量比。</p>
+<h3>场景 4：重启后周期任务全部消失 📝</h3>
+<p><strong>现象</strong>：进程重启后，<code>submit_interval</code>/<code>submit_cron</code> 注册的任务不再触发，也没有任何报错。</p>
+<p><strong>根因</strong>：周期任务实例只存在于 TaskScheduler 的内存字典，由 1s 扫描循环驱动（6.1 节）；v1.0.2 未做周期任务持久化。延时单次任务（submit_delayed）因走 TaskPool 的存储层，SQLite/Redis 模式下重启后仍在队列中，行为与周期任务不一致。</p>
+<p><strong>对策</strong>：周期任务用外部配置驱动（启动时重新注册）；或自行持久化周期注册表并在启动时恢复；同时把 <code>next_run</code> 的漂移容忍写进业务（扫描粒度 1s 意味着触发时刻存在 ±1s 抖动）。</p>
+<hr>
+<h2>版本与验证说明</h2>
+<p>本文属于项目文档而不是永久不变的 API 契约。以下情况发生时，应重新核对源码或发布说明：</p>
+<ol>
+<li class="lvl-3">
+<p>项目版本升级，尤其是公开 API、配置模型、存储实现和工作流发生变化；</p>
+</li>
+<li class="lvl-3">
+<p>本文中的默认值、性能数据或示例依赖外部服务版本；</p>
+</li>
+<li class="lvl-3">
+<p>运行环境与本文案例不同，例如 Python 版本、Redis/数据库版本、模型供应商或操作系统不同。</p>
+</li>
+</ol>
+<p>如果你要把本文内容用于生产环境，请优先使用仓库当前版本的 README、源码、测试和 Release 记录进行最终确认。</p>
+<h2>相关链接</h2>
+<p><a href="index.html">返回首页</a></p>
+<p><strong>入门与参考</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="quickstart.html">快速上手</a> - 5 分钟入门</p>
+</li>
+<li class="lvl-2">
+<p><a href="api-reference.html">API 参考</a> - 完整 API 文档</p>
+</li>
+<li class="lvl-2">
+<p><a href="configuration.html">配置说明</a> - 配置参数详解</p>
+</li>
+<li class="lvl-2">
+<p><a href="best-practices.html">最佳实践</a> - 生产环境建议</p>
+</li>
+</ul>
+<p><strong>架构与设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="architecture.html">架构设计</a> - 整体架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="core-features.html">核心实现</a> - 功能设计</p>
+</li>
+<li class="lvl-2">
+<p><a href="evolution.html">版本演进</a> - 演进历程</p>
+</li>
+</ul>
+<p><strong>分布式核心</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="decentralization.html">去中心化</a> - 对等架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="failure-recovery.html">故障恢复</a> - 高可用保障</p>
+</li>
+<li class="lvl-2">
+<p><a href="prefetch.html">预取机制</a> - 高吞吐性能</p>
+</li>
+<li class="lvl-2">
+<p><a href="distributed-lock.html">分布式锁</a> - 并发控制</p>
+</li>
+</ul>
+<p><strong>存储与监控</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="persistence.html">持久化</a> - 多存储后端</p>
+</li>
+<li class="lvl-2">
+<p><a href="priority-queue.html">优先级</a> - 优先级队列</p>
+</li>
+<li class="lvl-2">
+<p><a href="delayed-tasks.html">延时任务</a> - 时间轮 + Redis 持久化</p>
+</li>
+<li class="lvl-2">
+<p><a href="monitoring.html">节点监控</a> - 可观测性</p>
+</li>
+</ul>
+<p><strong>资源</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/neotask">GitHub</a> - 源代码仓库</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://task.helpenx.com">NeoTask 官网</a> - 官方网站</p>
+</li>
+</ul>
+
+      </article>
+    </main>
+  </div>
+  <footer>
+    <a href="https://task.helpenx.com" target="_blank" rel="noopener">NeoTask 官网</a>·
+    <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>·
+    <a href="index.html">文档中心</a>
+    <div style="margin-top:6px">© 2026 helpenx.com · 文档基线以文中标注版本对应的源码为准</div>
+  </footer>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</body>
+</html>

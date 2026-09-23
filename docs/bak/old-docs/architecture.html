@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>架构设计 - NeoTask</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        .arch-mermaid {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            text-align: center;
+            overflow-x: auto;
+        }
+        .design-pattern {
+            background: rgba(168, 85, 247, 0.1);
+            border-left: 3px solid #a855f7;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .design-pattern h4 {
+            color: #a855f7;
+            margin-bottom: 0.5rem;
+        }
+        .version-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+        .version-table th, .version-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .version-table th {
+            background: rgba(168, 85, 247, 0.2);
+            font-weight: 600;
+        }
+        .version-badge {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .version-badge.completed { background: #10b981; }
+        .version-badge.current { background: #f59e0b; }
+        .version-badge.planned { background: #6b7280; }
+        .mermaid {
+            background: #1e1e2e;
+            border-radius: 12px;
+            padding: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <div class="logo-icon"><i class="fas fa-tasks"></i></div>
+                <span>NeoTask</span>
+            </div>
+            <div class="menu-btn" id="menuBtn"><i class="fas fa-bars"></i></div>
+            <div class="nav-links" id="navLinks">
+                <a href="../index.html">首页</a>
+                <a href="quickstart.html" class="active">文档</a>
+                <a href="https://pengline.cn/2026/03/0ec8d887591a40c98be76645d33a2f23" class="blog-btn">
+                    <i class="fas fa-blog"></i>
+                    博客
+                </a>
+                <a href="https://github.com/neopen/neotask" class="github-btn">
+                    <i class="fab fa-github"></i> GitHub
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="docs-container">
+        <aside class="docs-sidebar">
+            <h4>文档导航</h4>
+            <ul>
+                <li><a href="quickstart.html">快速上手</a></li>
+                <li><a href="api-reference.html">API 参考</a></li>
+                <li><a href="configuration.html">配置说明</a></li>
+                <li><a href="architecture.html" class="active">架构设计</a></li>
+            </ul>
+            <div class="toc">
+                <h4>本页目录</h4>
+                <ul>
+                    <li><a href="#overview">架构概览</a></li>
+                    <li><a href="#layers">分层架构</a></li>
+                    <li><a href="#dataflow">数据流</a></li>
+                    <li><a href="#design-patterns">设计模式</a></li>
+                    <li><a href="#evolution">架构演进</a></li>
+                    <li><a href="#tech-stack">技术选型</a></li>
+                </ul>
+            </div>
+        </aside>
+
+        <main class="docs-content">
+            <h1>架构设计</h1>
+            <p>NeoTask 是一个嵌入式通用任务池组件，以库的形式被其他应用引用，通过函数调用方式使用。</p>
+
+            <h2 id="overview">架构概览</h2>
+            <p>NeoTask 采用分层架构设计，模块化清晰，易于扩展。</p>
+
+            <div class="arch-mermaid">
+                <pre class="mermaid">
+graph TB
+    subgraph User["👤 用户应用层"]
+        APP[用户代码]
+    end
+    
+    subgraph Entry["🚪 API 入口层"]
+        TP[TaskPool<br/>即时任务]
+        TS[TaskScheduler<br/>定时任务]
+        WF[WorkflowEngine<br/>工作流编排]
+    end
+    
+    subgraph Core["⚙️ 核心层"]
+        DIS[Dispatcher<br/>任务分发]
+        LM[LifecycleManager<br/>生命周期管理]
+        FM[FutureManager<br/>异步等待]
+        EB[EventBus<br/>事件总线]
+    end
+    
+    subgraph Queue["📊 队列层"]
+        PQ[PriorityQueue<br/>优先级队列]
+        DQ[DelayedQueue<br/>延迟队列]
+    end
+    
+    subgraph Worker["🔧 Worker 层"]
+        WP[WorkerPool<br/>Worker池]
+        SP[Supervisor<br/>监督者]
+    end
+    
+    subgraph Orchestration["🔄 编排层"]
+        DAG[DAGEngine<br/>依赖解析]
+        COND[ConditionEvaluator<br/>条件分支]
+        PARA[ParallelExecutor<br/>并行执行]
+    end
+    
+    subgraph Storage["💾 存储层"]
+        MEM[(Memory)]
+        SQL[(SQLite)]
+        RDS[(Redis)]
+    end
+    
+    APP --> TP & TS & WF
+    TS --> TP
+    WF --> TP & DAG & COND & PARA
+    
+    TP --> DIS
+    DIS --> LM & FM
+    TP --> PQ & DQ
+    WP --> PQ & DQ
+    WP --> LM & EB
+    
+    LM --> MEM & SQL & RDS
+    
+    subgraph External["外部依赖"]
+        PROM[Prometheus]
+        WEB[Web UI]
+    end
+    
+    EB --> PROM
+    EB --> WEB
+                </pre>
+            </div>
+
+            <h2 id="layers">分层架构详解</h2>
+
+            <div class="arch-mermaid">
+                <pre class="mermaid">
+flowchart LR
+    subgraph L1["入口层 v0.1/v0.3/v1.5"]
+        direction LR
+        A1[TaskPool<br/>即时任务]
+        A2[TaskScheduler<br/>定时任务]
+        A3[WorkflowEngine<br/>工作流]
+    end
+    
+    subgraph L2["核心层 v0.1/v0.2"]
+        direction LR
+        B1[Dispatcher]
+        B2[LifecycleManager]
+        B3[FutureManager]
+        B4[EventBus]
+    end
+    
+    subgraph L3["队列层 v0.1/v0.3"]
+        direction LR
+        C1[PriorityQueue]
+        C2[DelayedQueue]
+    end
+    
+    subgraph L4["Worker层 v0.1"]
+        direction LR
+        D1[WorkerPool]
+        D2[Supervisor]
+    end
+    
+    subgraph L5["编排层 v1.5"]
+        direction LR
+        E1[DAGEngine]
+        E2[ConditionEvaluator]
+        E3[ParallelExecutor]
+    end
+    
+    subgraph L6["存储层 v0.1/v0.4"]
+        direction LR
+        F1[Memory]
+        F2[SQLite]
+        F3[Redis]
+    end
+    
+    L1 --> L2 --> L3 --> L4 --> L5 --> L6
+                </pre>
+            </div>
+
+            <h3>API Layer</h3>
+            <p>提供统一的外观接口，简化使用复杂度。</p>
+            <ul>
+                <li><strong>TaskPool</strong> - 即时任务入口（v0.1），专注于立即执行的任务</li>
+                <li><strong>TaskScheduler</strong> - 定时任务入口（v0.3），专注于延时/周期任务</li>
+                <li><strong>WorkflowEngine</strong> - 工作流编排入口（v1.5），专注于DAG任务依赖</li>
+            </ul>
+
+            <h3>Core Layer</h3>
+            <p>核心业务逻辑层，负责任务生命周期管理。</p>
+            <ul>
+                <li><strong>Dispatcher</strong> - 任务分发器，接收任务并放入队列</li>
+                <li><strong>LifecycleManager</strong> - 任务生命周期管理，状态转换</li>
+                <li><strong>FutureManager</strong> - 异步等待管理，支持任务结果回调</li>
+                <li><strong>EventBus</strong> - 事件总线，解耦各模块（v0.2）</li>
+            </ul>
+
+            <h3>Queue & Worker Layer</h3>
+            <p>队列和 Worker 管理层，负责任务调度和执行。</p>
+            <ul>
+                <li><strong>PriorityQueue</strong> - 优先级队列，支持多级优先级</li>
+                <li><strong>DelayedQueue</strong> - 延迟队列，基于时间轮实现（v0.3）</li>
+                <li><strong>WorkerPool</strong> - Worker 池，并发控制</li>
+                <li><strong>Supervisor</strong> - 监督者，Worker 健康管理</li>
+            </ul>
+
+            <h3>Orchestration Layer</h3>
+            <p>任务编排层（v1.5），支持复杂工作流。</p>
+            <ul>
+                <li><strong>DAG Engine</strong> - DAG解析和依赖管理</li>
+                <li><strong>Condition Evaluator</strong> - 条件分支表达式求值</li>
+                <li><strong>ParallelExecutor</strong> - 并行执行器</li>
+            </ul>
+
+            <h3>Storage Layer</h3>
+            <p>存储抽象层，支持多种存储后端。</p>
+            <ul>
+                <li><strong>MemoryStorage</strong> - 内存存储，适合开发测试</li>
+                <li><strong>SQLiteStorage</strong> - SQLite 持久化，适合单机生产</li>
+                <li><strong>RedisStorage</strong> - Redis 存储，适合分布式部署（v0.4）</li>
+            </ul>
+
+            <h2 id="dataflow">数据流</h2>
+
+            <h3>即时任务数据流</h3>
+            <div class="arch-mermaid">
+                <pre class="mermaid">
+sequenceDiagram
+    participant User
+    participant Pool as TaskPool
+    participant LM as LifecycleManager
+    participant QS as QueueScheduler
+    participant WP as WorkerPool
+    participant FM as FutureManager
+    participant Storage as Storage
+
+    User->>Pool: submit(data, priority)
+    Pool->>LM: create_task()
+    LM->>Storage: 保存任务(PENDING)
+    LM-->>Pool: 返回 Task 对象
+    Pool->>QS: push(task_id, priority)
+    Pool->>FM: get(task_id)
+    Pool-->>User: 返回 task_id
+    
+    loop Worker 调度循环
+        WP->>QS: pop() 获取任务
+        WP->>LM: start_task(task_id)
+        WP->>Storage: 更新状态(RUNNING)
+        
+        alt 任务执行成功
+            WP->>WP: executor.execute(data)
+            WP->>LM: complete_task(result)
+            WP->>FM: complete(task_id, result)
+            WP->>Storage: 更新状态(SUCCESS)
+        else 任务执行失败
+            WP->>LM: fail_task(error)
+            WP->>FM: complete(task_id, error)
+            WP->>Storage: 更新状态(FAILED)
+            WP->>QS: push(重试入队)
+        end
+    end
+    
+    User->>Pool: wait_for_result(task_id)
+    Pool->>FM: wait()
+    FM-->>Pool: 返回结果
+    Pool-->>User: 任务结果
+                </pre>
+            </div>
+
+            <h3>工作流编排数据流</h3>
+            <div class="arch-mermaid">
+                <pre class="mermaid">
+sequenceDiagram
+    participant User
+    participant WF as WorkflowEngine
+    participant DAG as DAGEngine
+    participant Pool as TaskPool
+    participant Storage as Storage
+
+    User->>WF: submit_workflow(definition)
+    WF->>DAG: build(nodes)
+    DAG-->>WF: 验证通过
+    WF->>Storage: 保存工作流定义
+    WF-->>User: execution_id
+    
+    loop DAG 执行
+        WF->>DAG: get_ready_nodes(completed)
+        DAG-->>WF: ready_nodes
+        
+        par 并行执行
+            WF->>Pool: submit(node.task)
+            Pool-->>WF: task_id
+            WF->>Storage: 更新节点状态
+        end
+        
+        Pool->>WF: on_node_complete(node_id, result)
+        WF->>WF: evaluate_condition(node)
+        
+        alt 条件满足
+            WF->>WF: store_node_result()
+            WF->>DAG: mark_dependency_satisfied()
+        else 条件不满足
+            WF->>WF: skip_downstream_nodes()
+        end
+    end
+    
+    WF->>Storage: 更新工作流状态
+    WF-->>User: 工作流完成
+                </pre>
+            </div>
+
+            <h3>分布式锁时序图</h3>
+            <div class="arch-mermaid">
+                <pre class="mermaid">
+sequenceDiagram
+    participant Node1 as Node 1
+    participant Node2 as Node 2
+    participant Redis as Redis
+    participant WD as WatchDog
+
+    Node1->>Redis: SET lock:task:123 NX EX 30
+    Redis-->>Node1: OK (acquired)
+    
+    Node1->>WD: 启动看门狗
+    
+    loop 每 10 秒
+        WD->>Redis: GET lock:task:123
+        Redis-->>WD: Node1
+        WD->>Redis: EXPIRE lock:task:123 30
+        Redis-->>WD: 1 (续期成功)
+    end
+    
+    Node2->>Redis: SET lock:task:123 NX EX 30
+    Redis-->>Node2: NULL (获取失败)
+    Node2->>Node2: 等待或放弃
+    
+    Node1->>Node1: 任务执行完成
+    Node1->>Redis: DEL lock:task:123
+    Redis-->>Node1: 1 (释放成功)
+    
+    Node1->>WD: 停止看门狗
+                </pre>
+            </div>
+
+            <h2 id="design-patterns">设计模式</h2>
+
+            <div class="design-pattern">
+                <h4>Facade Pattern（外观模式）</h4>
+                <p>TaskPool、TaskScheduler、WorkflowEngine 提供统一的外观接口，封装底层复杂组件，简化使用。</p>
+            </div>
+
+            <div class="design-pattern">
+                <h4>Factory Pattern（工厂模式）</h4>
+                <p>StorageFactory、ExecutorFactory、LockFactory 根据配置创建相应的存储、执行器、锁实例。</p>
+            </div>
+
+            <div class="design-pattern">
+                <h4>Observer Pattern（观察者模式）</h4>
+                <p>EventBus 实现任务事件的发布订阅，支持自定义回调，解耦各模块（v0.2）。</p>
+            </div>
+
+            <div class="design-pattern">
+                <h4>Strategy Pattern（策略模式）</h4>
+                <p>多种存储策略（Memory、SQLite、Redis），可动态切换，满足不同场景需求。</p>
+            </div>
+
+            <div class="design-pattern">
+                <h4>Singleton Pattern（单例模式）</h4>
+                <p>锁管理器、事件总线等全局组件采用单例模式，确保唯一实例。</p>
+            </div>
+
+            <div class="design-pattern">
+                <h4>Builder Pattern（建造者模式）</h4>
+                <p>WorkflowDefinition 支持链式构建 DAG 工作流。</p>
+            </div>
+
+            <h2 id="evolution">架构演进路线图</h2>
+
+            <div class="arch-mermaid">
+                <pre class="mermaid">
+timeline
+    title NeoTask 架构演进路线图
+    
+    section v0.1
+        基础任务池 : 本地内存队列
+                   : 异步执行
+                   : 内存/SQLite存储
+                   
+    section v0.2
+        可观测性 : 事件总线
+                 : 指标收集
+                 : 健康检查
+                 
+    section v0.3
+        定时调度 : 延时队列
+                 : 周期任务
+                 : Cron表达式
+                 
+    section v0.4
+        分布式基础 : Redis共享队列
+                   : 分布式锁
+                   
+    section v0.5
+        性能优化 : 预取机制
+                 : 批量操作
+                 : 连接池优化
+
+    section v1.0
+        高可用保障 : 看门狗续期
+                   : 超时检测
+                   : 故障自动恢复
+
+    section v1.5
+        任务编排 : DAG工作流
+                 : 条件分支
+                 : 并行执行
+
+    section v2.0
+        企业级特性 : 独立Web UI
+                   : 多租户隔离
+                   : Prometheus集成
+                </pre>
+            </div>
+
+            <h3>版本演进总览</h3>
+            <table class="version-table">
+                <thead>
+                    <tr>
+                        <th>版本</th>
+                        <th>核心能力</th>
+                        <th>关键组件</th>
+                        <th>状态</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="version-badge completed">v0.1</span></td>
+                        <td>基础任务队列</td>
+                        <td>LifecycleManager, QueueScheduler, WorkerPool</td>
+                        <td>✅ 已完成</td>
+                    </tr>
+                    <tr>
+                        <td><span class="version-badge completed">v0.2</span></td>
+                        <td>可观测性</td>
+                        <td>EventBus, MetricsCollector</td>
+                        <td>✅ 已完成</td>
+                    </tr>
+                    <tr>
+                        <td><span class="version-badge completed">v0.3</span></td>
+                        <td>定时调度</td>
+                        <td>TaskScheduler, 延时队列, Cron</td>
+                        <td>✅ 已完成</td>
+                    </tr>
+                    <tr>
+                        <td><span class="version-badge current">v0.4</span></td>
+                        <td>分布式基础</td>
+                        <td>Redis 存储, 分布式锁</td>
+                        <td>🔄 进行中</td>
+                    </tr>
+                    <tr>
+                        <td><span class="version-badge planned">v0.5</span></td>
+                        <td>性能优化</td>
+                        <td>预取机制, 批量操作</td>
+                        <td>📋 计划中</td>
+                    </tr>
+                    <tr>
+                        <td><span class="version-badge planned">v1.0</span></td>
+                        <td>高可用保障</td>
+                        <td>看门狗, 超时检测, 故障恢复</td>
+                        <td>📋 计划中</td>
+                    </tr>
+                    <tr>
+                        <td><span class="version-badge planned">v1.5</span></td>
+                        <td>任务编排</td>
+                        <td>DAG引擎, 条件分支, 并行执行</td>
+                        <td>📋 计划中</td>
+                    </tr>
+                    <tr>
+                        <td><span class="version-badge planned">v2.0</span></td>
+                        <td>企业级</td>
+                        <td>Web UI, 多租户, Prometheus</td>
+                        <td>📋 计划中</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>各版本核心功能</h3>
+            <div class="arch-mermaid">
+                <pre class="mermaid">
+gitGraph
+    commit id: "v0.1 基础任务池"
+    branch v0.2
+    checkout v0.2
+    commit id: "v0.2 可观测性"
+    branch v0.3
+    checkout v0.3
+    commit id: "v0.3 定时调度"
+    branch v0.4
+    checkout v0.4
+    commit id: "v0.4 分布式基础"
+    branch v0.5
+    checkout v0.5
+    commit id: "v0.5 性能优化"
+    branch v1.0
+    checkout v1.0
+    commit id: "v1.0 高可用保障"
+    branch v1.5
+    checkout v1.5
+    commit id: "v1.5 任务编排"
+    branch v2.0
+    checkout v2.0
+    commit id: "v2.0 企业级特性"
+                </pre>
+            </div>
+
+            <h2 id="tech-stack">技术选型</h2>
+
+            <h3>核心框架</h3>
+            <table class="version-table">
+                <thead>
+                    <tr><th>组件</th><th>技术选型</th><th>说明</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>异步框架</td><td>asyncio</td><td>Python 原生异步支持</td></tr>
+                    <tr><td>存储</td><td>Memory / SQLite / Redis</td><td>多种存储后端，渐进式增强</td></tr>
+                    <tr><td>分布式锁</td><td>Redis SET NX / 看门狗</td><td>原子操作保证，支持自动续期</td></tr>
+                    <tr><td>队列</td><td>heapq / Sorted Set</td><td>优先级队列实现</td></tr>
+                    <tr><td>时间轮</td><td>Redis Sorted Set + 扫描器</td><td>延迟队列实现（v0.3）</td></tr>
+                    <tr><td>Web框架</td><td>FastAPI</td><td>Web UI 后端（v2.0）</td></tr>
+                    <tr><td>监控</td><td>Prometheus</td><td>指标暴露和集成（v2.0）</td></tr>
+                </tbody>
+            </table>
+
+            <h3>组件依赖关系图</h3>
+            <div class="arch-mermaid">
+                <pre class="mermaid">
+graph LR
+    subgraph External["外部"]
+        USER[用户代码]
+        EXEC[业务执行函数]
+    end
+    
+    subgraph Entry["入口层"]
+        POOL[TaskPool]
+        SCHED[TaskScheduler]
+        WORKFLOW[WorkflowEngine]
+    end
+    
+    subgraph Core["核心层"]
+        LM[LifecycleManager]
+        QS[QueueScheduler]
+        WP[WorkerPool]
+        FM[FutureManager]
+    end
+    
+    subgraph Internal["内部组件"]
+        EB[EventBus]
+        MC[MetricsCollector]
+        LF[LockFactory]
+        DQ[DelayedQueue]
+        PQ[PriorityQueue]
+    end
+    
+    subgraph Storage["存储层"]
+        MEM[Memory]
+        SQL[SQLite]
+        RDS[Redis]
+    end
+    
+    USER --> POOL
+    USER --> SCHED
+    USER --> WORKFLOW
+    SCHED --> POOL
+    WORKFLOW --> POOL
+    
+    POOL --> LM
+    POOL --> QS
+    POOL --> WP
+    POOL --> FM
+    
+    LM --> MEM
+    LM --> SQL
+    LM --> RDS
+    
+    QS --> DQ
+    QS --> PQ
+    
+    WP --> EB
+    WP --> MC
+    WP --> LF
+                </pre>
+            </div>
+
+            <h3>设计原则</h3>
+            <ul>
+                <li><strong>渐进式增强</strong> - 每个版本都是独立可用的完整产品</li>
+                <li><strong>向后兼容</strong> - 新版本不破坏旧版 API，存储格式支持平滑升级</li>
+                <li><strong>可观测性优先</strong> - 关键操作都有事件埋点，指标默认收集</li>
+                <li><strong>嵌入友好</strong> - 用户通过 submit()/wait_for_result() 使用，无需理解分布式细节</li>
+            </ul>
+        </main>
+    </div>
+
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-column">
+                <div class="footer-logo">
+                    <div class="logo-icon"><i class="fas fa-tasks"></i></div>
+                    <span>NeoTask</span>
+                </div>
+                <p>下一代分布式任务调度框架</p>
+            </div>
+            <div class="footer-column">
+                <h4>文档</h4>
+                <a href="quickstart.html">快速上手</a>
+                <a href="api-reference.html">API 参考</a>
+                <a href="configuration.html">配置说明</a>
+                <a href="architecture.html">架构设计</a>
+            </div>
+            <div class="footer-column">
+                <h4>社区</h4>
+                <a href="https://github.com/neopen/neotask">GitHub</a>
+                <a href="https://github.com/neopen/neotask/issues">Issues</a>
+                <a href="https://github.com/neopen/neotask/discussions">Discussions</a>
+            </div>
+            <div class="footer-column">
+                <h4>资源</h4>
+                <a href="https://pypi.org/project/neotask/">PyPI</a>
+                <a href="https://github.com/neopen/neotask/blob/main/LICENSE">License</a>
+                <a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5">详细文档</a>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2026 NeoTask. 基于 MIT 协议开源.</p>
+        </div>
+    </footer>
+
+    <script src="../assets/js/main.js"></script>
+    <script>
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: 'dark',
+            themeVariables: {
+                'background': '#1e1e2e',
+                'primaryColor': '#a855f7',
+                'primaryTextColor': '#ffffff',
+                'primaryBorderColor': '#a855f7',
+                'lineColor': '#a855f7',
+                'secondaryColor': '#3b82f6',
+                'tertiaryColor': '#10b981'
+            },
+            sequence: {
+                diagramMarginX: 50,
+                diagramMarginY: 10,
+                actorMargin: 50,
+                width: 150,
+                height: 65,
+                boxMargin: 10,
+                boxTextMargin: 5,
+                noteMargin: 10,
+                messageMargin: 35,
+                mirrorActors: true
+            },
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'cardinal'
+            }
+        });
+    </script>
+</body>
+</html>

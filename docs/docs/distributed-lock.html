@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoTask 分布式锁：Redis 看门狗 + 任务抢占与故障恢复 · NeoTask 文档</title>
+  <meta name="description" content="深度剖析 NeoTask 基于 Redis 的分布式锁：涵盖原子操作、看门狗自动续期机制、锁的安全释放、孤儿任务回收、批量锁操作以及锁监控与清理，为分布式任务调度提供可靠的并发控制能力。">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://task.helpenx.com/docs/distributed-lock.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:title" content="NeoTask 分布式锁：Redis 看门狗 + 任务抢占与故障恢复">
+  <meta property="og:description" content="深度剖析 NeoTask 基于 Redis 的分布式锁：涵盖原子操作、看门狗自动续期机制、锁的安全释放、孤儿任务回收、批量锁操作以及锁监控与清理，为分布式任务调度提供可靠的并发控制能力。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://task.helpenx.com/docs/distributed-lock.html">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>⏱️</text></svg>">
+  <style>
+:root{--brand:#0d9488;--brand-dark:#0f766e;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:var(--ink);background:#fff;line-height:1.75;font-size:16px}
+a{color:var(--brand);text-decoration:none}a:hover{color:var(--brand-dark);text-decoration:underline}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
+.topbar .brand .doc-badge{font-size:12px;font-weight:600;color:#fff;background:var(--brand);border-radius:6px;padding:2px 8px}
+.topbar nav{display:flex;gap:20px;font-size:14.5px}
+.topbar nav a{color:var(--muted);font-weight:500}
+.topbar nav a:hover{color:var(--brand)}
+.wrap{display:flex;max-width:1280px;margin:0 auto;padding:0 16px}
+.sidebar{width:264px;flex-shrink:0;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 40px 0;border-right:1px solid var(--line)}
+.sidebar .side-home{display:block;font-weight:600;color:var(--ink);margin-bottom:16px;font-size:15px}
+.sidebar .side-home:hover{color:var(--brand);text-decoration:none}
+.sidebar h4{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px;font-weight:600}
+.sidebar a{display:block;padding:5px 10px;border-radius:6px;font-size:14px;color:#334155;line-height:1.5}
+.sidebar a:hover{background:var(--bg);color:var(--brand);text-decoration:none}
+.sidebar a.active{background:var(--brand);color:#fff}
+.content{flex:1;min-width:0;padding:32px 20px 60px 36px;max-width:860px}
+.toc-mobile{display:none;margin-bottom:20px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.toc-mobile summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.toc-mobile a{display:block;padding:3px 0;font-size:14px}
+.article h1{font-size:1.9em;line-height:1.35;margin:.4em 0 .8em}
+.article h2{font-size:1.45em;margin:1.8em 0 .7em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
+.article h3{font-size:1.22em;margin:1.5em 0 .6em}
+.article h4{font-size:1.08em;margin:1.3em 0 .5em}
+.article p{margin:.85em 0}
+.article ul,.article ol{padding-left:1.6em;margin:.7em 0}
+.article li{margin:.35em 0}
+.article img{max-width:100%;height:auto;border-radius:8px}
+.article table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:.94em;display:block;overflow-x:auto}
+.article th,.article td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+.article th{background:var(--bg);font-weight:600}
+.article tr:nth-child(even) td{background:#fbfdff}
+.article blockquote{margin:1.1em 0;padding:.7em 1.1em;border-left:4px solid var(--brand);background:var(--bg);border-radius:0 8px 8px 0;color:#334155}
+.article blockquote p{margin:.3em 0}
+.article code:not(pre code){background:#eef2f7;color:#c7254e;padding:.15em .4em;border-radius:4px;font-size:.88em;word-break:break-word}
+.article pre.hljs{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0;line-height:1.6}
+.article pre.hljs code{background:none;padding:0;color:var(--ink);font-size:.9em;font-family:ui-monospace,SFMono-Regular,'Cascadia Code',Consolas,Menlo,monospace}
+.article pre.mermaid{text-align:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0}
+.article hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+.article .success,.article .tips,.article .warning,.article .danger{border-radius:8px;padding:.9em 1.1em;margin:1.1em 0;border:1px solid}
+.article .success{border-color:#a7f3d0;background:#ecfdf5}.article .success p:first-of-type::before{content:'✅ '}
+.article .tips{border-color:#bfdbfe;background:#eff6ff}.article .tips p:first-of-type::before{content:'💡 '}
+.article .warning{border-color:#fde68a;background:#fffbeb}.article .warning p:first-of-type::before{content:'⚠️ '}
+.article .danger{border-color:#fecaca;background:#fef2f2}.article .danger p:first-of-type::before{content:'🚫 '}
+.article .success>p:first-child,.article .tips>p:first-child,.article .warning>p:first-child,.article .danger>p:first-child{margin-top:0}
+.article .success>p:last-child,.article .tips>p:last-child,.article .warning>p:last-child,.article .danger>p:last-child{margin-bottom:0}
+.doc-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--muted)}
+.doc-meta .tag{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+.doc-nav{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
+.doc-nav a{font-weight:600}
+footer{border-top:1px solid var(--line);padding:22px 24px;text-align:center;color:var(--muted);font-size:13.5px}
+footer a{color:var(--muted);margin:0 10px}
+footer a:hover{color:var(--brand)}
+@media (max-width:960px){
+  .sidebar{display:none}
+  .toc-mobile{display:block}
+  .content{padding:20px 6px 50px}
+  .topbar nav{gap:12px}
+}
+</style>
+  <style>
+.hljs{color:#24292e;background:#f6f8fa}
+.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.constant_{color:#d73a49}
+.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}
+.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}
+.hljs-string,.hljs-meta .hljs-string,.hljs-regexp{color:#032f62}
+.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-tag,.hljs-subst,.hljs-symbol{color:#e36209}
+.hljs-built_in,.hljs-class .hljs-title{color:#e36209}
+.hljs-comment,.hljs-meta,.hljs-quote{color:#6a737d}
+.hljs-section{color:#005cc5;font-weight:700}
+.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">⏱️ NeoTask <span class="doc-badge">文档</span></a>
+    <nav>
+      <a href="https://task.helpenx.com" target="_blank" rel="noopener">产品官网</a>
+      <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+  <div class="wrap">
+    <aside class="sidebar">
+      <a class="side-home" href="index.html">⏱️ 分布式任务调度系统 · 文档中心</a>
+      <h4>技术分析</h4><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a>
+<h4>API 与配置参考</h4><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a>
+<h4>实现与源码分析</h4><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html" class="active">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a>
+<h4>设计与方案</h4><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a>
+<h4>项目概览</h4><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a>
+<h4>入门与使用</h4><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a>
+<h4>性能与评测</h4><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a>
+<h4>实践与运维</h4><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a>
+<h4>架构与核心设计</h4><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a>
+<h4>版本与演进</h4><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a>
+    </aside>
+    <main class="content">
+      <details class="toc-mobile"><summary>📑 文档目录</summary><div><strong style="font-size:13px;color:var(--muted)">技术分析</strong><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a></div><div><strong style="font-size:13px;color:var(--muted)">API 与配置参考</strong><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a></div><div><strong style="font-size:13px;color:var(--muted)">实现与源码分析</strong><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a></div><div><strong style="font-size:13px;color:var(--muted)">设计与方案</strong><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a></div><div><strong style="font-size:13px;color:var(--muted)">项目概览</strong><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a></div><div><strong style="font-size:13px;color:var(--muted)">入门与使用</strong><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a></div><div><strong style="font-size:13px;color:var(--muted)">性能与评测</strong><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a></div><div><strong style="font-size:13px;color:var(--muted)">实践与运维</strong><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a></div><div><strong style="font-size:13px;color:var(--muted)">架构与核心设计</strong><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a></div><div><strong style="font-size:13px;color:var(--muted)">版本与演进</strong><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a></div></details>
+      <article class="article">
+        <div class="doc-meta"><span class="tag">NeoTask</span><span class="tag">更新 2026-05-06</span><a href="https://task.helpenx.com" target="_blank" rel="noopener">task.helpenx.com ↗</a></div>
+        <h1>NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</h1>
+<p>📚 <a href="index.html">返回首页</a> | 📖 <a href="quickstart.html">快速上手</a> | 📘 <a href="api-reference.html">API 参考</a> | ⚙️ <a href="configuration.html">配置说明</a> | 🐙  <a href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a href="https://task.helpenx.com">NeoTask 官网</a></p>
+<blockquote>
+<p><strong>文档定位</strong>：这是一篇实现细节文档。重点放在源码路径、状态变化、数据结构和异常边界，方便开发者从“能用”进一步理解“为什么这样实现”。<br>
+<strong>事实边界</strong>：实现文档：功能、接口和代码行为以文中标注版本对应的源码为准；仓库后续版本可能发生变化。<br>
+<strong>权威来源</strong>：<a href="https://github.com/neopen/neotask">NeoTask 源码仓库</a>；涉及版本历史时，以仓库 Release / CHANGELOG 为准。<br>
+<strong>代码标记</strong>：如果正文出现“源码/实现”字样，表示对应代码路径可在仓库中核对；示例代码仅用于演示调用方式，不应理解为项目源码原样。<br>
+<strong>版本基线</strong>：本文对照 NeoTask <strong>v1.0.2</strong>（PyPI 发布版）。<br>
+<strong>代码标注约定</strong>：🔧 表示<strong>真实源码</strong>（仓库原样摘录，附文件路径，可自行对照）；📝 表示<strong>示例代码</strong>（用法演示、改进建议或教学代码，不代表仓库实现）。<br>
+阅读时请留意区分——不少网上文章把教学伪代码当成源码转述，本文刻意把两者分开呈现。</p>
+</blockquote>
+<hr>
+<h2>概述</h2>
+<p>在分布式任务调度系统中，&quot;同一任务被多个节点重复执行&quot;是所有一致性问题里最隐蔽、也最昂贵的一种：它不像宕机那样立即报警，而是在数据层悄悄留下脏数据。</p>
+<p>为什么任务调度如此依赖分布式锁？先看三个朴素方案各自的破绽：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">方案</th>
+<th style="text-align:left">思路</th>
+<th style="text-align:left">破绽</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">进程内 <code>asyncio.Lock</code></td>
+<td style="text-align:left">同一进程内互斥</td>
+<td style="text-align:left">多节点部署时完全失效，节点间仍会重复执行</td>
+</tr>
+<tr>
+<td style="text-align:left">数据库 <code>SELECT ... FOR UPDATE</code></td>
+<td style="text-align:left">行锁互斥</td>
+<td style="text-align:left">每个任务都要开启事务，调度吞吐被锁等待和连接池拖垮</td>
+</tr>
+<tr>
+<td style="text-align:left">单纯 <code>SET NX</code> 不加过期</td>
+<td style="text-align:left">键存在即互斥</td>
+<td style="text-align:left">持锁节点崩溃后锁永不释放，系统整体死锁</td>
+</tr>
+</tbody>
+</table>
+<p>破绽的共性在于：<strong>任务调度的锁不仅要&quot;互斥&quot;，还要能&quot;自愈&quot;</strong>。节点会崩、网络会抖、进程会被 kill -9，锁必须接受&quot;持有者可能永远不再回来&quot;这一事实，并给出超时兜底。</p>
+<p>NeoTask 的答案是把 Redis 的 <code>SET NX EX</code>、Lua 原子脚本、看门狗自动续期三件套组合起来，再叠加任务状态机与回收器，形成&quot;<strong>锁防重、状态机挡重、回收器兜底</strong>&quot;的三层防线。本文按真实源码逐层拆解这三层防线，并回答一个实操中一定会被问到的问题：<strong>锁续期失败以后，任务怎么办？</strong></p>
+<hr>
+<h2>为什么任务调度系统需要一把&quot;会过期&quot;的锁</h2>
+<h3>不加锁会发生什么</h3>
+<p>一个去中心化调度系统里，任务从提交到执行要经过：入队（ZADD）→ 抢占（Lua ZRANGE+ZREM）→ 执行 → 上报状态。如果不加锁，任何一个环节的重入都会造成重复执行：</p>
+<pre class="mermaid">flowchart TB
+    subgraph NoLock[&quot;无锁下的重复执行路径&quot;]
+        A[任务重复提交] --&gt;|同一条业务数据提交两次| Q[两个 task_id]
+        B[抢占重试] --&gt;|网络超时但服务端已出队| Q2[同一 task_id 被两个节点取出]
+        C[故障恢复] --&gt;|孤儿任务重新入队但原节点仍在执行| Q3[同一 task_id 并发执行]
+
+        Q --&gt; R1[重复扣款 / 重复发券]
+        Q2 --&gt; R2[幂等冲突 / 数据覆盖]
+        Q3 --&gt; R3[脏写 / 幽灵结果]
+    end
+</pre>
+<p>重复执行在&quot;执行方&quot;眼里往往无害——每次执行都是完整的、自洽的；伤害全部发生在<strong>业务侧</strong>：重复扣款、重复推送、库存超卖。所以锁的价值不是保护 NeoTask 自身，而是<strong>替业务把&quot;最多执行一次&quot;的承诺变现</strong>。</p>
+<h3>为什么是&quot;锁 + TTL&quot;，而不是纯互斥</h3>
+<p><code>SET lock:task:xxx owner NX EX 30</code> 这一条命令同时完成三件事：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>NX</strong>：键不存在才写入，保证互斥（同一时刻只有一个节点写成功）；</p>
+</li>
+<li class="lvl-3">
+<p><strong>owner（锁值）</strong>：写入随机持有者标识，后续释放/续期时校验身份，防止&quot;释放别人的锁&quot;；</p>
+</li>
+<li class="lvl-3">
+<p><strong>EX 30</strong>：过期自动删除，持有者崩溃后锁也能自愈。</p>
+</li>
+</ol>
+<pre class="mermaid">flowchart LR
+    subgraph Atomic[&quot;SET NX EX 一条命令的三种语义&quot;]
+        NX1[NX&lt;br/&gt;键不存在才成功&lt;br/&gt;→ 互斥] 
+        VAL[VALUE&lt;br/&gt;随机 owner&lt;br/&gt;→ 身份可校验]
+        EX1[EX 30s&lt;br/&gt;到期自动删除&lt;br/&gt;→ 崩溃自愈]
+    end
+</pre>
+<p>Redis 的单线程事件循环保证这条命令本身原子，不存在&quot;先检查后设置&quot;的竞态窗口——这正是它取代&quot;GET 判断 + SET&quot;两步写法的原因。</p>
+<h3>为什么用 Redis，而不是 ZooKeeper / etcd</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">维度</th>
+<th style="text-align:left">Redis（NeoTask 选型）</th>
+<th style="text-align:left">ZooKeeper / etcd</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">部署成本</td>
+<td style="text-align:left">与任务队列共用，零额外组件</td>
+<td style="text-align:left">需要独立集群，运维成本高</td>
+</tr>
+<tr>
+<td style="text-align:left">延迟</td>
+<td style="text-align:left">亚毫秒级，适合高频抢占</td>
+<td style="text-align:left">毫秒~十毫秒级，且写盘</td>
+</tr>
+<tr>
+<td style="text-align:left">复杂度</td>
+<td style="text-align:left">SET NX EX 原生支持</td>
+<td style="text-align:left">需要临时节点 + Watch 机制</td>
+</tr>
+<tr>
+<td style="text-align:left">一致模型</td>
+<td style="text-align:left">主从可能短暂丢失（可容忍窗口）</td>
+<td style="text-align:left">线性一致，更严格</td>
+</tr>
+</tbody>
+</table>
+<p>NeoTask 的锁不是要保护&quot;金钱转账&quot;这类强一致场景，而是要防止&quot;同一任务被执行两次&quot;。后者的诉求是：<strong>正常时绝对互斥，异常时尽快收敛</strong>。Redis 的主从切换丢失几毫秒的 SET 结果，最多造成短暂的双执行窗口，随后由状态机与回收器收敛——这个取舍是 NeoTask 定位为&quot;轻量嵌入式调度库&quot;的必然选择。若业务对一致性有极端要求，仍应在业务侧做幂等校验（见后文故障实战）。</p>
+<hr>
+<h2>锁的真实代码骨架：一个接口，两种实现</h2>
+<p>NeoTask 的锁模块（<code>src/neotask/lock/</code>）只有 6 个文件，却清晰地划分出抽象、实现、管理三层：</p>
+<pre class="hljs"><code>src/neotask/lock/
+├── base.py      # TaskLock 抽象基类：定义锁的完整契约
+├── memory.py    # MemoryLock：进程内锁（asyncio.Lock + 过期字典）
+├── redis.py     # RedisLock：跨节点锁（SET NX EX + Lua）
+├── watchdog.py  # WatchDog：自动续期守护者
+├── scanner.py   # LockScanner：周期性扫描清理僵尸锁
+└── factory.py   # LockFactory / LockManager：创建与统一管理入口
+</code></pre>
+<h3>为什么需要抽象基类</h3>
+<p>🔧 真实源码（v1.0.2，<code>src/neotask/lock/base.py</code>，节选）：</p>
+<pre class="hljs"><code><span class="hljs-keyword">class</span> <span class="hljs-title class_">TaskLock</span>(<span class="hljs-title class_ inherited__">ABC</span>):
+    <span class="hljs-string">&quot;&quot;&quot;分布式锁抽象接口。&quot;&quot;&quot;</span>
+
+<span class="hljs-meta">    @abstractmethod</span>
+    <span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">acquire</span>(<span class="hljs-params">self, key: <span class="hljs-built_in">str</span>, ttl: <span class="hljs-built_in">int</span> = <span class="hljs-number">30</span></span>) -&gt; <span class="hljs-built_in">bool</span>:
+        <span class="hljs-string">&quot;&quot;&quot;获取锁。&quot;&quot;&quot;</span>
+
+<span class="hljs-meta">    @abstractmethod</span>
+    <span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">release</span>(<span class="hljs-params">self, key: <span class="hljs-built_in">str</span></span>) -&gt; <span class="hljs-built_in">bool</span>:
+        <span class="hljs-string">&quot;&quot;&quot;释放锁。&quot;&quot;&quot;</span>
+
+<span class="hljs-meta">    @abstractmethod</span>
+    <span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">extend</span>(<span class="hljs-params">self, key: <span class="hljs-built_in">str</span>, ttl: <span class="hljs-built_in">int</span> = <span class="hljs-number">30</span></span>) -&gt; <span class="hljs-built_in">bool</span>:
+        <span class="hljs-string">&quot;&quot;&quot;延长锁的生存时间。&quot;&quot;&quot;</span>
+
+<span class="hljs-meta">    @abstractmethod</span>
+    <span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">is_locked</span>(<span class="hljs-params">self, key: <span class="hljs-built_in">str</span></span>) -&gt; <span class="hljs-built_in">bool</span>:
+        <span class="hljs-string">&quot;&quot;&quot;检查锁是否被持有。&quot;&quot;&quot;</span>
+
+<span class="hljs-meta">    @abstractmethod</span>
+    <span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">get_owner</span>(<span class="hljs-params">self, key: <span class="hljs-built_in">str</span></span>) -&gt; <span class="hljs-type">Optional</span>[<span class="hljs-built_in">str</span>]:
+        <span class="hljs-string">&quot;&quot;&quot;获取锁的持有者。&quot;&quot;&quot;</span>
+</code></pre>
+<p>接口的统一带来的直接收益：<strong>MemoryLock 与 RedisLock 可以被完全透明地替换</strong>。单机开发调试时用内存锁（不需要 Redis），部署到多节点时切到 Redis 锁，上层 WorkerPool 的代码一行都不用改。这是&quot;存储后端可插拔&quot;设计哲学在锁模块的延伸——v0.4 引入 Redis 后端时，锁接口就按这个契约设计，后续 v1.0 加看门狗、v1.5 加扫描清理，都只是在契约上做加法，没有破坏调用方。</p>
+<h3>两种实现的语义边界</h3>
+<pre class="mermaid">flowchart TB
+    subgraph TaskLockLayer[&quot;TaskLock 契约&quot;]
+        ACQ[acquire key ttl]
+        REL[release key]
+        EXT[extend key ttl]
+    end
+
+    subgraph Memory[&quot;MemoryLock（进程内）&quot;]
+        M1[asyncio.Lock 互斥]
+        M2[expire_times 字典模拟 TTL]
+        M3[适用: 单机/测试/CI]
+    end
+
+    subgraph Redis[&quot;RedisLock（跨节点）&quot;]
+        R1[SET NX EX 原子命令]
+        R2[Lua 校验释放/续期]
+        R3[适用: 多节点生产]
+    end
+
+    ACQ --&gt; Memory &amp; Redis
+    REL --&gt; Memory &amp; Redis
+    EXT --&gt; Memory &amp; Redis
+</pre>
+<p>一个常见的误解是&quot;内存锁没有用&quot;——实际上在 SQLite/内存存储模式下，NeoTask 退化为单机任务池，此时 <code>asyncio.Lock</code> 级别的互斥已经足够，且省去了 Redis 依赖。<strong>锁的强弱永远要匹配部署形态</strong>，这正是抽象接口存在的意义。</p>
+<hr>
+<h2>RedisLock 核心原语拆解</h2>
+<h3>获取锁：为什么直接用 SET NX EX 而不写 Lua</h3>
+<p>🔧 真实源码（v1.0.2，<code>src/neotask/lock/redis.py</code>，节选）：</p>
+<pre class="hljs"><code><span class="hljs-keyword">class</span> <span class="hljs-title class_">RedisLock</span>(<span class="hljs-title class_ inherited__">TaskLock</span>):
+    <span class="hljs-string">&quot;&quot;&quot;Redis分布式锁 - 支持扫描和清理&quot;&quot;&quot;</span>
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">__init__</span>(<span class="hljs-params">self, redis_url: <span class="hljs-built_in">str</span>, key_prefix: <span class="hljs-built_in">str</span> = <span class="hljs-string">&quot;lock:&quot;</span></span>):
+        <span class="hljs-variable language_">self</span>._redis_url = redis_url
+        <span class="hljs-variable language_">self</span>._key_prefix = key_prefix
+        <span class="hljs-comment"># 一个锁实例可以同时持有多个锁，逐个记录各自的 owner token</span>
+        <span class="hljs-variable language_">self</span>._owners: <span class="hljs-type">Dict</span>[<span class="hljs-built_in">str</span>, <span class="hljs-built_in">str</span>] = {}  <span class="hljs-comment"># key -&gt; owner 映射</span>
+
+    <span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">acquire</span>(<span class="hljs-params">self, key: <span class="hljs-built_in">str</span>, ttl: <span class="hljs-built_in">int</span> = <span class="hljs-number">30</span></span>) -&gt; <span class="hljs-built_in">bool</span>:
+        client = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._get_client()
+        owner = <span class="hljs-built_in">str</span>(uuid.uuid4())
+        full_key = <span class="hljs-variable language_">self</span>._get_key(key)
+
+        result = <span class="hljs-keyword">await</span> client.<span class="hljs-built_in">set</span>(full_key, owner, nx=<span class="hljs-literal">True</span>, ex=ttl)
+
+        <span class="hljs-keyword">if</span> result:
+            <span class="hljs-comment"># 存储 owner 用于后续操作</span>
+            <span class="hljs-variable language_">self</span>._owners[key] = owner
+            <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span>
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+</code></pre>
+<p>这里有一个值得品的设计细节：<strong>Redis 的 <code>SET key value NX EX</code> 本身已经是一条原子命令</strong>，不需要 Lua 包装。团队在 <code>RedisLock</code> 类里虽然定义了 <code>LUA_ACQUIRE</code> 脚本，但 <code>acquire()</code> 实际走的是 redis-py 原生的 <code>client.set(nx=True, ex=ttl)</code>——效果相同、代码更少。这说明<strong>Lua 不是装饰品，只在&quot;需要多条命令组合成事务&quot;时才必要</strong>（比如下面的安全释放）。</p>
+<p>owner 为什么用 <code>uuid4()</code> 而不是&quot;节点 ID + 时间戳&quot;？三个原因：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>不可伪造的随机性</strong>：UUID 由本地生成、全局唯一，任何其他节点都无法猜测或构造出同样的值；</p>
+</li>
+<li class="lvl-3">
+<p><strong>无需协调</strong>：节点 ID 方案需要先注册再取 ID，引入额外依赖，而 UUID 零协调；</p>
+</li>
+<li class="lvl-3">
+<p><strong>释放校验的基础</strong>：锁值是释放时的&quot;身份证&quot;，随机化杜绝了&quot;恰好撞值误删他人锁&quot;的极端可能。</p>
+</li>
+</ol>
+<h3>释放锁：为什么必须用 Lua</h3>
+<p>释放锁是最容易写错的地方。新手版本通常是：</p>
+<p>📝 示例代码（错误示范，勿模仿）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 错误：先 GET 再 DEL，两步之间有竞态</span>
+<span class="hljs-keyword">if</span> <span class="hljs-keyword">await</span> client.get(key) == owner:
+    <span class="hljs-keyword">await</span> client.delete(key)  <span class="hljs-comment"># 判断与删除之间，锁可能已被他人抢走</span>
+</code></pre>
+<p>问题在于 <code>GET</code> 与 <code>DEL</code> 之间并非原子：假设线程 A 执行完业务，锁刚好过期，线程 B 抢到同一把锁并写入自己的 owner；此时线程 A 的 <code>GET</code> 虽然返回自己的 owner（过期前读到），但如果在 GET 之后、DEL 之前锁过期并被 B 获取，A 的 DEL 就会<strong>误删 B 的锁</strong>。经典解决方式是 Redisson 的 <code>unlock</code> Lua 脚本——把&quot;比对 + 删除&quot;放进一个原子脚本。</p>
+<p>🔧 真实源码（v1.0.2，<code>src/neotask/lock/redis.py</code> 中的 Lua 脚本常量）：</p>
+<pre class="hljs"><code><span class="hljs-comment">-- LUA_RELEASE：比对 owner 后才删除，全程原子</span>
+<span class="hljs-keyword">local</span> key = KEYS[<span class="hljs-number">1</span>]
+<span class="hljs-keyword">local</span> owner = ARGV[<span class="hljs-number">1</span>]
+
+<span class="hljs-keyword">local</span> current = redis.call(<span class="hljs-string">&#x27;GET&#x27;</span>, key)
+<span class="hljs-keyword">if</span> current == owner <span class="hljs-keyword">then</span>
+    <span class="hljs-keyword">return</span> redis.call(<span class="hljs-string">&#x27;DEL&#x27;</span>, key)
+<span class="hljs-keyword">else</span>
+    <span class="hljs-keyword">return</span> <span class="hljs-number">0</span>
+<span class="hljs-keyword">end</span>
+</code></pre>
+<h3>续期锁：按 key 校验 owner + 原子脚本</h3>
+<p>🔧 真实源码（v1.0.2，<code>src/neotask/lock/redis.py</code>，节选）：</p>
+<pre class="hljs"><code><span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">extend</span>(<span class="hljs-params">self, key: <span class="hljs-built_in">str</span>, ttl: <span class="hljs-built_in">int</span> = <span class="hljs-number">30</span></span>) -&gt; <span class="hljs-built_in">bool</span>:
+    <span class="hljs-string">&quot;&quot;&quot;延长锁的生存时间
+
+    只有本实例仍是该锁的持有者时才续期。多把锁各自使用自己的 owner token，
+    因此同时持有多个锁时不会互相干扰。
+    &quot;&quot;&quot;</span>
+    client = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._get_client()
+    full_key = <span class="hljs-variable language_">self</span>._get_key(key)
+
+    <span class="hljs-comment"># 取出该锁对应的 owner（不存在的 key 说明本实例并未持有）</span>
+    owner = <span class="hljs-variable language_">self</span>._owners.get(key)
+    <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> owner:
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+
+    <span class="hljs-comment"># 比较并续期，避免与已接管该锁的其他实例竞争（GET+EXPIRE 非原子）</span>
+    script = client.register_script(<span class="hljs-variable language_">self</span>.LUA_EXTEND)
+    result = <span class="hljs-keyword">await</span> script(keys=[full_key], args=[owner, ttl])
+    <span class="hljs-keyword">return</span> result == <span class="hljs-number">1</span>
+</code></pre>
+<p>两个关键点：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>owner 按 key 取</strong>：<code>RedisLock</code> 用实例内的 <code>self._owners</code> 字典保存「key → owner token」映射，<code>extend()</code> 取的是<strong>这一把锁自己的</strong> owner。因此同一个 RedisLock 实例并发持有多个锁时，各锁续期互不影响——不会出现&quot;后 acquire 的锁覆盖前一把锁的 owner、导致先持有的锁续期失败&quot;。</p>
+</li>
+<li class="lvl-3">
+<p><strong>续期走 <code>LUA_EXTEND</code> 原子脚本</strong>：比对 owner 与 <code>EXPIRE</code> 在同一脚本里完成，不存在&quot;GET 之后、EXPIRE 之前锁被他人接管&quot;的竞态窗口；返回 <code>False</code> 即明确表示&quot;本实例已不是该 key 的持有者&quot;。</p>
+</li>
+</ol>
+<p>看门狗据此判断锁是否还在自己名下；&quot;锁续期失败以后任务怎么办&quot;后文专门推演。</p>
+<hr>
+<h2>锁的生命周期：WorkerPool 里的真实用法</h2>
+<p>锁不是孤立组件，它的完整生命周期发生在 WorkerPool 执行任务的过程中。</p>
+<p>真实源码（v1.0.2，<code>src/neotask/worker/pool.py</code>，<code>_execute_task</code> 节选）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># ========== 获取分布式锁（防止重复执行）==========</span>
+lock_key = <span class="hljs-string">f&quot;task:<span class="hljs-subst">{task_id}</span>&quot;</span>
+lock_acquired = <span class="hljs-literal">False</span>
+watchdog = <span class="hljs-literal">None</span>
+
+<span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._lock_manager:
+    lock_acquired = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lock_manager.acquire(lock_key, ttl=<span class="hljs-number">30</span>)
+    <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> lock_acquired:
+        <span class="hljs-keyword">return</span>
+
+    <span class="hljs-keyword">from</span> neotask.lock.watchdog <span class="hljs-keyword">import</span> WatchDog
+    watchdog = WatchDog(<span class="hljs-variable language_">self</span>._lock_manager, interval_ratio=<span class="hljs-number">0.3</span>)
+    <span class="hljs-keyword">await</span> watchdog.start(lock_key, ttl=<span class="hljs-number">30</span>)
+<span class="hljs-keyword">else</span>:
+    lock_acquired = <span class="hljs-literal">True</span>  <span class="hljs-comment"># 无锁管理器（内存模式），不需要锁</span>
+
+<span class="hljs-comment"># 开始执行 - 更新状态为 RUNNING。只有获取锁成功后，才调用 start_task</span>
+<span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> lock_acquired:
+    <span class="hljs-keyword">return</span>
+
+success = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lifecycle.start_task(task_id, <span class="hljs-string">f&quot;worker-<span class="hljs-subst">{worker_id}</span>&quot;</span>)
+...
+<span class="hljs-keyword">try</span>:
+    result = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._executor.execute(task.data)   <span class="hljs-comment"># 执行业务</span>
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lifecycle.complete_task(task_id, result)
+...
+<span class="hljs-keyword">finally</span>:
+    <span class="hljs-comment"># 停止看门狗并释放锁</span>
+    <span class="hljs-keyword">if</span> watchdog:
+        <span class="hljs-keyword">await</span> watchdog.stop(lock_key)
+    <span class="hljs-keyword">if</span> lock_acquired <span class="hljs-keyword">and</span> <span class="hljs-variable language_">self</span>._lock_manager:
+        <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lock_manager.release(lock_key)
+</code></pre>
+<p>把这段代码翻译成时序图：</p>
+<pre class="mermaid">sequenceDiagram
+    participant Worker as Worker 协程
+    participant LM as LockManager(RedisLock)
+    participant WD as WatchDog
+    participant Redis as Redis
+    participant LC as TaskLifecycle
+
+    Worker-&gt;&gt;Worker: 从(本地/共享)队列取到 task_id
+    Worker-&gt;&gt;LC: get_task 校验状态 == PENDING
+    LC--&gt;&gt;Worker: 任务有效
+
+    Worker-&gt;&gt;LM: acquire(&quot;task:{id}&quot;, ttl=30)
+    LM-&gt;&gt;Redis: SET lock:task:{id} uuid NX EX 30
+    Redis--&gt;&gt;LM: OK
+    LM--&gt;&gt;Worker: True
+
+    Worker-&gt;&gt;WD: start(&quot;task:{id}&quot;, ttl=30)
+    Note over WD,Redis: 每 10s 续期一次（interval_ratio=0.3）
+    WD-&gt;&gt;Redis: extend → EXPIRE 30
+
+    Worker-&gt;&gt;LC: start_task → 状态置 RUNNING
+    Worker-&gt;&gt;Worker: 执行业务逻辑（长任务期间看门狗持续续期）
+
+    alt 执行成功
+        Worker-&gt;&gt;LC: complete_task → SUCCESS
+    else 执行失败
+        Worker-&gt;&gt;Worker: 重试或标记 FAILED
+    end
+
+    Worker-&gt;&gt;WD: stop(&quot;task:{id}&quot;)
+    Worker-&gt;&gt;LM: release(&quot;task:{id}&quot;)
+    LM-&gt;&gt;Redis: Lua 比对 owner 后 DEL
+</pre>
+<h3>为什么&quot;先校验状态 PENDING，再加锁&quot;？</h3>
+<p>WorkerPool 在加锁之前先检查任务状态，加锁成功后才把状态置为 RUNNING。这个顺序的妙处在于：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>状态机是第一道防线</strong>：任务一旦进入 RUNNING，其他节点即使抢到锁也会因&quot;状态不是 PENDING&quot;而跳过执行（<a href="http://pool.py">pool.py</a> 中 <code>if task.status != TaskStatus.PENDING: return</code>）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>锁是第二道防线</strong>：防止两个节点几乎同时读到 PENDING 并同时开始执行——状态检查是&quot;读后判断&quot;，天然有竞态，锁把整个&quot;检查-置位-执行&quot;变成临界区。</p>
+</li>
+</ul>
+<p><strong>锁与状态机是互补而非重复的关系</strong>：锁保证互斥，状态机保证&quot;即使锁因异常丢失，错误的执行路径也会被状态挡住大半&quot;。这也是任务调度锁与普通业务锁最大的不同——调度系统永远不信任单一机制。</p>
+<hr>
+<h2>看门狗机制：为长任务续命的守护协程</h2>
+<h3>为什么需要看门狗：TTL 的两难</h3>
+<p>锁的 TTL 是一个经典的&quot;电车难题&quot;：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>TTL 太短：任务稍微跑久一点锁就过期，另一个节点可能重新抢占同一任务 → 重复执行；</p>
+</li>
+<li class="lvl-2">
+<p>TTL 太长：持锁节点崩溃后，锁要等很久才释放 → 故障恢复慢、任务长时间无人接管。</p>
+</li>
+</ul>
+<p>看门狗（WatchDog）的思路是<strong>把 TTL 设短（30s），然后由守护协程在任务执行期间持续续期</strong>——既保证崩溃后快速自愈（最多等 30s），又保证正常长任务不会因 TTL 到期而中断。</p>
+<pre class="mermaid">graph TB
+    subgraph Dilemma[&quot;TTL 两难&quot;]
+        Short[&quot;TTL 过短&lt;br/&gt;长任务未跑完锁已过期&lt;br/&gt;→ 重复执行风险&quot;]
+        Long[&quot;TTL 过长&lt;br/&gt;节点崩溃后锁迟迟不释放&lt;br/&gt;→ 恢复慢&quot;]
+    end
+
+    subgraph Solution[&quot;看门狗解耦&quot;]
+        A[锁 TTL = 30s&lt;br/&gt;崩溃后最多 30s 自愈] --&gt; B[看门狗每 10s 续期&lt;br/&gt;长任务持续持有]
+    end
+
+    Dilemma --&gt; Solution
+</pre>
+<h3>看门狗的真实实现</h3>
+<p>🔧 真实源码（v1.0.2，<code>src/neotask/lock/watchdog.py</code>，节选）：</p>
+<pre class="hljs"><code><span class="hljs-keyword">class</span> <span class="hljs-title class_">WatchDog</span>:
+    <span class="hljs-string">&quot;&quot;&quot;看门狗：自动为锁续期，防止锁在任务执行期间过期。&quot;&quot;&quot;</span>
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">__init__</span>(<span class="hljs-params">self, lock: TaskLock, interval_ratio: <span class="hljs-built_in">float</span> = <span class="hljs-number">0.3</span></span>):
+        <span class="hljs-variable language_">self</span>._lock = lock
+        <span class="hljs-variable language_">self</span>._interval_ratio = interval_ratio
+        <span class="hljs-variable language_">self</span>._tasks: <span class="hljs-type">Dict</span>[<span class="hljs-built_in">str</span>, asyncio.Task] = {}
+        <span class="hljs-variable language_">self</span>._running: <span class="hljs-type">Dict</span>[<span class="hljs-built_in">str</span>, <span class="hljs-built_in">bool</span>] = {}
+        <span class="hljs-variable language_">self</span>._renew_count: <span class="hljs-type">Dict</span>[<span class="hljs-built_in">str</span>, <span class="hljs-built_in">int</span>] = {}
+
+    <span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">start</span>(<span class="hljs-params">self, key: <span class="hljs-built_in">str</span>, ttl: <span class="hljs-built_in">int</span></span>) -&gt; <span class="hljs-literal">None</span>:
+        <span class="hljs-keyword">if</span> key <span class="hljs-keyword">in</span> <span class="hljs-variable language_">self</span>._tasks <span class="hljs-keyword">and</span> <span class="hljs-keyword">not</span> <span class="hljs-variable language_">self</span>._tasks[key].done():
+            <span class="hljs-keyword">return</span>
+        <span class="hljs-variable language_">self</span>._running[key] = <span class="hljs-literal">True</span>
+        <span class="hljs-variable language_">self</span>._ttl[key] = ttl
+        <span class="hljs-variable language_">self</span>._renew_count[key] = <span class="hljs-number">0</span>
+        interval = <span class="hljs-built_in">max</span>(<span class="hljs-number">0.5</span>, ttl * <span class="hljs-variable language_">self</span>._interval_ratio)
+        <span class="hljs-variable language_">self</span>._tasks[key] = asyncio.create_task(
+            <span class="hljs-variable language_">self</span>._watchdog_loop(key, ttl, interval)
+        )
+
+    <span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">_watchdog_loop</span>(<span class="hljs-params">self, key: <span class="hljs-built_in">str</span>, ttl: <span class="hljs-built_in">int</span>, interval: <span class="hljs-built_in">float</span></span>) -&gt; <span class="hljs-literal">None</span>:
+        <span class="hljs-keyword">while</span> <span class="hljs-variable language_">self</span>._running.get(key, <span class="hljs-literal">False</span>):
+            <span class="hljs-keyword">try</span>:
+                <span class="hljs-keyword">await</span> asyncio.sleep(interval)
+                <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> <span class="hljs-variable language_">self</span>._running.get(key, <span class="hljs-literal">False</span>):
+                    <span class="hljs-keyword">break</span>
+                <span class="hljs-comment"># 续期锁</span>
+                success = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lock.extend(key, ttl)
+                <span class="hljs-variable language_">self</span>._renew_count[key] += <span class="hljs-number">1</span>
+                <span class="hljs-keyword">if</span> success:
+                    logger.debug(<span class="hljs-string">f&quot;Watchdog renewed lock for key: <span class="hljs-subst">{key}</span>&quot;</span>)
+                <span class="hljs-keyword">else</span>:
+                    <span class="hljs-comment"># 锁已丢失，停止续期</span>
+                    logger.warning(<span class="hljs-string">f&quot;Watchdog failed to renew lock for key: <span class="hljs-subst">{key}</span>, stopping&quot;</span>)
+                    <span class="hljs-variable language_">self</span>._running[key] = <span class="hljs-literal">False</span>
+                    <span class="hljs-keyword">break</span>
+            <span class="hljs-keyword">except</span> asyncio.CancelledError:
+                <span class="hljs-keyword">break</span>
+            <span class="hljs-keyword">except</span> Exception <span class="hljs-keyword">as</span> e:
+                logger.error(<span class="hljs-string">f&quot;Watchdog error for key <span class="hljs-subst">{key}</span>: <span class="hljs-subst">{e}</span>&quot;</span>)
+                <span class="hljs-keyword">continue</span>  <span class="hljs-comment"># 发生错误，继续尝试</span>
+</code></pre>
+<h3>为什么续期间隔是 TTL 的三分之一</h3>
+<p><code>interval = max(0.5, ttl * interval_ratio)</code>，默认 <code>interval_ratio = 0.3</code>，即 TTL 30s 时每 10s 续期一次。为什么是 1/3 而不是 1/2 或 1/10？</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>为什么不能太晚（&gt; TTL/2）</strong>：如果续期间隔接近 TTL，一次网络抖动或 GC 停顿就可能让锁在两次续期之间过期——看门狗形同虚设；</p>
+</li>
+<li class="lvl-2">
+<p><strong>为什么不能太频繁（&lt; TTL/10）</strong>：每次续期都是一次 Redis 往返，任务量大时是纯开销；</p>
+</li>
+<li class="lvl-2">
+<p><strong>TTL/3 的经验依据</strong>：留出 2/3 的 TTL 作为&quot;安全余量&quot;，允许大约两次续期失败而不丢锁——30s 的锁允许约 20s 的连续故障窗口，对网络抖动足够宽容。</p>
+</li>
+</ul>
+<pre class="mermaid">gantt
+    title 看门狗续期节奏（TTL=30s, interval=10s）
+    dateFormat s
+    axisFormat %S
+
+    section 锁生命周期
+    锁有效 (0-30s)    :active, lock1, 0, 30s
+    锁有效 (30-60s)   :active, lock2, 30s, 30s
+    锁有效 (60-90s)   :active, lock3, 60s, 30s
+
+    section 续期动作
+    第1次续期          :done, r1, 10s, 1s
+    第2次续期          :done, r2, 20s, 1s
+    第3次续期          :done, r3, 30s, 1s
+    第4次续期          :done, r4, 40s, 1s
+</pre>
+<h3>为什么看门狗&quot;续期失败就停止&quot;，而不是&quot;疯狂重试&quot;？</h3>
+<p>注意 <code>_watchdog_loop</code> 中：续期失败（<code>extend</code> 返回 False）→ 打 warning → <code>self._running[key] = False</code> → 退出循环。而普通异常（如 Redis 连接抖动抛异常）→ <code>continue</code> 继续尝试。</p>
+<p>这个设计的意图是<strong>区分&quot;锁丢了&quot;与&quot;网络抖了&quot;</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>extend</code> 返回 <code>False</code> 意味着 Redis 明确告知&quot;owner 不匹配或键不存在&quot;——锁已经易主或消失，继续续期只会<strong>给别人的锁续命</strong>，必须立即停手；</p>
+</li>
+<li class="lvl-2">
+<p>抛异常说明是瞬时网络问题，锁大概率还在，值得重试。</p>
+</li>
+</ul>
+<pre class="mermaid">flowchart TB
+    subgraph WD[&quot;看门狗续期决策&quot;]
+        TICK[每 10s 醒来] --&gt; EXT[调用 extend 续期]
+        EXT --&gt; R{结果}
+
+        R --&gt;|True 续期成功| CONTINUE[重置计数&lt;br/&gt;继续守护]
+        R --&gt;|False 锁已丢失| STOP[停止续期&lt;br/&gt;打 warning]
+        R --&gt;|抛异常 网络抖动| RETRY[记录错误&lt;br/&gt;下轮继续尝试]
+
+        CONTINUE --&gt; TICK
+        RETRY --&gt; TICK
+        STOP --&gt; END1([锁在 TTL 后自然过期])
+    end
+</pre>
+<h3>深入探讨：锁续期失败以后，任务怎么办？</h3>
+<p>这是本文最值得展开的问题，也是生产环境里真正会咬人的场景。分三个层次回答：</p>
+<h4>第一层：看门狗停了，任务本身会怎样？</h4>
+<p><strong>看门狗停掉 ≠ 任务被中断。</strong> 在 v1.0.2 的 <code>pool.py</code> 中，看门狗与业务执行是<strong>两个独立的协程</strong>，看门狗退出循环只是不再续期，业务协程对锁丢失<strong>一无所知</strong>，会继续执行直到完成，然后在 <code>finally</code> 里照常调用 <code>watchdog.stop()</code> 与 <code>release()</code>。</p>
+<p>也就是说，真实的故障传播链是：</p>
+<pre class="hljs"><code>看门狗续期失败（warning）
+    → 停止续期
+    → 锁在剩余 TTL 后自动过期（最多再等 30s）
+    → 其他节点理论上可以 acquire 同一把锁
+    → 但任务状态仍是 RUNNING，状态机挡住大部分重入
+    → 业务协程继续跑完，最后 release 大概率返回 0（锁已不在自己名下）
+</code></pre>
+<p>这里暴露出一个<strong>设计取舍</strong>：锁丢失后，正在执行的任务是&quot;立即中断&quot;还是&quot;跑完再说&quot;？NeoTask 选择后者。原因是任务调度场景里，强制中断执行中的业务逻辑几乎总是更危险——协程可能正写一半数据库、正在调用第三方 API，贸然取消会造成半截状态。<strong>宁可让它跑完，把一致性交给状态机与业务幂等兜底。</strong></p>
+<h4>第二层：什么情况下会真的出问题？</h4>
+<p>续期失败要真正造成&quot;重复执行&quot;，需要同时满足：</p>
+<ol>
+<li class="lvl-3">
+<p>看门狗续期失败且锁过期；</p>
+</li>
+<li class="lvl-3">
+<p>任务被重新入队（如回收器判定孤儿、或人工重试）；</p>
+</li>
+<li class="lvl-3">
+<p>新节点抢占并执行时，任务状态尚未更新为终态（RUNNING/PENDING 都拦不住新执行——实际上 pool 只放行 PENDING，若任务仍 RUNNING，新节点会跳过；真正危险的是任务已 PENDING 且被重新入队，原节点还在跑）。</p>
+</li>
+</ol>
+<p>因此最危险的组合是：<strong>超时/孤儿回收把任务重新入队（状态重置为 PENDING）后，原节点还没跑完</strong>——此时新老两个节点都在执行同一任务，且状态机完全失效。这正是 reclaimer（<code>worker/reclaimer.py</code>）把任务重新入队时<strong>必须同时释放旧锁</strong>的原因，也是任务处理器必须幂等的根本理由。</p>
+<h4>第三层：多锁并发时续期的正确行为</h4>
+<p>如前面 RedisLock.extend 所述，extend 用 <code>self._owners.get(key)</code> 取<strong>该锁自己的</strong> owner token，并以 <code>LUA_EXTEND</code> 脚本原子比对 + 续期——因此同一个 RedisLock 实例同时持有多个锁时，各锁续期互不干扰。默认 <code>worker_concurrency &gt; 1</code>、多个长任务并发运行时，这个性质正是看门狗不被误停的前提。</p>
+<p>时序上可以这样理解：</p>
+<pre class="mermaid">sequenceDiagram
+    participant W1 as Worker-1
+    participant W2 as Worker-2
+    participant L as RedisLock(共享实例)
+    participant R as Redis
+
+    W1-&gt;&gt;L: acquire(task:A) → owner=uuidA
+    L-&gt;&gt;R: SET lock:task:A uuidA NX EX 30
+    W2-&gt;&gt;L: acquire(task:B) → owner=uuidB
+    L-&gt;&gt;R: SET lock:task:B uuidB NX EX 30
+
+    Note over L: self._owners = {A: uuidA, B: uuidB}
+
+    W1-&gt;&gt;L: WatchDog 续期 task:A
+    L-&gt;&gt;R: Lua: GET lock:task:A == uuidA → EXPIRE 30
+    Note over L: 按 key 命中 uuidA → 续期成功
+
+    W2-&gt;&gt;L: WatchDog 续期 task:B
+    L-&gt;&gt;R: Lua: GET lock:task:B == uuidB → EXPIRE 30
+    Note over L: 按 key 命中 uuidB → 续期成功
+</pre>
+<p><strong>实操建议</strong>：<code>extend</code> 返回 <code>False</code> 只发生在&quot;本实例已不是该 key 的持有者&quot;——键被删除、TTL 过期后已被他人接管，或本实例从未 acquire 过该 key。若确实看到长任务的看门狗停止续期，排查方向是 owner 是否被外部清理（如 <code>cleanup_by_owner</code>）或锁 TTL 是否短于任务执行节奏：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>调大 TTL</strong>（如 60s/120s），为长任务留出更宽的续期窗口；</p>
+</li>
+<li class="lvl-3">
+<p>确认没有运维脚本误删活锁（见后文&quot;误删活锁&quot;场景）；</p>
+</li>
+<li class="lvl-3">
+<p>业务侧保持幂等，作为最终防线（永远需要的习惯）。</p>
+</li>
+</ol>
+<hr>
+<h2>锁的释放与回收：正常路径之外的兜底</h2>
+<h3>三条释放路径</h3>
+<pre class="mermaid">flowchart TB
+    subgraph ReleasePaths[&quot;锁的释放路径&quot;]
+        P1[任务正常完成/失败&lt;br/&gt;finally 块主动释放] --&gt;|Lua 比对 owner 后 DEL| OK1[立即释放]
+        P2[节点崩溃 看门狗停止&lt;br/&gt;锁不再续期] --&gt;|TTL 自然过期| OK2[Redis 自动删除]
+        P3[僵尸锁/异常残留&lt;br/&gt;LockScanner 扫描] --&gt;|发现后清理| OK3[运维或后台清理]
+    end
+</pre>
+<h3>僵尸锁扫描器：为什么&quot;扫描清理&quot;是必要的</h3>
+<p>即使有 TTL 兜底，真实世界仍会出现残留锁：时钟漂移、Redis 主从切换丢命令、<code>release</code> 因网络异常未送达而任务已结束……这些锁虽然最终会过期，但在过期前会阻塞同名任务的重新调度。<code>LockScanner</code> 就是为此存在的后台协程。</p>
+<p>🔧 真实源码（v1.0.2，<code>src/neotask/lock/scanner.py</code>，节选）：</p>
+<pre class="hljs"><code><span class="hljs-meta">@dataclass</span>
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">LockScannerConfig</span>:
+    <span class="hljs-string">&quot;&quot;&quot;锁扫描器配置&quot;&quot;&quot;</span>
+    scan_interval: <span class="hljs-built_in">float</span> = <span class="hljs-number">60.0</span>          <span class="hljs-comment"># 扫描间隔（秒）</span>
+    stale_ttl_threshold: <span class="hljs-built_in">int</span> = <span class="hljs-number">300</span>       <span class="hljs-comment"># 僵尸锁 TTL 阈值（秒）</span>
+    max_scan_per_cycle: <span class="hljs-built_in">int</span> = <span class="hljs-number">1000</span>       <span class="hljs-comment"># 每周期最大扫描数量</span>
+    auto_cleanup: <span class="hljs-built_in">bool</span> = <span class="hljs-literal">True</span>            <span class="hljs-comment"># 是否自动清理</span>
+
+
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">LockScanner</span>:
+    <span class="hljs-string">&quot;&quot;&quot;负责扫描和清理僵尸锁：
+    - 扫描所有锁键
+    - 检测已过期的锁
+    - 自动清理僵尸锁
+    &quot;&quot;&quot;</span>
+
+    <span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">scan_now</span>(<span class="hljs-params">self</span>) -&gt; <span class="hljs-built_in">int</span>:
+        cleaned = <span class="hljs-number">0</span>
+        <span class="hljs-keyword">if</span> <span class="hljs-built_in">hasattr</span>(<span class="hljs-variable language_">self</span>._lock, <span class="hljs-string">&#x27;scan_locks&#x27;</span>):
+            lock_keys = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lock.scan_locks(
+                count=<span class="hljs-variable language_">self</span>._config.max_scan_per_cycle
+            )
+            <span class="hljs-keyword">for</span> lock_key <span class="hljs-keyword">in</span> lock_keys:
+                <span class="hljs-keyword">if</span> <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._is_stale_lock(lock_key):
+                    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._cleanup_lock(lock_key)
+                    cleaned += <span class="hljs-number">1</span>
+        ...
+        <span class="hljs-keyword">return</span> cleaned
+</code></pre>
+<p>清理的判定策略是<strong>多信号交叉验证</strong>：TTL 已耗尽（<code>ttl &lt;= 0</code>）、锁键不存在、或空闲时间超过阈值——避免误删&quot;正在被看门狗正常续期&quot;的活锁。这也是为什么扫描器与看门狗必须协同：扫描器只清理&quot;持有者失联&quot;的锁，活跃任务由看门狗持续续期，天然不会被扫到。</p>
+<h3>为什么 TTL 阈值默认 300s 而不是更激进</h3>
+<p><code>stale_ttl_threshold = 300</code> 意味着&quot;剩余 TTL 小于 300s 且空闲很久&quot;才判僵尸。阈值太小的代价是<strong>误杀</strong>：网络分区时，活跃节点的看门狗可能暂时续期失败，若扫描器此时激进清理，会造成&quot;锁被清 → 其他节点抢占 → 原节点还在执行&quot;的重复执行事故。<strong>清理僵尸锁宁可慢，不可错</strong>——反正 TTL 兜底会释放，扫描器只是加速收敛，激进换不来正确性。</p>
+<hr>
+<h2>任务抢占与锁：为什么&quot;出队&quot;和&quot;加锁&quot;是分开的</h2>
+<p>这是最容易产生技术误解的地方：<strong>NeoTask 的批量抢占（Lua 出队）并不加锁</strong>。</p>
+<h3>抢占的真实原子操作</h3>
+<p>🔧 真实源码（v1.0.2，<code>src/neotask/storage/redis.py</code>，RedisQueueRepository 批量弹出脚本）：</p>
+<pre class="hljs"><code><span class="hljs-comment">-- 批量弹出任务的 Lua 脚本：只做&quot;取 + 删&quot;，不加锁！</span>
+<span class="hljs-keyword">local</span> queue_key = KEYS[<span class="hljs-number">1</span>]
+<span class="hljs-keyword">local</span> count = <span class="hljs-built_in">tonumber</span>(ARGV[<span class="hljs-number">1</span>])
+<span class="hljs-keyword">local</span> task_ids = redis.call(<span class="hljs-string">&#x27;ZRANGE&#x27;</span>, queue_key, <span class="hljs-number">0</span>, count<span class="hljs-number">-1</span>)
+<span class="hljs-keyword">if</span> #task_ids &gt; <span class="hljs-number">0</span> <span class="hljs-keyword">then</span>
+    redis.call(<span class="hljs-string">&#x27;ZREM&#x27;</span>, queue_key, <span class="hljs-built_in">unpack</span>(task_ids))
+<span class="hljs-keyword">end</span>
+<span class="hljs-keyword">return</span> task_ids
+</code></pre>
+<p>ZRANGE + ZREM 在 Lua 中原子执行，保证<strong>同一任务只被一个节点取出</strong>——这是&quot;抢占&quot;层面的互斥。而分布式锁（<code>SET NX EX lock:task:{id}</code>）发生在 Worker 真正执行任务之前（见前文生命周期时序图）。</p>
+<h3>为什么不做成&quot;出队即加锁&quot;？</h3>
+<p>把&quot;出队 + 加锁&quot;合成一个 Lua 脚本在技术上完全可行（ZRANGE → SET NX → ZREM），但 NeoTask 刻意拆成两步，原因有三：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>出队与执行的节奏不同</strong>：出队是批量动作（一次 pop N 个），执行是逐个动作。若出队即加锁，预取的 20 个任务就要同时持有 20 把锁——一旦节点在处理本地队列时崩溃，20 把锁同时残留，恢复时还要批量清理，放大了故障面；</p>
+</li>
+<li class="lvl-3">
+<p><strong>本地队列缓冲层</strong>：预取机制先把任务放进节点本地队列，任务尚未开始执行。此时加锁毫无意义，只会提前占用 TTL；真正需要锁保护的是&quot;开始执行&quot;这个时刻；</p>
+</li>
+<li class="lvl-3">
+<p><strong>锁的语义是&quot;执行互斥&quot;而非&quot;分配互斥&quot;</strong>：分配（出队）的互斥由 ZREM 原子性保证；执行的互斥由锁保证；两者边界清晰，各自的故障模型也简单。</p>
+</li>
+</ol>
+<pre class="mermaid">flowchart LR
+    subgraph Preempt[&quot;抢占阶段（分配互斥）&quot;]
+        A[Lua: ZRANGE + ZREM&lt;br/&gt;原子取出任务] --&gt; B[任务进入节点本地队列]
+    end
+
+    subgraph Execute[&quot;执行阶段（执行互斥）&quot;]
+        C[Worker 取出任务] --&gt; D[SET NX EX lock:task:{id}&lt;br/&gt;获取执行锁] --&gt; E[RUNNING 执行]
+    end
+
+    B --&gt; C
+</pre>
+<h3>既然出队已经互斥，为什么执行前还要锁？</h3>
+<p>因为<strong>出队互斥只防&quot;同时取出&quot;，防不了&quot;再次取出&quot;</strong>：任务失败重试会重新入队、故障恢复会把孤儿任务重新入队、人工补偿可能重复提交。任务在队列里进出多次后，同一 task_id 完全可能在两个节点上&quot;各自执行一轮&quot;。执行锁 + PENDING 状态检查，就是为了挡住这些<strong>跨轮次</strong>的重复。</p>
+<p>一句话总结设计哲学：<strong>队列负责&quot;任务不重&quot;，锁负责&quot;执行不重&quot;，状态机负责&quot;结果不乱&quot;。</strong></p>
+<hr>
+<h2>锁的监控与诊断：真实可用的 API</h2>
+<h3>状态查询三件套</h3>
+<p>🔧 真实源码（v1.0.2，<code>src/neotask/lock/base.py</code> 契约 + <a href="http://redis.py">redis.py</a> 实现）：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>is_locked(key)</code>：锁是否被持有；</p>
+</li>
+<li class="lvl-2">
+<p><code>get_owner(key)</code>：当前持有者（UUID 字符串）；</p>
+</li>
+<li class="lvl-2">
+<p><code>get_lock_info(key)</code>：详细诊断信息。</p>
+</li>
+</ul>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码：基于真实 API 的排查用法</span>
+<span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> RedisLock
+
+lock = RedisLock(<span class="hljs-string">&quot;redis://localhost:6379&quot;</span>)   <span class="hljs-comment"># key_prefix 默认 &quot;lock:&quot;</span>
+
+<span class="hljs-keyword">if</span> <span class="hljs-keyword">await</span> lock.is_locked(<span class="hljs-string">&quot;task:123&quot;</span>):
+    owner = <span class="hljs-keyword">await</span> lock.get_owner(<span class="hljs-string">&quot;task:123&quot;</span>)
+    info = <span class="hljs-keyword">await</span> lock.get_lock_info(<span class="hljs-string">&quot;task:123&quot;</span>)
+    <span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;owner=<span class="hljs-subst">{info[<span class="hljs-string">&#x27;owner&#x27;</span>]}</span>&quot;</span>)
+    <span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;ttl_remaining=<span class="hljs-subst">{info[<span class="hljs-string">&#x27;ttl_remaining&#x27;</span>]}</span>s&quot;</span>)
+    <span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;idle_time=<span class="hljs-subst">{info[<span class="hljs-string">&#x27;idle_time&#x27;</span>]}</span>s&quot;</span>)
+    <span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;is_stale=<span class="hljs-subst">{info[<span class="hljs-string">&#x27;is_stale&#x27;</span>]}</span>&quot;</span>)
+</code></pre>
+<p><code>get_lock_info</code> 的实现值得点评：它用 Lua 一次取回 owner 和 TTL，再补查 <code>OBJECT IDLETIME</code> 得到空闲时间。但其中 <code>created_at</code> 是<strong>用 <code>now - (30 - ttl)</code> 反推的估算值</strong>——硬编码了默认 TTL=30s 的假设，若你的锁使用非 30s 的 TTL，created_at 会不准。诊断时请以 <code>ttl_remaining</code> 和 <code>idle_time</code> 为准，不要依赖 created_at。</p>
+<h3>僵尸锁清理</h3>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码：基于真实 API 的运维用法</span>
+lock = RedisLock(<span class="hljs-string">&quot;redis://localhost:6379&quot;</span>)
+
+<span class="hljs-comment"># 扫描所有任务锁（返回完整键名，含前缀）</span>
+keys = <span class="hljs-keyword">await</span> lock.scan_locks(pattern=<span class="hljs-string">&quot;task:*&quot;</span>)     <span class="hljs-comment"># 实际匹配 &quot;lock:task:*&quot;</span>
+
+<span class="hljs-comment"># 清理&quot;剩余 TTL 低于 60s 且空闲超时&quot;的锁</span>
+cleaned = <span class="hljs-keyword">await</span> lock.cleanup_stale_locks(ttl_threshold=<span class="hljs-number">60</span>)
+
+<span class="hljs-comment"># 清理某个故障节点持有者的所有锁</span>
+<span class="hljs-keyword">await</span> lock.cleanup_by_owner(<span class="hljs-string">&quot;dead-node-uuid&quot;</span>)
+</code></pre>
+<blockquote>
+<p><strong>安全警告</strong>：<code>cleanup_by_owner</code> 需要持有者 UUID，一般来自故障节点的日志或 <code>get_owner</code> 查询。千万不要凭&quot;我以为这个节点死了&quot;就批量删锁——先确认节点心跳确实消失（见故障恢复篇的节点状态机），再执行清理。</p>
+</blockquote>
+<h3>Redis 侧的直接排查命令</h3>
+<pre class="hljs"><code><span class="hljs-comment"># 查看某个任务锁是否存在、TTL 还剩多少</span>
+redis-cli EXISTS <span class="hljs-string">&quot;lock:task:123&quot;</span>
+redis-cli TTL <span class="hljs-string">&quot;lock:task:123&quot;</span>
+redis-cli GET <span class="hljs-string">&quot;lock:task:123&quot;</span>          <span class="hljs-comment"># 看 owner UUID</span>
+
+<span class="hljs-comment"># 全局扫描所有任务锁</span>
+redis-cli --scan --pattern <span class="hljs-string">&quot;lock:task:*&quot;</span>
+</code></pre>
+<hr>
+<h2>配置建议</h2>
+<h3>真实配置字段</h3>
+<p>锁相关配置集中在 <code>TaskPoolConfig</code> / <code>LockConfig</code>（<code>src/neotask/models/config.py</code>）：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">配置项</th>
+<th style="text-align:left">默认值</th>
+<th style="text-align:left">含义与调优建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code>lock_type</code></td>
+<td style="text-align:left"><code>memory</code></td>
+<td style="text-align:left"><code>memory</code>（单机）或 <code>redis</code>（多节点），生产多节点必须 <code>redis</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>lock_timeout</code></td>
+<td style="text-align:left"><code>30</code></td>
+<td style="text-align:left">锁 TTL。任务普遍 &gt;30s 且不便开启长续期时调大到 60~120</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>watch_dog_enabled</code></td>
+<td style="text-align:left"><code>True</code></td>
+<td style="text-align:left">是否启动看门狗自动续期，建议保持开启</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>heartbeat_interval</code></td>
+<td style="text-align:left"><code>10</code></td>
+<td style="text-align:left">续期/心跳间隔（与 interval_ratio 联动）</td>
+</tr>
+</tbody>
+</table>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码：多节点生产配置</span>
+config = TaskPoolConfig(
+    storage_type=<span class="hljs-string">&quot;redis&quot;</span>,
+    redis_url=<span class="hljs-string">&quot;redis://redis-server:6379&quot;</span>,
+    lock_type=<span class="hljs-string">&quot;redis&quot;</span>,          <span class="hljs-comment"># 关键：多节点必须 Redis 锁</span>
+    lock_timeout=<span class="hljs-number">30</span>,            <span class="hljs-comment"># 锁 TTL</span>
+    watch_dog_enabled=<span class="hljs-literal">True</span>,     <span class="hljs-comment"># 看门狗自动续期</span>
+    worker_concurrency=<span class="hljs-number">10</span>,
+)
+</code></pre>
+<h3>TTL 与续期间隔的搭配原则</h3>
+<pre class="mermaid">flowchart TB
+    Start{任务预估时长?} --&gt;|大部分 &lt; 30s| S1[TTL=30s&lt;br/&gt;看门狗兜底突发长任务]
+    Start --&gt;|存在分钟级长任务| S2[TTL=60~120s&lt;br/&gt;看门狗按 key 续期]
+    Start --&gt;|不确定/混合负载| S3[TTL=30s + 幂等处理器&lt;br/&gt;保持默认即可]
+
+    S2 --&gt; N1[多锁共享实例安全：&lt;br/&gt;extend 按 key 校验 owner]
+</pre>
+<h3>Redis 集群（Cluster）注意事项</h3>
+<p>锁键 <code>lock:task:{id}</code>、任务键 <code>task:{id}</code>、队列键 <code>queue:priority</code> 属于不同业务键。在 Redis Cluster 下，<strong>Lua 脚本只能操作同一 slot 的键</strong>——NeoTask 的锁脚本与批量弹出脚本都只操作单键，天然兼容集群；但如果业务需要多键原子操作，应使用 hash tag（如 <code>{task:123}:...</code>）把相关键钉在同一 slot。请勿在集群模式下自行编写跨键 Lua 脚本。</p>
+<hr>
+<h2>故障场景实战</h2>
+<h3>场景一：看门狗续期失败，任务还在跑</h3>
+<p><strong>现象</strong>：长任务（&gt;30s）执行期间，日志出现大量 <code>Watchdog failed to renew lock for key: task:xxx, stopping</code>；任务最终完成，但业务侧偶发重复处理。</p>
+<p><strong>定位步骤</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p>查日志确认续期失败是&quot;返回 False&quot;还是&quot;抛异常&quot;（前者=锁易主/owner 不匹配，后者=网络抖动）；</p>
+</li>
+<li class="lvl-3">
+<p>若任务并发高且共用一个 RedisLock 实例，确认锁实现按 key 校验 owner（见上文&quot;第三层&quot;），避免共享实例导致续期互相干扰；</p>
+</li>
+<li class="lvl-3">
+<p>用 <code>redis-cli GET lock:task:xxx</code> 对比 owner 与任务实际执行节点日志中的 acquire owner。</p>
+</li>
+</ol>
+<p><strong>处理方案</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>临时：调大 <code>lock_timeout</code>（如 60s），为长任务留出更宽的续期窗口；</p>
+</li>
+<li class="lvl-2">
+<p>排查：确认锁没有被外部脚本误删（<code>cleanup_by_owner</code> 等），锁 TTL 是否短于任务执行节奏；</p>
+</li>
+<li class="lvl-2">
+<p>兜底：任务处理器实现幂等（以业务唯一键去重），这是任何调度框架都替代不了的最后防线。</p>
+</li>
+</ul>
+<h3>场景二：节点宕机，锁与任务双双残留</h3>
+<p><strong>现象</strong>：某节点被 kill -9，其上 RUNNING 任务在锁过期后未被及时接管，任务积压。</p>
+<p><strong>推演时间线</strong>：</p>
+<pre class="mermaid">sequenceDiagram
+    participant N as 宕机节点
+    participant R as Redis
+    participant RC as Reclaimer(其他节点)
+
+    N-&gt;&gt;R: 持有 lock:task:A（TTL 30s） 任务 RUNNING
+    Note over N: 节点进程被杀
+
+    R--&gt;&gt;R: 看门狗消失，无续期
+    Note over R: 30s 后锁自动过期
+    RC-&gt;&gt;R: 周期性扫描 RUNNING 任务
+    RC-&gt;&gt;RC: 判断执行节点失联 → 回收
+    RC-&gt;&gt;R: 状态重置 PENDING + 重新入队（带延迟）
+    RC-&gt;&gt;R: 释放旧锁（防新老并发）
+</pre>
+<p><strong>处理方案</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p>确认 reclaimer 已启用（<code>enable_orphan_reclaim=True</code>、<code>enable_auto_requeue=True</code>）；</p>
+</li>
+<li class="lvl-3">
+<p>调低扫描间隔可加快接管，但注意回收与扫描都需要分布式锁保护，避免多个回收器同时处理同一任务；</p>
+</li>
+<li class="lvl-3">
+<p>恢复后核对死信/失败队列，确认无任务因超过最大重试次数被放弃。</p>
+</li>
+</ol>
+<h3>场景三：误删活锁导致的重复执行</h3>
+<p><strong>现象</strong>：运维手动执行 <code>cleanup_by_owner</code> 清理&quot;故障节点&quot;锁后，某任务被两个节点同时执行，产生脏数据。</p>
+<p><strong>根因</strong>：误判了节点状态——目标节点只是网络分区（心跳中断），并未真正宕机，它手里的锁还在被看门狗续期；运维强制删锁后，任务被其他节点抢占，而原节点&quot;复活&quot;后继续执行。</p>
+<p><strong>预防原则</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>删除前必须三重确认：心跳超时 + 锁空闲超时 + 任务无进度更新；</p>
+</li>
+<li class="lvl-2">
+<p>优先用 <code>cleanup_stale_locks(ttl_threshold)</code>（自动判断空闲）而不是 <code>cleanup_by_owner</code>（人工指定）；</p>
+</li>
+<li class="lvl-2">
+<p>处理流程遵守&quot;先标记节点死亡 → 等宽限期 → 再清锁&quot;的顺序，与故障恢复篇的节点状态机保持一致。</p>
+</li>
+</ul>
+<h3>场景四：Redis 故障转移期间锁的短暂双主</h3>
+<p><strong>现象</strong>：Redis 主从切换瞬间，两个节点几乎同时 <code>SET NX</code> 成功（旧主上的写入未同步到新主），锁互斥失效。</p>
+<p><strong>根因</strong>：Redis 主从复制是异步的，锁写入可能在新主上丢失。这是 <strong>Redis 分布式锁的固有边界</strong>（Redlock 也只是降低概率而非消除）。</p>
+<p><strong>处理方案</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>接受窗口：调度场景下双执行窗口通常为毫秒级，配合状态机（PENDING 检查）与业务幂等可完全消化；</p>
+</li>
+<li class="lvl-2">
+<p>追求极致：为 Redis 开启 <code>min-replicas-to-write</code> 等强一致选项，或接受 Redlock 方案的额外复杂度；</p>
+</li>
+<li class="lvl-2">
+<p><strong>明确边界</strong>：NeoTask 的锁定位是&quot;低成本防重&quot;，不承诺线性一致；需要严格互斥的业务（如资金操作）应在业务事务内二次校验。</p>
+</li>
+</ul>
+<hr>
+<h2>版本与验证说明</h2>
+<p>本文属于项目文档而不是永久不变的 API 契约。以下情况发生时，应重新核对源码或发布说明：</p>
+<ol>
+<li class="lvl-3">
+<p>项目版本升级，尤其是公开 API、配置模型、存储实现和工作流发生变化；</p>
+</li>
+<li class="lvl-3">
+<p>本文中的默认值、性能数据或示例依赖外部服务版本；</p>
+</li>
+<li class="lvl-3">
+<p>运行环境与本文案例不同，例如 Python 版本、Redis/数据库版本、模型供应商或操作系统不同。</p>
+</li>
+</ol>
+<p>如果你要把本文内容用于生产环境，请优先使用仓库当前版本的 README、源码、测试和 Release 记录进行最终确认。</p>
+<h2>总结</h2>
+<p>NeoTask 的分布式锁是&quot;轻量但分层&quot;的设计范本，把分布式锁这一经典命题拆成了四个可独立演进的部件：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">部件</th>
+<th style="text-align:left">职责</th>
+<th style="text-align:left">一句话设计理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code>SET NX EX</code></td>
+<td style="text-align:left">原子获取 + 崩溃自愈</td>
+<td style="text-align:left">单条原子命令同时解决互斥与 TTL</td>
+</tr>
+<tr>
+<td style="text-align:left">Lua 释放/续期脚本</td>
+<td style="text-align:left">身份校验的原子化</td>
+<td style="text-align:left">杜绝&quot;误删他人锁&quot;这一分布式锁头号事故</td>
+</tr>
+<tr>
+<td style="text-align:left">WatchDog</td>
+<td style="text-align:left">长任务续期</td>
+<td style="text-align:left">把&quot;短 TTL 快速自愈&quot;与&quot;长任务不断锁&quot;这对矛盾解耦</td>
+</tr>
+<tr>
+<td style="text-align:left">LockScanner / 状态机</td>
+<td style="text-align:left">残留兜底</td>
+<td style="text-align:left">锁不是银弹，异常要靠周期扫描与状态机收敛</td>
+</tr>
+</tbody>
+</table>
+<p>贯穿始终的设计哲学是**“分层防御、各司其职”**：出队互斥防止任务被重复取出，执行锁防止任务被并发执行，PENDING/RUNNING 状态机挡住异常路径的重入，回收器处理节点故障的遗留，看门狗在正常路径上为长任务续命。没有任何一层假设其他层一定可靠——这也是分布式系统设计的通用答案。</p>
+<p><code>RedisLock.extend</code> 采用<strong>按 key 的 owner 校验 + <code>LUA_EXTEND</code> 原子脚本</strong>：同一个锁实例并发持有多个锁时，各锁续期互不干扰，长任务 + 高并发这一最需要看门狗的场景反而是它最稳的场景。理解这一点，是正确使用 NeoTask 分布式锁的基础。</p>
+<p>锁能保证的是&quot;不重不漏尽量少靠运气&quot;，而真正让业务高枕无忧的，永远是<strong>幂等的任务处理器 + 可观测的锁状态 + 清晰的故障恢复流程</strong>。</p>
+<hr>
+<h2>相关链接</h2>
+<p><a href="index.html">返回首页</a></p>
+<p><strong>入门与参考</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="quickstart.html">快速上手</a> - 5 分钟入门</p>
+</li>
+<li class="lvl-2">
+<p><a href="api-reference.html">API 参考</a> - 完整 API 文档</p>
+</li>
+<li class="lvl-2">
+<p><a href="configuration.html">配置说明</a> - 配置参数详解</p>
+</li>
+<li class="lvl-2">
+<p><a href="best-practices.html">最佳实践</a> - 生产环境建议</p>
+</li>
+</ul>
+<p><strong>架构与设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="architecture.html">架构设计</a> - 整体架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="core-features.html">核心实现</a> - 功能设计</p>
+</li>
+<li class="lvl-2">
+<p><a href="evolution.html">版本演进</a> - 演进历程</p>
+</li>
+</ul>
+<p><strong>分布式核心</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="decentralization.html">去中心化</a> - 对等架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="failure-recovery.html">故障恢复</a> - 高可用保障</p>
+</li>
+<li class="lvl-2">
+<p><a href="prefetch.html">预取机制</a> - 高吞吐性能</p>
+</li>
+<li class="lvl-2">
+<p><a href="distributed-lock.html">分布式锁</a> - 并发控制</p>
+</li>
+</ul>
+<p><strong>存储与监控</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="persistence.html">持久化</a> - 多存储后端</p>
+</li>
+<li class="lvl-2">
+<p><a href="priority-queue.html">优先级</a> - 优先级队列</p>
+</li>
+<li class="lvl-2">
+<p><a href="delayed-tasks.html">延时任务</a> - 时间轮 + Redis 持久化</p>
+</li>
+<li class="lvl-2">
+<p><a href="monitoring.html">节点监控</a> - 可观测性</p>
+</li>
+</ul>
+<p><strong>资源</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/neotask">GitHub</a> - 源代码仓库</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://task.helpenx.com">NeoTask 官网</a> - 官方网站</p>
+</li>
+</ul>
+
+      </article>
+    </main>
+  </div>
+  <footer>
+    <a href="https://task.helpenx.com" target="_blank" rel="noopener">NeoTask 官网</a>·
+    <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>·
+    <a href="index.html">文档中心</a>
+    <div style="margin-top:6px">© 2026 helpenx.com · 文档基线以文中标注版本对应的源码为准</div>
+  </footer>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</body>
+</html>

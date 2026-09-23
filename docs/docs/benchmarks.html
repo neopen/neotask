@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoTask 性能基准：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱 · NeoTask 文档</title>
+  <meta name="description" content="以 NeoTask 官方基准脚本（tests/benchmark）与实测报告（docs/性能基准测试.md）为基线，深度解读各组数据的真实含义：队列 30 万 ops/s 与端到端 1697 ops/s 为何相差两个数量级、Worker 扩展性 1.00x 说明什么、持续负载 64.6 ops/s 背后的 Windows 定时器粒度陷阱，并给出基准复现方法、从数据到配置的调优决策路径与 4 个基准误用故障场景。">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://task.helpenx.com/docs/benchmarks.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:title" content="NeoTask 性能基准：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱">
+  <meta property="og:description" content="以 NeoTask 官方基准脚本（tests/benchmark）与实测报告（docs/性能基准测试.md）为基线，深度解读各组数据的真实含义：队列 30 万 ops/s 与端到端 1697 ops/s 为何相差两个数量级、Worker 扩展性 1.00x 说明什么、持续负载 64.6 ops/s 背后的 Windows 定时器粒度陷阱，并给出基准复现方法、从数据到配置的调优决策路径与 4 个基准误用故障场景。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://task.helpenx.com/docs/benchmarks.html">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>⏱️</text></svg>">
+  <style>
+:root{--brand:#0d9488;--brand-dark:#0f766e;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:var(--ink);background:#fff;line-height:1.75;font-size:16px}
+a{color:var(--brand);text-decoration:none}a:hover{color:var(--brand-dark);text-decoration:underline}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
+.topbar .brand .doc-badge{font-size:12px;font-weight:600;color:#fff;background:var(--brand);border-radius:6px;padding:2px 8px}
+.topbar nav{display:flex;gap:20px;font-size:14.5px}
+.topbar nav a{color:var(--muted);font-weight:500}
+.topbar nav a:hover{color:var(--brand)}
+.wrap{display:flex;max-width:1280px;margin:0 auto;padding:0 16px}
+.sidebar{width:264px;flex-shrink:0;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 40px 0;border-right:1px solid var(--line)}
+.sidebar .side-home{display:block;font-weight:600;color:var(--ink);margin-bottom:16px;font-size:15px}
+.sidebar .side-home:hover{color:var(--brand);text-decoration:none}
+.sidebar h4{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px;font-weight:600}
+.sidebar a{display:block;padding:5px 10px;border-radius:6px;font-size:14px;color:#334155;line-height:1.5}
+.sidebar a:hover{background:var(--bg);color:var(--brand);text-decoration:none}
+.sidebar a.active{background:var(--brand);color:#fff}
+.content{flex:1;min-width:0;padding:32px 20px 60px 36px;max-width:860px}
+.toc-mobile{display:none;margin-bottom:20px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.toc-mobile summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.toc-mobile a{display:block;padding:3px 0;font-size:14px}
+.article h1{font-size:1.9em;line-height:1.35;margin:.4em 0 .8em}
+.article h2{font-size:1.45em;margin:1.8em 0 .7em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
+.article h3{font-size:1.22em;margin:1.5em 0 .6em}
+.article h4{font-size:1.08em;margin:1.3em 0 .5em}
+.article p{margin:.85em 0}
+.article ul,.article ol{padding-left:1.6em;margin:.7em 0}
+.article li{margin:.35em 0}
+.article img{max-width:100%;height:auto;border-radius:8px}
+.article table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:.94em;display:block;overflow-x:auto}
+.article th,.article td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+.article th{background:var(--bg);font-weight:600}
+.article tr:nth-child(even) td{background:#fbfdff}
+.article blockquote{margin:1.1em 0;padding:.7em 1.1em;border-left:4px solid var(--brand);background:var(--bg);border-radius:0 8px 8px 0;color:#334155}
+.article blockquote p{margin:.3em 0}
+.article code:not(pre code){background:#eef2f7;color:#c7254e;padding:.15em .4em;border-radius:4px;font-size:.88em;word-break:break-word}
+.article pre.hljs{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0;line-height:1.6}
+.article pre.hljs code{background:none;padding:0;color:var(--ink);font-size:.9em;font-family:ui-monospace,SFMono-Regular,'Cascadia Code',Consolas,Menlo,monospace}
+.article pre.mermaid{text-align:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0}
+.article hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+.article .success,.article .tips,.article .warning,.article .danger{border-radius:8px;padding:.9em 1.1em;margin:1.1em 0;border:1px solid}
+.article .success{border-color:#a7f3d0;background:#ecfdf5}.article .success p:first-of-type::before{content:'✅ '}
+.article .tips{border-color:#bfdbfe;background:#eff6ff}.article .tips p:first-of-type::before{content:'💡 '}
+.article .warning{border-color:#fde68a;background:#fffbeb}.article .warning p:first-of-type::before{content:'⚠️ '}
+.article .danger{border-color:#fecaca;background:#fef2f2}.article .danger p:first-of-type::before{content:'🚫 '}
+.article .success>p:first-child,.article .tips>p:first-child,.article .warning>p:first-child,.article .danger>p:first-child{margin-top:0}
+.article .success>p:last-child,.article .tips>p:last-child,.article .warning>p:last-child,.article .danger>p:last-child{margin-bottom:0}
+.doc-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--muted)}
+.doc-meta .tag{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+.doc-nav{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
+.doc-nav a{font-weight:600}
+footer{border-top:1px solid var(--line);padding:22px 24px;text-align:center;color:var(--muted);font-size:13.5px}
+footer a{color:var(--muted);margin:0 10px}
+footer a:hover{color:var(--brand)}
+@media (max-width:960px){
+  .sidebar{display:none}
+  .toc-mobile{display:block}
+  .content{padding:20px 6px 50px}
+  .topbar nav{gap:12px}
+}
+</style>
+  <style>
+.hljs{color:#24292e;background:#f6f8fa}
+.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.constant_{color:#d73a49}
+.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}
+.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}
+.hljs-string,.hljs-meta .hljs-string,.hljs-regexp{color:#032f62}
+.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-tag,.hljs-subst,.hljs-symbol{color:#e36209}
+.hljs-built_in,.hljs-class .hljs-title{color:#e36209}
+.hljs-comment,.hljs-meta,.hljs-quote{color:#6a737d}
+.hljs-section{color:#005cc5;font-weight:700}
+.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">⏱️ NeoTask <span class="doc-badge">文档</span></a>
+    <nav>
+      <a href="https://task.helpenx.com" target="_blank" rel="noopener">产品官网</a>
+      <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+  <div class="wrap">
+    <aside class="sidebar">
+      <a class="side-home" href="index.html">⏱️ 分布式任务调度系统 · 文档中心</a>
+      <h4>技术分析</h4><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a>
+<h4>API 与配置参考</h4><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a>
+<h4>实现与源码分析</h4><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a>
+<h4>设计与方案</h4><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a>
+<h4>项目概览</h4><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a>
+<h4>入门与使用</h4><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a>
+<h4>性能与评测</h4><a href="benchmarks.html" class="active">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a>
+<h4>实践与运维</h4><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a>
+<h4>架构与核心设计</h4><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a>
+<h4>版本与演进</h4><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a>
+    </aside>
+    <main class="content">
+      <details class="toc-mobile"><summary>📑 文档目录</summary><div><strong style="font-size:13px;color:var(--muted)">技术分析</strong><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a></div><div><strong style="font-size:13px;color:var(--muted)">API 与配置参考</strong><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a></div><div><strong style="font-size:13px;color:var(--muted)">实现与源码分析</strong><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a></div><div><strong style="font-size:13px;color:var(--muted)">设计与方案</strong><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a></div><div><strong style="font-size:13px;color:var(--muted)">项目概览</strong><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a></div><div><strong style="font-size:13px;color:var(--muted)">入门与使用</strong><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a></div><div><strong style="font-size:13px;color:var(--muted)">性能与评测</strong><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a></div><div><strong style="font-size:13px;color:var(--muted)">实践与运维</strong><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a></div><div><strong style="font-size:13px;color:var(--muted)">架构与核心设计</strong><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a></div><div><strong style="font-size:13px;color:var(--muted)">版本与演进</strong><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a></div></details>
+      <article class="article">
+        <div class="doc-meta"><span class="tag">NeoTask</span><span class="tag">更新 2026-05-06</span><a href="https://task.helpenx.com" target="_blank" rel="noopener">task.helpenx.com ↗</a></div>
+        <h1>NeoTask 性能基准详解</h1>
+<p>📚 <a href="index.html">返回首页</a> | 📖 <a href="quickstart.html">快速上手</a> | 📘 <a href="api-reference.html">API 参考</a> | ⚙️ <a href="configuration.html">配置说明</a> | 🐙 <a href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a href="https://task.helpenx.com">NeoTask 官网</a></p>
+<blockquote>
+<p><strong>文档定位</strong>：这是一篇评测文档。重点是说明测试条件、指标定义、脚本口径和结果限制；性能数字只有在相同环境与版本下才具有可比性。<br>
+<strong>事实边界</strong>：评测文档：数据仅适用于文中记录的环境、版本与测试脚本，不能直接外推到其他环境。<br>
+<strong>权威来源</strong>：<a href="https://github.com/neopen/neotask">NeoTask 源码仓库</a>；涉及版本历史时，以仓库 Release / CHANGELOG 为准。<br>
+<strong>代码标记</strong>：如果正文出现“源码/实现”字样，表示对应代码路径可在仓库中核对；示例代码仅用于演示调用方式，不应理解为项目源码原样。<br>
+<strong>版本基线</strong>：本文对照 NeoTask <strong>v1.0.2</strong>（PyPI 发布版）；&quot;实测数据&quot;摘录自仓库 <code>docs/性能基准测试.md</code>（<strong>v0.3.0</strong> 时期测得，测试日期 2026 年 4 月），&quot;基准脚本&quot;摘录自 <code>tests/benchmark/</code>（与 v1.0.2 发布包同源的测试代码）。<br>
+<strong>代码标注约定</strong>：🔧 表示<strong>真实源码 / 仓库已公开内容</strong>（源码、基准脚本或报告原文摘录，附文件路径，可自行对照）；📝 表示<strong>示例代码</strong>（用法演示、改进建议或教学代码，不代表仓库实现）。<br>
+<strong>先读结论</strong>：性能数字脱离&quot;测试意图、统计口径、运行环境&quot;毫无意义。本文最大的价值不是复述几个数字，而是教你把每个数字读对——包括官方报告里那个看起来很低的 64.6 ops/s。</p>
+</blockquote>
+<hr>
+<h2>目录</h2>
+<ol>
+<li class="lvl-3">
+<p><a href="#%E4%B8%80%E4%B8%BA%E4%BB%80%E4%B9%88%E4%B8%80%E4%B8%AA%E8%B0%83%E5%BA%A6%E6%A1%86%E6%9E%B6%E8%A6%81%E8%87%AA%E5%B8%A6%E5%9F%BA%E5%87%86%E6%B5%8B%E8%AF%95">为什么一个调度框架要自带基准测试</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%BA%8C%E5%A6%82%E4%BD%95%E8%AF%BB%E6%87%82%E4%B8%80%E4%BB%BD%E5%9F%BA%E5%87%86%E6%8A%A5%E5%91%8A%E4%BA%94%E4%B8%AA%E5%85%88%E5%86%B3%E9%97%AE%E9%A2%98">如何读懂一份基准报告：五个先决问题</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%B8%89%E5%AE%98%E6%96%B9%E5%9F%BA%E5%87%86%E8%84%9A%E6%9C%AC%E7%BB%93%E6%9E%84%E8%A7%A3%E6%9E%90">官方基准脚本结构解析</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E5%9B%9B%E5%AE%98%E6%96%B9%E5%AE%9E%E6%B5%8B%E6%95%B0%E6%8D%AE%E4%B8%8E%E6%B7%B1%E5%BA%A6%E8%A7%A3%E8%AF%BB">官方实测数据与深度解读</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%BA%94%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%99%E4%B9%88%E8%AE%BE%E8%AE%A1%E4%B8%89%E4%B8%AA%E8%A2%AB%E4%BD%8E%E4%BC%B0%E7%9A%84%E7%BB%86%E8%8A%82">为什么这么设计：三个被低估的细节</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E5%85%AD%E5%A6%82%E4%BD%95%E5%A4%8D%E7%8E%B0%E4%B8%8E%E6%89%A9%E5%B1%95%E5%9F%BA%E5%87%86">如何复现与扩展基准</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%B8%83%E4%BB%8E%E6%95%B0%E6%8D%AE%E5%88%B0%E9%85%8D%E7%BD%AE%E6%80%A7%E8%83%BD%E8%B0%83%E4%BC%98%E5%86%B3%E7%AD%96%E8%B7%AF%E5%BE%84">从数据到配置：性能调优决策路径</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E5%85%AB%E4%B8%8E%E7%89%88%E6%9C%AC%E6%BC%94%E8%BF%9B%E7%9B%AE%E6%A0%87%E9%87%8F%E7%BA%A7%E7%9A%84%E5%AF%B9%E7%85%A7%E8%AF%B4%E6%98%8E">与版本演进目标量级的对照说明</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%B9%9D%E6%95%85%E9%9A%9C%E5%9C%BA%E6%99%AF%E5%AE%9E%E6%88%98%E5%9F%BA%E5%87%86%E6%B5%8B%E8%AF%95%E7%9A%84%E5%9B%9B%E4%B8%AA%E8%AF%AF%E7%94%A8%E9%99%B7%E9%98%B1">故障场景实战：基准测试的四个误用陷阱</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#%E5%8D%81%E6%80%BB%E7%BB%93">总结</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5">相关链接</a></p>
+</li>
+</ol>
+<hr>
+<h2>一、为什么一个调度框架要自带基准测试</h2>
+<p><strong>为什么这么设计：性能数字是框架的&quot;体检报告&quot;，不带基准的调度框架等于不提供血压计的医疗设备。</strong></p>
+<p>NeoTask 在 <code>tests/benchmark/</code> 下放了四个脚本（<code>run_benchmark.py</code> / <code>run_fast.py</code> / <code>run_complete.py</code> / <code>test_performance.py</code>），并把实测结果沉淀为 <code>docs/性能基准测试.md</code>。这套设施回答三类问题：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">使用者</th>
+<th style="text-align:left">要回答的问题</th>
+<th style="text-align:left">基准的作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">框架开发者</td>
+<td style="text-align:left">这次重构有没有让调度变慢？</td>
+<td style="text-align:left">回归守护：断言阈值挡在 CI 里</td>
+</tr>
+<tr>
+<td style="text-align:left">选型者</td>
+<td style="text-align:left">它够不够快？适合什么负载？</td>
+<td style="text-align:left">提供可信基线，而非营销数字</td>
+</tr>
+<tr>
+<td style="text-align:left">使用者</td>
+<td style="text-align:left">我的配置/硬件下应该期待多少？</td>
+<td style="text-align:left">给出对照基准与复现方法</td>
+</tr>
+</tbody>
+</table>
+<p>对使用者来说，基准最重要的价值反而是<strong>校准预期</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>调度框架的吞吐由&quot;提交 → 持久化 → 排队 → worker 执行 → 状态回写&quot;整条链路决定，<strong>任何一个环节都可能是瓶颈</strong>；</p>
+</li>
+<li class="lvl-2">
+<p>官方报告明确写&quot;该数据在什么机器、什么存储、什么版本下测得&quot;——这就是给&quot;跨环境对比&quot;立的规矩；</p>
+</li>
+<li class="lvl-2">
+<p>脚本即文档：<code>noop / light / cpu / io</code> 四种执行器把&quot;调度开销&quot;与&quot;业务执行时间&quot;解耦测量，使用者可以照着构造自己的负载画像。</p>
+</li>
+</ul>
+<hr>
+<h2>二、如何读懂一份基准报告：五个先决问题</h2>
+<p>拿到任何一行吞吐数字，先问五个问题，再决定它能不能用：</p>
+<pre class="mermaid">flowchart TB
+    Q1{1. 测的是哪一段链路?} --&gt;|纯队列操作| A1[数据结构级&lt;br/&gt;30万 ops/s 很正常]
+    Q1 --&gt;|端到端任务调度| A2[全链路&lt;br/&gt;1千~1万 ops/s 量级]
+    Q2{2. 任务负载是什么?} --&gt; B1[noop: 纯调度开销]
+    Q2 --&gt; B2[light: 微计算]
+    Q2 --&gt; B3[io: 网络/睡眠为主]
+    Q3{3. 什么环境测得?} --&gt; C1[OS/Python/CPU/存储后端]
+    Q4{4. 统计口径是什么?} --&gt; D1[吞吐 or P50/P95/P99? 含不含排队?]
+    Q5{5. 测试意图是什么?} --&gt; E1[压极限 or 模拟稳态流量?]
+</pre>
+<p>对照官方报告的每个表格，逐一作答：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">数据</th>
+<th style="text-align:left">链路</th>
+<th style="text-align:left">负载</th>
+<th style="text-align:left">意图</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">优先级队列 31 万 ops/s</td>
+<td style="text-align:left">纯内存堆操作</td>
+<td style="text-align:left">无</td>
+<td style="text-align:left">数据结构压测</td>
+</tr>
+<tr>
+<td style="text-align:left">TaskPool 1697 ops/s</td>
+<td style="text-align:left">提交+调度+执行全链路</td>
+<td style="text-align:left">noop</td>
+<td style="text-align:left">端到端压测</td>
+</tr>
+<tr>
+<td style="text-align:left">持续负载 64.6 ops/s</td>
+<td style="text-align:left">全链路</td>
+<td style="text-align:left">light</td>
+<td style="text-align:left">模拟低频稳态提交（见 4.5 的陷阱解读）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>同一个框架，不同测法可以得出相差四个数量级的&quot;吞吐&quot;——不是框架骗人，是口径不同。</strong> 对外宣传时必须说明测的是哪一段；对内调优时必须盯住与业务同构的那一段。</p>
+<hr>
+<h2>三、官方基准脚本结构解析</h2>
+<h3>3.1 四层执行器：把&quot;框架开销&quot;与&quot;业务开销&quot;分离</h3>
+<p>🔧 <code>tests/benchmark/test_performance.py</code> 定义了四个执行器，这是整个基准体系的分母设计：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 tests/benchmark/test_performance.py —— 真实脚本摘录</span>
+
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">noop_executor</span>(<span class="hljs-params">data: <span class="hljs-type">Dict</span></span>) -&gt; <span class="hljs-type">Dict</span>:
+    <span class="hljs-keyword">return</span> {<span class="hljs-string">&quot;result&quot;</span>: <span class="hljs-string">&quot;done&quot;</span>}
+
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">light_executor</span>(<span class="hljs-params">data: <span class="hljs-type">Dict</span></span>) -&gt; <span class="hljs-type">Dict</span>:
+    _ = <span class="hljs-built_in">sum</span>(<span class="hljs-built_in">range</span>(<span class="hljs-number">100</span>))
+    <span class="hljs-keyword">return</span> {<span class="hljs-string">&quot;result&quot;</span>: <span class="hljs-string">&quot;done&quot;</span>}
+
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">cpu_executor</span>(<span class="hljs-params">data: <span class="hljs-type">Dict</span></span>) -&gt; <span class="hljs-type">Dict</span>:
+    count = data.get(<span class="hljs-string">&quot;count&quot;</span>, <span class="hljs-number">10000</span>)
+    result = <span class="hljs-number">0</span>
+    <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(count):
+        result += i
+    <span class="hljs-keyword">return</span> {<span class="hljs-string">&quot;result&quot;</span>: result}
+
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">io_executor</span>(<span class="hljs-params">data: <span class="hljs-type">Dict</span></span>) -&gt; <span class="hljs-type">Dict</span>:
+    <span class="hljs-keyword">await</span> asyncio.sleep(data.get(<span class="hljs-string">&quot;sleep&quot;</span>, <span class="hljs-number">0.001</span>))
+    <span class="hljs-keyword">return</span> {<span class="hljs-string">&quot;result&quot;</span>: <span class="hljs-string">&quot;done&quot;</span>}
+</code></pre>
+<p>设计意图：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>noop</code>：任务体约等于零，测的是<strong>纯调度链路</strong>（提交、入队、状态写、worker 分配）的上限；</p>
+</li>
+<li class="lvl-2">
+<p><code>light</code>：模拟真实微任务（几微秒计算），最接近&quot;大量小任务&quot;的生产画像；</p>
+</li>
+<li class="lvl-2">
+<p><code>cpu</code>：可控计算量，用于测量 CPU 密集型任务下 worker 的并行收益；</p>
+</li>
+<li class="lvl-2">
+<p><code>io</code>：任务内睡眠，模拟网络/存储等待，用于测量 <strong>IO 并发度</strong>——sleep 越长的任务，单位时间能并发执行的数量越大。</p>
+</li>
+</ul>
+<p><strong>为什么这么设计：用&quot;可控负载&quot;而不是&quot;业务代码&quot;做基准，结果才能跨机器复现、跨版本对比。</strong> 若拿真实业务（Redis 往返、第三方 API）测，测出来的其实是业务下游的延迟分布，框架优劣被噪声淹没。</p>
+<h3>3.2 BenchmarkResult：延迟分布的统计骨架</h3>
+<p>🔧 同一个文件里的 <code>BenchmarkResult</code> 类，负责把原始耗时收敛成可读指标：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 tests/benchmark/test_performance.py —— 真实脚本摘录（关键属性）</span>
+
+<span class="hljs-meta">@property</span>
+<span class="hljs-keyword">def</span> <span class="hljs-title function_">p95_latency_ms</span>(<span class="hljs-params">self</span>) -&gt; <span class="hljs-built_in">float</span>:
+    <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> <span class="hljs-variable language_">self</span>.latencies:
+        <span class="hljs-keyword">return</span> <span class="hljs-number">0</span>
+    sorted_times = <span class="hljs-built_in">sorted</span>(<span class="hljs-variable language_">self</span>.latencies)
+    idx = <span class="hljs-built_in">int</span>(<span class="hljs-built_in">len</span>(sorted_times) * <span class="hljs-number">0.95</span>)
+    <span class="hljs-keyword">return</span> sorted_times[idx] * <span class="hljs-number">1000</span>
+
+<span class="hljs-meta">@property</span>
+<span class="hljs-keyword">def</span> <span class="hljs-title function_">p99_latency_ms</span>(<span class="hljs-params">self</span>) -&gt; <span class="hljs-built_in">float</span>:
+    <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> <span class="hljs-variable language_">self</span>.latencies:
+        <span class="hljs-keyword">return</span> <span class="hljs-number">0</span>
+    sorted_times = <span class="hljs-built_in">sorted</span>(<span class="hljs-variable language_">self</span>.latencies)
+    idx = <span class="hljs-built_in">int</span>(<span class="hljs-built_in">len</span>(sorted_times) * <span class="hljs-number">0.99</span>)
+    <span class="hljs-keyword">return</span> sorted_times[idx] * <span class="hljs-number">1000</span>
+
+<span class="hljs-meta">@property</span>
+<span class="hljs-keyword">def</span> <span class="hljs-title function_">throughput_ops</span>(<span class="hljs-params">self</span>) -&gt; <span class="hljs-built_in">float</span>:
+    <span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>.duration &lt;= <span class="hljs-number">0</span>:
+        <span class="hljs-keyword">return</span> <span class="hljs-number">0</span>
+    <span class="hljs-keyword">return</span> <span class="hljs-variable language_">self</span>.total_requests / <span class="hljs-variable language_">self</span>.duration
+</code></pre>
+<p>注意它同时报告 <code>avg / p50 / p95 / p99</code> 四档延迟，而不是只给平均值——<strong>平均延迟对长尾无感</strong>，P99 才是线上体感的代理指标。</p>
+<h3>3.3 测试覆盖的五类场景</h3>
+<p>🔧 <code>tests/benchmark/run_benchmark.py</code> 中 <code>run_all_benchmarks()</code> 的编排顺序，本身就是一份&quot;该测什么&quot;的清单：</p>
+<pre class="hljs"><code>1. 基础吞吐量测试      → TaskPool 端到端吞吐 + 延迟分布
+2. 队列性能测试        → 优先级队列吞吐 / 预取器对比 / 批量弹出对比
+3. 并发性能测试        → Worker 1/2/4/8 扩展性 + 50 并发提交
+4. 任务类型性能测试    → light 任务 / IO 任务
+5. 压力测试            → 5 秒持续负载 + 500 突发负载
+</code></pre>
+<p>五类场景分别回答：<strong>上限多高、队列多快、加人不加量、任务画像差异、扛不扛得住</strong>。</p>
+<h3>3.4 断言阈值：基准如何变成回归守护</h3>
+<p>🔧 <code>test_performance.py</code> 中，基准不只是打印，还带断言：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 tests/benchmark/test_performance.py —— 真实脚本摘录</span>
+<span class="hljs-keyword">assert</span> stats[<span class="hljs-string">&#x27;success_rate&#x27;</span>] &gt; <span class="hljs-number">0.95</span>          <span class="hljs-comment"># 吞吐测试：成功率不低于 95%</span>
+
+<span class="hljs-comment"># 优先级队列测试中（同类断言）：</span>
+<span class="hljs-comment"># assert total / duration_push &gt; 1000        # 入队吞吐下限 1000 ops/s</span>
+</code></pre>
+<p>这个断言阈值刻意定得<strong>远低于实测值</strong>（实测 30 万+ vs 阈值 1000）。<strong>为什么这么设计：CI 里的阈值不是为了卡性能天花板，而是为了抓&quot;灾难性回归&quot;</strong>——性能测试跑在共享 CI 机器上，波动两个数量级都正常，阈值设在&quot;从 30 万掉到不足 1000 才算失败&quot;的位置，只拦截结构性破坏（如死循环、锁死、O(N²) 引入），不误伤环境抖动。若把阈值贴近实测值，基准测试就会变成天天误报的&quot;狼来了&quot;，最终被开发者跳过——那才是真正的回归失守。</p>
+<hr>
+<h2>四、官方实测数据与深度解读</h2>
+<h3>4.1 测试环境（官方报告原样）</h3>
+<p>🔧 <code>docs/性能基准测试.md</code> 记录的测试环境：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">项目</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">操作系统</td>
+<td style="text-align:left">Windows 10</td>
+</tr>
+<tr>
+<td style="text-align:left">Python 版本</td>
+<td style="text-align:left">3.10.11</td>
+</tr>
+<tr>
+<td style="text-align:left">CPU</td>
+<td style="text-align:left">Intel i7-10750H（6 核 12 线程，移动平台）</td>
+</tr>
+<tr>
+<td style="text-align:left">存储后端</td>
+<td style="text-align:left">内存存储（Memory）</td>
+</tr>
+<tr>
+<td style="text-align:left">版本</td>
+<td style="text-align:left">NeoTask v0.3.0，测试日期 2026 年 4 月</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>三点提醒：① <strong>内存存储</strong>意味着不含持久化 IO 与网络开销，是&quot;最乐观口径&quot;；② Windows + 笔记本 CPU，绝对数值普遍低于同代 Linux 台式机；③ v0.3.0 尚无 v0.5 的预取优化与 v1.0 的看门狗/回收机制——<strong>这份数据不代表 v1.0.2 的水平，更不代表加了 Redis 之后分布式部署的水平</strong>。</p>
+</blockquote>
+<h3>4.2 端到端与数据结构两级吞吐</h3>
+<p>🔧 官方实测：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">测试项</th>
+<th style="text-align:left">结果</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">TaskPool 基础吞吐（1000 noop 任务）</td>
+<td style="text-align:left"><strong>1697.31 ops/s</strong></td>
+<td style="text-align:left">成功率 100%</td>
+</tr>
+<tr>
+<td style="text-align:left">轻量任务吞吐（500 × <code>sum(range(100))</code>）</td>
+<td style="text-align:left"><strong>1395.82 ops/s</strong></td>
+<td style="text-align:left">平均延迟 0.72ms</td>
+</tr>
+<tr>
+<td style="text-align:left">IO 任务吞吐（200 × 5ms 睡眠，20 worker）</td>
+<td style="text-align:left"><strong>4671.37 ops/s</strong></td>
+<td style="text-align:left">平均延迟 0.21ms</td>
+</tr>
+<tr>
+<td style="text-align:left">优先级队列入队 / 出队（5000 任务）</td>
+<td style="text-align:left"><strong>208,371 / 312,443 ops/s</strong></td>
+<td style="text-align:left">纯内存堆操作</td>
+</tr>
+<tr>
+<td style="text-align:left">单条弹出 vs 批量弹出（10条）</td>
+<td style="text-align:left"><strong>250,033 vs 499,976 ops/s</strong></td>
+<td style="text-align:left">提升 2.00x</td>
+</tr>
+</tbody>
+</table>
+<h3>4.3 深读一：为什么端到端 1697 与队列 31 万差了两个数量级？</h3>
+<p>队列测试只调用 <code>PriorityQueue.push/pop</code>——一次 <code>heapq</code> 操作，微秒级；而 TaskPool 测试中每个任务经历完整生命周期：</p>
+<pre class="mermaid">flowchart LR
+    subgraph chain[&quot;一个任务的完整生命周期&quot;]
+        A[submit_async&lt;br/&gt;入队] --&gt; B[存储写&lt;br/&gt;task 记录]
+        B --&gt; C[worker 取任务] --&gt; D[状态置 RUNNING]
+        D --&gt; E[执行 executor] --&gt; F[状态置 SUCCESS]
+        F --&gt; G[事件发布/统计]
+    end
+</pre>
+<p>每一步都有协程切换与字典/状态操作，noop 任务本身虽快，但<strong>每个任务在多个协程间移交，事件循环的调度开销被放大</strong>。1697 ops/s 意味着单任务全链路约 0.59ms——其中 executor 只占几十微秒，其余全是框架的调度与状态机开销。</p>
+<p><strong>结论</strong>：30 万 ops/s 是&quot;队列组件&quot;的性能，1697 ops/s 是&quot;整个框架&quot;的性能。<strong>宣传与对比时若混用两者，误差超过两个数量级。</strong> 做架构对比（NeoTask vs Celery vs 自研）必须用端到端口径。</p>
+<h3>4.4 深读二：Worker 扩展性 1.00x——是不是说明并发没用？</h3>
+<p>🔧 官方实测：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Worker 数量</th>
+<th style="text-align:left">吞吐量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">1</td>
+<td style="text-align:left">801.58 ops/s</td>
+</tr>
+<tr>
+<td style="text-align:left">2</td>
+<td style="text-align:left">853.25 ops/s</td>
+</tr>
+<tr>
+<td style="text-align:left">4</td>
+<td style="text-align:left">805.08 ops/s</td>
+</tr>
+<tr>
+<td style="text-align:left">8</td>
+<td style="text-align:left">858.27 ops/s</td>
+</tr>
+<tr>
+<td style="text-align:left">扩展效率</td>
+<td style="text-align:left">1.00x（4 workers vs 1 worker）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么加 worker 不加速？</strong> 测试用的是 <code>light</code> 任务（几微秒计算），瓶颈根本不在&quot;执行&quot;，而在<strong>提交端</strong>：测试主协程串行 <code>submit_async</code>，提交速度就是吞吐上限。worker 从 1 加到 8，队列里始终没有积压，自然测不出并行收益。</p>
+<p>这个&quot;不理想&quot;的结果恰恰暴露了基准设计的诚实：<strong>报告如实记录&quot;扩展效率 1.00x&quot;，而不是挑一个好看的任务类型掩盖它。</strong> 正确读法是：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>对微任务，吞吐上限在提交链路（事件循环单线程串行提交），加 worker 无效；</p>
+</li>
+<li class="lvl-2">
+<p>对 IO 任务（4.2 中 4671 ops/s），20 worker 才有意义——sleep 让出事件循环，worker 并发数直接决定在飞任务数；</p>
+</li>
+<li class="lvl-2">
+<p><strong>想让 worker 扩展性变好，测试必须让执行时间显著大于调度开销</strong>（IO 任务或 cpu_executor 加量）。</p>
+</li>
+</ul>
+<h3>4.5 深读三：持续负载 64.6 ops/s——报告里最&quot;难看&quot;也最有信息量的数字</h3>
+<p>🔧 官方实测：持续 5 秒提交，总计 323 个任务，错误 0，<strong>64.60 ops/s</strong>。</p>
+<p>表面看这数字低得离谱（比端到端 1697 还低 26 倍），先别急着下结论，看脚本怎么写的：</p>
+<p>🔧 <code>tests/benchmark/run_fast.py</code> 中持续负载测试的核心循环：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 run_fast.py —— 真实脚本摘录（节选）</span>
+duration = <span class="hljs-number">5</span>
+start = time.time()
+<span class="hljs-keyword">while</span> time.time() - start &lt; duration:
+    <span class="hljs-keyword">await</span> pool.submit_async({<span class="hljs-string">&quot;index&quot;</span>: total_submitted}, task_id=unique_id)
+    total_submitted += <span class="hljs-number">1</span>
+    <span class="hljs-keyword">await</span> asyncio.sleep(<span class="hljs-number">0.001</span>)   <span class="hljs-comment"># ← 关键行：每提交一个任务，睡 1ms</span>
+</code></pre>
+<p><strong>数学验算</strong>：5 秒提交 323 个 → 每轮循环耗时 ≈ 5000ms / 323 ≈ <strong>15.5ms</strong>。而脚本只让协程睡 <code>0.001s</code>（1ms）——实际却花了 15.5ms，差异从哪来？</p>
+<p><strong>根因：Windows 的系统定时器粒度。</strong> 官方测试跑在 Windows 10 上，Windows 默认定时器分辨率约为 <strong>15.6ms</strong>（除非进程调用 <code>timeBeginPeriod</code> 主动提频）。<code>asyncio.sleep(0.001)</code> 在 Windows 上实际唤醒周期受此限制，1ms 的睡眠被放大成 ~15.6ms。于是这个测试的提交速率<strong>不是被框架限制的，而是被操作系统定时器限制的</strong>——脚本本意是&quot;模拟每 1ms 来一个任务的稳态流&quot;，在 Windows 上实际变成&quot;每 15.6ms 来一个任务&quot;，吞吐自然只有 ~64 ops/s。</p>
+<p><strong>这个数字的三个启示</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>读基准必须先读脚本</strong>——64.6 ops/s 不是框架能力下限，是脚本节流 + 平台定时器共同作用的结果；</p>
+</li>
+<li class="lvl-3">
+<p><strong>跨平台对比基准前，先确认定时器/时钟行为</strong>：同一脚本在 Linux（定时器高精度）上会得到完全不同的数字；</p>
+</li>
+<li class="lvl-3">
+<p><strong>官方报告&quot;失败/异常&quot;栏目同样有价值</strong>（见下），它划清了&quot;哪些数字可信&quot;的边界——比一份全绿但口径可疑的报告诚实得多。</p>
+</li>
+</ol>
+<h3>4.6 官方报告承认的两个未完成测试</h3>
+<p>🔧 <code>docs/性能基准测试.md</code> 中的&quot;未完成测试&quot;：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">测试项</th>
+<th style="text-align:left">状态</th>
+<th style="text-align:left">官方记录的原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">高并发提交测试（50 并发 × 20 批）</td>
+<td style="text-align:left">失败</td>
+<td style="text-align:left">asyncio 事件循环绑定问题</td>
+</tr>
+<tr>
+<td style="text-align:left">预取器性能测试</td>
+<td style="text-align:left">异常</td>
+<td style="text-align:left">测试结果不符合预期（可能实现问题）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>怎么读这张表？</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>高并发提交：pytest 的 <code>event_loop</code> fixture 与 TaskPool 内部事件循环在特定环境下的绑定冲突，属<strong>测试基建问题</strong>而非框架缺陷——run_fast.py 单独运行时已覆盖同类场景（200 突发/50 并发等均成功）；</p>
+</li>
+<li class="lvl-2">
+<p>预取器对比：报告怀疑&quot;可能实现问题&quot;。这一条最有价值——<strong>它把疑问写进了文档</strong>，后来者（v0.5 的预取优化）才有据可查。可结合系列《预取机制》一文对照阅读：预取是否生效，取决于消费端是否真能消化批量任务；若 worker 取走一批后处理不过来，预取只把积压从 Redis 搬到本地。</p>
+</li>
+</ul>
+<p><strong>为什么这么设计：测试报告要记录失败，而不是只记录成功。</strong> 只报绿的数字会诱导使用者做出错误的容量规划；注明&quot;哪项没测成、为什么&quot;，报告的信任边界才清晰。</p>
+<h3>4.7 突发负载：500 任务 0.08s（6565 ops/s）说明什么</h3>
+<p>500 个任务全部通过 <code>asyncio.gather</code> 并发提交，总耗时 0.08s——其中包含<strong>并发提交</strong>与<strong>全部执行完</strong>。对比基础测试 1000 任务串行提交 0.59s：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>提交从串行（每次 await 完整往返）改为并发（gather 批量发起），提交侧不再是瓶颈；</p>
+</li>
+<li class="lvl-2">
+<p>0.08s 是&quot;50 worker 并发消费 500 个微任务&quot;的真实水平，<strong>这才是并发能力的体现</strong>——与 4.4 的 1.00x 扩展性并不矛盾：只要提交端能并发灌入，worker 并行度立刻转化为吞吐。</p>
+</li>
+</ul>
+<hr>
+<h2>五、为什么这么设计：三个被低估的细节</h2>
+<h3>细节一：批量弹出（pop 10）比单条弹出快 2 倍</h3>
+<p>🔧 官方实测：250,033 → 499,976 ops/s（2.00x）。脚本中两种模式的差异在循环次数：</p>
+<pre class="hljs"><code>单条：1000 次 pop(1)      → 每次调用完成 取锁→heapq→解锁 完整往返
+批量：100 次 pop(10)      → 每次调用一次取锁，一次处理 10 个元素
+</code></pre>
+<p><strong>本质是摊薄固定开销</strong>：每次方法调用都有锁获取（内存模式为 <code>asyncio.Lock</code>，Redis 模式为一次网络 RTT）与堆操作。<code>pop(10)</code> 一次调用完成 10 个元素，固定开销只付一次。这正是《预取机制》文章中&quot;worker 按批拉取&quot;设计的性能依据——<strong>能用批量接口，就不要逐条调用</strong>。</p>
+<h3>细节二：延迟统计四档齐全，而不是只有一个平均值</h3>
+<p><code>BenchmarkResult</code> 同时输出 avg / p50 / p95 / p99。平均延迟对异常值（比如 GC 停顿、调度抖动）不设防，P99 才贴近用户最差体验。<strong>调度框架的延迟画像天然右偏</strong>（少数任务撞上重负载窗口），只报平均值会系统性低估长尾。</p>
+<h3>细节三：成功率断言与吞吐断言分离</h3>
+<p><code>assert success_rate &gt; 0.95</code> 放在吞吐测试里——<strong>高吞吐而低成功率毫无意义</strong>。真实系统里&quot;快但丢任务&quot;比&quot;慢而全对&quot;更危险：任务悄悄失败，业务侧无从感知。基准同时守护吞吐与可靠性两个维度，与框架把&quot;任务状态机 + 回收器&quot;作为一等公民的设计互为印证。</p>
+<hr>
+<h2>六、如何复现与扩展基准</h2>
+<h3>6.1 复现官方基准</h3>
+<pre class="hljs"><code><span class="hljs-comment"># 方式一：独立脚本（推荐，避免 pytest 事件循环兼容问题）</span>
+<span class="hljs-built_in">cd</span> neotask
+python tests/benchmark/run_fast.py          <span class="hljs-comment"># 快速基准（全部场景约 30s）</span>
+python tests/benchmark/run_benchmark.py     <span class="hljs-comment"># 完整基准（含全部 5 类场景）</span>
+
+<span class="hljs-comment"># 方式二：pytest 运行（需事件循环环境就绪）</span>
+pytest -m benchmark tests/benchmark/test_performance.py -v
+</code></pre>
+<p><code>run_fast.py</code> 会把结果序列化为 JSON 保存到 <code>benchmark_results_fast.txt</code>，方便自动化采集与对比。</p>
+<h3>6.2 构造你自己的负载画像</h3>
+<p>📝 示例：模仿官方的执行器分级，先跑一组&quot;业务画像基线&quot;，再决定配置：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码：自定义负载画像（参照官方四层执行器的方法）</span>
+<span class="hljs-keyword">import</span> asyncio
+<span class="hljs-keyword">from</span> neotask.api.task_pool <span class="hljs-keyword">import</span> TaskPool, TaskPoolConfig
+
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">business_executor</span>(<span class="hljs-params">data</span>):
+    <span class="hljs-comment"># 1. 你的真实业务第一步（比如一次带缓存的 DB 查询）</span>
+    <span class="hljs-keyword">await</span> asyncio.sleep(<span class="hljs-number">0.002</span>)          <span class="hljs-comment"># 模拟 IO 等待</span>
+    <span class="hljs-comment"># 2. 你的真实业务计算段</span>
+    _ = <span class="hljs-built_in">sum</span>(<span class="hljs-built_in">range</span>(<span class="hljs-number">500</span>))
+    <span class="hljs-keyword">return</span> {<span class="hljs-string">&quot;ok&quot;</span>: <span class="hljs-literal">True</span>}
+
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">main</span>():
+    <span class="hljs-comment"># 先测 4 worker，再测 8/16，观察吞吐拐点</span>
+    <span class="hljs-keyword">for</span> workers <span class="hljs-keyword">in</span> (<span class="hljs-number">4</span>, <span class="hljs-number">8</span>, <span class="hljs-number">16</span>):
+        pool = TaskPool(executor=business_executor,
+                        config=TaskPoolConfig(worker_concurrency=workers))
+        pool.start()
+        <span class="hljs-comment"># 并发灌入 2000 个任务（gather 并发提交，参照官方突发负载法）</span>
+        tasks = [pool.submit_async({<span class="hljs-string">&quot;i&quot;</span>: i}) <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">2000</span>)]
+        task_ids = <span class="hljs-keyword">await</span> asyncio.gather(*tasks)
+        <span class="hljs-comment"># 等待全部完成……统计耗时 → 得到该 worker 数下的端到端吞吐</span>
+        pool.shutdown()
+
+asyncio.run(main())
+</code></pre>
+<p><strong>复现纪律</strong>：换机器跑基准，必须连&quot;环境信息&quot;一起记录（OS / Python 版本 / CPU 型号 / 存储后端 / 版本号 / 日期），否则数字无法二次使用。</p>
+<hr>
+<h2>七、从数据到配置：性能调优决策路径</h2>
+<p>官方报告末尾的性能建议，本质是把实测规律翻译成配置决策：</p>
+<pre class="mermaid">flowchart TB
+    LOAD[我的任务画像?] --&gt;|绝大多数是 IO 等待| IO[worker = CPU核 × 2~4&lt;br/&gt;例: 12线程 × 3 ≈ 36]
+    LOAD --&gt;|CPU 密集| CPU[worker ≈ CPU 核数&lt;br/&gt;例: 12]
+    LOAD --&gt;|微任务海量| LIGHT[worker 少量即可&lt;br/&gt;瓶颈在提交端, 优先优化提交方式]
+    IO --&gt; BATCH[能用批量接口用批量&lt;br/&gt;pop 批量 / 预取]
+    CPU --&gt; BATCH
+    LIGHT --&gt; BATCH
+    BATCH --&gt; STORE{需要持久化/分布式吗?}
+    STORE --&gt;|单机开发/最高吞吐| MEM[内存存储]
+    STORE --&gt;|轻量持久化| SQL[SQLite]
+    STORE --&gt;|多节点高可用| REDIS[Redis]
+</pre>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">决策点</th>
+<th style="text-align:left">依据（本文数据）</th>
+<th style="text-align:left">建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">worker 数量</td>
+<td style="text-align:left">IO 任务 20 worker 达 4671 ops/s；微任务加 worker 无效</td>
+<td style="text-align:left">按任务画像选择，见上图</td>
+</tr>
+<tr>
+<td style="text-align:left">提交方式</td>
+<td style="text-align:left">串行 1697 vs 并发突发 6565 ops/s</td>
+<td style="text-align:left">高吞吐场景用 <code>asyncio.gather</code> 批量并发提交</td>
+</tr>
+<tr>
+<td style="text-align:left">消费接口</td>
+<td style="text-align:left">批量弹出快 2.00x</td>
+<td style="text-align:left">队列层优先 <code>pop(count&gt;1)</code> / 开启预取</td>
+</tr>
+<tr>
+<td style="text-align:left">存储后端</td>
+<td style="text-align:left">内存最快，Redis 含网络 RTT</td>
+<td style="text-align:left">吞吐敏感选内存/SQLite；分布式才上 Redis</td>
+</tr>
+<tr>
+<td style="text-align:left">延迟目标</td>
+<td style="text-align:left">P99 与 avg 分开设 SLO</td>
+<td style="text-align:left">用 BenchmarkResult 同款口径监控生产</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>八、与版本演进目标量级的对照说明</h2>
+<p>系列《版本演进》一文还列有一组&quot;性能基准&quot;数字（单机 1 worker 50k QPS、10 worker 100k QPS、Redis 3 节点 25k QPS、预取 30k QPS……）。<strong>这组数字是设计目标/规划量级，不是实测数据</strong>，与本文引用的官方实测（1697 ops/s）用途不同，请勿混读：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">出处</th>
+<th style="text-align:left">性质</th>
+<th style="text-align:left">用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">本文 / <code>docs/性能基准测试.md</code></td>
+<td style="text-align:left"><strong>实测</strong>（v0.3.0，特定环境，已发生）</td>
+<td style="text-align:left">校准预期、复现对照</td>
+</tr>
+<tr>
+<td style="text-align:left">版本演进&quot;性能基准&quot;表</td>
+<td style="text-align:left"><strong>规划目标/设计量级</strong>（对配置与场景的理想化推演，如 Redis 3 节点、预取开启）</td>
+<td style="text-align:left">展示架构演进后各能力的目标水位</td>
+</tr>
+</tbody>
+</table>
+<p>规则一句话：<strong>说&quot;实测&quot;必须带环境与版本；说&quot;目标&quot;必须标注是设计值。</strong> 两者错位正是性能文章最常见的失实来源。</p>
+<hr>
+<h2>九、故障场景实战：基准测试的四个误用陷阱</h2>
+<h3>场景一：把&quot;队列吞吐 31 万&quot;当框架能力对外汇报</h3>
+<p><strong>现象</strong>：汇报材料写&quot;NeoTask 吞吐 30 万 ops/s&quot;，架构评审按这个量级做了容量规划，上线后实际只有不到 2000，被质疑数据造假。</p>
+<p><strong>根因</strong>：混淆了&quot;组件基准&quot;与&quot;端到端基准&quot;——队列测试不含提交、存储、状态机、执行，只测了 <code>heapq</code> 的裸速度。</p>
+<p><strong>处置</strong>：汇报口径统一为&quot;端到端调度吞吐（noop 负载，内存存储，某环境）≈ 1.7k ops/s；其中队列组件单测可达 30 万级&quot;。<strong>组件数据用于内部优化定位，端到端数据用于对外承诺。</strong></p>
+<h3>场景二：Windows 上跑延时类基准，数字莫名低一个数量级</h3>
+<p><strong>现象</strong>：本地 Windows 复现基准，持续负载只有 ~60 ops/s，同事 Linux 机器上同样代码却有几万，怀疑代码有平台 bug。</p>
+<p><strong>根因</strong>：Windows 定时器默认粒度 ~15.6ms，<code>asyncio.sleep(0.001)</code> 实际唤醒 ~15.6ms/次（本文 4.5 节的 323 次/5s 即此现象）；代码无 bug，是平台定时器差异。</p>
+<p><strong>处置</strong>：① 涉及 sleep 节流的基准，先在代码注释里写明&quot;受平台定时器分辨率影响&quot;；② 跨平台对比时，把节流 sleep 提到 50ms 以上（远大于两种平台的粒度）或用 <code>time.perf_counter</code> 驱动的无 sleep 压测循环；③ 生产环境若需要高精度延时调度，请勿依赖 Python 层 sleep——参考框架的延时任务实现（DelayedQueue 堆 / Redis ZSET 到期扫描，或开启可选时间轮），把精度问题交给存储层的到期时间判断。</p>
+<h3>场景三：冷启动污染首轮数据</h3>
+<p><strong>现象</strong>：第一次跑基准吞吐只有几百，第二次同脚本跑到几千；开发者把低值写进报告，或把高值当成稳定水位。</p>
+<p><strong>根因</strong>：首轮包含惰性初始化——连接池建立、Lua 脚本注册、worker 线程创建、JIT/解释器预热等一次性开销被计入统计窗口。</p>
+<p><strong>处置</strong>：基准脚本先跑 1~2 轮&quot;预热负载&quot;（如先提交 200 个任务并等待完成），再开始计时统计；报告注明&quot;已预热&quot;。官方脚本在计时前 <code>await asyncio.sleep(0.5)</code> 等待 worker 就绪，同理。</p>
+<h3>场景四：拿别人的数字做自己的容量规划</h3>
+<p><strong>现象</strong>：参考&quot;官方 1697 ops/s&quot;给 10 万日任务量的系统选型，结论是&quot;性能不够要换框架&quot;；或反过来，参考&quot;30 万 ops/s&quot;拍板不用队列优化，上线即积压。</p>
+<p><strong>根因</strong>：把&quot;特定环境、特定负载、特定版本&quot;的实测，当成普适常量。官方数据基于 Windows 笔记本 + 内存存储 + v0.3.0 noop/light 任务；真实业务是 Redis 存储 + 分布式 + 混合负载，数字会整体下移；而&quot;日任务量 10 万&quot;平均每秒不足 2 个，离 1697 差着三个数量级，<strong>容量规划的核心从来不是峰值基准，而是你自己的业务吞吐 + 峰值倍率 + 恢复目标</strong>。</p>
+<p><strong>处置</strong>：选型前用 6.2 的方法跑自己的负载画像；把基准当作&quot;量级参考&quot;而不是&quot;精确承诺&quot;。归档公式：<strong>需要容量 = 日均任务数 / 86400 × 峰值倍数 × 重试放大系数</strong>，再与自测端到端吞吐对照，留 2~3 倍余量。</p>
+<hr>
+<h2>十、总结</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">主题</th>
+<th style="text-align:left">结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">为什么自带基准</td>
+<td style="text-align:left">回归守护 + 选型基线 + 预期校准，脚本即文档</td>
+</tr>
+<tr>
+<td style="text-align:left">五种负载形态</td>
+<td style="text-align:left">noop/light/cpu/io 四执行器 + 突发/持续两类压力，把框架与业务开销解耦</td>
+</tr>
+<tr>
+<td style="text-align:left">最大量纲陷阱</td>
+<td style="text-align:left">组件基准（30 万级）与端到端基准（千级）相差两个数量级，不可混用</td>
+</tr>
+<tr>
+<td style="text-align:left">Worker 扩展性</td>
+<td style="text-align:left">微任务瓶颈在提交端（1.00x）；IO 任务才有并发红利；提交要 gather 并发</td>
+</tr>
+<tr>
+<td style="text-align:left">64.6 ops/s 之谜</td>
+<td style="text-align:left">Windows 定时器 15.6ms 粒度放大 sleep(0.001)，是平台效应而非框架缺陷</td>
+</tr>
+<tr>
+<td style="text-align:left">报告诚实性</td>
+<td style="text-align:left">官方文档记录失败与异常测试，划定数据可信边界，比全绿报告更有价值</td>
+</tr>
+<tr>
+<td style="text-align:left">断言阈值设计</td>
+<td style="text-align:left">CI 阈值只拦灾难性回归（量级下滑），不设贴近实测的&quot;理想值&quot;</td>
+</tr>
+<tr>
+<td style="text-align:left">调优路径</td>
+<td style="text-align:left">画像 → worker/提交/批量/存储四步决策，见第七节决策树</td>
+</tr>
+</tbody>
+</table>
+<p><strong>一句结语</strong>：性能数字是测量方法的函数。NeoTask 的基准体系最值得借鉴的不是某个数字，而是它的方法论——可控负载分级、全链路与组件分离、四档延迟统计、失败照实记录。用这套方法论去测任何调度系统，你都能得到可信的结论；跳过方法论直接抄数字，再快的框架也会在容量规划里翻车。</p>
+<hr>
+<h2>版本与验证说明</h2>
+<p>本文属于项目文档而不是永久不变的 API 契约。以下情况发生时，应重新核对源码或发布说明：</p>
+<ol>
+<li class="lvl-3">
+<p>项目版本升级，尤其是公开 API、配置模型、存储实现和工作流发生变化；</p>
+</li>
+<li class="lvl-3">
+<p>本文中的默认值、性能数据或示例依赖外部服务版本；</p>
+</li>
+<li class="lvl-3">
+<p>运行环境与本文案例不同，例如 Python 版本、Redis/数据库版本、模型供应商或操作系统不同。</p>
+</li>
+</ol>
+<p>如果你要把本文内容用于生产环境，请优先使用仓库当前版本的 README、源码、测试和 Release 记录进行最终确认。</p>
+<h2>相关链接</h2>
+<p><a href="index.html">返回首页</a></p>
+<p><strong>入门与参考</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="quickstart.html">快速上手</a> - 5 分钟入门</p>
+</li>
+<li class="lvl-2">
+<p><a href="api-reference.html">API 参考</a> - 完整 API 文档</p>
+</li>
+<li class="lvl-2">
+<p><a href="configuration.html">配置说明</a> - 配置参数详解</p>
+</li>
+<li class="lvl-2">
+<p><a href="best-practices.html">最佳实践</a> - 生产环境建议</p>
+</li>
+</ul>
+<p><strong>架构与设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="architecture.html">架构设计</a> - 整体架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="core-features.html">核心实现</a> - 功能设计</p>
+</li>
+<li class="lvl-2">
+<p><a href="evolution.html">版本演进</a> - 演进历程</p>
+</li>
+</ul>
+<p><strong>分布式核心</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="decentralization.html">去中心化</a> - 对等架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="failure-recovery.html">故障恢复</a> - 高可用保障</p>
+</li>
+<li class="lvl-2">
+<p><a href="prefetch.html">预取机制</a> - 高吞吐性能</p>
+</li>
+<li class="lvl-2">
+<p><a href="distributed-lock.html">分布式锁</a> - 并发控制</p>
+</li>
+</ul>
+<p><strong>存储与监控</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="persistence.html">持久化</a> - 多存储后端</p>
+</li>
+<li class="lvl-2">
+<p><a href="priority-queue.html">优先级</a> - 优先级队列</p>
+</li>
+<li class="lvl-2">
+<p><a href="delayed-tasks.html">延时任务</a> - 时间轮 + Redis 持久化</p>
+</li>
+<li class="lvl-2">
+<p><a href="monitoring.html">节点监控</a> - 可观测性</p>
+</li>
+</ul>
+<p><strong>资源</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/neotask">GitHub</a> - 源代码仓库</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://task.helpenx.com">NeoTask 官网</a> - 官方网站</p>
+</li>
+</ul>
+
+      </article>
+    </main>
+  </div>
+  <footer>
+    <a href="https://task.helpenx.com" target="_blank" rel="noopener">NeoTask 官网</a>·
+    <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>·
+    <a href="index.html">文档中心</a>
+    <div style="margin-top:6px">© 2026 helpenx.com · 文档基线以文中标注版本对应的源码为准</div>
+  </footer>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</body>
+</html>

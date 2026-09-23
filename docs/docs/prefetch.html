@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoTask 预取机制：批量拉取 + 高低水位 + HYBRID 自适应策略 · NeoTask 文档</title>
+  <meta name="description" content="NeoTask 预取机制：批量拉取的原子性、高低水位与 HYBRID 自适应策略、消费速率判定、空批退避与停机回队，以及预取故障场景实战。">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://task.helpenx.com/docs/prefetch.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:title" content="NeoTask 预取机制：批量拉取 + 高低水位 + HYBRID 自适应策略">
+  <meta property="og:description" content="NeoTask 预取机制：批量拉取的原子性、高低水位与 HYBRID 自适应策略、消费速率判定、空批退避与停机回队，以及预取故障场景实战。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://task.helpenx.com/docs/prefetch.html">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>⏱️</text></svg>">
+  <style>
+:root{--brand:#0d9488;--brand-dark:#0f766e;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:var(--ink);background:#fff;line-height:1.75;font-size:16px}
+a{color:var(--brand);text-decoration:none}a:hover{color:var(--brand-dark);text-decoration:underline}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
+.topbar .brand .doc-badge{font-size:12px;font-weight:600;color:#fff;background:var(--brand);border-radius:6px;padding:2px 8px}
+.topbar nav{display:flex;gap:20px;font-size:14.5px}
+.topbar nav a{color:var(--muted);font-weight:500}
+.topbar nav a:hover{color:var(--brand)}
+.wrap{display:flex;max-width:1280px;margin:0 auto;padding:0 16px}
+.sidebar{width:264px;flex-shrink:0;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 40px 0;border-right:1px solid var(--line)}
+.sidebar .side-home{display:block;font-weight:600;color:var(--ink);margin-bottom:16px;font-size:15px}
+.sidebar .side-home:hover{color:var(--brand);text-decoration:none}
+.sidebar h4{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px;font-weight:600}
+.sidebar a{display:block;padding:5px 10px;border-radius:6px;font-size:14px;color:#334155;line-height:1.5}
+.sidebar a:hover{background:var(--bg);color:var(--brand);text-decoration:none}
+.sidebar a.active{background:var(--brand);color:#fff}
+.content{flex:1;min-width:0;padding:32px 20px 60px 36px;max-width:860px}
+.toc-mobile{display:none;margin-bottom:20px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.toc-mobile summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.toc-mobile a{display:block;padding:3px 0;font-size:14px}
+.article h1{font-size:1.9em;line-height:1.35;margin:.4em 0 .8em}
+.article h2{font-size:1.45em;margin:1.8em 0 .7em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
+.article h3{font-size:1.22em;margin:1.5em 0 .6em}
+.article h4{font-size:1.08em;margin:1.3em 0 .5em}
+.article p{margin:.85em 0}
+.article ul,.article ol{padding-left:1.6em;margin:.7em 0}
+.article li{margin:.35em 0}
+.article img{max-width:100%;height:auto;border-radius:8px}
+.article table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:.94em;display:block;overflow-x:auto}
+.article th,.article td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+.article th{background:var(--bg);font-weight:600}
+.article tr:nth-child(even) td{background:#fbfdff}
+.article blockquote{margin:1.1em 0;padding:.7em 1.1em;border-left:4px solid var(--brand);background:var(--bg);border-radius:0 8px 8px 0;color:#334155}
+.article blockquote p{margin:.3em 0}
+.article code:not(pre code){background:#eef2f7;color:#c7254e;padding:.15em .4em;border-radius:4px;font-size:.88em;word-break:break-word}
+.article pre.hljs{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0;line-height:1.6}
+.article pre.hljs code{background:none;padding:0;color:var(--ink);font-size:.9em;font-family:ui-monospace,SFMono-Regular,'Cascadia Code',Consolas,Menlo,monospace}
+.article pre.mermaid{text-align:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0}
+.article hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+.article .success,.article .tips,.article .warning,.article .danger{border-radius:8px;padding:.9em 1.1em;margin:1.1em 0;border:1px solid}
+.article .success{border-color:#a7f3d0;background:#ecfdf5}.article .success p:first-of-type::before{content:'✅ '}
+.article .tips{border-color:#bfdbfe;background:#eff6ff}.article .tips p:first-of-type::before{content:'💡 '}
+.article .warning{border-color:#fde68a;background:#fffbeb}.article .warning p:first-of-type::before{content:'⚠️ '}
+.article .danger{border-color:#fecaca;background:#fef2f2}.article .danger p:first-of-type::before{content:'🚫 '}
+.article .success>p:first-child,.article .tips>p:first-child,.article .warning>p:first-child,.article .danger>p:first-child{margin-top:0}
+.article .success>p:last-child,.article .tips>p:last-child,.article .warning>p:last-child,.article .danger>p:last-child{margin-bottom:0}
+.doc-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--muted)}
+.doc-meta .tag{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+.doc-nav{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
+.doc-nav a{font-weight:600}
+footer{border-top:1px solid var(--line);padding:22px 24px;text-align:center;color:var(--muted);font-size:13.5px}
+footer a{color:var(--muted);margin:0 10px}
+footer a:hover{color:var(--brand)}
+@media (max-width:960px){
+  .sidebar{display:none}
+  .toc-mobile{display:block}
+  .content{padding:20px 6px 50px}
+  .topbar nav{gap:12px}
+}
+</style>
+  <style>
+.hljs{color:#24292e;background:#f6f8fa}
+.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.constant_{color:#d73a49}
+.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}
+.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}
+.hljs-string,.hljs-meta .hljs-string,.hljs-regexp{color:#032f62}
+.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-tag,.hljs-subst,.hljs-symbol{color:#e36209}
+.hljs-built_in,.hljs-class .hljs-title{color:#e36209}
+.hljs-comment,.hljs-meta,.hljs-quote{color:#6a737d}
+.hljs-section{color:#005cc5;font-weight:700}
+.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">⏱️ NeoTask <span class="doc-badge">文档</span></a>
+    <nav>
+      <a href="https://task.helpenx.com" target="_blank" rel="noopener">产品官网</a>
+      <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+  <div class="wrap">
+    <aside class="sidebar">
+      <a class="side-home" href="index.html">⏱️ 分布式任务调度系统 · 文档中心</a>
+      <h4>技术分析</h4><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a>
+<h4>API 与配置参考</h4><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a>
+<h4>实现与源码分析</h4><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html" class="active">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a>
+<h4>设计与方案</h4><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a>
+<h4>项目概览</h4><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a>
+<h4>入门与使用</h4><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a>
+<h4>性能与评测</h4><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a>
+<h4>实践与运维</h4><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a>
+<h4>架构与核心设计</h4><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a>
+<h4>版本与演进</h4><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a>
+    </aside>
+    <main class="content">
+      <details class="toc-mobile"><summary>📑 文档目录</summary><div><strong style="font-size:13px;color:var(--muted)">技术分析</strong><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a></div><div><strong style="font-size:13px;color:var(--muted)">API 与配置参考</strong><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a></div><div><strong style="font-size:13px;color:var(--muted)">实现与源码分析</strong><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a></div><div><strong style="font-size:13px;color:var(--muted)">设计与方案</strong><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a></div><div><strong style="font-size:13px;color:var(--muted)">项目概览</strong><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a></div><div><strong style="font-size:13px;color:var(--muted)">入门与使用</strong><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a></div><div><strong style="font-size:13px;color:var(--muted)">性能与评测</strong><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a></div><div><strong style="font-size:13px;color:var(--muted)">实践与运维</strong><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a></div><div><strong style="font-size:13px;color:var(--muted)">架构与核心设计</strong><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a></div><div><strong style="font-size:13px;color:var(--muted)">版本与演进</strong><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a></div></details>
+      <article class="article">
+        <div class="doc-meta"><span class="tag">NeoTask</span><span class="tag">更新 2026-05-06</span><a href="https://task.helpenx.com" target="_blank" rel="noopener">task.helpenx.com ↗</a></div>
+        <h1>NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</h1>
+<p>📚 <a href="index.html">返回首页</a> | 📖 <a href="quickstart.html">快速上手</a> | 📘 <a href="api-reference.html">API 参考</a> | ⚙️ <a href="configuration.html">配置说明</a> | 🐙  <a href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a href="https://task.helpenx.com">NeoTask 官网</a></p>
+<blockquote>
+<p><strong>文档定位</strong>：这是一篇实现细节文档。重点放在源码路径、状态变化、数据结构和异常边界，方便开发者从“能用”进一步理解“为什么这样实现”。<br>
+<strong>事实边界</strong>：实现文档：功能、接口和代码行为以文中标注版本对应的源码为准；仓库后续版本可能发生变化。<br>
+<strong>权威来源</strong>：<a href="https://github.com/neopen/neotask">NeoTask 源码仓库</a>；涉及版本历史时，以仓库 Release / CHANGELOG 为准。<br>
+<strong>代码标记</strong>：如果正文出现“源码/实现”字样，表示对应代码路径可在仓库中核对；示例代码仅用于演示调用方式，不应理解为项目源码原样。<br>
+<strong>版本基线</strong>：本文对照 NeoTask <strong>v1.0.2</strong>（PyPI 发布版）。<br>
+<strong>代码标注约定</strong>：🔧 表示<strong>真实源码</strong>（仓库原样摘录，附文件路径，可自行对照）；📝 表示<strong>示例代码</strong>（用法演示、改进建议或教学代码，不代表仓库实现）。<br>
+<strong>相关阅读</strong>：<a href="decentralization.html">去中心化</a>、<a href="failure-recovery.html">故障恢复</a>、<a href="distributed-lock.html">分布式锁</a>。</p>
+</blockquote>
+<hr>
+<h2>概述</h2>
+<p>在分布式任务调度系统中，共享队列（Redis）是所有节点的竞争焦点。没有预取时，每个任务的消费都需要一次&quot;从队列取出&quot;的网络往返，任务吞吐量越高，网络 I/O 越接近瓶颈。</p>
+<p>NeoTask 的预取机制把「从 Redis 取任务」和「交给 worker 执行」解耦成两段：一个独立的后台协程（TaskPrefetcher）<strong>批量</strong>把任务从共享队列搬到本节点的内存队列，worker 协程只从内存队列消费，不再直接打 Redis。</p>
+<pre class="hljs"><code>┌──────────────────────── 节点 ────────────────────────┐
+│                                                      │
+│   Redis 共享队列          ┌─────────────┐             │
+│   queue:priority  ──────▶ │TaskPrefetcher│ 批量拉取   │
+│   (ZSET 全局有序)   pop(n) │(单一生产者)  │            │
+│                          └──────┬──────┘             │
+│                                 │ put_nowait          │
+│                          ┌──────▼──────┐             │
+│                          │ 本地队列      │ 内存缓冲     │
+│                          │ (asyncio.Queue│            │
+│                          │  maxsize=100) │            │
+│                          └──────┬──────┘             │
+│                                 │ get(timeout)        │
+│                    ┌────────────▼───────────┐        │
+│                    │ worker 协程 × concurrency│        │
+│                    └────────────┬───────────┘        │
+│                                 │ acquire 执行锁       │
+│                    Redis lock:task:{id} ◀────────────┘
+└──────────────────────────────────────────────────────┘
+</code></pre>
+<p>一句话总结它的设计：<strong>把「每次执行一次 RTT」变成「每 N 次执行一次 RTT + 内存队列吸收抖动」，用本节点内存换共享存储带宽。</strong></p>
+<hr>
+<h2>预取机制解决的问题</h2>
+<h3>网络 RTT 的重复付费</h3>
+<p>先做量纲分析。一次 <code>pop</code> 的耗时近似：</p>
+<p>[<br>
+T_{pop} \approx RTT + T_{redis}<br>
+]</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>同机 Redis：RTT 可忽略，单次操作约 <strong>10~50μs</strong>；</p>
+</li>
+<li class="lvl-2">
+<p>局域网 Redis：RTT 约 <strong>0.1~0.5ms</strong>；</p>
+</li>
+<li class="lvl-2">
+<p>跨机房/公网 Redis：RTT 可达 <strong>1~10ms</strong>。</p>
+</li>
+</ul>
+<p>假设跨机房 RTT=1ms、任务执行 5ms：每任务取一次，队列开销占执行时间的 <strong>20%</strong>；批量取 20 个，队列开销摊到每个任务只有 <strong>0.05ms（1%）</strong>。注意量级要分场景——局域网下单次操作约 0.1~0.5ms，一万任务也就几秒的额外等待；跨公网时这笔开销会放大到分钟级。预取的收益不是恒定的，它 ≈ ((n-1) \times RTT)，<strong>RTT 越大收益越大</strong>。</p>
+<h3>队列竞争与出队窗口</h3>
+<p>多个节点同时从共享 ZSET 出队，每次 <code>ZRANGE + ZREM</code> 之间虽然被 Lua 保证原子，但竞争本身会增加重试与等待。预取把每个节点访问队列的频率从&quot;每任务一次&quot;降到&quot;每批一次&quot;，竞争时间窗口缩小到原来的 1/20。</p>
+<h3>延迟敏感任务的响应</h3>
+<p>预取本身不区分优先级——批量拉取时队列头的任务照单全收，因此低延迟高优任务要面对的是&quot;在途量×时长&quot;的反转窗口，收敛手段是水位控制（<code>max_threshold</code>）与调小 <code>prefetch_size</code>，详见下文「优先级与预取」章节。</p>
+<hr>
+<h2>核心架构</h2>
+<p>三个组件协同工作（🔧 <code>src/neotask/worker/prefetcher.py</code>）：</p>
+<pre class="mermaid">graph TB
+    subgraph Prefetcher[&quot;TaskPrefetcher&quot;]
+        direction TB
+        LQ[本地队列&lt;br/&gt;asyncio.Queue maxsize=local_queue_size]
+        PL[预取循环&lt;br/&gt;_prefetch_loop 后台协程]
+        STATS[PrefetchStats&lt;br/&gt;滑动窗口统计]
+        FLAG[并发守卫&lt;br/&gt;_prefetch_in_progress]
+    end
+
+    subgraph Config[&quot;PrefetchConfig&quot;]
+        C1[prefetch_size=20&lt;br/&gt;每次预取数量]
+        C2[local_queue_size=100&lt;br/&gt;本地队列容量]
+        C3[min_threshold=5&lt;br/&gt;低水位触发]
+        C4[max_threshold=80&lt;br/&gt;高水位暂停]
+        C5[strategy=HYBRID]
+    end
+
+    subgraph External[&quot;外部依赖&quot;]
+        QS[QueueScheduler.pop]
+        WORKER[WorkerPool worker 协程]
+    end
+
+    PL --&gt;|await pop n| QS
+    PL --&gt;|put_nowait| LQ
+    WORKER --&gt;|get timeout=0.1| LQ
+    PL --&gt;|写| STATS
+    PL --&gt;|读| Config
+    FLAG -.防止重入.-&gt; PL
+</pre>
+<p>真实类骨架（🔧 字段值全部来自 <code>PrefetchConfig</code> 与 <code>PrefetchStats</code> dataclass 默认值）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># src/neotask/worker/prefetcher.py</span>
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">PrefetchStrategy</span>(<span class="hljs-title class_ inherited__">Enum</span>):
+    SIZE_BASED = <span class="hljs-string">&quot;size_based&quot;</span>      <span class="hljs-comment"># 基于队列大小</span>
+    TIME_BASED = <span class="hljs-string">&quot;time_based&quot;</span>      <span class="hljs-comment"># 基于时间间隔</span>
+    HYBRID = <span class="hljs-string">&quot;hybrid&quot;</span>              <span class="hljs-comment"># 混合策略（默认）</span>
+
+<span class="hljs-meta">@dataclass</span>
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">PrefetchConfig</span>:
+    prefetch_size: <span class="hljs-built_in">int</span> = <span class="hljs-number">20</span>        <span class="hljs-comment"># 每次预取数量</span>
+    local_queue_size: <span class="hljs-built_in">int</span> = <span class="hljs-number">100</span>    <span class="hljs-comment"># 本地队列最大大小</span>
+    min_threshold: <span class="hljs-built_in">int</span> = <span class="hljs-number">5</span>         <span class="hljs-comment"># 低于此阈值触发预取</span>
+    max_threshold: <span class="hljs-built_in">int</span> = <span class="hljs-number">80</span>        <span class="hljs-comment"># 高于此阈值停止预取</span>
+    prefetch_interval: <span class="hljs-built_in">float</span> = <span class="hljs-number">0.1</span> <span class="hljs-comment"># 预取检查间隔（秒）</span>
+    idle_timeout: <span class="hljs-built_in">float</span> = <span class="hljs-number">5.0</span>      <span class="hljs-comment"># 空闲超时（秒）</span>
+    strategy: PrefetchStrategy = PrefetchStrategy.HYBRID
+    enable_batch_pop: <span class="hljs-built_in">bool</span> = <span class="hljs-literal">True</span>  <span class="hljs-comment"># 启用批量弹出</span>
+    enable_stats: <span class="hljs-built_in">bool</span> = <span class="hljs-literal">True</span>
+    stats_window: <span class="hljs-built_in">int</span> = <span class="hljs-number">100</span>        <span class="hljs-comment"># 统计窗口大小</span>
+</code></pre>
+<hr>
+<h2>预取策略：三种模式的语义</h2>
+<p>预取循环（🔧）每一轮做两件事：<code>_should_prefetch</code> 判断要不要拉，<code>_calculate_wait_time</code> 决定下一轮等多久：</p>
+<pre class="hljs"><code><span class="hljs-comment"># src/neotask/worker/prefetcher.py</span>
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">_prefetch_loop</span>(<span class="hljs-params">self</span>) -&gt; <span class="hljs-literal">None</span>:
+    <span class="hljs-keyword">while</span> <span class="hljs-variable language_">self</span>._running:
+        <span class="hljs-keyword">try</span>:
+            current_size = <span class="hljs-variable language_">self</span>._local_queue.qsize()
+            <span class="hljs-comment"># 检查是否需要预取</span>
+            <span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._should_prefetch(current_size):
+                <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._do_prefetch()
+            <span class="hljs-comment"># 根据策略决定等待时间</span>
+            wait_time = <span class="hljs-variable language_">self</span>._calculate_wait_time(current_size)
+            <span class="hljs-keyword">await</span> asyncio.sleep(wait_time)
+        <span class="hljs-keyword">except</span> asyncio.CancelledError:
+            <span class="hljs-keyword">break</span>
+        <span class="hljs-keyword">except</span> Exception:
+            <span class="hljs-keyword">await</span> asyncio.sleep(<span class="hljs-number">0.5</span>)
+</code></pre>
+<h3>策略判定（🔧 <code>_should_prefetch</code>）</h3>
+<pre class="hljs"><code><span class="hljs-keyword">def</span> <span class="hljs-title function_">_should_prefetch</span>(<span class="hljs-params">self, current_size: <span class="hljs-built_in">int</span></span>) -&gt; <span class="hljs-built_in">bool</span>:
+    <span class="hljs-comment"># 1. 防止并发预取（预取进行中直接跳过本轮）</span>
+    <span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._prefetch_in_progress:
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+
+    <span class="hljs-comment"># 2. 空闲超时检查</span>
+    idle_time = time.time() - <span class="hljs-variable language_">self</span>._last_activity
+    <span class="hljs-keyword">if</span> idle_time &gt; <span class="hljs-variable language_">self</span>._config.idle_timeout:
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+
+    <span class="hljs-comment"># 3. 按策略判定</span>
+    <span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._config.strategy == PrefetchStrategy.SIZE_BASED:
+        <span class="hljs-keyword">return</span> current_size &lt; <span class="hljs-variable language_">self</span>._config.min_threshold
+
+    <span class="hljs-keyword">elif</span> <span class="hljs-variable language_">self</span>._config.strategy == PrefetchStrategy.TIME_BASED:
+        last_prefetch = <span class="hljs-variable language_">self</span>._stats.last_prefetch_time <span class="hljs-keyword">or</span> <span class="hljs-number">0</span>
+        time_since_last = time.time() - last_prefetch
+        <span class="hljs-keyword">return</span> time_since_last &gt; <span class="hljs-variable language_">self</span>._config.prefetch_interval * <span class="hljs-number">10</span>
+
+    <span class="hljs-keyword">else</span>:  <span class="hljs-comment"># HYBRID</span>
+        <span class="hljs-keyword">return</span> (
+            current_size &lt; <span class="hljs-variable language_">self</span>._config.min_threshold <span class="hljs-keyword">or</span>
+            (current_size &lt; <span class="hljs-variable language_">self</span>._config.max_threshold <span class="hljs-keyword">and</span>
+             <span class="hljs-variable language_">self</span>._is_consuming_fast())
+        )
+</code></pre>
+<p>三个策略的真实行为（与常见直觉有出入的地方标注 ⚠）：</p>
+<table>
+<thead>
+<tr>
+<th>策略</th>
+<th>触发条件</th>
+<th>真实语义</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SIZE_BASED</td>
+<td>本地队列 &lt; min_threshold</td>
+<td><strong>纯低水位触发</strong>：低于 5 就拉，拉到不满为止</td>
+<td>高水位 max 只影响等待时间，不影响&quot;是否拉&quot;</td>
+</tr>
+<tr>
+<td>TIME_BASED</td>
+<td>距上次预取 &gt; interval×10（1s）</td>
+<td>每 ≥1s 固定检查一次，<strong>不看队列水位</strong> ⚠</td>
+<td>文档常说&quot;固定间隔预取&quot;，但 <code>_do_prefetch</code> 里有容量保护：队列接近满时 <code>to_fetch≤0</code> 直接返回，不会硬塞</td>
+</tr>
+<tr>
+<td>HYBRID（默认）</td>
+<td>见下</td>
+<td>低水位必拉；中水位&quot;消费快&quot;才拉；高水位不拉</td>
+<td>默认策略</td>
+</tr>
+</tbody>
+</table>
+<p>HYBRID 的分段逻辑：</p>
+<pre class="mermaid">flowchart TB
+    Start([本地队列大小 size]) --&gt; L1{size &lt; 5?}
+    L1 --&gt;|是| P1[必拉&lt;br/&gt;水位告急]
+    L1 --&gt;|否| L2{size &lt; 60/80?}
+    L2 --&gt;|否| W[不拉&lt;br/&gt;队列充足 慢慢等]
+    L2 --&gt;|是| L3{消费快?&lt;br/&gt;最近5批平均 &gt; 10}
+    L3 --&gt;|是| P2[拉&lt;br/&gt;防止追不上]
+    L3 --&gt;|否| W2[不拉&lt;br/&gt;供应≥需求]
+</pre>
+<blockquote>
+<p>注意上图中的高水位：<strong>直接实例化 TaskPrefetcher 时 max=80（配置默认），但经 WorkerPool 接线后 max=60</strong>——两套默认值，见下节。</p>
+</blockquote>
+<h3>等待时间三档（🔧 <code>_calculate_wait_time</code>）</h3>
+<pre class="hljs"><code><span class="hljs-keyword">def</span> <span class="hljs-title function_">_calculate_wait_time</span>(<span class="hljs-params">self, current_size: <span class="hljs-built_in">int</span></span>) -&gt; <span class="hljs-built_in">float</span>:
+    <span class="hljs-keyword">if</span> current_size &gt;= <span class="hljs-variable language_">self</span>._config.max_threshold:   <span class="hljs-comment"># ≥80(或60)</span>
+        <span class="hljs-keyword">return</span> <span class="hljs-variable language_">self</span>._config.prefetch_interval * <span class="hljs-number">5</span>    <span class="hljs-comment"># 0.5s</span>
+    <span class="hljs-keyword">elif</span> current_size &gt;= <span class="hljs-variable language_">self</span>._config.min_threshold: <span class="hljs-comment"># ≥5</span>
+        <span class="hljs-keyword">return</span> <span class="hljs-variable language_">self</span>._config.prefetch_interval * <span class="hljs-number">2</span>    <span class="hljs-comment"># 0.2s</span>
+    <span class="hljs-keyword">else</span>:                                             <span class="hljs-comment"># &lt;5</span>
+        <span class="hljs-keyword">return</span> <span class="hljs-variable language_">self</span>._config.prefetch_interval        <span class="hljs-comment"># 0.1s</span>
+</code></pre>
+<p><strong>为什么用三档离散值而不是连续函数？</strong> 三点考虑：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>事件循环粒度</strong>：<code>asyncio.sleep</code> 本身有调度开销，连续调整没有意义，档位足够表达&quot;急/缓/闲&quot;三态；</p>
+</li>
+<li class="lvl-3">
+<p><strong>反作用回路稳定</strong>：如果等待时间与队列大小成连续反比，队列抖动会传导成预取频率抖动，容易在多个节点间形成共振；离散档位天然带滞回特性；</p>
+</li>
+<li class="lvl-3">
+<p><strong>档位与策略语义对齐</strong>：低水位（&lt;5）是&quot;快断粮&quot;，必须 0.1s 高频巡检；中水位 0.2s；高水位说明缓冲充足，0.5s 慢慢来，减少空转。</p>
+</li>
+</ol>
+<p><strong>为什么 HYBRID 成为默认策略，而不是更简单的 SIZE_BASED？</strong> 看两组数字：<code>prefetch_size=20</code>，一批任务如果执行很快（如 1ms），20 个任务 20ms 就耗尽。SIZE_BASED 的触发条件是 size&lt;5，意味着本地队列从 20 消耗到 4 才补货——<strong>水位回落需要时间，而&quot;消耗速率×回落时间&quot;就是断粮窗口</strong>。HYBRID 增加了一条&quot;消费快就提前补&quot;的规则：只要最近 5 批平均批次消费量 &gt;10（prefetch_size 的一半），说明 worker 消化速度超过半批/轮，即使水位还有 30、40 也提前拉货，把断粮窗口压到接近零。<strong>SIZE_BASED 是&quot;事后补救&quot;，HYBRID 是&quot;事前预防&quot;</strong>。</p>
+<hr>
+<h2>WorkerPool 接线：两套默认值</h2>
+<p>直接 <code>TaskPrefetcher(queue_scheduler)</code> 使用配置默认值（max=80）；但<strong>生产主链路 WorkerPool 会重新算一套</strong>（🔧 <code>src/neotask/worker/pool.py</code>）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># WorkerPool.__init__（节选）</span>
+<span class="hljs-keyword">if</span> enable_prefetch:
+    prefetch_config = PrefetchConfig(
+        prefetch_size=prefetch_size,            <span class="hljs-comment"># TaskPoolConfig.prefetch_size，默认 20</span>
+        local_queue_size=prefetch_size * <span class="hljs-number">5</span>,     <span class="hljs-comment"># = 100</span>
+        min_threshold=<span class="hljs-built_in">max</span>(<span class="hljs-number">1</span>, prefetch_size // <span class="hljs-number">4</span>),  <span class="hljs-comment"># = 5</span>
+        max_threshold=prefetch_size * <span class="hljs-number">3</span>,        <span class="hljs-comment"># = 60  ← 注意不是默认的 80</span>
+        enable_batch_pop=<span class="hljs-literal">True</span>,
+        strategy=PrefetchStrategy.HYBRID
+    )
+    <span class="hljs-variable language_">self</span>._prefetcher = TaskPrefetcher(queue_scheduler, prefetch_config)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>TaskPrefetcher 类默认</th>
+<th>WorkerPool 接线值（prefetch_size=20）</th>
+<th>比例关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>local_queue_size</td>
+<td>100</td>
+<td>100</td>
+<td>5 × prefetch_size</td>
+</tr>
+<tr>
+<td>min_threshold</td>
+<td>5</td>
+<td>5</td>
+<td>prefetch_size / 4</td>
+</tr>
+<tr>
+<td>max_threshold</td>
+<td><strong>80</strong></td>
+<td><strong>60</strong></td>
+<td>3 × prefetch_size</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么 max_threshold 要压到 3 倍而不是 5 倍（队列容量）？</strong> 本地队列的容量上限（100）是&quot;装得下的极限&quot;，但预取的高水位是&quot;还想不想继续装&quot;的决策点。如果把高水位设在容量上限附近，缓冲区长期接近满载——新任务、高优任务都挤不进来，节点对全局队列的&quot;抢货积极性&quot;过低。3 倍 prefetch_size 意味着：<strong>缓冲区最多留 60 个在途任务，至少留 40 个空位给&quot;未来可能出现的更高优任务&quot;</strong>。这是吞吐（多囤）与响应（留空）的平衡点。这也解释了一个反直觉现象：高水位不是&quot;内存保护&quot;而是&quot;竞争策略参数&quot;。</p>
+<p><strong>配套关系（🔧 TaskPoolConfig → WorkerPool 的完整参数链）</strong>：</p>
+<pre class="hljs"><code><span class="hljs-comment"># src/neotask/api/task_pool.py</span>
+<span class="hljs-variable language_">self</span>._worker_pool = WorkerPool(
+    executor=<span class="hljs-variable language_">self</span>._executor,
+    task_repo=<span class="hljs-variable language_">self</span>._task_repo,
+    queue_scheduler=<span class="hljs-variable language_">self</span>._queue_scheduler,
+    event_bus=<span class="hljs-variable language_">self</span>._event_bus,
+    lock_manager=<span class="hljs-variable language_">self</span>._lock_manager,
+    lifecycle_manager=<span class="hljs-variable language_">self</span>._lifecycle,
+    concurrency=<span class="hljs-variable language_">self</span>._config.worker_concurrency,   <span class="hljs-comment"># 默认 10</span>
+    prefetch_size=<span class="hljs-variable language_">self</span>._config.prefetch_size,       <span class="hljs-comment"># 默认 20</span>
+    task_timeout=<span class="hljs-variable language_">self</span>._config.task_timeout,
+    enable_prefetch=<span class="hljs-variable language_">self</span>._config.enable_prefetch    <span class="hljs-comment"># 默认 True</span>
+)
+</code></pre>
+<hr>
+<h2>批量拉取的原子性：出队与加锁是分离的</h2>
+<p><strong>批量拉取不含&quot;加锁&quot;步骤</strong>：预取阶段只做出队，锁在执行前由 worker 单独获取。</p>
+<h3>执行链</h3>
+<pre class="mermaid">sequenceDiagram
+    participant PF as TaskPrefetcher
+    participant Q as Redis queue:priority (ZSET)
+    participant LQ as 本地队列
+    participant W as Worker 协程
+    participant LK as Redis lock:task:{id}
+
+    loop 预取循环 (每0.1~0.5s)
+        PF-&gt;&gt;Q: pop(n) [Lua: ZRANGE + ZREM]
+        Note over Q: 原子出队，但无锁
+        Q--&gt;&gt;PF: [task_a, task_b, ...]
+        PF-&gt;&gt;LQ: put_nowait × n
+    end
+
+    loop worker 循环
+        W-&gt;&gt;LQ: get(timeout=0.1)
+        LQ--&gt;&gt;W: task_id
+        W-&gt;&gt;LK: acquire(task:{id}, ttl=30)
+        alt 抢锁成功
+            LK--&gt;&gt;W: OK
+            W-&gt;&gt;W: 执行 + 看门狗续期
+        else 抢锁失败（他人执行中）
+            LK--&gt;&gt;W: 失败
+            W-&gt;&gt;W: 直接 return（不重试、不入队）
+        end
+    end
+</pre>
+<p>真实的 Redis 出队脚本（🔧 <code>src/neotask/queue/redis_queue.py</code> 的 pop Lua）只有两步：<code>ZRANGE queue 0 count-1</code> 取最小 score（最高优先级）的一批，然后 <code>ZREM</code> 移除。<strong>没有 SETNX，没有锁</strong>。锁发生在更晚的时刻——worker 真正要执行时，由 <code>WorkerPool._execute_task</code> 调用 <code>lock_manager.acquire(f&quot;task:{task_id}&quot;, ttl=30)</code>。</p>
+<blockquote>
+<p>这与<a href="distributed-lock.html">分布式锁</a>一文中的链路完全一致：<strong>出队原子 ≠ 执行原子</strong>。</p>
+</blockquote>
+<h3>为什么预取阶段故意不加锁？</h3>
+<p>如果&quot;批量抢占&quot;真的在 Lua 里完成&quot;出队+加锁&quot;，会引入三个问题，而 NeoTask 的设计恰好绕开了它们：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>锁的持有时间会与排队时间耦合</strong>。任务被预取进本地队列后，可能要等前面的任务执行完才轮到它。如果出队即加锁，锁 TTL 必须覆盖&quot;排队等待 + 执行时长&quot;，30s 的 TTL 根本不够；要设多长？无法预知。<strong>锁的生命周期只绑定执行期</strong>（acquire → 执行 → finally release），这是租约锁的基本纪律；</p>
+</li>
+<li class="lvl-3">
+<p><strong>加锁失败的任务无处安放</strong>。若在 Lua 里做&quot;取到但锁失败就留在队列&quot;的处理，Redis ZSET 里 score 相同、成员唯一，反复扫描头部会让一批 worker 同时尝试同一批任务，产生 thundering herd；而&quot;取走再说&quot;的策略里，锁失败只是本节点白跑一趟，任务已在别的节点手里正常执行；</p>
+</li>
+<li class="lvl-3">
+<p><strong>锁的语义是&quot;执行权&quot;而非&quot;所有权&quot;</strong>。预取只是搬运，搬运不需要锁；只有执行需要互斥。把两种语义混在一个原子操作里，会让&quot;预取多少&quot;（受水位控制）与&quot;能否执行&quot;（受并发控制）互相干扰——水位低想多囤货时，却可能因为锁失败而囤不到货。</p>
+</li>
+</ol>
+<p><strong>代价是什么？</strong> 分离设计有一个明确的牺牲：任务被 ZREM 出队后就失去了队列保护，若本节点在&quot;已出队、未执行&quot;窗口内崩溃，任务不会自动回到队列——只能等回收器超时兜底（默认 1 小时，详见<a href="failure-recovery.html">故障恢复</a>）。这是 NeoTask 用&quot;预取深度&quot;换&quot;恢复延迟&quot;的取舍：<strong>批量越大，吞吐越高，崩溃丢任务窗口也越大</strong>。</p>
+<hr>
+<h2>HYBRID 的消费速率判定：为什么用&quot;批均&quot;而不是&quot;速率&quot;？</h2>
+<pre class="hljs"><code><span class="hljs-comment"># src/neotask/worker/prefetcher.py</span>
+<span class="hljs-keyword">def</span> <span class="hljs-title function_">_is_consuming_fast</span>(<span class="hljs-params">self</span>) -&gt; <span class="hljs-built_in">bool</span>:
+    <span class="hljs-keyword">if</span> <span class="hljs-built_in">len</span>(<span class="hljs-variable language_">self</span>._stats.recent_batch_sizes) &lt; <span class="hljs-number">5</span>:
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>          <span class="hljs-comment"># 冷启动：样本不足，保守不预判</span>
+    recent = <span class="hljs-variable language_">self</span>._stats.recent_batch_sizes[-<span class="hljs-number">5</span>:]
+    avg_size = <span class="hljs-built_in">sum</span>(recent) / <span class="hljs-built_in">len</span>(recent)
+    <span class="hljs-keyword">return</span> avg_size &gt; <span class="hljs-variable language_">self</span>._config.prefetch_size * <span class="hljs-number">0.5</span>   <span class="hljs-comment"># &gt;10</span>
+</code></pre>
+<p>注意判定依据是 <strong><code>recent_batch_sizes</code></strong>——每次预取实际拉到的数量（不是消费速度、不是时间窗口内的吞吐）。为什么这么设计？</p>
+<ol>
+<li class="lvl-3">
+<p><strong>预取拉到的数量本身就携带消费信息</strong>：如果 worker 消化快，本地队列水位会快速下降，两次预取之间队列一直低于水位，下一次 <code>pop</code> 就能拉满 20；如果消化慢，队列长期在高位，<code>_should_prefetch</code> 返回 False，拉不到货，批次大小为 0。<strong>批次大小是消费压力的低通滤波结果</strong>——不需要额外计时器去测速率；</p>
+</li>
+<li class="lvl-3">
+<p><strong>不依赖时钟，避免测量窗口误差</strong>：速率 = 数量/时间，需要精确定义&quot;时间窗&quot;，事件循环抖动会污染测量；批次样本只统计&quot;拉到了多少&quot;，天然抗抖动；</p>
+</li>
+<li class="lvl-3">
+<p><strong>为什么是 5 个样本、为什么阈值是 10（prefetch_size 的一半）</strong>：5 个样本 ≈ 0.5~2.5s 的窗口（取决于预取频率），太短会被单批抖动误导，太长反应迟钝；阈值取半批意味着&quot;每轮至少消化一半库存&quot;，此时若不补货，两轮内必然断粮——提前量正好是半轮预取周期。</p>
+</li>
+</ol>
+<p><strong>冷启动为什么返回 False？</strong> 刚启动时没有任何批次历史，如果贸然判定&quot;消费快&quot;会立刻触发一次预取，而本地队列此时接近空、本来就该预取（HYBRID 的低水位分支已覆盖）；样本不足时保守处理，避免双重拉货。</p>
+<hr>
+<h2>空闲判定：idle_timeout 挡不住&quot;活跃的空转&quot;</h2>
+<p><code>PrefetchConfig.idle_timeout=5.0</code> 的设计意图是：空闲时不预取。判定依据是 <code>_last_activity</code>，而它在哪里刷新？</p>
+<pre class="hljs"><code><span class="hljs-comment"># src/neotask/worker/prefetcher.py</span>
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">get</span>(<span class="hljs-params">self, timeout: <span class="hljs-built_in">float</span> = <span class="hljs-number">1.0</span></span>) -&gt; <span class="hljs-type">Optional</span>[<span class="hljs-built_in">str</span>]:
+    <span class="hljs-variable language_">self</span>._last_activity = time.time()      <span class="hljs-comment"># ← 每次 get 都刷新，与队列空否无关</span>
+    <span class="hljs-keyword">try</span>:
+        task_id = <span class="hljs-keyword">await</span> asyncio.wait_for(<span class="hljs-variable language_">self</span>._local_queue.get(), timeout=timeout)
+        <span class="hljs-keyword">return</span> task_id
+    <span class="hljs-keyword">except</span> asyncio.TimeoutError:
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">None</span>
+</code></pre>
+<p>再看 WorkerPool 的 worker 循环（🔧）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># src/neotask/worker/pool.py</span>
+<span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._prefetcher:
+    <span class="hljs-comment"># 预取模式：每次从本地队列取 1 个</span>
+    task_id = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._prefetcher.get(timeout=<span class="hljs-number">0.1</span>)
+    <span class="hljs-keyword">if</span> task_id:
+        consecutive_empty = <span class="hljs-number">0</span>
+        exec_task = asyncio.create_task(<span class="hljs-variable language_">self</span>._execute_task(worker_id, task_id))
+        ...
+    <span class="hljs-keyword">else</span>:
+        <span class="hljs-comment"># 没有任务时，指数退避</span>
+        consecutive_empty += <span class="hljs-number">1</span>
+        sleep_time = <span class="hljs-built_in">min</span>(<span class="hljs-number">0.01</span> * (<span class="hljs-number">1</span> &lt;&lt; <span class="hljs-built_in">min</span>(consecutive_empty, <span class="hljs-number">6</span>)), <span class="hljs-number">0.5</span>)
+        <span class="hljs-keyword">await</span> asyncio.sleep(sleep_time)
+        <span class="hljs-keyword">continue</span>
+</code></pre>
+<p><strong>worker 侧是&quot;单任务 + 指数退避&quot;，不是批量取。</strong> 预取的批量只发生在&quot;Redis → 本地队列&quot;这一段；&quot;本地队列 → worker&quot;以单任务为粒度消费。worker 空转时退避从 10ms 指数增长，封顶 500ms。</p>
+<p><strong>idle_timeout=5s 在主链路里几乎不会触发。</strong> worker 只要活着，每 0.1~0.6s 就会调一次 <code>get()</code>，<code>_last_activity</code> 被持续刷新——即使队列永远是空的。idle 判定在&quot;有活跃消费者&quot;场景下形同虚设。它只对两类场景生效：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>直接用 <code>TaskPrefetcher</code> API、消费者暂停消费的场景；</p>
+</li>
+<li class="lvl-2">
+<p>预取器启动但 worker 还没拉起来的窗口。</p>
+</li>
+</ul>
+<p><strong>空批退避（已内建）。</strong> 队列为空时 HYBRID 的低水位分支（size=0 &lt; 5）恒为 True，预取循环会不断醒来对 Redis 执行空 <code>pop</code>。为避免空转，循环记录 <code>empty_streak</code>：<strong>真正尝试过预取却一个任务都没拿到</strong>时按指数拉长下一轮间隔，拿到任务则立即回到正常节奏（🔧 <code>_prefetch_loop</code>）：</p>
+<pre class="hljs"><code>EMPTY_BACKOFF_BASE = <span class="hljs-number">0.1</span>        <span class="hljs-comment"># 首次退避（秒）</span>
+EMPTY_BACKOFF_MAX = <span class="hljs-number">0.5</span>         <span class="hljs-comment"># 退避上限（秒），与 worker 侧一致</span>
+EMPTY_BACKOFF_MAX_EXPONENT = <span class="hljs-number">6</span>  <span class="hljs-comment"># 指数封顶</span>
+
+<span class="hljs-keyword">if</span> attempted <span class="hljs-keyword">and</span> fetched == <span class="hljs-number">0</span>:
+    <span class="hljs-variable language_">self</span>._empty_streak += <span class="hljs-number">1</span>
+    wait_time = <span class="hljs-built_in">min</span>(
+        EMPTY_BACKOFF_BASE * (<span class="hljs-number">2</span> ** <span class="hljs-built_in">min</span>(<span class="hljs-variable language_">self</span>._empty_streak, EMPTY_BACKOFF_MAX_EXPONENT)),
+        EMPTY_BACKOFF_MAX
+    )
+<span class="hljs-keyword">else</span>:
+    <span class="hljs-variable language_">self</span>._empty_streak = <span class="hljs-number">0</span>
+    wait_time = <span class="hljs-variable language_">self</span>._calculate_wait_time(current_size)
+</code></pre>
+<p>两点说明：只有&quot;尝试过且返回 0&quot;才计入 streak——<code>_should_prefetch</code> 判为无需预取（高水位正常等待）时不会误判为空转；退避上限取 <strong>0.5s</strong>（与 worker 侧一致），而非更大的 5s，因为预取是任务进入执行前的最后一跳，退避上限直接等于&quot;断粮后补货的最坏延迟&quot;。连续空 <code>pop</code> 的稳态频率因此约 2 次/秒/节点，比无退避时低一个量级。</p>
+<hr>
+<h2>get 与 get_batch：预留的批量消费 API</h2>
+<pre class="hljs"><code><span class="hljs-comment"># src/neotask/worker/prefetcher.py</span>
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">get</span>(<span class="hljs-params">self, timeout: <span class="hljs-built_in">float</span> = <span class="hljs-number">1.0</span></span>) -&gt; <span class="hljs-type">Optional</span>[<span class="hljs-built_in">str</span>]:
+    <span class="hljs-string">&quot;&quot;&quot;取 1 个任务，超时返回 None&quot;&quot;&quot;</span>
+    ...
+
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">get_batch</span>(<span class="hljs-params">self, max_count: <span class="hljs-built_in">int</span>, timeout: <span class="hljs-built_in">float</span> = <span class="hljs-number">0.1</span></span>) -&gt; <span class="hljs-type">List</span>[<span class="hljs-built_in">str</span>]:
+    <span class="hljs-string">&quot;&quot;&quot;批量取：第一个任务等待最多 timeout，其余 get_nowait 不等待&quot;&quot;&quot;</span>
+    <span class="hljs-variable language_">self</span>._last_activity = time.time()
+    tasks = []
+    <span class="hljs-keyword">try</span>:
+        first = <span class="hljs-keyword">await</span> asyncio.wait_for(<span class="hljs-variable language_">self</span>._local_queue.get(), timeout=timeout)
+        tasks.append(first)
+        <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(max_count - <span class="hljs-number">1</span>):      <span class="hljs-comment"># 剩余的非阻塞扫</span>
+            <span class="hljs-keyword">try</span>:
+                tasks.append(<span class="hljs-variable language_">self</span>._local_queue.get_nowait())
+            <span class="hljs-keyword">except</span> asyncio.QueueEmpty:
+                <span class="hljs-keyword">break</span>
+    <span class="hljs-keyword">except</span> asyncio.TimeoutError:
+        <span class="hljs-keyword">pass</span>
+    <span class="hljs-keyword">return</span> tasks
+</code></pre>
+<p><code>get_batch</code> 的语义是&quot;<strong>等一个、捞一把</strong>&quot;：第一个任务最多等 0.1s（给生产者一点时间），一旦等到立刻把队列里现有的全部拿空——适合&quot;一批任务要同时启动&quot;（扇出/并行子任务）的消费方。<strong>但 v1.0.2 的 WorkerPool 主链路只用 <code>get</code>，没有调用 <code>get_batch</code></strong>（全局检索无引用），它是为下游消费者预留的 API。</p>
+<hr>
+<h2>优先级与预取：反转窗口与水位控制</h2>
+<h3>ZSET 全局有序下的反转窗口</h3>
+<p>先厘清概念：Redis <code>queue:priority</code> 是全局 ZSET，score 越小优先级越高。新提交的高优任务 score 极小，<strong>任何节点下一次 pop 都会先取到它</strong>——高优任务不会被埋在共享队列里。</p>
+<p>真正的优先级反转发生在<strong>节点内部</strong>：某节点本地队列已预取了 60 个低优任务（score 大），worker 按 FIFO 逐个执行。此刻新提交一个 P0 任务——它会被<strong>别的</strong>节点（或本节点下一轮预取）从共享队列取走，但它依然排在<strong>本节点已出队的 60 个旧任务</strong>之后。高优任务的等待时间上界 ≈ 该节点在途任务数 × 平均执行时长。</p>
+<pre class="mermaid">flowchart LR
+    subgraph Global[&quot;全局 ZSET（有序，P0 永远在头部）&quot;]
+        P0[P0 新任务&lt;br/&gt;score=0]
+        P1[P2 任务&lt;br/&gt;score=50]
+        P2[P3 任务&lt;br/&gt;score=100]
+    end
+    subgraph NodeA[&quot;节点 A 本地队列（FIFO）&quot;]
+        A1[P3 任务 1]
+        A2[P3 任务 2]
+        A3[... 最多 60 个]
+    end
+    Global --&gt;|pop 优先取 P0| Other[&quot;其他节点 / 下一轮预取&quot;]
+    Note over NodeA: P0 到达时，A 已出队任务仍要&lt;br/&gt;先执行完 → 反转窗口 = 在途量×时长
+</pre>
+<p><strong>为什么接受这个窗口？</strong> 批量预取的本质就是&quot;提前把任务锁定到本节点&quot;，锁定量越大，全局调度越滞后。这是吞吐的代价，工程上通过两个手段收敛：</p>
+<ol>
+<li class="lvl-3">
+<p><code>max_threshold</code>（默认 80，约 4×prefetch_size）把在途量压在有限区间内，高水位时停止预取；</p>
+</li>
+<li class="lvl-3">
+<p>用户可以缩小 <code>prefetch_size</code> 甚至禁用预取来换取延迟。</p>
+</li>
+</ol>
+<p>预取不做优先级过滤：<code>_do_prefetch</code> 只管&quot;要多少&quot;，不管&quot;要哪个&quot;——批量拉取时队列头的任务照单全收。因此结构上的缓和来自水位控制，剩下的靠调参与物理隔离。</p>
+<h3>为什么 HYBRID 的水位控制能部分缓解饿死</h3>
+<p>设想一个极端场景：低优任务洪峰把节点本地队列长期顶在 60 以上，此时 P0 任务到达共享队列——HYBRID 下该节点 <code>size≥60</code> 不再预取，<strong>把全局头部让给其他节点</strong>；若所有节点都满载，P0 会滞留在共享队列中等待第一个空出缓冲区的节点。低水位分支（size&lt;5 必拉）保证节点永远不会&quot;占着缓冲区却不消费&quot;。所以 HYBRID 的贡献是：<strong>它不保证 P0 的绝对延迟，但保证不会有一个节点因为&quot;囤货癖&quot;而饿死全局队列</strong>。</p>
+<hr>
+<h2>预取循环的完整一轮</h2>
+<pre class="mermaid">flowchart TB
+    Start([循环开始]) --&gt; GetSize[读 qsize]
+    GetSize --&gt; Guard{_prefetch_in_progress?}
+    Guard --&gt;|是| CalcWait
+    Guard --&gt;|否| Idle{空闲 &gt; 5s?}
+    Idle --&gt;|是| CalcWait
+    Idle --&gt;|否| Should{_should_prefetch}
+    Should --&gt;|否| CalcWait
+    Should --&gt;|是| Do[await _do_prefetch]
+    Do --&gt; Detail[to_fetch = min20, 100-qsize]
+    Detail --&gt; Pop{enable_batch_pop?}
+    Pop --&gt;|是| BP[queue.pop to_fetch 一次批量]
+    Pop --&gt;|否| SP[循环 pop1 × to_fetch]
+    BP --&gt; Put[put_nowait 入本地队列]
+    SP --&gt; Put
+    Put --&gt; Stats[更新统计&lt;br/&gt;批次大小/延迟/窗口]
+    Stats --&gt; CalcWait[三档等待 0.1/0.2/0.5s]
+    CalcWait --&gt; Sleep[asyncio.sleep]
+    Sleep --&gt; Start
+</pre>
+<p><code>_do_prefetch</code> 的关键实现（🔧）：</p>
+<pre class="hljs"><code><span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">_do_prefetch</span>(<span class="hljs-params">self</span>) -&gt; <span class="hljs-literal">None</span>:
+    <span class="hljs-variable language_">self</span>._prefetch_in_progress = <span class="hljs-literal">True</span>
+    start_time = time.time()
+    <span class="hljs-keyword">try</span>:
+        needed = <span class="hljs-variable language_">self</span>._config.prefetch_size                 <span class="hljs-comment"># 20</span>
+        available = <span class="hljs-variable language_">self</span>._config.local_queue_size - <span class="hljs-variable language_">self</span>._local_queue.qsize()
+        to_fetch = <span class="hljs-built_in">min</span>(needed, available)                   <span class="hljs-comment"># 永不超容量</span>
+        <span class="hljs-keyword">if</span> to_fetch &lt;= <span class="hljs-number">0</span>:
+            <span class="hljs-keyword">return</span>
+
+        <span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._config.enable_batch_pop:
+            task_ids = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._queue.pop(to_fetch)      <span class="hljs-comment"># 一次批量</span>
+        <span class="hljs-keyword">else</span>:
+            task_ids = []
+            <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(to_fetch):                        <span class="hljs-comment"># 逐个拉</span>
+                task_id = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._queue.pop(<span class="hljs-number">1</span>)
+                <span class="hljs-keyword">if</span> task_id:
+                    task_ids.extend(task_id)
+                <span class="hljs-keyword">else</span>:
+                    <span class="hljs-keyword">break</span>
+
+        <span class="hljs-keyword">for</span> task_id <span class="hljs-keyword">in</span> task_ids:                             <span class="hljs-comment"># 入本地队列</span>
+            <span class="hljs-keyword">try</span>:
+                <span class="hljs-variable language_">self</span>._local_queue.put_nowait(task_id)
+            <span class="hljs-keyword">except</span> asyncio.QueueFull:
+                <span class="hljs-keyword">break</span>
+        <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._update_stats(<span class="hljs-built_in">len</span>(task_ids), start_time)
+    <span class="hljs-keyword">except</span> Exception <span class="hljs-keyword">as</span> e:
+        <span class="hljs-variable language_">self</span>._stats.total_errors += <span class="hljs-number">1</span>
+    <span class="hljs-keyword">finally</span>:
+        <span class="hljs-variable language_">self</span>._prefetch_in_progress = <span class="hljs-literal">False</span>
+</code></pre>
+<p><strong><code>enable_batch_pop=False</code> 的逐个拉取分支有什么用？</strong> 两种模式对 Redis 的压力相同（总量一样），但批量模式是<strong>一次原子 ZRANGE+ZREM 拿 20 个</strong>，逐个模式是 20 次独立 pop——中间任何时刻其他节点都能插队。批量模式实际等于&quot;<strong>声明式抢占一段队列区间</strong>&quot;，窗口内新到的高优任务要等下一次预取；逐个模式对高优任务响应更快（每 pop 一次都在取全局最小 score），但代价是 20 次 RTT。<strong>默认 True 是吞吐优先的选择，这个开关就是吞吐/延迟的旋钮</strong>。</p>
+<hr>
+<h2>统计与监控：字段与 API 注入</h2>
+<p><code>get_stats()</code> 真实输出（🔧）：</p>
+<pre class="hljs"><code><span class="hljs-keyword">def</span> <span class="hljs-title function_">get_stats</span>(<span class="hljs-params">self</span>) -&gt; <span class="hljs-type">Dict</span>[<span class="hljs-built_in">str</span>, <span class="hljs-type">Any</span>]:
+    <span class="hljs-keyword">return</span> {
+        <span class="hljs-string">&quot;local_queue_size&quot;</span>: <span class="hljs-variable language_">self</span>._local_queue.qsize(),      <span class="hljs-comment"># 本地当前存量</span>
+        <span class="hljs-string">&quot;local_queue_maxsize&quot;</span>: <span class="hljs-variable language_">self</span>._config.local_queue_size,
+        <span class="hljs-string">&quot;total_prefetch&quot;</span>: <span class="hljs-variable language_">self</span>._stats.total_prefetch,       <span class="hljs-comment"># 总预取次数</span>
+        <span class="hljs-string">&quot;total_fetched&quot;</span>: <span class="hljs-variable language_">self</span>._stats.total_fetched,         <span class="hljs-comment"># 总拉取任务数</span>
+        <span class="hljs-string">&quot;total_errors&quot;</span>: <span class="hljs-variable language_">self</span>._stats.total_errors,
+        <span class="hljs-string">&quot;avg_batch_size&quot;</span>: <span class="hljs-variable language_">self</span>._stats.avg_batch_size,       <span class="hljs-comment"># 滑窗平均批次</span>
+        <span class="hljs-string">&quot;last_prefetch_size&quot;</span>: <span class="hljs-variable language_">self</span>._stats.last_prefetch_size,
+        <span class="hljs-string">&quot;avg_latency_ms&quot;</span>: <span class="hljs-variable language_">self</span>._stats.avg_latency_ms,       <span class="hljs-comment"># 拉取延迟均值</span>
+        <span class="hljs-string">&quot;p95_latency_ms&quot;</span>: <span class="hljs-variable language_">self</span>._stats.p95_latency_ms,       <span class="hljs-comment"># 拉取延迟 P95</span>
+        <span class="hljs-string">&quot;prefetch_in_progress&quot;</span>: <span class="hljs-variable language_">self</span>._prefetch_in_progress,
+        <span class="hljs-string">&quot;empty_streak&quot;</span>: <span class="hljs-variable language_">self</span>._empty_streak,                 <span class="hljs-comment"># 连续空预取计数</span>
+        <span class="hljs-string">&quot;is_running&quot;</span>: <span class="hljs-variable language_">self</span>._running,
+        <span class="hljs-string">&quot;config&quot;</span>: { ... }                                   <span class="hljs-comment"># 生效配置子集</span>
+    }
+</code></pre>
+<p>运维派生指标（非源码输出，供自行计算）：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>预取效率</strong> = total_fetched / total_prefetch：接近 prefetch_size 说明每次拉得满、Redis 基本没白跑；明显偏低说明队列经常空或预取过于频繁；</p>
+</li>
+<li class="lvl-2">
+<p><strong>批均填充率</strong> = avg_batch_size / prefetch_size：长期 &lt;50% 说明供应不足或水位参数不匹配。</p>
+</li>
+</ul>
+<p><strong>与 API 的通路</strong>：WorkerPool 的 <code>get_prefetcher_stats()</code>（🔧）会被 <code>TaskPool.get_stats()</code> / <code>get_stats_async()</code> 调用——启用预取时输出里直接带 <code>prefetcher</code> 子对象：</p>
+<pre class="hljs"><code>stats = pool.get_stats()
+<span class="hljs-keyword">if</span> <span class="hljs-string">&quot;prefetcher&quot;</span> <span class="hljs-keyword">in</span> stats:
+    p = stats[<span class="hljs-string">&quot;prefetcher&quot;</span>]
+    <span class="hljs-built_in">print</span>(p[<span class="hljs-string">&quot;local_queue_size&quot;</span>], p[<span class="hljs-string">&quot;avg_batch_size&quot;</span>], p[<span class="hljs-string">&quot;empty_streak&quot;</span>])
+</code></pre>
+<p>需要两点注意：<code>WorkerPool.get_stats()</code> 返回的是<strong>每个 worker 的 WorkerStats</strong>（worker_id/active_tasks/completed_tasks/failed_tasks/is_busy），不含预取统计——预取统计只挂在 <code>TaskPool.get_stats()[&quot;prefetcher&quot;]</code> 这一处；另外 <strong>MetricsCollector 与 TaskPrefetcher 之间没有数据通路</strong>，预取统计不会进指标，要监控预取健康度得读这个子对象：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 自建监控示例：定时读取预取统计</span>
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">monitor_prefetch</span>(<span class="hljs-params">pool</span>):
+    <span class="hljs-keyword">while</span> <span class="hljs-literal">True</span>:
+        stats = (<span class="hljs-keyword">await</span> pool.get_stats_async()).get(<span class="hljs-string">&quot;prefetcher&quot;</span>)
+        <span class="hljs-keyword">if</span> stats <span class="hljs-keyword">and</span> stats[<span class="hljs-string">&quot;total_prefetch&quot;</span>] &gt; <span class="hljs-number">0</span>:
+            fill = stats[<span class="hljs-string">&quot;avg_batch_size&quot;</span>] / stats[<span class="hljs-string">&quot;config&quot;</span>][<span class="hljs-string">&quot;prefetch_size&quot;</span>]
+            <span class="hljs-keyword">if</span> fill &lt; <span class="hljs-number">0.3</span> <span class="hljs-keyword">and</span> stats[<span class="hljs-string">&quot;total_errors&quot;</span>] &gt; <span class="hljs-number">0</span>:
+                log.warning(<span class="hljs-string">f&quot;预取填充率异常: <span class="hljs-subst">{fill:<span class="hljs-number">.0</span>%}</span>, errors=<span class="hljs-subst">{stats[<span class="hljs-string">&#x27;total_errors&#x27;</span>]}</span>&quot;</span>)
+        <span class="hljs-keyword">await</span> asyncio.sleep(<span class="hljs-number">60</span>)
+</code></pre>
+<hr>
+<h2>故障场景实战</h2>
+<h3>场景 1：队列见底时的&quot;空转风暴&quot;</h3>
+<p><strong>现象</strong>：业务低谷期（队列几乎为空），Redis 监控显示大量空 pop 调用；CPU 不高但连接数/QPS 异常，节点越多越明显。</p>
+<p><strong>根因链</strong>：本地队列 size=0 &lt; min_threshold=5 → HYBRID 低水位分支恒 True → 反复对 Redis 执行空 <code>pop(20)</code>；空结果同样写入统计 → Redis 返回空 list，循环不休。没有退避时每节点就是 10Hz 空查询。</p>
+<p><strong>排查命令</strong>：观察预取统计 <code>total_prefetch</code> 增速与 <code>avg_batch_size</code>，以及 <code>get_stats()[&quot;prefetcher&quot;][&quot;empty_streak&quot;]</code>：若 <code>total_prefetch</code> 每秒 +10 而 <code>avg_batch_size≈0</code>、<code>empty_streak</code> 不增长，说明退避没生效（预取被禁用或计数器被重置）。</p>
+<p><strong>解决</strong>：内建的空批退避已经兜住（见上文「空批退避」）：连续空 <code>pop</code> 时按 <code>empty_streak</code> 指数拉长间隔，0.5s 封顶，稳态约 2 次/秒/节点。若仍觉得巡检偏频，可把 <code>prefetch_interval</code> 调大（退避基数随之变化），代价是断粮后补货变慢。</p>
+<h3>场景 2：批量出队后节点崩溃 → 任务滞留 1 小时</h3>
+<p><strong>现象</strong>：节点 A 崩溃后，其&quot;已领取但未执行&quot;的任务集体消失，1 小时后才陆续恢复重跑。</p>
+<p><strong>根因</strong>：预取的瞬间任务已被 <code>ZREM</code> 出队，<strong>队列里没有它的位置了</strong>；它只存在于节点 A 的内存本地队列。崩溃 = 内存蒸发，Redis 侧一无所知。任务状态仍是 PENDING、无 node_id 标记——直到回收器按 <code>ttl</code>（默认 3600s）兜底重排（详见<a href="failure-recovery.html">故障恢复</a>）。</p>
+<p><strong>损失上界</strong>：本地队列容量 100 + 正在执行的并发任务（10）≈ 110 个任务/节点。批量越大、队列越长，损失窗口越大——<strong>这就是&quot;预取深度&quot;与&quot;恢复延迟&quot;的杠杆，生产上要按任务价值定 prefetch_size，而不是只按吞吐定</strong>。</p>
+<p><strong>解决</strong>：对 SLA 高的任务，用 <code>redispatch</code>/重试语义补偿；或缩小 <code>prefetch_size</code>（建议 5~10）让&quot;已出队未执行&quot;的库存变小；真正需要零丢失时禁用预取（见下节），让任务始终受队列保护。</p>
+<h3>场景 3：低优洪峰挤占预取，高优任务响应劣化</h3>
+<p><strong>现象</strong>：促销批量任务（P3）涌入后，P0 的即时任务延迟从几十 ms 劣化到数秒。</p>
+<p><strong>根因</strong>：节点本地队列被 P3 预取占满（60 在途），P0 到达后：若所有节点都在途饱和 → P0 滞留共享队列等空位；若某节点有 5~60 的空位，该节点只有在&quot;消费快&quot;判定下才拉——而 P0 会在下一轮 pop 被取到（score 最小），<strong>延迟 ≈ 一轮预取周期（0.1~0.5s）+ 该节点在途任务排空时间</strong>。</p>
+<p><strong>排查</strong>：先看 <code>queue_size</code> 是否持续 &gt;0 而 worker 活跃（说明任务在排队）；再看是否所有节点的本地队列长期满（日志里 <code>prefetcher</code> 拉取批次是否满 20）。</p>
+<p><strong>解决</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>结构性手段：调小 <code>prefetch_size</code>，在途量随之缩小，反转窗口同步变窄；</p>
+</li>
+<li class="lvl-2">
+<p>调小 <code>max_threshold</code>，让节点更早停止囤货，把全局头部让给其他节点；</p>
+</li>
+<li class="lvl-2">
+<p>需要硬性优先级保证时，用独立 TaskPool 实例跑高优任务，物理隔离。</p>
+</li>
+</ul>
+<h3>场景 4：优雅停机超时，本地队列残留如何处理</h3>
+<p><strong>现象</strong>：节点滚动发布，停机日志显示&quot;All workers stopped&quot;，本地队列里还有一批已出队但未执行的任务。</p>
+<p><strong>为什么值得关注</strong>：<code>WorkerPool.stop(graceful=True, timeout=30)</code> 先调 <code>prefetcher.stop(graceful, 30)</code>——<code>_wait_until_empty</code> 每 0.1s 轮询本地队列，<strong>30s 内没排空就放弃</strong>，随后取消预取协程。这些 task_id 已经出队、不在 Redis 队列里了，如果不做处理就只能等回收器按 <code>ttl</code>（默认 3600s）兜底重排，延迟一小时。</p>
+<p><strong>内建方案：<code>drain_back</code>。</strong> <code>WorkerPool.stop</code> 在预取器停下后立即把本地队列残留放回共享队列（🔧 <code>worker/pool.py</code> → <code>prefetcher.drain_back</code>）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 worker/pool.py —— 停止预取器后回队，避免残留变孤儿</span>
+<span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._prefetcher:
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._prefetcher.stop(graceful, timeout)
+    drained = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._prefetcher.drain_back(<span class="hljs-variable language_">self</span>._resolve_task_priority)
+    <span class="hljs-keyword">if</span> drained:
+        debug(<span class="hljs-string">f&quot;Drained <span class="hljs-subst">{drained}</span> prefetched task(s) back to shared queue&quot;</span>)
+</code></pre>
+<p><code>drain_back(priority_resolver)</code> 逐个 <code>get_nowait</code> 取出残留任务，并用 <code>priority_resolver</code> 从存储还原其<strong>原始优先级</strong>再 <code>push</code> 回共享队列——不是一律按 NORMAL 重排：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 prefetcher.py</span>
+priority = TaskPriority.NORMAL.value
+<span class="hljs-keyword">if</span> priority_resolver <span class="hljs-keyword">is</span> <span class="hljs-keyword">not</span> <span class="hljs-literal">None</span>:
+    priority = <span class="hljs-keyword">await</span> priority_resolver(task_id)   <span class="hljs-comment"># 从存储读回真实优先级</span>
+<span class="hljs-keyword">if</span> <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._queue.push(task_id, priority):
+    drained += <span class="hljs-number">1</span>
+<span class="hljs-keyword">else</span>:
+    <span class="hljs-comment"># 共享队列也满了：放回本地队列，宁可保留也不要凭空丢弃</span>
+    <span class="hljs-variable language_">self</span>._local_queue.put_nowait(task_id)
+    <span class="hljs-keyword">break</span>
+</code></pre>
+<p>因此默认路径下&quot;停机丢任务&quot;已经不会发生；只有共享队列同时满载/被禁用时才会保留在本地并告警（<code>Cannot drain task ... queue full/disabled</code>）。</p>
+<p><strong>运维建议</strong>：停机窗口尽量选在队列低水位期，让 <code>drain_back</code> 一次成功；若看到上面的告警，说明共享队列已满，残留任务仍要靠回收器兜底——此时先恢复队列可用性再重启。</p>
+<hr>
+<h2>配置调优</h2>
+<h3>参数决策树</h3>
+<table>
+<thead>
+<tr>
+<th>目标</th>
+<th>调什么</th>
+<th>怎么调</th>
+<th>代价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>吞吐优先</td>
+<td>prefetch_size</td>
+<td>20 → 50~100</td>
+<td>在途库存大，崩溃损失窗口大；高优响应变差</td>
+</tr>
+<tr>
+<td>延迟优先</td>
+<td>prefetch_size</td>
+<td>20 → 2~5</td>
+<td>RTT 次数回升，Redis 压力上升</td>
+</tr>
+<tr>
+<td>队列抖动大（忽满忽空）</td>
+<td>min_threshold</td>
+<td>5 → 10~20</td>
+<td>预取更频繁</td>
+</tr>
+<tr>
+<td>Redis 跨机房（RTT 高）</td>
+<td>enable_batch_pop</td>
+<td>保持 True</td>
+<td>已默认</td>
+</tr>
+<tr>
+<td>监控排障</td>
+<td>enable_stats</td>
+<td>保持 True</td>
+<td>已默认</td>
+</tr>
+</tbody>
+</table>
+<p>参数间有联动，改一个要检查全部：<code>local_queue_size=5×prefetch_size</code>、<code>min=÷4</code>、<code>max=×3</code> 是 WorkerPool 自动推导的——<strong>直接改 TaskPrefetcher 配置而不动 prefetch_size 时，这套比例不生效</strong>，容易造成&quot;我以为改了实际没改&quot;。</p>
+<h3>场景示例（📝 基于真实接线公式）</h3>
+<pre class="hljs"><code><span class="hljs-keyword">from</span> neotask.api <span class="hljs-keyword">import</span> TaskPool, TaskPoolConfig
+
+<span class="hljs-comment"># 高吞吐画像：批处理、容忍分钟级恢复延迟</span>
+config = TaskPoolConfig.redis(
+    <span class="hljs-string">&quot;redis://10.0.0.1:6379&quot;</span>,
+    prefetch_size=<span class="hljs-number">100</span>,          <span class="hljs-comment"># 本地队列 500 / 低水位 25 / 高水位 300</span>
+)
+<span class="hljs-comment"># 内部推导：local=500, min=25, max=300</span>
+
+<span class="hljs-comment"># 低延迟画像：即时任务、RTT 低</span>
+config = TaskPoolConfig.redis(
+    <span class="hljs-string">&quot;redis://127.0.0.1:6379&quot;</span>,
+    enable_prefetch=<span class="hljs-literal">False</span>,      <span class="hljs-comment"># 本地 Redis：直接批量 pop，无缓冲层</span>
+)
+</code></pre>
+<hr>
+<h2>性能分析</h2>
+<p>官方基准（<a href="benchmarks.html">性能基准详解</a>、v0.3.0 Windows 实测）只给出一个与预取直接相关的数字：<strong>批量弹出相对单任务弹出约 2.00x 提升</strong>。注意这是&quot;内存存储基准下的批量 pop&quot;——同一批任务用 1 次批量调用 vs N 次单次调用。</p>
+<p>真实的收益模型如下：</p>
+<p>[<br>
+\text{预取收益} = \frac{N \times T_{single}}{T_{batch}} \approx N \text{ 当 } T_{batch} \ll N \times RTT<br>
+]</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>Redis RTT</th>
+<th>批量 20 个的收益</th>
+<th>结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>同机 loopback</td>
+<td>~0.05ms</td>
+<td>拉取耗时从 1ms→0.1ms 级</td>
+<td><strong>收益小</strong>，瓶颈在 executor，不在队列</td>
+</tr>
+<tr>
+<td>局域网</td>
+<td>~0.3ms</td>
+<td>每批省 ~5.7ms</td>
+<td>中等收益，worker 数量大时可观</td>
+</tr>
+<tr>
+<td>跨机房</td>
+<td>~5ms</td>
+<td>每批省 ~95ms</td>
+<td><strong>收益巨大</strong>，预取是刚需</td>
+</tr>
+</tbody>
+</table>
+<p>另一个必须认识的分层事实（引用官方实测）：TaskPool 端到端约 <strong>1700 ops/s</strong>，而队列入队/出队原始操作达 <strong>20万~31万 ops/s</strong>——<strong>队列从来不是瓶颈</strong>，执行器（含 Python 解释器开销）才是。这意味着：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>预取解决的是&quot;队列访问频率&quot;问题，不是&quot;执行吞吐&quot;问题——<strong>先确认瓶颈在 Redis 往返上再调预取</strong>；</p>
+</li>
+<li class="lvl-2">
+<p>本机 Redis 场景，预取带来的收益常常被它引入的复杂度抵消（内存、孤儿窗口、停机残留），<strong>禁用预取是合理的选项</strong>。</p>
+</li>
+</ul>
+<hr>
+<h2>与其他模块的协作</h2>
+<pre class="mermaid">graph TB
+    subgraph Pipeline[&quot;真实协作关系&quot;]
+        QS[QueueScheduler&lt;br/&gt;pop → Lua ZRANGE+ZREM]
+        PF[TaskPrefetcher&lt;br/&gt;批量搬运]
+        LQ[本地队列]
+        WP[WorkerPool&lt;br/&gt;worker 协程]
+        LK[LockManager&lt;br/&gt;执行前 acquire ttl=30]
+        RC[TaskReclaimer&lt;br/&gt;超时/孤儿兜底]
+    end
+    QS --&gt;|pop n| PF
+    PF --&gt;|put_nowait| LQ
+    LQ --&gt;|get 0.1s| WP
+    WP --&gt;|仅执行前| LK
+    RC -. 兜底已出队未执行 .-&gt; PF
+</pre>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>QueueScheduler</strong>：任务来源，<code>pop(n)</code> 内部走优先级队列 Lua（批量原子出队）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>WorkerPool</strong>：消费者。两种模式——预取模式（本节点单一预取器 + 本地队列分发）与直接模式（每个 worker 协程各自 <code>pop(prefetch_size)</code>）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>LockManager</strong>：不在预取路径上，只在执行前抢 <code>lock:task:{id}</code>（ttl=30 + 看门狗续期）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>MetricsCollector</strong>：与预取器无数据通路，预取统计走 <code>TaskPool.get_stats()[&quot;prefetcher&quot;]</code>（见上文统计章节）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>TaskReclaimer</strong>：预取造成的&quot;出队即失保护&quot;窗口的最终兜底方（ttl=3600s）。</p>
+</li>
+</ul>
+<hr>
+<h2>禁用预取：什么时候该关？</h2>
+<p>真实 API 两个入口（🔧）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 方式一：构造时关闭（推荐）</span>
+config = TaskPoolConfig.redis(<span class="hljs-string">&quot;redis://127.0.0.1:6379&quot;</span>, enable_prefetch=<span class="hljs-literal">False</span>)
+
+<span class="hljs-comment"># 方式二：代码里直接建 WorkerPool（🔧 真实签名）</span>
+worker_pool = WorkerPool(
+    executor=executor,
+    task_repo=task_repo,
+    queue_scheduler=queue_scheduler,
+    event_bus=event_bus,
+    lifecycle_manager=lifecycle_manager,
+    concurrency=<span class="hljs-number">10</span>,
+    prefetch_size=<span class="hljs-number">20</span>,
+    task_timeout=<span class="hljs-literal">None</span>,
+    lock_manager=lock_manager,
+    enable_prefetch=<span class="hljs-literal">False</span>      <span class="hljs-comment"># 禁用预取</span>
+)
+</code></pre>
+<p><strong>一个容易误解的点</strong>：禁用预取后 worker 并不是&quot;每个任务独立操作、单任务获取&quot;——直接模式的 worker 循环同样走批量：<code>task_ids = await self._queue.pop(self._prefetch_size)</code>（🔧 <a href="http://pool.py">pool.py</a>），每轮批量 pop 20 个、逐个 create_task 执行。两种模式的真正区别在于<strong>由谁访问队列、以及有没有缓冲层</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>预取模式</th>
+<th>直接模式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>谁访问 Redis</td>
+<td>单一预取器协程</td>
+<td>每个 worker 协程（并发 N 个）</td>
+</tr>
+<tr>
+<td>缓冲层</td>
+<td>本地队列（≤100）</td>
+<td>无（pop 完直接执行）</td>
+</tr>
+<tr>
+<td>出队节奏</td>
+<td>由水位统一控制</td>
+<td>各 worker 自由竞争</td>
+</tr>
+<tr>
+<td>优先级保持</td>
+<td>好（单一消费者按序取）</td>
+<td>差（N 个 worker 同时抢，执行顺序乱序）</td>
+</tr>
+<tr>
+<td>空转行为</td>
+<td>预取循环空批退避（0.5s 封顶）+ worker 退避</td>
+<td>每 worker 独立退避（0.5s 封顶）</td>
+</tr>
+<tr>
+<td>崩溃窗口</td>
+<td>本地队列残留（最多 ~110/节点）</td>
+<td>pop 后未执行的在途任务（每 worker ≤20，但执行是异步 create_task，实际窗口 = pop 批 × 未完成数）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>建议禁用的场景</strong>：同机/低延迟 Redis（预取收益小）、内存敏感（本地队列是纯额外内存）、任务需要严格接近实时的全局优先级（直接模式每轮 pop 都取全局最小 score）、以及调试期想观察原始队列行为。</p>
+<hr>
+<h2>版本与验证说明</h2>
+<p>本文属于项目文档而不是永久不变的 API 契约。以下情况发生时，应重新核对源码或发布说明：</p>
+<ol>
+<li class="lvl-3">
+<p>项目版本升级，尤其是公开 API、配置模型、存储实现和工作流发生变化；</p>
+</li>
+<li class="lvl-3">
+<p>本文中的默认值、性能数据或示例依赖外部服务版本；</p>
+</li>
+<li class="lvl-3">
+<p>运行环境与本文案例不同，例如 Python 版本、Redis/数据库版本、模型供应商或操作系统不同。</p>
+</li>
+</ol>
+<p>如果你要把本文内容用于生产环境，请优先使用仓库当前版本的 README、源码、测试和 Release 记录进行最终确认。</p>
+<h2>总结</h2>
+<table>
+<thead>
+<tr>
+<th>设计点</th>
+<th>真实实现</th>
+<th>深度理解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>批量拉取</td>
+<td>pop Lua = ZRANGE + ZREM，<strong>无锁</strong></td>
+<td>锁绑定执行期而非搬运期；出队原子 ≠ 执行原子</td>
+</tr>
+<tr>
+<td>默认 HYBRID</td>
+<td>低水位必拉 / 中水位看消费快慢 / 高水位停</td>
+<td>SIZE_BASED 事后补救，HYBRID 事前预防</td>
+</tr>
+<tr>
+<td>消费快判定</td>
+<td>最近 5 批平均 &gt; prefetch_size/2</td>
+<td>用批均近似速率，抗时钟抖动</td>
+</tr>
+<tr>
+<td>高水位</td>
+<td>WorkerPool 接线 = 3×prefetch_size（60）</td>
+<td>是竞争策略参数，不是内存保护</td>
+</tr>
+<tr>
+<td>空闲判定</td>
+<td>idle_timeout=5s 但 get() 持续刷新</td>
+<td>主链路几乎不触发；空转由空批退避兜底</td>
+</tr>
+<tr>
+<td>优先级过滤</td>
+<td>预取不区分优先级，批量照单全收</td>
+<td>反转窗口靠水位控制与调参收敛</td>
+</tr>
+<tr>
+<td>统计</td>
+<td><code>TaskPool.get_stats()[&quot;prefetcher&quot;]</code> 已注入</td>
+<td>WorkerPool.get_stats 是 per-worker，不含预取统计</td>
+</tr>
+</tbody>
+</table>
+<p>预取机制是 NeoTask 吞吐设计的核心，但它的每一分收益都对应一份代价：崩溃窗口、优先级滞后、空转查询。<strong>理解它的真实边界，比记住它的默认参数更重要</strong>——停机回队（<code>drain_back</code>）与空批退避已经把这部分代价收窄，剩下的要靠 <code>prefetch_size</code> / <code>max_threshold</code> 按业务取舍。</p>
+<hr>
+<h2>相关链接</h2>
+<p><a href="index.html">返回首页</a></p>
+<p><strong>入门与参考</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="quickstart.html">快速上手</a> - 5 分钟入门</p>
+</li>
+<li class="lvl-2">
+<p><a href="api-reference.html">API 参考</a> - 完整 API 文档</p>
+</li>
+<li class="lvl-2">
+<p><a href="configuration.html">配置说明</a> - 配置参数详解</p>
+</li>
+<li class="lvl-2">
+<p><a href="best-practices.html">最佳实践</a> - 生产环境建议</p>
+</li>
+</ul>
+<p><strong>架构与设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="architecture.html">架构设计</a> - 整体架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="core-features.html">核心实现</a> - 功能设计</p>
+</li>
+<li class="lvl-2">
+<p><a href="evolution.html">版本演进</a> - 演进历程</p>
+</li>
+</ul>
+<p><strong>分布式核心</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="decentralization.html">去中心化</a> - 对等架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="failure-recovery.html">故障恢复</a> - 高可用保障</p>
+</li>
+<li class="lvl-2">
+<p><a href="prefetch.html">预取机制</a> - 高吞吐性能</p>
+</li>
+<li class="lvl-2">
+<p><a href="distributed-lock.html">分布式锁</a> - 并发控制</p>
+</li>
+</ul>
+<p><strong>存储与监控</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="persistence.html">持久化</a> - 多存储后端</p>
+</li>
+<li class="lvl-2">
+<p><a href="priority-queue.html">优先级</a> - 优先级队列</p>
+</li>
+<li class="lvl-2">
+<p><a href="delayed-tasks.html">延时任务</a> - 时间轮 + Redis 持久化</p>
+</li>
+<li class="lvl-2">
+<p><a href="monitoring.html">节点监控</a> - 可观测性</p>
+</li>
+</ul>
+<p><strong>资源</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/neotask">GitHub</a> - 源代码仓库</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://task.helpenx.com">NeoTask 官网</a> - 官方网站</p>
+</li>
+</ul>
+
+      </article>
+    </main>
+  </div>
+  <footer>
+    <a href="https://task.helpenx.com" target="_blank" rel="noopener">NeoTask 官网</a>·
+    <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>·
+    <a href="index.html">文档中心</a>
+    <div style="margin-top:6px">© 2026 helpenx.com · 文档基线以文中标注版本对应的源码为准</div>
+  </footer>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</body>
+</html>

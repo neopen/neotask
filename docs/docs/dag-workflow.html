@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoTask 任务编排：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行 · NeoTask 文档</title>
+  <meta name="description" content="深度推演 NeoTask v1.5 任务编排（DAG 工作流引擎）的设计：为什么任务调度最终需要编排层、依赖图如何建模、就绪队列如何驱动拓扑推进、条件分支与聚合等待的状态语义，以及基于 v0.4-v1.0 已有原语（优先级队列、延时、分布式锁、回收器）落地 DAG 的可行性分析；全文 API 与代码均为设计示例，v1.0.2 源码中尚无 workflow 模块。">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://task.helpenx.com/docs/dag-workflow.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:title" content="NeoTask 任务编排：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行">
+  <meta property="og:description" content="深度推演 NeoTask v1.5 任务编排（DAG 工作流引擎）的设计：为什么任务调度最终需要编排层、依赖图如何建模、就绪队列如何驱动拓扑推进、条件分支与聚合等待的状态语义，以及基于 v0.4-v1.0 已有原语（优先级队列、延时、分布式锁、回收器）落地 DAG 的可行性分析；全文 API 与代码均为设计示例，v1.0.2 源码中尚无 workflow 模块。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://task.helpenx.com/docs/dag-workflow.html">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>⏱️</text></svg>">
+  <style>
+:root{--brand:#0d9488;--brand-dark:#0f766e;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:var(--ink);background:#fff;line-height:1.75;font-size:16px}
+a{color:var(--brand);text-decoration:none}a:hover{color:var(--brand-dark);text-decoration:underline}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
+.topbar .brand .doc-badge{font-size:12px;font-weight:600;color:#fff;background:var(--brand);border-radius:6px;padding:2px 8px}
+.topbar nav{display:flex;gap:20px;font-size:14.5px}
+.topbar nav a{color:var(--muted);font-weight:500}
+.topbar nav a:hover{color:var(--brand)}
+.wrap{display:flex;max-width:1280px;margin:0 auto;padding:0 16px}
+.sidebar{width:264px;flex-shrink:0;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 40px 0;border-right:1px solid var(--line)}
+.sidebar .side-home{display:block;font-weight:600;color:var(--ink);margin-bottom:16px;font-size:15px}
+.sidebar .side-home:hover{color:var(--brand);text-decoration:none}
+.sidebar h4{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px;font-weight:600}
+.sidebar a{display:block;padding:5px 10px;border-radius:6px;font-size:14px;color:#334155;line-height:1.5}
+.sidebar a:hover{background:var(--bg);color:var(--brand);text-decoration:none}
+.sidebar a.active{background:var(--brand);color:#fff}
+.content{flex:1;min-width:0;padding:32px 20px 60px 36px;max-width:860px}
+.toc-mobile{display:none;margin-bottom:20px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.toc-mobile summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.toc-mobile a{display:block;padding:3px 0;font-size:14px}
+.article h1{font-size:1.9em;line-height:1.35;margin:.4em 0 .8em}
+.article h2{font-size:1.45em;margin:1.8em 0 .7em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
+.article h3{font-size:1.22em;margin:1.5em 0 .6em}
+.article h4{font-size:1.08em;margin:1.3em 0 .5em}
+.article p{margin:.85em 0}
+.article ul,.article ol{padding-left:1.6em;margin:.7em 0}
+.article li{margin:.35em 0}
+.article img{max-width:100%;height:auto;border-radius:8px}
+.article table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:.94em;display:block;overflow-x:auto}
+.article th,.article td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+.article th{background:var(--bg);font-weight:600}
+.article tr:nth-child(even) td{background:#fbfdff}
+.article blockquote{margin:1.1em 0;padding:.7em 1.1em;border-left:4px solid var(--brand);background:var(--bg);border-radius:0 8px 8px 0;color:#334155}
+.article blockquote p{margin:.3em 0}
+.article code:not(pre code){background:#eef2f7;color:#c7254e;padding:.15em .4em;border-radius:4px;font-size:.88em;word-break:break-word}
+.article pre.hljs{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0;line-height:1.6}
+.article pre.hljs code{background:none;padding:0;color:var(--ink);font-size:.9em;font-family:ui-monospace,SFMono-Regular,'Cascadia Code',Consolas,Menlo,monospace}
+.article pre.mermaid{text-align:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0}
+.article hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+.article .success,.article .tips,.article .warning,.article .danger{border-radius:8px;padding:.9em 1.1em;margin:1.1em 0;border:1px solid}
+.article .success{border-color:#a7f3d0;background:#ecfdf5}.article .success p:first-of-type::before{content:'✅ '}
+.article .tips{border-color:#bfdbfe;background:#eff6ff}.article .tips p:first-of-type::before{content:'💡 '}
+.article .warning{border-color:#fde68a;background:#fffbeb}.article .warning p:first-of-type::before{content:'⚠️ '}
+.article .danger{border-color:#fecaca;background:#fef2f2}.article .danger p:first-of-type::before{content:'🚫 '}
+.article .success>p:first-child,.article .tips>p:first-child,.article .warning>p:first-child,.article .danger>p:first-child{margin-top:0}
+.article .success>p:last-child,.article .tips>p:last-child,.article .warning>p:last-child,.article .danger>p:last-child{margin-bottom:0}
+.doc-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--muted)}
+.doc-meta .tag{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+.doc-nav{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
+.doc-nav a{font-weight:600}
+footer{border-top:1px solid var(--line);padding:22px 24px;text-align:center;color:var(--muted);font-size:13.5px}
+footer a{color:var(--muted);margin:0 10px}
+footer a:hover{color:var(--brand)}
+@media (max-width:960px){
+  .sidebar{display:none}
+  .toc-mobile{display:block}
+  .content{padding:20px 6px 50px}
+  .topbar nav{gap:12px}
+}
+</style>
+  <style>
+.hljs{color:#24292e;background:#f6f8fa}
+.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.constant_{color:#d73a49}
+.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}
+.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}
+.hljs-string,.hljs-meta .hljs-string,.hljs-regexp{color:#032f62}
+.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-tag,.hljs-subst,.hljs-symbol{color:#e36209}
+.hljs-built_in,.hljs-class .hljs-title{color:#e36209}
+.hljs-comment,.hljs-meta,.hljs-quote{color:#6a737d}
+.hljs-section{color:#005cc5;font-weight:700}
+.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">⏱️ NeoTask <span class="doc-badge">文档</span></a>
+    <nav>
+      <a href="https://task.helpenx.com" target="_blank" rel="noopener">产品官网</a>
+      <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+  <div class="wrap">
+    <aside class="sidebar">
+      <a class="side-home" href="index.html">⏱️ 分布式任务调度系统 · 文档中心</a>
+      <h4>技术分析</h4><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a>
+<h4>API 与配置参考</h4><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a>
+<h4>实现与源码分析</h4><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a>
+<h4>设计与方案</h4><a href="dag-workflow.html" class="active">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a>
+<h4>项目概览</h4><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a>
+<h4>入门与使用</h4><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a>
+<h4>性能与评测</h4><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a>
+<h4>实践与运维</h4><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a>
+<h4>架构与核心设计</h4><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a>
+<h4>版本与演进</h4><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a>
+    </aside>
+    <main class="content">
+      <details class="toc-mobile"><summary>📑 文档目录</summary><div><strong style="font-size:13px;color:var(--muted)">技术分析</strong><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a></div><div><strong style="font-size:13px;color:var(--muted)">API 与配置参考</strong><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a></div><div><strong style="font-size:13px;color:var(--muted)">实现与源码分析</strong><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a></div><div><strong style="font-size:13px;color:var(--muted)">设计与方案</strong><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a></div><div><strong style="font-size:13px;color:var(--muted)">项目概览</strong><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a></div><div><strong style="font-size:13px;color:var(--muted)">入门与使用</strong><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a></div><div><strong style="font-size:13px;color:var(--muted)">性能与评测</strong><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a></div><div><strong style="font-size:13px;color:var(--muted)">实践与运维</strong><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a></div><div><strong style="font-size:13px;color:var(--muted)">架构与核心设计</strong><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a></div><div><strong style="font-size:13px;color:var(--muted)">版本与演进</strong><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a></div></details>
+      <article class="article">
+        <div class="doc-meta"><span class="tag">NeoTask</span><span class="tag">更新 2026-05-06</span><a href="https://task.helpenx.com" target="_blank" rel="noopener">task.helpenx.com ↗</a></div>
+        <h1>NeoTask 任务编排详解：DAG 工作流引擎的设计推演</h1>
+<p>📚 <a href="index.html">返回首页</a> | 📖 <a href="quickstart.html">快速上手</a> | 📘 <a href="api-reference.html">API 参考</a> | ⚙️ <a href="configuration.html">配置说明</a> | 🐙 <a href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a href="https://task.helpenx.com">NeoTask 官网</a></p>
+<blockquote>
+<p><strong>文档定位</strong>：这是一篇设计/机制文档。文中会把已经实现的能力与设计推演分开，避免把路线图、示例代码或理论方案误认为当前版本功能。<br>
+<strong>事实边界</strong>：设计文档：当前文章明确讨论路线图/设计推演，不能视为当前版本已实现功能。<br>
+<strong>权威来源</strong>：<a href="https://github.com/neopen/neotask">NeoTask 源码仓库</a>；涉及版本历史时，以仓库 Release / CHANGELOG 为准。<br>
+<strong>代码标记</strong>：如果正文出现“源码/实现”字样，表示对应代码路径可在仓库中核对；示例代码仅用于演示调用方式，不应理解为项目源码原样。<br>
+<strong>版本基线</strong>：本文涉及的任务编排（DAG 工作流）是 NeoTask <strong>v1.5 路线上的规划能力</strong>；当前发布版 <strong>v1.0.2</strong> 源码中<strong>尚无 workflow 模块</strong>，本文所有 <code>WorkflowDefinition</code> / <code>WorkflowEngine</code> 相关内容均为设计推演，尚无实现可参照（路线图依据见正文 🔧 摘录）。<br>
+<strong>代码标注约定</strong>：🔧 表示<strong>真实源码 / 仓库已公开内容</strong>（源码或 README 路线图、版本演进、ADR 原样摘录，附出处，可自行对照）；📝 表示<strong>示例代码</strong>（用法演示、改进建议或教学代码，不代表仓库实现）。<br>
+<strong>边界说明</strong>：本文把&quot;仓库已公开的路线图条目&quot;与&quot;尚在推演的设计&quot;分开呈现。除明确标注为 🔧 的路线图/ADR 摘录外，其余 API 与代码均为 📝 设计示例，在 v1.0.2 中并不存在。</p>
+</blockquote>
+<hr>
+<h2>目录</h2>
+<ol>
+<li class="lvl-3">
+<p><a href="#%E4%B8%80%E4%B8%BA%E4%BB%80%E4%B9%88%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6%E6%9C%80%E7%BB%88%E9%9C%80%E8%A6%81%E7%BC%96%E6%8E%92%E5%B1%82">为什么任务调度最终需要编排层</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%BA%8C%E7%BC%96%E6%8E%92%E5%B1%82%E8%A6%81%E8%A7%A3%E5%86%B3%E7%9A%84%E5%9B%9B%E4%B8%AA%E9%97%AE%E9%A2%98">编排层要解决的四个问题</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%B8%89dag%E4%BE%9D%E8%B5%96%E5%9B%BE%E7%9A%84%E5%BB%BA%E6%A8%A1%E9%80%89%E6%8B%A9">DAG：依赖图的建模选择</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E5%9B%9B%E5%BC%95%E6%93%8E%E6%A0%B8%E5%BF%83%E5%BE%AA%E7%8E%AF%E5%B0%B1%E7%BB%AA%E9%98%9F%E5%88%97%E9%A9%B1%E5%8A%A8%E6%8B%93%E6%89%91%E6%8E%A8%E8%BF%9B">引擎核心循环：就绪队列驱动拓扑推进</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%BA%94%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%99%E4%B9%88%E8%AE%BE%E8%AE%A1%E4%BA%94%E4%B8%AA%E5%85%B3%E9%94%AE%E5%86%B3%E7%AD%96">为什么这么设计：五个关键决策</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E5%85%AD%E4%BB%8E%E6%97%A2%E6%9C%89%E5%8E%9F%E8%AF%AD%E5%88%B0-dagv04-v10-%E5%A6%82%E4%BD%95%E8%A2%AB%E5%A4%8D%E7%94%A8">从既有原语到 DAG：v0.4-v1.0 如何被复用</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%B8%83%E5%B7%A5%E4%BD%9C%E6%B5%81%E7%8A%B6%E6%80%81%E6%9C%BA%E4%B8%8E%E4%B8%8A%E4%B8%8B%E6%96%87%E4%BC%A0%E9%80%92">工作流状态机与上下文传递</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E5%85%AB%E8%B6%85%E6%97%B6%E9%87%8D%E8%AF%95%E4%B8%8E%E5%A4%B1%E8%B4%A5%E7%AD%96%E7%95%A5">超时、重试与失败策略</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%B9%9D%E6%95%85%E9%9A%9C%E5%9C%BA%E6%99%AF%E5%AE%9E%E6%88%98%E7%BC%96%E6%8E%92%E5%B1%82%E8%AE%BE%E8%AE%A1%E7%9A%84%E6%8E%A8%E6%BC%94%E5%BC%8F%E9%AA%8C%E8%AF%81">故障场景实战：编排层设计的推演式验证</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#%E5%8D%81%E6%80%BB%E7%BB%93">总结</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5">相关链接</a></p>
+</li>
+</ol>
+<hr>
+<h2>一、为什么任务调度最终需要编排层</h2>
+<p>单看 v0.1~v1.0 的能力，NeoTask 已经能回答三个问题：<strong>任务何时执行</strong>（延时/周期/Cron）、<strong>按什么顺序执行</strong>（优先级队列）、<strong>会不会重复执行</strong>（分布式锁 + 看门狗 + 回收器）。但真实业务很少只有一个任务：</p>
+<pre class="mermaid">flowchart TB
+    subgraph biz[&quot;一个典型业务：订单履约&quot;]
+        direction TB
+        A[接收订单] --&gt; B[库存预占]
+        B --&gt; C{风控审核}
+        C --&gt;|通过| D[生成出库单]
+        C --&gt;|拒绝| E[自动退款]
+        D --&gt; F[通知物流]
+        E --&gt; F2[通知用户]
+        F --&gt; G[订单完成]
+        F2 --&gt; G
+    end
+</pre>
+<p>把这段流程写成&quot;若干独立任务&quot;直接提交，调度器只会得到一堆互不相干的任务 ID——<strong>执行的先后、分支的选择、结果的汇聚，全部散落在业务代码里</strong>，每次都要重复实现一遍，且无法被框架观测。</p>
+<p>这就是编排层存在的理由：<strong>把任务之间的&quot;关系&quot;从业务代码中抽出来，变成框架可理解、可持久化、可恢复的一等公民</strong>。</p>
+<h3>单体代码 vs 拆碎的任务 vs 编排层</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">方案</th>
+<th style="text-align:left">可观测性</th>
+<th style="text-align:left">故障边界</th>
+<th style="text-align:left">重试粒度</th>
+<th style="text-align:left">水平扩展</th>
+<th style="text-align:left">代码形态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">单体流程函数</td>
+<td style="text-align:left">好（一个请求栈）</td>
+<td style="text-align:left">差：一处异常整段回滚</td>
+<td style="text-align:left">整段重放</td>
+<td style="text-align:left">难</td>
+<td style="text-align:left">嵌套调用、局部变量传递</td>
+</tr>
+<tr>
+<td style="text-align:left">拆碎后手工串</td>
+<td style="text-align:left">差：任务间关系不可见</td>
+<td style="text-align:left">中：单任务可重试</td>
+<td style="text-align:left">单任务</td>
+<td style="text-align:left">好</td>
+<td style="text-align:left">到处是&quot;查上个任务结果&quot;的胶水代码</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>编排层（DAG）</strong></td>
+<td style="text-align:left"><strong>好：整张图可见</strong></td>
+<td style="text-align:left"><strong>好：节点级隔离</strong></td>
+<td style="text-align:left"><strong>单任务 + 工作流两级</strong></td>
+<td style="text-align:left"><strong>好</strong></td>
+<td style="text-align:left"><strong>声明式定义，引擎驱动</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么这么设计（一）：把流程控制权交给框架，是编排层的第一动机。</strong></p>
+<p>单独一个任务的可靠性（重试、超时、锁）v1.0 已经解决得很扎实；编排层不是要另起炉灶，而是把&quot;多任务的时序与选择&quot;也纳入框架的可靠性边界。这样业务里不再出现手写的 <code>while True: 轮询上个任务结果</code>——那既不可观测，也无法从宕机中恢复（轮询状态在进程内存里，进程一死就归零）。</p>
+<hr>
+<h2>二、编排层要解决的四个问题</h2>
+<p>四个问题对应四种能力，缺一个都不能叫&quot;编排&quot;：</p>
+<pre class="mermaid">flowchart LR
+    subgraph core[&quot;编排四要素&quot;]
+        direction TB
+        SEQ[顺序依赖&lt;br/&gt;A 完成后 B 才能开始]
+        PAR[并行执行&lt;br/&gt;同一层多个节点同时跑]
+        BR[条件分支&lt;br/&gt;上游结果决定走哪条边]
+        AGG[聚合等待&lt;br/&gt;多个上游全部完成才继续]
+    end
+</pre>
+<h3>1. 顺序依赖（Sequential）</h3>
+<p>严格的前驱-后继关系。例如&quot;先扣库存、再生成出库单&quot;。调度上等价于<strong>上游终态触发下游就绪</strong>。</p>
+<h3>2. 并行执行（Parallel）</h3>
+<p>无依赖关系的节点可以同时执行。注意区分两个&quot;并行&quot;：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>队列层并行</strong>：框架早就支持——多个 worker 同时从优先级队列取任务。这与 DAG 无关，是执行资源层面的并行；</p>
+</li>
+<li class="lvl-2">
+<p><strong>依赖层并行</strong>：DAG 中&quot;同一时刻有多个可执行节点&quot;。这才是编排层引入的并行度，受 worker 并发上限约束。</p>
+</li>
+</ul>
+<h3>3. 条件分支（Conditional）</h3>
+<p><strong>边的守卫（guard）</strong>：上游完成后，评估下游每条入边的条件，只有条件为真的边才会让下游节点&quot;就绪&quot;。常见的两种实现风格：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">风格</th>
+<th style="text-align:left">语义</th>
+<th style="text-align:left">优点</th>
+<th style="text-align:left">缺点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">节点内 if</td>
+<td style="text-align:left">任务自己判断并返回&quot;跳过&quot;</td>
+<td style="text-align:left">实现简单</td>
+<td style="text-align:left">分支逻辑不可见；&quot;跳过&quot;还要定义状态</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>边上守卫</strong></td>
+<td style="text-align:left">分支是图结构的一部分</td>
+<td style="text-align:left">整张图可绘制、可审计</td>
+<td style="text-align:left">需要结果求值表达式能力</td>
+</tr>
+</tbody>
+</table>
+<p>为什么推荐守卫在边上（见第五节第三个决策）。</p>
+<h3>4. 聚合等待（Join）</h3>
+<p>“等 B 和 C 都完成才执行 D”。引擎需要为每个节点维护<strong>未满足的前驱计数</strong>，每个上游完成时递减，归零才放行。</p>
+<blockquote>
+<p>聚合等待的反面是<strong>扇出</strong>（Fan-out）：一个上游触发多个下游。扇出 + 聚合组合成&quot;钻石依赖&quot;，是最考验引擎实现的图结构。</p>
+</blockquote>
+<hr>
+<h2>三、DAG：依赖图的建模选择</h2>
+<h3>3.1 为什么必须是 DAG</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>D</strong>irected：依赖有方向（A→B 表示 B 依赖 A），不可反向；</p>
+</li>
+<li class="lvl-2">
+<p><strong>A</strong>cyclic：无环。环意味着&quot;死锁的依赖&quot;——任何节点都无法率先满足条件，工作流永远无法推进；</p>
+</li>
+<li class="lvl-2">
+<p><strong>G</strong>raph：节点 + 边，天然支持分支与汇聚。</p>
+</li>
+</ul>
+<pre class="mermaid">flowchart TB
+    subgraph bad[&quot;有环依赖：永远无法启动&quot;]
+        X --&gt; Y
+        Y --&gt; Z
+        Z --&gt; X
+    end
+</pre>
+<p><strong>为什么这么设计（二）：用无环性换取&quot;可推进性&quot;的确定性。</strong></p>
+<p>有环图并非不能调度（有环需要运行时破环策略，语义复杂），但任务编排的核心诉求是<strong>确定性</strong>：给定同样的输入与同样的执行结果，工作流必然推进到同一终态。DAG 保证每个节点存在拓扑序，引擎可以无条件按拓扑序推进，不会出现&quot;所有节点都在等别人先完成&quot;的活锁。环需求的正确解法是拆出&quot;循环任务&quot;（用周期调度表达），而不是允许图中有环。</p>
+<h3>3.2 建模：节点是模板，边是依赖，一次提交是一个实例</h3>
+<p>沿用 NeoTask 一以贯之的&quot;定义与执行分离&quot;思想（Cron 定义 vs 一次触发），工作流的建模分三层：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">层</th>
+<th style="text-align:left">概念</th>
+<th style="text-align:left">生命周期</th>
+<th style="text-align:left">示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">定义</td>
+<td style="text-align:left"><code>WorkflowDefinition</code>（节点 + 边）</td>
+<td style="text-align:left">长期存在，可重复提交</td>
+<td style="text-align:left">&quot;订单履约流程&quot;定义一次</td>
+</tr>
+<tr>
+<td style="text-align:left">实例</td>
+<td style="text-align:left"><code>WorkflowExecution</code>（一次提交）</td>
+<td style="text-align:left">单次执行，有终态</td>
+<td style="text-align:left">订单 #12345 跑一遍该流程</td>
+</tr>
+<tr>
+<td style="text-align:left">节点执行</td>
+<td style="text-align:left">实例内某个任务的一次运行</td>
+<td style="text-align:left">最短，受状态机约束</td>
+<td style="text-align:left">库存预占（订单 #12345）</td>
+</tr>
+</tbody>
+</table>
+<p>这里的关键是<strong>模板与实例分离</strong>：同一张图可以并发跑 1000 个实例（1000 个订单），各自状态互不串扰。若把图本身当状态存，并发提交立刻互相污染。</p>
+<h3>3.3 定义示例：本文设计的提交方式</h3>
+<p>📝 仓库尚未公开工作流 API，下面两个接口形态是<strong>本文为讲清设计而提出的提案</strong>（<strong>规划项，v1.0.2 中不存在</strong>）：</p>
+<pre class="hljs"><code>engine.submit_workflow(definition)   <span class="hljs-comment"># 提交工作流（设计提案，v1.5 规划）</span>
+engine.wait_workflow(execution_id)   <span class="hljs-comment"># 等待工作流（设计提案，v1.5 规划）</span>
+</code></pre>
+<p>📝 依据上述形态与 ADR-005 决策，一个&quot;订单履约&quot;定义的合理形态如下（设计示例）：</p>
+<pre class="hljs"><code><span class="hljs-keyword">from</span> neotask.workflow <span class="hljs-keyword">import</span> WorkflowDefinition, WorkflowNode, WorkflowEdge
+
+<span class="hljs-comment"># 📝 设计示例：定义一张 DAG —— 订单履约流程</span>
+definition = WorkflowDefinition(
+    workflow_id=<span class="hljs-string">&quot;order_fulfillment&quot;</span>,
+    nodes=[
+        WorkflowNode(<span class="hljs-built_in">id</span>=<span class="hljs-string">&quot;receive&quot;</span>,     task=<span class="hljs-string">&quot;order.receive&quot;</span>,     params={<span class="hljs-string">&quot;source&quot;</span>: <span class="hljs-string">&quot;ctx.order_id&quot;</span>}),
+        WorkflowNode(<span class="hljs-built_in">id</span>=<span class="hljs-string">&quot;inventory&quot;</span>,   task=<span class="hljs-string">&quot;order.prestock&quot;</span>,    params={<span class="hljs-string">&quot;order_id&quot;</span>: <span class="hljs-string">&quot;ctx.order_id&quot;</span>}),
+        WorkflowNode(<span class="hljs-built_in">id</span>=<span class="hljs-string">&quot;risk&quot;</span>,        task=<span class="hljs-string">&quot;order.risk_check&quot;</span>,  params={<span class="hljs-string">&quot;order_id&quot;</span>: <span class="hljs-string">&quot;ctx.order_id&quot;</span>}),
+        WorkflowNode(<span class="hljs-built_in">id</span>=<span class="hljs-string">&quot;ship&quot;</span>,        task=<span class="hljs-string">&quot;order.create_ship&quot;</span>, params={<span class="hljs-string">&quot;order_id&quot;</span>: <span class="hljs-string">&quot;ctx.order_id&quot;</span>}),
+        WorkflowNode(<span class="hljs-built_in">id</span>=<span class="hljs-string">&quot;refund&quot;</span>,      task=<span class="hljs-string">&quot;order.auto_refund&quot;</span>, params={<span class="hljs-string">&quot;order_id&quot;</span>: <span class="hljs-string">&quot;ctx.order_id&quot;</span>}),
+        WorkflowNode(<span class="hljs-built_in">id</span>=<span class="hljs-string">&quot;notify_ship&quot;</span>, task=<span class="hljs-string">&quot;order.notify_ship&quot;</span>, params={<span class="hljs-string">&quot;order_id&quot;</span>: <span class="hljs-string">&quot;ctx.order_id&quot;</span>}),
+        WorkflowNode(<span class="hljs-built_in">id</span>=<span class="hljs-string">&quot;notify_refund&quot;</span>, task=<span class="hljs-string">&quot;order.notify_refund&quot;</span>, params={<span class="hljs-string">&quot;order_id&quot;</span>: <span class="hljs-string">&quot;ctx.order_id&quot;</span>}),
+        WorkflowNode(<span class="hljs-built_in">id</span>=<span class="hljs-string">&quot;done&quot;</span>,        task=<span class="hljs-string">&quot;order.mark_done&quot;</span>,   params={<span class="hljs-string">&quot;order_id&quot;</span>: <span class="hljs-string">&quot;ctx.order_id&quot;</span>}),
+    ],
+    edges=[
+        WorkflowEdge(from_=<span class="hljs-string">&quot;receive&quot;</span>, to=<span class="hljs-string">&quot;inventory&quot;</span>),
+        WorkflowEdge(from_=<span class="hljs-string">&quot;inventory&quot;</span>, to=<span class="hljs-string">&quot;risk&quot;</span>),
+        <span class="hljs-comment"># 条件分支：风险通过走发货链路，拒绝走退款链路</span>
+        WorkflowEdge(from_=<span class="hljs-string">&quot;risk&quot;</span>, to=<span class="hljs-string">&quot;ship&quot;</span>,   guard=<span class="hljs-string">&quot;result.passed == true&quot;</span>),
+        WorkflowEdge(from_=<span class="hljs-string">&quot;risk&quot;</span>, to=<span class="hljs-string">&quot;refund&quot;</span>, guard=<span class="hljs-string">&quot;result.passed == false&quot;</span>),
+        <span class="hljs-comment"># 并行扇出</span>
+        WorkflowEdge(from_=<span class="hljs-string">&quot;ship&quot;</span>,   to=<span class="hljs-string">&quot;notify_ship&quot;</span>),
+        WorkflowEdge(from_=<span class="hljs-string">&quot;refund&quot;</span>, to=<span class="hljs-string">&quot;notify_refund&quot;</span>),
+        <span class="hljs-comment"># 聚合等待：两类通知都完成才收尾</span>
+        WorkflowEdge(from_=<span class="hljs-string">&quot;notify_ship&quot;</span>,   to=<span class="hljs-string">&quot;done&quot;</span>),
+        WorkflowEdge(from_=<span class="hljs-string">&quot;notify_refund&quot;</span>, to=<span class="hljs-string">&quot;done&quot;</span>),
+    ],
+)
+
+execution_id = <span class="hljs-keyword">await</span> engine.submit_workflow(definition, context={<span class="hljs-string">&quot;order_id&quot;</span>: <span class="hljs-number">12345</span>})
+</code></pre>
+<p>几个建模细节：</p>
+<ol>
+<li class="lvl-3">
+<p><strong><code>task</code> 指向已注册的任务模板</strong>，节点不携带实现，只携带参数绑定——与 TaskPool 的&quot;executor + data&quot;心智一致；</p>
+</li>
+<li class="lvl-3">
+<p><strong><code>guard</code> 是表达式字符串</strong>，求值对象是上游节点的 <code>result</code>。表达式必须在引擎内做<strong>白名单求值</strong>（只允许取结果字段和上下文，不允许任意代码执行）——这是安全底线；</p>
+</li>
+<li class="lvl-3">
+<p><strong><code>context</code> 是整个实例共享的输入</strong>，下游参数用 <code>ctx.xxx</code> 引用（见第七节）。</p>
+</li>
+</ol>
+<hr>
+<h2>四、引擎核心循环：就绪队列驱动拓扑推进</h2>
+<h3>4.1 一次推进的完整时序</h3>
+<pre class="mermaid">sequenceDiagram
+    participant Client
+    participant Engine
+    participant Store as 执行记录存储
+    participant Pool as TaskPool(worker)
+    participant Lock as 分布式锁
+
+    Client-&gt;&gt;Engine: submit_workflow(definition, context)
+    Engine-&gt;&gt;Store: 创建 Execution(RUNNING)，写入全部节点状态
+    Engine-&gt;&gt;Engine: 计算入度，就绪集 = 无入边节点
+    loop 每处理完一个节点
+        Engine-&gt;&gt;Pool: 提交就绪节点任务(携带 node_id)
+        Pool--&gt;&gt;Engine: 任务完成/失败事件
+        Engine-&gt;&gt;Store: 更新节点终态 + 结果
+        Engine-&gt;&gt;Engine: 更新下游入度计数
+        alt 入度归零 且 所有守卫通过
+            Engine-&gt;&gt;Engine: 加入就绪集
+        else 存在失败节点(策略=终止)
+            Engine-&gt;&gt;Store: Execution → FAILED
+        end
+    end
+    Engine--&gt;&gt;Client: execution 终态（wait_workflow 返回）
+</pre>
+<h3>4.2 就绪队列 + 入度计数的最小骨架</h3>
+<p>📝 设计示例：演示&quot;为什么入度计数比每次扫全图高效&quot;——推进一个节点只需 O(出边数) 的更新，而不是 O(全图) 的重算：</p>
+<pre class="hljs"><code><span class="hljs-keyword">import</span> asyncio
+<span class="hljs-keyword">from</span> collections <span class="hljs-keyword">import</span> deque
+
+<span class="hljs-comment"># 📝 设计示例：DAG 调度骨架（演示就绪队列推进算法，非仓库实现）</span>
+
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">run_dag</span>(<span class="hljs-params">nodes: <span class="hljs-built_in">dict</span>, edges: <span class="hljs-built_in">list</span></span>):
+    <span class="hljs-string">&quot;&quot;&quot;nodes: {node_id: coro}，edges: [(from, to, guard)]&quot;&quot;&quot;</span>
+    indegree = {nid: <span class="hljs-number">0</span> <span class="hljs-keyword">for</span> nid <span class="hljs-keyword">in</span> nodes}
+    dependents = {nid: [] <span class="hljs-keyword">for</span> nid <span class="hljs-keyword">in</span> nodes}
+    <span class="hljs-keyword">for</span> frm, to, guard <span class="hljs-keyword">in</span> edges:
+        indegree[to] += <span class="hljs-number">1</span>
+        dependents[frm].append((to, guard))
+
+    results = {}
+    ready = deque(nid <span class="hljs-keyword">for</span> nid, d <span class="hljs-keyword">in</span> indegree.items() <span class="hljs-keyword">if</span> d == <span class="hljs-number">0</span>)
+    completed = <span class="hljs-number">0</span>
+
+    <span class="hljs-keyword">while</span> ready:
+        node_id = ready.popleft()
+        results[node_id] = <span class="hljs-keyword">await</span> nodes[node_id]()
+
+        <span class="hljs-keyword">for</span> child, guard <span class="hljs-keyword">in</span> dependents[node_id]:
+            <span class="hljs-keyword">if</span> guard <span class="hljs-keyword">and</span> <span class="hljs-keyword">not</span> evaluate(guard, results.get(node_id)):   <span class="hljs-comment"># 守卫不过</span>
+                indegree[child] -= <span class="hljs-number">1</span>                                    <span class="hljs-comment"># 仍然放行计数，</span>
+                <span class="hljs-keyword">continue</span>                                                <span class="hljs-comment"># 但不触发 child（见 5.3）</span>
+            indegree[child] -= <span class="hljs-number">1</span>
+            <span class="hljs-keyword">if</span> indegree[child] == <span class="hljs-number">0</span>:
+                ready.append(child)
+        completed += <span class="hljs-number">1</span>
+
+    <span class="hljs-keyword">assert</span> completed == <span class="hljs-built_in">len</span>(nodes), <span class="hljs-string">&quot;存在不可达节点（环或守卫全部不满足）&quot;</span>
+    <span class="hljs-keyword">return</span> results
+</code></pre>
+<h3>4.3 三个必须注意的实现细节</h3>
+<ol>
+<li class="lvl-3">
+<p><strong>依赖&quot;结果&quot;而非&quot;完成&quot;</strong>：聚合节点等待的是<strong>所有入边的结果都可用</strong>（失败也是一种结果），因此入度递减发生在&quot;节点进入终态&quot;时，而不仅是&quot;成功&quot;时；</p>
+</li>
+<li class="lvl-3">
+<p><strong>分布式下入度计数必须持久化</strong>：计数若只活在内存里，引擎节点一宕机整张图的推进状态就丢了——这是第六节讨论存储的关键；</p>
+</li>
+<li class="lvl-3">
+<p><strong>推进事件与任务完成事件必须串行化</strong>：同一节点的下游只允许被推进一次，防止&quot;完成事件被重放导致节点重复入队&quot;。落地手段就是系列文章反复出现的<strong>分布式锁 + 幂等状态更新</strong>（<code>lock:workflow:{execution_id}:{node_id}</code>）。</p>
+</li>
+</ol>
+<hr>
+<h2>五、为什么这么设计：五个关键决策</h2>
+<h3>决策一：为什么是&quot;依赖就绪 + 事件推进&quot;，而不是&quot;任务回调任务&quot;？</h3>
+<p>直觉方案是：上游任务成功后，在代码里直接 <code>submit(下游任务)</code>——任务回调任务，无需新引擎。</p>
+<p>这个方案的三个致命伤：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">问题</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">回调链不可恢复</td>
+<td style="text-align:left">&quot;任务 A 提交 B&quot;这一动作发生在 A 的进程里。A 成功、提交 B 之前进程崩溃 → B 永远丢失，而 A 已标记成功，无人知道该补 B</td>
+</tr>
+<tr>
+<td style="text-align:left">调用图不可观测</td>
+<td style="text-align:left">谁依赖谁只存在于运行时的函数调用里，无法预检环、无法计算 ETA、无法可视化</td>
+</tr>
+<tr>
+<td style="text-align:left">无法整图控制</td>
+<td style="text-align:left">想&quot;整个工作流失败时把已并行跑的任务都取消&quot;？没有图的全局视角就做不到</td>
+</tr>
+</tbody>
+</table>
+<p><strong>事件推进的反向设计</strong>：节点只负责产生&quot;终态事件&quot;，<strong>由引擎（而非节点）决定下一步</strong>。节点永远不需要知道自己的下游是谁——图的拓扑是引擎的数据，不是任务的代码。这样&quot;推进决策&quot;集中在一处，可持久化、可恢复、可观测。</p>
+<blockquote>
+<p>一句话：<strong>任务不知道图，图才拥有任务。</strong> 这与 v1.0 的回收器设计一脉相承——执行者不负责自己的善后，善后由框架的独立组件负责。</p>
+</blockquote>
+<h3>决策二：为什么需要独立的执行实例状态，而不是复用任务状态？</h3>
+<p>每个节点任务确实会走 TaskPool 的状态机（PENDING→RUNNING→终态）。但工作流还需要一层<strong>节点级状态</strong>：<code>PENDING(未就绪)</code> / <code>READY(可执行)</code> / <code>RUNNING(已提交)</code> / <code>SUCCESS</code> / <code>FAILED</code> / <code>SKIPPED(守卫未过)</code> / <code>CANCELLED</code>。</p>
+<p>复用任务状态为什么不够？</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>任务的 PENDING 语义是&quot;在队列里等 worker&quot;，节点的 PENDING 语义是&quot;在图上等依赖&quot;，<strong>同一个词、两种含义</strong>，混用必然误判；</p>
+</li>
+<li class="lvl-2">
+<p>节点可能被多次执行（重试），需要区分&quot;节点状态&quot;与&quot;单次任务状态&quot;；</p>
+</li>
+<li class="lvl-2">
+<p>SKIPPED 是图专属状态——被守卫挡下的节点<strong>从未进入队列</strong>，任务状态机里根本没有对应物。</p>
+</li>
+</ul>
+<p>所以：<strong>任务状态描述&quot;一次执行的命运&quot;，节点状态描述&quot;该节点在这张图实例里的命运&quot;</strong>，两层状态机各司其职，用 <code>execution_id + node_id + attempt</code> 关联。</p>
+<h3>决策三：为什么条件分支放在&quot;边上&quot;，而不是&quot;节点内&quot;？</h3>
+<p>把分支写成节点内 if，表面上省了表达式引擎，代价是：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>审计性</strong>：运营人员想确认&quot;什么条件下会退款&quot;，图上直接可见一条带守卫的边；写在代码里则需要读任务实现；</p>
+</li>
+<li class="lvl-3">
+<p><strong>跳过语义混乱</strong>：节点内 if 的&quot;不满足分支&quot;该返回什么？返回成功会让下游误以为真执行过；返回特殊错误会被重试策略重试。<strong>SKIPPED 只有作为图级状态才干净</strong>；</p>
+</li>
+<li class="lvl-3">
+<p><strong>可视化 = 真相</strong>：边上的守卫可以直接渲染成流程图上的菱形与标注，图本身就是文档。</p>
+</li>
+</ol>
+<p>守卫放边上的代价是引擎需要一个<strong>受限表达式求值器</strong>。约束：只允许访问 <code>result</code>（上游输出）与 <code>ctx</code>（实例上下文），只允许比较/逻辑运算，<strong>严禁执行任意 Python</strong>。表达式一律在提交时做静态校验（可参考仓库中 Cron 解析器&quot;提交即校验&quot;的既有风格），非法表达式直接拒绝提交，而不是运行到一半才炸。</p>
+<h3>决策四：扇出并行会不会打爆 worker？限流放在哪一层？</h3>
+<p>一条&quot;通知 10 万用户&quot;的扇出，若引擎一次性把 10 万节点全部提交到队列，会瞬间排空 worker 的可用并发，挤占其他工作流的任务。</p>
+<p>所以引擎提交就绪节点时必须节流：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>扇出上限</strong>：单次事件最多放行 N 个节点（如 100），其余留在就绪集，worker 空闲事件继续驱动；</p>
+</li>
+<li class="lvl-2">
+<p><strong>优先级映射</strong>：节点以定义时的 <code>priority</code> 写入优先级队列（复用 ZSET 语义，CRITICAL=0 ~ LOW=3），不同工作流的节点天然混排、按优先级抢占——<strong>编排层不应自建独立队列系统，而是复用调度器的混排语义</strong>；</p>
+</li>
+<li class="lvl-2">
+<p><strong>并发预算</strong>：一个 execution 同时 RUNNING 的节点数有上限（如 50），防止单个大扇出工作流饿死其他工作流。</p>
+</li>
+</ul>
+<blockquote>
+<p>这三条合起来回答了一个常见疑问：&quot;DAG 引擎要不要自建 worker？&quot;<strong>不需要</strong>。引擎只做拓扑推进与节流，真正的执行仍交给 TaskPool——见第六节。</p>
+</blockquote>
+<h3>决策五：失败传播的两种默认策略</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">策略</th>
+<th style="text-align:left">语义</th>
+<th style="text-align:left">适用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">fail-fast</td>
+<td style="text-align:left">任一节点失败 → 取消所有未执行节点，工作流 FAILED</td>
+<td style="text-align:left">数据管道：一个环节错，后续没有意义</td>
+</tr>
+<tr>
+<td style="text-align:left">fail-continue</td>
+<td style="text-align:left">失败节点标记 FAILED，与它无依赖关系的分支继续</td>
+<td style="text-align:left">监控告警类：一个分支失败不影响其他分支</td>
+</tr>
+</tbody>
+</table>
+<p>对 fail-fast 还要补一个设计问题：<strong>要不要自动重跑整个 DAG？</strong> 建议只提供&quot;手动重跑 + 按失败节点及其下游重跑&quot;两种，不提供无条件整图自动重试——自动重试一张大图，很可能重复执行了大量只读边界之外的有副作用的节点（如已发出的退款通知）。<strong>副作用操作的重试决策必须由人参与</strong>，这比&quot;看起来自动化&quot;更重要。</p>
+<hr>
+<h2>六、从既有原语到 DAG：v0.4-v1.0 如何被复用</h2>
+<h3>6.1 映射关系</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">编排层诉求</th>
+<th style="text-align:left">复用的既有原语</th>
+<th style="text-align:left">出处</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">节点按优先级混排</td>
+<td style="text-align:left">优先级队列（Redis ZSET）</td>
+<td style="text-align:left">v0.4</td>
+</tr>
+<tr>
+<td style="text-align:left">节点间&quot;等一会儿再跑&quot;（重试退避）</td>
+<td style="text-align:left">延时队列（<code>queue:delayed</code>）</td>
+<td style="text-align:left">v0.3</td>
+</tr>
+<tr>
+<td style="text-align:left">节点只执行一次（防重入）</td>
+<td style="text-align:left">分布式锁 <code>lock:task:{task_id}</code> + 看门狗</td>
+<td style="text-align:left">v1.0</td>
+</tr>
+<tr>
+<td style="text-align:left">引擎崩溃后的节点恢复</td>
+<td style="text-align:left">回收器：超时回收 + 锁清理</td>
+<td style="text-align:left">v1.0</td>
+</tr>
+<tr>
+<td style="text-align:left">执行过程可观测</td>
+<td style="text-align:left">事件总线 / Metrics / 状态索引 <code>status:{value}</code></td>
+<td style="text-align:left">v0.2/v1.0</td>
+</tr>
+<tr>
+<td style="text-align:left">节点执行的持久化</td>
+<td style="text-align:left">task 表 JSON + 状态索引</td>
+<td style="text-align:left">v0.1~v1.0 演进</td>
+</tr>
+</tbody>
+</table>
+<h3>6.2 引擎崩溃恢复：复用 v1.0 的回收语义</h3>
+<p>这是整套设计里最值得展开的一环。工作流执行中引擎进程宕机，正在 RUNNING 的节点任务<strong>不会死</strong>——它们跑在别的 worker 上，有看门狗续期、有锁保护。真正丢的是<strong>引擎内存里的推进状态</strong>（哪些节点已完成、入度还剩多少）。</p>
+<p>因此执行记录存储必须记录：</p>
+<pre class="hljs"><code>execution:{id}        → Execution 主记录（状态、上下文引用、创建时间）
+execution:{id}:node:{nid} → 节点状态（PENDING/READY/RUNNING/SUCCESS/FAILED/SKIPPED）
+execution:{id}:ready  → 就绪集合（待提交的节点，Redis SET）
+</code></pre>
+<p>恢复流程（与 v1.0 回收器&quot;扫描-判定-重整&quot;三段式同构）：</p>
+<pre class="mermaid">sequenceDiagram
+    participant Recover as 新的引擎节点
+    participant Store as 执行记录存储
+    participant Lock as 分布式锁
+    participant Pool as TaskPool
+
+    Recover-&gt;&gt;Store: 扫描 RUNNING 的执行实例
+    Recover-&gt;&gt;Lock: 获取 execution 级恢复锁（防双引擎同时恢复）
+    Recover-&gt;&gt;Store: 对每个节点重算状态
+    Note over Recover: 节点任务实际仍在跑(RUNNING, 有看门狗)? → 保持 RUNNING，等事件
+    Note over Recover: 节点任务已超时(回收器已重新入队)? → 保持 RUNNING，等事件
+    Note over Recover: 节点成功但事件未处理? → 从 task 终态补推下游
+    Recover-&gt;&gt;Store: 重建 ready 集合与入度
+    Recover-&gt;&gt;Pool: 恢复推进（幂等：重复提交被锁挡住）
+</pre>
+<p>恢复的关键词是<strong>幂等重建</strong>：恢复动作不信任&quot;宕机前内存里最后的推进到哪&quot;，只信任存储里的节点终态，从终态反推下一步。这正是分布式系统里最常见的恢复哲学——<strong>状态决定动作，而不是动作的记忆决定状态</strong>。</p>
+<h3>6.3 为什么不自研&quot;分布式事务&quot;来保证 DAG 原子性？</h3>
+<p>有人会问：整张图要么全成功要么全失败，不该用分布式事务吗？</p>
+<p>任务编排与数据库事务的目标不同：<strong>事务追求&quot;瞬间的原子性&quot;，工作流追求&quot;过程中的最终一致性&quot;。</strong> 一个跑了 40 分钟、期间发出退款通知的工作流，不可能也不应该&quot;回滚&quot;——通知发出去了就是发出去了。工作流的正确语义是：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>可恢复</strong>：任何一步崩溃都能从持久化状态继续推进；</p>
+</li>
+<li class="lvl-2">
+<p><strong>可补偿</strong>：对已产生的副作用，用专门的补偿节点（如退款撤销、库存回补）处理，而不是回滚；</p>
+</li>
+<li class="lvl-2">
+<p><strong>可观测</strong>：失败发生在哪个节点、为什么，随时可查。</p>
+</li>
+</ul>
+<p>用分布式事务强撑编排，等于把&quot;长流程&quot;硬塞进&quot;短事务&quot;的模型里，结果必然是锁粒度失控 + 事务超时泛滥。<strong>调度系统的原子单位是&quot;单个节点任务的提交&quot;，不是&quot;整张图&quot;</strong>——图的一致性靠状态机收敛，不靠两阶段提交。</p>
+<hr>
+<h2>七、工作流状态机与上下文传递</h2>
+<h3>7.1 工作流实例状态机</h3>
+<p>与系列其他组件一样，状态机用 <code>stateDiagram</code> 表达（与版本演进文章 ADR-005 的公开状态设计保持一致）：</p>
+<pre class="mermaid">stateDiagram-v2
+    [*] --&gt; PENDING: 创建执行实例
+    PENDING --&gt; RUNNING: 校验通过，开始推进
+    PENDING --&gt; CANCELLED: 提交后、执行前取消
+
+    RUNNING --&gt; WAITING: 有节点执行中
+    WAITING --&gt; RUNNING: 有节点就绪/完成
+    RUNNING --&gt; SUCCESS: 全部节点终态且无失败
+    RUNNING --&gt; FAILED: 失败策略触发
+    RUNNING --&gt; CANCELLED: 用户取消
+
+    SUCCESS --&gt; [*]
+    FAILED --&gt; [*]
+    CANCELLED --&gt; [*]
+</pre>
+<p>注意 PENDING 阶段包含<strong>整图静态校验</strong>：环检测（拓扑排序失败即拒绝）、守卫表达式合法性、参数绑定完整性、节点 task 是否已注册。<strong>校验失败在提交时就报错，而不是执行到一半报错</strong>——这是廉价而高价值的防御。</p>
+<h3>7.2 上下文：结果如何传递给下游</h3>
+<p>每个节点执行时拿到：</p>
+<pre class="hljs"><code>ctx:           工作流输入（订单 ID、用户 ID……全实例共享，只读）
+upstream_result: 各上游节点的输出（按上游 node_id 索引）
+</code></pre>
+<p>两个必须想清楚的设计点：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>上下文存储引用而非值</strong>：下游任务真正消费的是&quot;订单 ID&quot;这种小值；若上游输出是 10MB 的中间数据，塞进每个下游任务的 payload 会让任务体膨胀、Redis 内存告急。合理做法是：小值入上下文，大结果写对象存储/数据库，上下文只存 <code>ref://storage/xxx</code>；</p>
+</li>
+<li class="lvl-3">
+<p><strong>上下文不可变</strong>：执行期间上下文只读。若允许运行中修改 ctx，两个并行节点同时写同一 key 会产生不可预期的竞态——把&quot;共享可变状态&quot;放进 DAG，等于把并发 bug 重新请进门。需要中间产物传递，请用节点结果 + 显式依赖。</p>
+</li>
+</ol>
+<hr>
+<h2>八、超时、重试与失败策略</h2>
+<h3>8.1 两级超时</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">超时</th>
+<th style="text-align:left">对象</th>
+<th style="text-align:left">默认建议</th>
+<th style="text-align:left">触发动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">节点执行超时</td>
+<td style="text-align:left">单次节点任务</td>
+<td style="text-align:left">复用任务级超时/回收阈值（300s 级）</td>
+<td style="text-align:left">任务回收重试/节点 FAILED</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>工作流整体超时</strong></td>
+<td style="text-align:left">整个 execution</td>
+<td style="text-align:left">定义时显式指定</td>
+<td style="text-align:left">execution → FAILED（TIMEOUT），尽量取消未执行节点</td>
+</tr>
+</tbody>
+</table>
+<p>工作流整体超时尤其重要：它防止&quot;一个节点被无限重试导致整张图悬空&quot;。整体超时到期时，引擎把未执行节点标记 CANCELLED，RUNNING 节点<strong>不强行中断</strong>（与 v1.0 看门狗的哲学一致：不杀正在跑的合法任务，只停止推进新节点），等它们自然终态后收尾。</p>
+<h3>8.2 重试语义：子任务独立重试</h3>
+<p>重试是&quot;节点级&quot;的，不是&quot;图级&quot;的：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>每个节点任务沿用 <code>max_retries</code> / 退避策略（v1.0 既有配置）；</p>
+</li>
+<li class="lvl-2">
+<p>重试仅重新入队该节点任务，入度计数与下游不受影响；</p>
+</li>
+<li class="lvl-2">
+<p><strong>幂等是重试的前提</strong>：节点任务必须能安全执行多次（写操作幂等键、资源预占带请求 ID）。编排层不负责替业务保证幂等，但文档与框架约定必须把这个要求摆在明面上。</p>
+</li>
+</ul>
+<h3>8.3 失败后的两种恢复入口</h3>
+<pre class="mermaid">flowchart LR
+    FAILED[Execution FAILED] --&gt; OPT1[仅重跑失败节点及其下游]
+    FAILED --&gt; OPT2[按新上下文重新提交新实例]
+    OPT1 --&gt; REC[推进直至终态]
+    OPT2 --&gt; REC
+</pre>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>局部重跑</strong>：修改失败节点参数（或修复其 task 实现）后，从失败节点开始续跑——适合&quot;代码 bug 修复后恢复生产流程&quot;；</p>
+</li>
+<li class="lvl-2">
+<p><strong>整实例重跑</strong>：业务上需要全新执行的场景（如重新发起履约），新实例携带新 execution_id，与旧实例完全隔离——<strong>不要复用旧 execution_id 续跑</strong>，历史审计会乱。</p>
+</li>
+</ul>
+<hr>
+<h2>九、故障场景实战：编排层设计的推演式验证</h2>
+<blockquote>
+<p>说明：v1.0.2 尚未实现 workflow，本节故障场景按本文设计推演<strong>预期行为</strong>，用于检验设计缺口。每个场景给出&quot;若不这样设计会怎样&quot;的反面推演。</p>
+</blockquote>
+<h3>场景一：引擎宕机，工作流执行到一半</h3>
+<p><strong>现象</strong>：execution 停在 RUNNING；若干节点任务仍在其他节点上正常执行（有看门狗续期）；推进停滞。</p>
+<p><strong>根因推演</strong>：推进状态（就绪集、入度）只存在于宕机引擎的内存。</p>
+<p><strong>处置路径</strong>（按第六节恢复流程）：</p>
+<ol>
+<li class="lvl-3">
+<p>新引擎节点接管：获得 execution 恢复锁；</p>
+</li>
+<li class="lvl-3">
+<p>扫描节点终态：SUCCESS 的补推下游；RUNNING 的等待事件；PENDING 的按入度重建就绪；</p>
+</li>
+<li class="lvl-3">
+<p>重新提交就绪节点——<strong>幂等靠任务级分布式锁挡住重复</strong>（同一 <code>execution_id:node_id:attempt</code> 只会成功 acquire 一次）。</p>
+</li>
+</ol>
+<p><strong>反面推演</strong>：如果推进状态不持久化，恢复后唯一选择是整图重跑——所有已成功节点的副作用全部重放一遍，这在&quot;发通知/扣款&quot;类工作流里是事故。</p>
+<h3>场景二：守卫误判 + 人工重试，导致钻石依赖节点跑两遍</h3>
+<p><strong>现象</strong>：“notify_ship” 已成功，但引擎因事件重放把聚合节点重复推进，或人工局部重跑时把&quot;成功且不可重入&quot;的节点又跑了一遍。</p>
+<p><strong>根因推演</strong>：节点缺少执行幂等键；局部重跑的范围判定只看&quot;失败节点&quot;，没有把&quot;该节点在别的分支是否已有成功副作用&quot;纳入判断。</p>
+<p><strong>处置路径</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p>节点任务必须携带幂等键：<code>execution_id + node_id + attempt</code>，业务侧落库去重；</p>
+</li>
+<li class="lvl-3">
+<p>局部重跑前，引擎给出该节点的<strong>上下游影响面清单</strong>（谁会被连带重跑），人工确认；</p>
+</li>
+<li class="lvl-3">
+<p>对明显不可重入的节点（通知、转账），重跑范围收紧到&quot;仅失败节点&quot;，并拒绝连带已成功节点的路径。</p>
+</li>
+</ol>
+<p><strong>反面推演</strong>：若把&quot;重试&quot;做成黑盒自动操作，钻石依赖结构会让同一条副作用链路被并发跑两次，且两个实例彼此不可见。</p>
+<h3>场景三：10 万级扇出把队列与 Redis 连接池打满</h3>
+<p><strong>现象</strong>：一个大扇出工作流提交后，队列积压、其他工作流的任务延迟飙升、Redis 连接池告警。</p>
+<p><strong>根因推演</strong>：引擎一次性把全部扇出节点写入队列 + 一次写完 10 万个节点状态（每个节点一次 <code>SET</code>），吞吐瞬间打爆连接池。</p>
+<p><strong>处置路径</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p>状态写入必须<strong>分批 pipeline</strong>（参考 v1.0 <code>update_status_batch</code> 的既有做法），严禁逐条 RTT；</p>
+</li>
+<li class="lvl-3">
+<p>就绪集分批放行（扇出上限）；</p>
+</li>
+<li class="lvl-3">
+<p>扇出目标节点共用一个 task 模板 + 不同参数，模板实现内部自行循环分批处理（如分页处理 10 万用户），而不是图里真放 10 万个节点——<strong>图的粒度应该对齐&quot;业务步骤&quot;而不是&quot;数据行&quot;</strong>。</p>
+</li>
+</ol>
+<p><strong>反面推演</strong>：允许用户把&quot;数据行级&quot;扇出画进 DAG，任何引擎都会在节点元数据层面先垮掉，任务还没执行 Redis 先爆。</p>
+<h3>场景四：客户端超时重试导致同一工作流提交两次</h3>
+<p><strong>现象</strong>：<code>submit_workflow</code> 调用因网络抖动超时，客户端自动重试——同一订单创建了两个 execution，业务被重复履约。</p>
+<p><strong>根因推演</strong>：提交接口没有幂等保障，服务端&quot;执行了但响应丢失&quot;与&quot;没执行&quot;无法区分。</p>
+<p><strong>处置路径</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p><code>submit_workflow</code> 接受调用方幂等键：<code>client_request_id</code> 或由 <code>definition.workflow_id + context 指纹</code> 推导；</p>
+</li>
+<li class="lvl-3">
+<p>服务端以幂等键为唯一约束：重复提交返回<strong>同一个 execution_id</strong>，而不是新建；</p>
+</li>
+<li class="lvl-3">
+<p>对订单类场景，业务侧再落一个&quot;订单已履约&quot;标记兜底——框架幂等和业务幂等是两层保险。</p>
+</li>
+</ol>
+<p><strong>反面推演</strong>：不做提交幂等，“at-least-once 提交”（客户端重试）和&quot;exactly-once 履约&quot;（业务期望）之间的鸿沟，最终会以重复扣款的形式爆发在生产环境。</p>
+<hr>
+<h2>十、总结</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">主题</th>
+<th style="text-align:left">结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">编排的本质</td>
+<td style="text-align:left">把任务间的时序、分支、汇聚从业务代码抽到框架层，纳入可靠性边界</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么是 DAG</td>
+<td style="text-align:left">无环保证拓扑序存在，推进确定、可预检、可可视化</td>
+</tr>
+<tr>
+<td style="text-align:left">推进模型</td>
+<td style="text-align:left">依赖终态事件驱动 + 入度计数，节点不知下游，引擎独占拓扑</td>
+</tr>
+<tr>
+<td style="text-align:left">分层状态</td>
+<td style="text-align:left">任务状态（单次执行）与节点状态（图内命运）必须分离</td>
+</tr>
+<tr>
+<td style="text-align:left">条件分支</td>
+<td style="text-align:left">守卫在边上而非节点内，求值器白名单化，提交时静态校验</td>
+</tr>
+<tr>
+<td style="text-align:left">执行复用</td>
+<td style="text-align:left">节点任务仍走优先级队列 + 分布式锁 + 回收器，编排层不重造执行引擎</td>
+</tr>
+<tr>
+<td style="text-align:left">恢复哲学</td>
+<td style="text-align:left">状态决定动作：从持久化的节点终态反推下一步，而非相信内存记忆</td>
+</tr>
+<tr>
+<td style="text-align:left">事务边界</td>
+<td style="text-align:left">原子性是&quot;单节点提交&quot;而非&quot;整图&quot;，长流程靠可恢复 + 可补偿 + 可观测收敛</td>
+</tr>
+</tbody>
+</table>
+<p><strong>一句结语</strong>：任务调度解决&quot;单个任务可靠地执行&quot;，任务编排解决&quot;一组任务可靠地按图执行&quot;——前者是 v0.1~v1.0 已交的答卷，后者是 v1.5 正在推演的设计题。本文的价值不在于给出&quot;标准答案&quot;（v1.5 尚未发布，最终实现以官方为准），而在于把这道设计题的<strong>约束、取舍与陷阱</strong>摊开：将来 v1.5 落地时，你可以带着这些判断去阅读真实源码，而不是被任何一篇&quot;源码解析&quot;牵着走。</p>
+<hr>
+<h2>版本与验证说明</h2>
+<p>本文属于项目文档而不是永久不变的 API 契约。以下情况发生时，应重新核对源码或发布说明：</p>
+<ol>
+<li class="lvl-3">
+<p>项目版本升级，尤其是公开 API、配置模型、存储实现和工作流发生变化；</p>
+</li>
+<li class="lvl-3">
+<p>本文中的默认值、性能数据或示例依赖外部服务版本；</p>
+</li>
+<li class="lvl-3">
+<p>运行环境与本文案例不同，例如 Python 版本、Redis/数据库版本、模型供应商或操作系统不同。</p>
+</li>
+</ol>
+<p>如果你要把本文内容用于生产环境，请优先使用仓库当前版本的 README、源码、测试和 Release 记录进行最终确认。</p>
+<h2>相关链接</h2>
+<p><a href="index.html">返回首页</a></p>
+<p><strong>入门与参考</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="quickstart.html">快速上手</a> - 5 分钟入门</p>
+</li>
+<li class="lvl-2">
+<p><a href="api-reference.html">API 参考</a> - 完整 API 文档</p>
+</li>
+<li class="lvl-2">
+<p><a href="configuration.html">配置说明</a> - 配置参数详解</p>
+</li>
+<li class="lvl-2">
+<p><a href="best-practices.html">最佳实践</a> - 生产环境建议</p>
+</li>
+</ul>
+<p><strong>架构与设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="architecture.html">架构设计</a> - 整体架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="core-features.html">核心实现</a> - 功能设计</p>
+</li>
+<li class="lvl-2">
+<p><a href="evolution.html">版本演进</a> - 演进历程</p>
+</li>
+</ul>
+<p><strong>分布式核心</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="decentralization.html">去中心化</a> - 对等架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="failure-recovery.html">故障恢复</a> - 高可用保障</p>
+</li>
+<li class="lvl-2">
+<p><a href="prefetch.html">预取机制</a> - 高吞吐性能</p>
+</li>
+<li class="lvl-2">
+<p><a href="distributed-lock.html">分布式锁</a> - 并发控制</p>
+</li>
+</ul>
+<p><strong>存储与监控</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="persistence.html">持久化</a> - 多存储后端</p>
+</li>
+<li class="lvl-2">
+<p><a href="priority-queue.html">优先级</a> - 优先级队列</p>
+</li>
+<li class="lvl-2">
+<p><a href="delayed-tasks.html">延时任务</a> - 时间轮 + Redis 持久化</p>
+</li>
+<li class="lvl-2">
+<p><a href="monitoring.html">节点监控</a> - 可观测性</p>
+</li>
+</ul>
+<p><strong>资源</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/neotask">GitHub</a> - 源代码仓库</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://task.helpenx.com">NeoTask 官网</a> - 官方网站</p>
+</li>
+</ul>
+
+      </article>
+    </main>
+  </div>
+  <footer>
+    <a href="https://task.helpenx.com" target="_blank" rel="noopener">NeoTask 官网</a>·
+    <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>·
+    <a href="index.html">文档中心</a>
+    <div style="margin-top:6px">© 2026 helpenx.com · 文档基线以文中标注版本对应的源码为准</div>
+  </footer>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</body>
+</html>

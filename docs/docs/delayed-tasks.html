@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoTask 延时任务：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路 · NeoTask 文档</title>
+  <meta name="description" content="NeoTask 延时任务：主链路的最小堆 DelayedQueue 与 0.1 秒精度机制、opt-in 的 TimeWheel 时间轮接线（量程回退/等待期取消/停机回投）、周期任务与 Cron 的 1 秒扫描调度、触发计划易失的持久化边界，以及 4 个延时调度故障场景。">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://task.helpenx.com/docs/delayed-tasks.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:title" content="NeoTask 延时任务：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路">
+  <meta property="og:description" content="NeoTask 延时任务：主链路的最小堆 DelayedQueue 与 0.1 秒精度机制、opt-in 的 TimeWheel 时间轮接线（量程回退/等待期取消/停机回投）、周期任务与 Cron 的 1 秒扫描调度、触发计划易失的持久化边界，以及 4 个延时调度故障场景。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://task.helpenx.com/docs/delayed-tasks.html">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>⏱️</text></svg>">
+  <style>
+:root{--brand:#0d9488;--brand-dark:#0f766e;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:var(--ink);background:#fff;line-height:1.75;font-size:16px}
+a{color:var(--brand);text-decoration:none}a:hover{color:var(--brand-dark);text-decoration:underline}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
+.topbar .brand .doc-badge{font-size:12px;font-weight:600;color:#fff;background:var(--brand);border-radius:6px;padding:2px 8px}
+.topbar nav{display:flex;gap:20px;font-size:14.5px}
+.topbar nav a{color:var(--muted);font-weight:500}
+.topbar nav a:hover{color:var(--brand)}
+.wrap{display:flex;max-width:1280px;margin:0 auto;padding:0 16px}
+.sidebar{width:264px;flex-shrink:0;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 40px 0;border-right:1px solid var(--line)}
+.sidebar .side-home{display:block;font-weight:600;color:var(--ink);margin-bottom:16px;font-size:15px}
+.sidebar .side-home:hover{color:var(--brand);text-decoration:none}
+.sidebar h4{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px;font-weight:600}
+.sidebar a{display:block;padding:5px 10px;border-radius:6px;font-size:14px;color:#334155;line-height:1.5}
+.sidebar a:hover{background:var(--bg);color:var(--brand);text-decoration:none}
+.sidebar a.active{background:var(--brand);color:#fff}
+.content{flex:1;min-width:0;padding:32px 20px 60px 36px;max-width:860px}
+.toc-mobile{display:none;margin-bottom:20px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.toc-mobile summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.toc-mobile a{display:block;padding:3px 0;font-size:14px}
+.article h1{font-size:1.9em;line-height:1.35;margin:.4em 0 .8em}
+.article h2{font-size:1.45em;margin:1.8em 0 .7em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
+.article h3{font-size:1.22em;margin:1.5em 0 .6em}
+.article h4{font-size:1.08em;margin:1.3em 0 .5em}
+.article p{margin:.85em 0}
+.article ul,.article ol{padding-left:1.6em;margin:.7em 0}
+.article li{margin:.35em 0}
+.article img{max-width:100%;height:auto;border-radius:8px}
+.article table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:.94em;display:block;overflow-x:auto}
+.article th,.article td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+.article th{background:var(--bg);font-weight:600}
+.article tr:nth-child(even) td{background:#fbfdff}
+.article blockquote{margin:1.1em 0;padding:.7em 1.1em;border-left:4px solid var(--brand);background:var(--bg);border-radius:0 8px 8px 0;color:#334155}
+.article blockquote p{margin:.3em 0}
+.article code:not(pre code){background:#eef2f7;color:#c7254e;padding:.15em .4em;border-radius:4px;font-size:.88em;word-break:break-word}
+.article pre.hljs{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0;line-height:1.6}
+.article pre.hljs code{background:none;padding:0;color:var(--ink);font-size:.9em;font-family:ui-monospace,SFMono-Regular,'Cascadia Code',Consolas,Menlo,monospace}
+.article pre.mermaid{text-align:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0}
+.article hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+.article .success,.article .tips,.article .warning,.article .danger{border-radius:8px;padding:.9em 1.1em;margin:1.1em 0;border:1px solid}
+.article .success{border-color:#a7f3d0;background:#ecfdf5}.article .success p:first-of-type::before{content:'✅ '}
+.article .tips{border-color:#bfdbfe;background:#eff6ff}.article .tips p:first-of-type::before{content:'💡 '}
+.article .warning{border-color:#fde68a;background:#fffbeb}.article .warning p:first-of-type::before{content:'⚠️ '}
+.article .danger{border-color:#fecaca;background:#fef2f2}.article .danger p:first-of-type::before{content:'🚫 '}
+.article .success>p:first-child,.article .tips>p:first-child,.article .warning>p:first-child,.article .danger>p:first-child{margin-top:0}
+.article .success>p:last-child,.article .tips>p:last-child,.article .warning>p:last-child,.article .danger>p:last-child{margin-bottom:0}
+.doc-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--muted)}
+.doc-meta .tag{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+.doc-nav{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
+.doc-nav a{font-weight:600}
+footer{border-top:1px solid var(--line);padding:22px 24px;text-align:center;color:var(--muted);font-size:13.5px}
+footer a{color:var(--muted);margin:0 10px}
+footer a:hover{color:var(--brand)}
+@media (max-width:960px){
+  .sidebar{display:none}
+  .toc-mobile{display:block}
+  .content{padding:20px 6px 50px}
+  .topbar nav{gap:12px}
+}
+</style>
+  <style>
+.hljs{color:#24292e;background:#f6f8fa}
+.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.constant_{color:#d73a49}
+.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}
+.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}
+.hljs-string,.hljs-meta .hljs-string,.hljs-regexp{color:#032f62}
+.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-tag,.hljs-subst,.hljs-symbol{color:#e36209}
+.hljs-built_in,.hljs-class .hljs-title{color:#e36209}
+.hljs-comment,.hljs-meta,.hljs-quote{color:#6a737d}
+.hljs-section{color:#005cc5;font-weight:700}
+.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">⏱️ NeoTask <span class="doc-badge">文档</span></a>
+    <nav>
+      <a href="https://task.helpenx.com" target="_blank" rel="noopener">产品官网</a>
+      <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+  <div class="wrap">
+    <aside class="sidebar">
+      <a class="side-home" href="index.html">⏱️ 分布式任务调度系统 · 文档中心</a>
+      <h4>技术分析</h4><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a>
+<h4>API 与配置参考</h4><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a>
+<h4>实现与源码分析</h4><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html" class="active">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a>
+<h4>设计与方案</h4><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a>
+<h4>项目概览</h4><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a>
+<h4>入门与使用</h4><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a>
+<h4>性能与评测</h4><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a>
+<h4>实践与运维</h4><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a>
+<h4>架构与核心设计</h4><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a>
+<h4>版本与演进</h4><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a>
+    </aside>
+    <main class="content">
+      <details class="toc-mobile"><summary>📑 文档目录</summary><div><strong style="font-size:13px;color:var(--muted)">技术分析</strong><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a></div><div><strong style="font-size:13px;color:var(--muted)">API 与配置参考</strong><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a></div><div><strong style="font-size:13px;color:var(--muted)">实现与源码分析</strong><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a></div><div><strong style="font-size:13px;color:var(--muted)">设计与方案</strong><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a></div><div><strong style="font-size:13px;color:var(--muted)">项目概览</strong><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a></div><div><strong style="font-size:13px;color:var(--muted)">入门与使用</strong><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a></div><div><strong style="font-size:13px;color:var(--muted)">性能与评测</strong><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a></div><div><strong style="font-size:13px;color:var(--muted)">实践与运维</strong><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a></div><div><strong style="font-size:13px;color:var(--muted)">架构与核心设计</strong><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a></div><div><strong style="font-size:13px;color:var(--muted)">版本与演进</strong><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a></div></details>
+      <article class="article">
+        <div class="doc-meta"><span class="tag">NeoTask</span><span class="tag">更新 2026-05-10</span><a href="https://task.helpenx.com" target="_blank" rel="noopener">task.helpenx.com ↗</a></div>
+        <h1>NeoTask 延时任务详解</h1>
+<p>📚 <a href="index.html">返回首页</a> | 📖 <a href="quickstart.html">快速上手</a> | 📘 <a href="api-reference.html">API 参考</a> | ⚙️ <a href="configuration.html">配置说明</a> | 🐙  <a href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a href="https://task.helpenx.com">NeoTask 官网</a></p>
+<blockquote>
+<p><strong>文档定位</strong>：这是一篇实现细节文档。重点放在源码路径、状态变化、数据结构和异常边界，方便开发者从“能用”进一步理解“为什么这样实现”。<br>
+<strong>事实边界</strong>：实现文档：功能、接口和代码行为以文中标注版本对应的源码为准；仓库后续版本可能发生变化。<br>
+<strong>权威来源</strong>：<a href="https://github.com/neopen/neotask">NeoTask 源码仓库</a>；涉及版本历史时，以仓库 Release / CHANGELOG 为准。<br>
+<strong>代码标记</strong>：如果正文出现“源码/实现”字样，表示对应代码路径可在仓库中核对；示例代码仅用于演示调用方式，不应理解为项目源码原样。<br>
+<strong>版本基线</strong>：本文对照 NeoTask <strong>v1.0.2</strong>（PyPI 发布版）。<br>
+<strong>代码标注约定</strong>：🔧 表示<strong>真实源码</strong>（仓库原样摘录，附文件路径，可自行对照）；📝 表示<strong>示例代码</strong>（用法演示、改进建议或教学代码，不代表仓库实现）。<br>
+<strong>相关阅读</strong>：<a href="priority-queue.html">优先级</a>、<a href="failure-recovery.html">故障恢复</a>、<a href="benchmarks.html">性能基准</a>。</p>
+</blockquote>
+<hr>
+<h2>概述</h2>
+<p>延时/定时能力是任务调度系统的&quot;全场景覆盖&quot;关键。NeoTask 从 v0.3 起提供了完整的定时调度 API：<strong>延时执行（delay）</strong>、<strong>指定时间点（at）</strong>、<strong>固定间隔（interval）</strong>、<strong>Cron 表达式</strong>。底层是&quot;单节点内存定时器（最小堆）为主、时间轮为 opt-in 旁路 + 全链路任务实体持久化&quot;：</p>
+<table>
+<thead>
+<tr>
+<th>能力</th>
+<th>实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>延时主链路</td>
+<td><strong>DelayedQueue：最小堆</strong>（<code>(到期时间, 优先级, task_id)</code> + heapq），到期弹出并提升到优先级队列</td>
+</tr>
+<tr>
+<td>时间轮</td>
+<td>opt-in：<code>enable_time_wheel=True</code> 时 <code>submit_delayed</code> 走轮，量程外自动回退延时队列</td>
+</tr>
+<tr>
+<td>任务实体存储</td>
+<td><strong>String JSON</strong>（<code>task:{id}</code>，全系列一致）</td>
+</tr>
+<tr>
+<td>多节点并发</td>
+<td>无共享延时队列扫描器；触发计划只活在提交节点的内存堆里，靠 worker 执行锁保证不重执行</td>
+</tr>
+<tr>
+<td>重启行为</td>
+<td>任务<strong>实体</strong>落库不丢；<strong>到期触发计划易失</strong>——重启后已提交的延时任务不会再被触发（见持久化一节）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>一句话版本</strong>：v1.0.2 的延时任务是&quot;<strong>单节点内存定时器（最小堆）+ 全链路任务实体持久化</strong>&quot;的架构，分布式安全由 worker 执行锁兜底，而不是由&quot;分布式延时队列&quot;兜底。理解这个边界，比记住 API 更重要。</p>
+<pre class="mermaid">flowchart LR
+    API[TaskScheduler.submit_delayed&lt;br/&gt;或 TaskPool.submit delay&gt;0] --&gt; DISP[TaskDispatcher&lt;br/&gt;create_task 实体落库 PENDING]
+    DISP --&gt; QS[QueueScheduler.push delay&gt;0]
+    QS --&gt;|enable_time_wheel=True 且量程内| TW[TimeWheel 时间轮]
+    QS --&gt;|默认| DQ[DelayedQueue&lt;br/&gt;最小堆 (time,priority,id)]
+    TW --&gt;|到期回调| PQ[PriorityQueue 入队]
+    DQ --&gt;|到期回调| PQ
+    PQ --&gt;|pop| WP[WorkerPool 执行]
+    WP --&gt; LK[执行锁 lock:task:{id}]
+</pre>
+<hr>
+<h2>延时任务的核心挑战</h2>
+<ol>
+<li class="lvl-3">
+<p><strong>时间精度</strong>：误差要可接受。NeoTask 的延时精度 = 0.1s（<code>DelayedQueue.check_interval</code>），周期任务精度 = 1s（扫描间隔）；</p>
+</li>
+<li class="lvl-3">
+<p><strong>持久化</strong>：要区分两层——任务实体（落库 ✅）与触发计划（仅内存 ⚠️）；</p>
+</li>
+<li class="lvl-3">
+<p><strong>高并发性能</strong>：大量延时任务等待时不能每任务一个定时器——用堆把&quot;下一个到期者&quot;收敛到 O(log n)；</p>
+</li>
+<li class="lvl-3">
+<p><strong>分布式不重复</strong>：触发本身在提交节点单点发生；执行时靠 <code>lock:task:{id}</code> + PENDING 状态检查防止多节点重复执行。</p>
+</li>
+</ol>
+<hr>
+<h2>主链路解剖：DelayedQueue 最小堆</h2>
+<h3>数据结构与入队（🔧 <code>src/neotask/queue/delayed_queue.py</code>）</h3>
+<pre class="hljs"><code><span class="hljs-keyword">class</span> <span class="hljs-title class_">DelayedQueue</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">__init__</span>(<span class="hljs-params">self, check_interval: <span class="hljs-built_in">float</span> = <span class="hljs-number">0.1</span></span>):
+        <span class="hljs-variable language_">self</span>._heap: <span class="hljs-type">List</span>[<span class="hljs-type">Tuple</span>[<span class="hljs-built_in">float</span>, <span class="hljs-built_in">int</span>, <span class="hljs-built_in">str</span>]] = []  <span class="hljs-comment"># (execute_time, priority, task_id)</span>
+        <span class="hljs-variable language_">self</span>._tasks: <span class="hljs-type">Dict</span>[<span class="hljs-built_in">str</span>, DelayedTask] = {}       <span class="hljs-comment"># task_id -&gt; DelayedTask（含 data）</span>
+        <span class="hljs-variable language_">self</span>._scheduler_task: <span class="hljs-type">Optional</span>[asyncio.Task] = <span class="hljs-literal">None</span>
+        <span class="hljs-variable language_">self</span>._check_interval = check_interval           <span class="hljs-comment"># 0.1s</span>
+
+    <span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">schedule</span>(<span class="hljs-params">self, task_id, priority, delay, data=<span class="hljs-literal">None</span></span>) -&gt; <span class="hljs-built_in">bool</span>:
+        <span class="hljs-keyword">if</span> delay &lt;= <span class="hljs-number">0</span>:
+            <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+        execute_time = time.time() + delay
+        <span class="hljs-keyword">async</span> <span class="hljs-keyword">with</span> <span class="hljs-variable language_">self</span>._lock:
+            heapq.heappush(<span class="hljs-variable language_">self</span>._heap, (execute_time, priority, task_id))
+            <span class="hljs-variable language_">self</span>._tasks[task_id] = DelayedTask(...)     <span class="hljs-comment"># 携带 data</span>
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span>
+</code></pre>
+<p>三个值得玩味的实现细节：</p>
+<p><strong>① 堆元组是 <code>(execute_time, priority, task_id)</code>——priority 为什么在中间？</strong> 堆排序按元组从左到右比较。当两个任务<strong>同一瞬间到期</strong>（execute_time 相同）时，priority 小的先出堆——<strong>同一毫秒到期的任务自动按优先级触发</strong>。这是零成本的顺带设计：不用写任何&quot;到期后重排序&quot;逻辑，优先级语义天然嵌在定时器里。task_id 放最后兜底字典序（元组比较不能只有前两项）。</p>
+<p><strong>② 到期不是&quot;等 0.1s 轮询&quot;，而是&quot;最紧要者驱动&quot;</strong>。调度循环（🔧）：</p>
+<pre class="hljs"><code><span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">_scheduler_loop</span>(<span class="hljs-params">self</span>) -&gt; <span class="hljs-literal">None</span>:
+    <span class="hljs-keyword">while</span> <span class="hljs-variable language_">self</span>._running:
+        <span class="hljs-keyword">try</span>:
+            now = time.time()
+            tasks_to_execute = []
+            <span class="hljs-keyword">async</span> <span class="hljs-keyword">with</span> <span class="hljs-variable language_">self</span>._lock:
+                <span class="hljs-comment"># 弹出一批所有已到期的任务</span>
+                <span class="hljs-keyword">while</span> <span class="hljs-variable language_">self</span>._heap <span class="hljs-keyword">and</span> <span class="hljs-variable language_">self</span>._heap[<span class="hljs-number">0</span>][<span class="hljs-number">0</span>] &lt;= now:
+                    execute_time, priority, task_id = heapq.heappop(<span class="hljs-variable language_">self</span>._heap)
+                    task = <span class="hljs-variable language_">self</span>._tasks.pop(task_id, <span class="hljs-literal">None</span>)
+                    <span class="hljs-keyword">if</span> task:
+                        tasks_to_execute.append((task_id, priority, task.data))
+
+            <span class="hljs-keyword">for</span> task_id, priority, data <span class="hljs-keyword">in</span> tasks_to_execute:
+                <span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._callback:
+                    <span class="hljs-keyword">try</span>:
+                        <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._callback(task_id, priority, data)
+                    <span class="hljs-keyword">except</span> TypeError:          <span class="hljs-comment"># 兼容两参回调</span>
+                        <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._callback(task_id, priority)
+                    <span class="hljs-keyword">except</span> Exception:
+                        <span class="hljs-keyword">pass</span>                   <span class="hljs-comment"># ← 回调异常被静默吞掉（见故障场景 2）</span>
+
+            next_time = <span class="hljs-variable language_">self</span>._heap[<span class="hljs-number">0</span>][<span class="hljs-number">0</span>] <span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._heap <span class="hljs-keyword">else</span> now + <span class="hljs-number">1</span>
+            wait_time = <span class="hljs-built_in">min</span>(<span class="hljs-variable language_">self</span>._check_interval, <span class="hljs-built_in">max</span>(<span class="hljs-number">0.0</span>, next_time - now))
+            <span class="hljs-keyword">await</span> asyncio.sleep(wait_time)
+        <span class="hljs-keyword">except</span> asyncio.CancelledError:
+            <span class="hljs-keyword">break</span>
+        ...
+</code></pre>
+<p>每轮把<strong>所有已到期</strong>任务一次性弹出（一批），然后：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>若最近到期任务在 0.1s 以内 → 精确睡到那一刻（误差 &lt;1ms）；</p>
+</li>
+<li class="lvl-2">
+<p>否则睡 0.1s 再巡检。</p>
+</li>
+</ul>
+<p><strong>为什么不是纯&quot;睡到下一个到期时刻&quot;？</strong> 那样空闲期确实零唤醒，但每睡醒一次只能精确处理一个&quot;波次&quot;；而 0.1s 轮询保证<strong>新调度进来的短延时任务最多 0.1s 内被纳入</strong>——比如 delay=0.05s 的任务若纯按&quot;下一个到期时刻&quot;睡觉，可能排在 10s 后的任务后面永远不被发现。<strong>固定间隔巡检 + 到期时刻微调</strong>的组合，同时拿到了&quot;新任务响应快&quot;和&quot;到期触发准&quot;。</p>
+<p><strong>③ 精度为什么是 0.1s？</strong> Python <code>asyncio.sleep</code> 在 Windows 上的实际粒度受系统定时器限制（默认 ~15.6ms），Linux 上通常 1ms 级；0.1s 是&quot;平台无关的安全精度&quot;——在<a href="benchmarks.html">性能基准</a>一文已经看到 Windows 15.6ms 定时器粒度如何拖垮持续负载基准，延时调度同样受此约束。业务上&quot;30 分钟后取消订单&quot;的 0.1s 抖动完全可接受；要毫秒级定时，请交给专门的定时框架，别用通用任务调度器。</p>
+<h3>谁在用 DelayedQueue？（🔧 <code>queue/queue_scheduler.py</code>）</h3>
+<pre class="hljs"><code><span class="hljs-keyword">class</span> <span class="hljs-title class_">QueueScheduler</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">__init__</span>(<span class="hljs-params">self, queue_repo=<span class="hljs-literal">None</span>, max_size: <span class="hljs-built_in">int</span> = <span class="hljs-number">10000</span></span>):
+        <span class="hljs-variable language_">self</span>._priority_queue = PriorityQueue(queue_repo, max_size)
+        <span class="hljs-variable language_">self</span>._delayed_queue = DelayedQueue()          <span class="hljs-comment"># ← 内存堆</span>
+        ...
+
+    <span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">push</span>(<span class="hljs-params">self, task_id, priority, delay=<span class="hljs-number">0</span></span>) -&gt; <span class="hljs-built_in">bool</span>:
+        ...
+        <span class="hljs-keyword">if</span> delay &gt; <span class="hljs-number">0</span>:
+            <span class="hljs-keyword">return</span> <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._delayed_queue.schedule(task_id, priority, delay)
+        <span class="hljs-keyword">else</span>:
+            <span class="hljs-keyword">return</span> <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._priority_queue.push(task_id, priority)
+
+    <span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">_on_delayed_task_ready</span>(<span class="hljs-params">self, task_id, priority, data=<span class="hljs-literal">None</span></span>):
+        <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> <span class="hljs-variable language_">self</span>._disabled:
+            <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._priority_queue.push(task_id, priority)   <span class="hljs-comment"># ← 返回值未检查</span>
+</code></pre>
+<p><strong>主链路全貌</strong>（与优先级文章的 dispatcher 链路衔接）：</p>
+<pre class="hljs"><code>TaskPool.submit(data, delay=N)
+  → TaskDispatcher.dispatch
+    → lifecycle.create_task      # 任务实体落库，状态 PENDING
+    → queue.push(task_id, priority, delay=N)   # delay&gt;0 走堆
+      → DelayedQueue.schedule
+        → (N 秒后) _scheduler_loop 弹出
+          → _on_delayed_task_ready
+            → PriorityQueue.push（内存堆 或 Redis ZSET）
+              → WorkerPool.pop → 执行锁 → 执行 → 状态流转
+</code></pre>
+<p><strong>为什么延时任务复用 TaskPool.submit(delay=) 而不是独立的调度组件？</strong> 这是刻意的架构决策：延时只是&quot;入队时机不同&quot;，任务的生命周期（创建/状态机/重试/超时回收/结果查询）与即时任务<strong>完全共用一套</strong>——<code>submit_delayed</code> 返回的 task_id 可以像即时任务一样 <code>wait_for_result</code>、重试、取消，业务心智负担为零。如果延时任务走独立的&quot;定时器组件直接调 executor&quot;，就得重复实现生命周期、持久化、失败恢复一整套逻辑。<strong>把&quot;何时触发&quot;与&quot;如何执行&quot;彻底分离，是任务调度框架的基本功</strong>。</p>
+<hr>
+<h2>持久化：实体不丢，触发计划易失</h2>
+<h3>三层数据，两层持久</h3>
+<table>
+<thead>
+<tr>
+<th>数据</th>
+<th>存放</th>
+<th>是否持久</th>
+<th>重启后</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>任务实体 <code>task:{id}</code>（data/priority/status/ttl）</td>
+<td>Redis String JSON / SQLite / 内存</td>
+<td>✅（Redis/SQLite 模式）</td>
+<td>存在，但状态停在 PENDING</td>
+</tr>
+<tr>
+<td>触发计划（谁、何时、到期回调）</td>
+<td>DelayedQueue 内存堆 / TimeWheel 内存槽</td>
+<td>❌</td>
+<td><strong>丢失</strong>——没有任何代码从存储恢复触发计划</td>
+</tr>
+<tr>
+<td>执行结果/状态流转</td>
+<td>同上实体</td>
+<td>✅</td>
+<td>已完成的保留</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论：Redis 模式下重启节点，已提交未到期的延时任务会&quot;卡死&quot;在 PENDING——不会再被触发，也不会自动失败或告警</strong>（与优先级文章发现的&quot;入队静默失败→永久 PENDING&quot;是同一类可观测性缺口）。这是 v0.3 设计定位的代价：Redis 持久化解决的是&quot;任务记录不丢&quot;，&quot;触发计划恢复&quot;属于故障恢复的进阶能力，当前版本尚未实现。</p>
+<h3>Redis <code>queue:delayed</code> 通道：存在但主链路不写</h3>
+<p><code>RedisQueueRepository</code> 里确实有完整的 <code>queue:delayed</code> ZSET 实现（push 时 <code>delay&gt;0</code> → <code>zadd queue:delayed score=到期时间戳</code>；pop 时惰性迁移到期任务回 <code>queue:priority</code>）。<strong>但标准主链路中没有任何代码调用 <code>repository.push(delay&gt;0)</code></strong>——<code>QueueScheduler.push</code> 把 delay&gt;0 的任务交给了内存 <code>DelayedQueue</code>，<code>PriorityQueue.push</code> 对 <code>delay&gt;0</code> 直接返回 False。也就是说：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>标准 API 全链路（TaskPool/TaskScheduler + Redis 存储）：<code>queue:delayed</code> <strong>永远是空的</strong>；</p>
+</li>
+<li class="lvl-2">
+<p>只有绕过 QueueScheduler、直接操作 repository 的集成代码，才会让 <code>queue:delayed</code> 有数据；</p>
+</li>
+<li class="lvl-2">
+<p>这条旁路通道的惰性迁移不保留优先级：ZSET 只存 <code>(task_id → 到期时间)</code>，没有优先级字段，迁移回 <code>queue:priority</code> 时统一按 <code>TaskPriority.NORMAL</code>（2）入队。</p>
+</li>
+</ul>
+<p><code>queue:delayed</code> 是未接入主链路的预留通道。接入方若假设&quot;Redis 里有我的延时任务、可跨节点恢复&quot;，会踩空——多节点下的真实语义见下一节。</p>
+<h3>多节点部署的正确姿势</h3>
+<p>既然触发计划只在提交节点内存里，多节点部署的语义就是：</p>
+<pre class="hljs"><code>节点 A 提交 submit(delay=300)      → 计划活在 A 的内存堆
+节点 A 崩溃                        → 计划丢失（实体仍在 Redis，PENDING 卡死）
+节点 A 存活到到期                   → 回调入 Redis 共享队列 → 任一节点 worker 抢锁执行
+</code></pre>
+<p><strong>幂等/不重复靠的是 worker 侧</strong>（执行前 PENDING 检查 + <code>lock:task:{id}</code> 互斥，见<a href="distributed-lock.html">分布式锁</a>），不是&quot;分布式延时队列&quot;。这里刻意没有做&quot;多节点同时 ZRANGEBYSCORE 扫描 + SET NX 防重&quot;的多级架构——单点触发在工程上是合理简化：触发本身是廉价的入队动作（不做业务），真正的执行安全和负载均衡全部下沉到共享队列层，<strong>架构上不存在&quot;分布式定时器&quot;这一层</strong>。代价是需要跨节点容错的延时（提交节点挂了任务必须换节点触发）当前版本做不到，请在外层加补偿（见故障场景 1）。</p>
+<hr>
+<h2>TimeWheel：可选的高性能延时通道</h2>
+<h3>真实实现解剖（🔧 <code>src/neotask/scheduler/time_wheel.py</code>）</h3>
+<pre class="hljs"><code><span class="hljs-meta">@dataclass</span>
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">TimeWheelTask</span>:
+    task_id: <span class="hljs-built_in">str</span>
+    priority: <span class="hljs-built_in">int</span>
+    data: <span class="hljs-type">Optional</span>[<span class="hljs-type">Dict</span>] = <span class="hljs-literal">None</span>
+    <span class="hljs-built_in">round</span>: <span class="hljs-built_in">int</span> = <span class="hljs-number">0</span>
+    execute_at: <span class="hljs-built_in">float</span> = <span class="hljs-number">0.0</span>
+
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">TimeWheel</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">__init__</span>(<span class="hljs-params">self, slot_count: <span class="hljs-built_in">int</span> = <span class="hljs-number">60</span>, tick_interval: <span class="hljs-built_in">float</span> = <span class="hljs-number">0.1</span>, max_rounds: <span class="hljs-built_in">int</span> = <span class="hljs-number">100</span></span>):
+        <span class="hljs-variable language_">self</span>._slots: <span class="hljs-type">List</span>[deque] = [deque() <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(slot_count)]
+        <span class="hljs-variable language_">self</span>._current_slot = <span class="hljs-number">0</span>
+        <span class="hljs-variable language_">self</span>._task_index: <span class="hljs-type">Dict</span>[<span class="hljs-built_in">str</span>, TimeWheelTask] = {}
+
+    <span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">add_task</span>(<span class="hljs-params">self, task_id, priority, delay, data=<span class="hljs-literal">None</span></span>) -&gt; <span class="hljs-built_in">int</span>:
+        <span class="hljs-keyword">if</span> delay &lt;= <span class="hljs-number">0</span>:
+            <span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._callback:
+                <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._callback(task_id, priority, data)  <span class="hljs-comment"># 零延迟直接回调</span>
+            <span class="hljs-keyword">return</span> <span class="hljs-number">0</span>
+        slots_needed = <span class="hljs-built_in">int</span>(delay / <span class="hljs-variable language_">self</span>._tick_interval)
+        <span class="hljs-keyword">if</span> slots_needed &gt;= <span class="hljs-variable language_">self</span>._slot_count * <span class="hljs-variable language_">self</span>._max_rounds:
+            <span class="hljs-keyword">return</span> -<span class="hljs-number">1</span>                                    <span class="hljs-comment"># ← 超过轮数上限拒绝（返回 -1）</span>
+        target_slot = (<span class="hljs-variable language_">self</span>._current_slot + slots_needed) % <span class="hljs-variable language_">self</span>._slot_count
+        rounds = slots_needed // <span class="hljs-variable language_">self</span>._slot_count
+        ...
+        <span class="hljs-variable language_">self</span>._slots[target_slot].append(task)            <span class="hljs-comment"># O(1) 入槽</span>
+        <span class="hljs-variable language_">self</span>._task_index[task_id] = task
+        <span class="hljs-keyword">return</span> target_slot
+</code></pre>
+<p>滴答逻辑（🔧）：指针每 <code>tick_interval</code> 走一格，处理当前槽位队列：</p>
+<pre class="hljs"><code><span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">_tick</span>(<span class="hljs-params">self</span>) -&gt; <span class="hljs-literal">None</span>:
+    ...
+    <span class="hljs-keyword">while</span> current_slot_tasks:
+        task = current_slot_tasks.popleft()
+        <span class="hljs-keyword">if</span> task.<span class="hljs-built_in">round</span> == <span class="hljs-number">0</span>:
+            tasks_to_execute.append((task.task_id, task.priority, task.data))
+            <span class="hljs-keyword">del</span> <span class="hljs-variable language_">self</span>._task_index[task.task_id]      <span class="hljs-comment"># 到期出索引</span>
+        <span class="hljs-keyword">else</span>:
+            task.<span class="hljs-built_in">round</span> -= <span class="hljs-number">1</span>                          <span class="hljs-comment"># 未到期：圈数减 1，留在原槽</span>
+            remaining_tasks.append(task)
+    <span class="hljs-variable language_">self</span>._slots[<span class="hljs-variable language_">self</span>._current_slot] = remaining_tasks
+    <span class="hljs-variable language_">self</span>._current_slot = (<span class="hljs-variable language_">self</span>._current_slot + <span class="hljs-number">1</span>) % <span class="hljs-variable language_">self</span>._slot_count
+    <span class="hljs-comment"># 回调在锁外执行</span>
+</code></pre>
+<p>实现细节对照（部分与常见&quot;时间轮&quot;教学实现不同）：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>常见教学实现</th>
+<th>TimeWheel 真实实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>未到期任务</td>
+<td>移入下一圈对应槽位</td>
+<td><strong>留在原槽、round 减 1</strong>，转满一圈再回来看</td>
+</tr>
+<tr>
+<td>任务存储</td>
+<td>槽位挂链表</td>
+<td>每个槽一个 <code>deque</code></td>
+</tr>
+<tr>
+<td>上限</td>
+<td>无</td>
+<td><code>max_rounds=100</code>：<code>delay &gt; 槽数×轮数×tick</code> 拒绝（返回 -1）</td>
+</tr>
+<tr>
+<td>零延迟</td>
+<td>入槽等待</td>
+<td><strong>直接回调</strong></td>
+</tr>
+<tr>
+<td>删除</td>
+<td>常称 O(1)</td>
+<td>遍历所有槽线性查找（🔧 <code>cancel_task</code>）——O(槽数×槽长)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>几个必须知道的边界</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>&quot;时间轮 O(1) 删除&quot;不成立</strong>：<code>cancel_task</code> 遍历所有槽逐个找成员再 <code>del slot[i]</code>（deque 删除本身 O(n)）。O(1) 的只有添加（append）；</p>
+</li>
+<li class="lvl-3">
+<p><strong>容量上限是硬边界</strong>：<code>slot_count × max_rounds × tick</code>。<code>TimeWheel</code> 类默认 60 槽 × 100 轮 × <strong>0.1s</strong> = 600 秒；但 <code>TaskScheduler</code> 接线时用 <code>SchedulerConfig.time_wheel_tick</code>（默认 <strong>1.0s</strong>），即 60 × 100 × 1.0 = <strong>6000 秒（100 分钟）</strong>。越界的 <code>add_task</code> 返回 -1；</p>
+</li>
+<li class="lvl-3">
+<p><strong>add 一个任务 = 一次持锁操作</strong>（锁内 append），海量短延时（秒杀倒计时、限流令牌）场景下 add 竞争集中在同一把 asyncio.Lock——高吞吐时锁是热点（不过单事件循环内 asyncio.Lock 无跨线程竞争，代价主要是协程切换）。</p>
+</li>
+</ol>
+<h3>接线方式：TaskScheduler 如何喂任务</h3>
+<p><code>enable_time_wheel=True</code> 时，TaskScheduler 创建并启动时间轮，把 <code>submit_delayed</code> 导流到轮上（🔧 <code>api/task_scheduler.py</code>）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># start() 中</span>
+<span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._config.enable_time_wheel:                 <span class="hljs-comment"># 默认 False</span>
+    <span class="hljs-variable language_">self</span>._time_wheel = TimeWheel(
+        slot_count=<span class="hljs-variable language_">self</span>._config.time_wheel_slots,  <span class="hljs-comment"># 默认 60</span>
+        tick_interval=<span class="hljs-variable language_">self</span>._config.time_wheel_tick <span class="hljs-comment"># 默认 1.0</span>
+    )
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._time_wheel.start(<span class="hljs-variable language_">self</span>._on_delayed_task_ready)
+
+<span class="hljs-comment"># submit_delayed 中：有轮且 delay&gt;0 就走轮，否则走 DelayedQueue</span>
+<span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._time_wheel <span class="hljs-keyword">and</span> delay_seconds &gt; <span class="hljs-number">0</span>:
+    <span class="hljs-keyword">return</span> <span class="hljs-variable language_">self</span>._run_async(
+        <span class="hljs-variable language_">self</span>._submit_delayed_via_time_wheel(data, delay_seconds, task_id, priority, ttl)
+    )
+<span class="hljs-keyword">return</span> <span class="hljs-variable language_">self</span>._pool.submit(data, task_id, priority, delay_seconds, ttl)
+</code></pre>
+<p>核心是&quot;<strong>先建任务、再进轮</strong>&quot;的顺序——<code>_submit_delayed_via_time_wheel</code> 先经生命周期管理器创建 PENDING 任务（此时任务已可见、可取消，<strong>但不入队</strong>），再 <code>add_task</code> 进轮。到期时轮的回调把<strong>同一个</strong>任务入队：</p>
+<pre class="hljs"><code><span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">_submit_delayed_via_time_wheel</span>(<span class="hljs-params">self, data, delay_seconds, task_id, priority, ttl</span>):
+    created_id = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._pool.create_pending_task_async(data, task_id, priority, ttl)
+    slot = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._time_wheel.add_task(created_id, priority_value, delay_seconds, data)
+    <span class="hljs-keyword">if</span> slot &lt; <span class="hljs-number">0</span>:
+        <span class="hljs-comment"># 超出量程：退回延时队列，避免任务卡在&quot;已落库却永不入队&quot;的中间态</span>
+        <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._pool.retry_async(created_id, delay_seconds)
+    <span class="hljs-keyword">return</span> created_id
+
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">_on_delayed_task_ready</span>(<span class="hljs-params">self, task_id, priority, data=<span class="hljs-literal">None</span></span>):
+    enqueued = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._pool.enqueue_task_async(task_id)
+    <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> enqueued:
+        debug(<span class="hljs-string">f&quot;Delayed task <span class="hljs-subst">{task_id}</span> not enqueued (missing or not PENDING)&quot;</span>)
+</code></pre>
+<p>由此得到四条明确语义：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>量程内</strong>：任务进轮、按 tick 粒度触发，到期后由 <code>enqueue_task_async</code> 放入共享队列，worker 正常消费；</p>
+</li>
+<li class="lvl-2">
+<p><strong>量程外</strong>（<code>add_task</code> 返回 -1）：自动回退到 <code>DelayedQueue</code> 堆，任务不会丢——调用方无需自己检查返回值；</p>
+</li>
+<li class="lvl-2">
+<p><strong>等待期取消</strong>：任务早已 PENDING 可查，<code>cancel()</code> 直接生效；到期回调再查一次状态，非 PENDING 就静默跳过（<code>enqueue_task_async</code> 的状态守卫），不依赖从轮里摘除；</p>
+</li>
+<li class="lvl-2">
+<p><strong>停机不丢</strong>：<code>shutdown()</code> 先 <code>drain()</code> 出轮内未到期任务，按 <code>execute_at</code> 重算剩余延时后回投延时队列，再停轮。</p>
+</li>
+</ul>
+<p><strong>为什么默认不开？</strong> 对照 DelayedQueue 的堆实现看：延时任务规模在万级以下时，堆的 O(log n) 完全够用（1 万个任务插入也才 ~14 次比较），而堆实现的<strong>精度自适应</strong>（任务越近睡越准）和<strong>取消能力</strong>（dict 直删 O(1)+堆重建）反而更简单。时间轮的 O(1) 优势要到&quot;百万级短延时 + 每秒海量 add/cancel&quot;才体现——那是网关限流、连接超时管理的量级，不是业务任务调度的量级。因此它保持 opt-in，默认仍走堆。</p>
+<p><strong>独立使用</strong>（不经过 TaskScheduler）时注意自行处理 <code>-1</code>：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 独立使用 TimeWheel（框架组件）</span>
+<span class="hljs-keyword">from</span> neotask.scheduler.time_wheel <span class="hljs-keyword">import</span> TimeWheel
+
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">on_ready</span>(<span class="hljs-params">task_id, priority, data</span>):
+    <span class="hljs-keyword">await</span> pool.submit_async(data, task_id, priority)
+
+wheel = TimeWheel(slot_count=<span class="hljs-number">360</span>, tick_interval=<span class="hljs-number">0.1</span>, max_rounds=<span class="hljs-number">1000</span>)  <span class="hljs-comment"># 上限 10 小时</span>
+<span class="hljs-keyword">await</span> wheel.start(on_ready)
+slot = <span class="hljs-keyword">await</span> wheel.add_task(<span class="hljs-string">&quot;t1&quot;</span>, <span class="hljs-number">2</span>, delay=<span class="hljs-number">300</span>)   <span class="hljs-comment"># 300s 后触发</span>
+<span class="hljs-keyword">if</span> slot == -<span class="hljs-number">1</span>:
+    ...  <span class="hljs-comment"># 超过容量上限，需要业务补偿</span>
+</code></pre>
+<hr>
+<h2>周期任务与 Cron：PeriodicTaskManager 全链路</h2>
+<h3>双模型结构</h3>
+<p>周期任务不是&quot;重复提交的延时任务&quot;，它有独立的定义/实例/执行记录三层（🔧 <code>scheduler/periodic.py</code>）：</p>
+<pre class="hljs"><code>PeriodicTaskDefinition  （周期任务定义：interval/cron、data、max_runs、start_at/end_at、missed_policy、ttl）
+      │ 1:1
+PeriodicTaskInstance    （运行实例：next_run、run_count、success/failed_count、last_run、status）
+      │ 1:N
+PeriodicExecutionRecord （每次执行的记录：task_instance_id、scheduled_time、result/error）
+</code></pre>
+<p>调用链（🔧 <code>api/task_scheduler.py</code>）：</p>
+<pre class="hljs"><code>submit_interval / submit_cron
+  → PeriodicTaskManager.create_interval / create_cron
+      → definition = PeriodicTaskDefinition(...)
+      → next_run = _calculate_next_run(definition)   # interval: now+interval；cron: 下一次匹配时刻
+      → instance = PeriodicTaskInstance(...)
+</code></pre>
+<h3>每秒扫描的调度循环（🔧）</h3>
+<pre class="hljs"><code><span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">_scheduler_loop</span>(<span class="hljs-params">self</span>) -&gt; <span class="hljs-literal">None</span>:
+    <span class="hljs-keyword">while</span> <span class="hljs-variable language_">self</span>._running:
+        now = datetime.now()
+        tasks_to_execute = []
+        <span class="hljs-keyword">async</span> <span class="hljs-keyword">with</span> <span class="hljs-variable language_">self</span>._lock:
+            <span class="hljs-keyword">for</span> task_id, instance <span class="hljs-keyword">in</span> <span class="hljs-variable language_">self</span>._tasks.items():
+                <span class="hljs-keyword">if</span> instance.status != ACTIVE: <span class="hljs-keyword">continue</span>
+                <span class="hljs-keyword">if</span> max_runs 已达标: → COMPLETED; <span class="hljs-keyword">continue</span>
+                <span class="hljs-keyword">if</span> now &lt; start_at: <span class="hljs-keyword">continue</span>
+                <span class="hljs-keyword">if</span> now &gt; end_at:   → COMPLETED; <span class="hljs-keyword">continue</span>
+                <span class="hljs-keyword">if</span> instance.next_run <span class="hljs-keyword">and</span> instance.next_run &lt;= now:
+                    tasks_to_execute.append(...)
+        <span class="hljs-keyword">for</span> task_id, instance <span class="hljs-keyword">in</span> tasks_to_execute:
+            <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._execute_periodic_task(task_id, instance)   <span class="hljs-comment"># ← 顺序 await！</span>
+        <span class="hljs-keyword">await</span> asyncio.sleep(<span class="hljs-variable language_">self</span>._scan_interval)                   <span class="hljs-comment"># 1.0s</span>
+</code></pre>
+<p>每次执行（🔧 <code>_execute_periodic_task</code>）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 1. 若 miss 多轮，先按策略补课</span>
+<span class="hljs-keyword">if</span> instance.next_run:
+    missed_count = <span class="hljs-variable language_">self</span>._calculate_missed_count(instance)
+    <span class="hljs-keyword">if</span> missed_count &gt; <span class="hljs-number">1</span>:
+        <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._handle_missed_executions(instance, missed_count)
+
+<span class="hljs-comment"># 2. 提交一次新任务（每次都是独立 task_id）</span>
+task_instance_id = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._task_pool.submit_async(
+    data=definition.task_data, priority=definition.priority, ttl=definition.ttl)
+
+<span class="hljs-comment"># 3. 若定义了 timeout → 同步等待结果并记账；否则异步 fire-and-forget</span>
+<span class="hljs-keyword">if</span> definition.timeout:
+    result = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._task_pool.wait_for_result_async(task_instance_id, timeout=...)
+<span class="hljs-keyword">else</span>:
+    record.status = <span class="hljs-string">&quot;running&quot;</span>
+
+<span class="hljs-comment"># 4. 推进下次执行时间</span>
+instance.next_run = <span class="hljs-variable language_">self</span>._calculate_next_run(definition, after=datetime.now())
+</code></pre>
+<h3>周期语义的三个要点</h3>
+<p><strong>① 首次执行由 <code>run_immediately</code> 控制</strong>：<code>submit_interval(run_immediately=True)</code>（默认）会让首个 <code>next_run = now</code>，即下一轮扫描立刻提交——前提是 <code>start_at</code> 不在未来；若 <code>start_at</code> 在未来，则以 <code>start_at</code> 为准（<code>_calculate_next_run</code> 里 <code>immediately and not (start_at and start_at &gt; now)</code> 的判定）。<code>run_immediately=False</code> 时 <code>next_run = now + interval</code>，即等满一个周期再首次执行。两条路径（有/无 <code>PeriodicTaskManager</code>）都读这个参数。</p>
+<p><strong>② 周期精度 = 1s</strong>：扫描循环固定睡 1s，next_run 的秒级抖动平均 ~0.5s、最大 ~1s。interval 任务从&quot;到期时刻&quot;到&quot;实际提交&quot;最多差 1 秒，叠加任务队列排队时间——<strong>周期任务不是精确时钟</strong>，设计心跳/报表任务时接受秒级误差。</p>
+<p><strong>③ 四种错过策略各有明确语义</strong>：<code>MissedExecutionPolicy</code> 定义了 IGNORE / RUN_ONCE / CATCH_UP / SKIP，实现集中在 <code>_execute_periodic_task</code>（🔧 <code>scheduler/periodic.py</code>）：</p>
+<table>
+<thead>
+<tr>
+<th>策略</th>
+<th>行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IGNORE / SKIP</td>
+<td><strong>语义相同</strong>：丢弃错过的槽位，只把 <code>next_run</code> 推进到未来，本轮不提交</td>
+</tr>
+<tr>
+<td>RUN_ONCE</td>
+<td>本轮提交<strong>一次</strong>，不补跑错过的槽位</td>
+</tr>
+<tr>
+<td>CATCH_UP</td>
+<td>补跑错过的槽位，单轮最多 <code>MAX_CATCH_UP</code>（5）次防雪崩</td>
+</tr>
+</tbody>
+</table>
+<p>默认策略 <code>default_missed_policy=&quot;skip&quot;</code> 即&quot;错过就错过，等下一轮&quot;。实际提交次数在 CATCH_UP 下是 <code>min(missed_count + 1, 5)</code>，其余策略为 1。</p>
+<h3>timeout 参数的隐藏代价</h3>
+<p><code>create_interval(timeout=60)</code> 会让每次执行<strong>同步等待结果</strong>（最长 60s），而 <code>_scheduler_loop</code> 是顺序 await 的——<strong>一个慢周期任务会阻塞整条周期调度循环</strong>，其他周期任务全部延误。默认 timeout=None 走异步分支没问题；显式设置 timeout 时，请评估该任务最长执行时间对调度循环的影响。</p>
+<hr>
+<h2>submit_at 与 Cron：时间换算与表达式</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>submit_at</strong>：<code>delay = max(0, execute_at - now)</code> 后走 submit_delayed（🔧 纯时间换算，无独立队列）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>submit_cron</strong>：走 <code>CronParser</code>（🔧 <code>scheduler/cron_parser.py</code>）解析五段表达式（分 时 日 月 周），每次执行后 <code>cron_obj.next(after=now)</code> 求下一次匹配。Cron 属于 PeriodicTaskManager 体系，同一套 1s 扫描与 missed 逻辑；</p>
+</li>
+<li class="lvl-2">
+<p><strong>默认时区</strong>：全程使用 <code>datetime.now()</code>（本地时区）——<strong>没有时区参数</strong>，跨时区部署时各节点以自己的本地时间解释 Cron，需在部署层统一 TZ 环境变量。</p>
+</li>
+</ul>
+<hr>
+<h2>配置速查（🔧 <code>SchedulerConfig</code> 真实默认值）</h2>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>默认</th>
+<th>含义</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>scan_interval</td>
+<td>1.0</td>
+<td>调度循环扫描间隔（秒）</td>
+<td>周期任务粒度</td>
+</tr>
+<tr>
+<td>enable_periodic_manager</td>
+<td>True</td>
+<td>启用周期任务管理器</td>
+<td>关闭则退回本地 dict 存储路径</td>
+</tr>
+<tr>
+<td>enable_time_wheel</td>
+<td><strong>False</strong></td>
+<td>启用时间轮</td>
+<td>开启后 <code>submit_delayed</code> 走轮，量程外自动回退延时队列</td>
+</tr>
+<tr>
+<td>time_wheel_slots</td>
+<td>60</td>
+<td>时间轮槽位数</td>
+<td>与 tick 共同决定量程</td>
+</tr>
+<tr>
+<td>time_wheel_tick</td>
+<td>1.0</td>
+<td>时间轮滴答间隔</td>
+<td>组件参数（<code>TimeWheel</code> 类默认 0.1）</td>
+</tr>
+<tr>
+<td>default_max_runs</td>
+<td>None</td>
+<td>周期任务默认最大次数</td>
+<td>None=无限</td>
+</tr>
+<tr>
+<td>default_missed_policy</td>
+<td>“skip”</td>
+<td>错过执行策略</td>
+<td>IGNORE/SKIP 同义、RUN_ONCE、CATCH_UP</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>注意 <code>time_wheel_tick</code> 在 config 默认 1.0，而 <code>TimeWheel</code> 类默认 0.1——TaskScheduler 接线时用 config 值（1.0s 滴答），即 60 槽 × 100 轮 × 1s = <strong>100 分钟延迟上限、1 秒触发粒度</strong>。相比之下堆实现的精度自适应（任务越近睡越准）在秒级以下的延时上更细，这也正是时间轮保持 opt-in 的原因。</p>
+</blockquote>
+<hr>
+<h2>使用示例（真实 API 📝）</h2>
+<pre class="hljs"><code><span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskScheduler, SchedulerConfig
+
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">remind</span>(<span class="hljs-params">data</span>):
+    <span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;提醒: <span class="hljs-subst">{data[<span class="hljs-string">&#x27;user_id&#x27;</span>]}</span> <span class="hljs-subst">{data[<span class="hljs-string">&#x27;message&#x27;</span>]}</span>&quot;</span>)
+
+scheduler = TaskScheduler(executor=remind)          <span class="hljs-comment"># 默认 memory 存储</span>
+scheduler.start()
+
+<span class="hljs-comment"># 30 秒后执行（🔧 submit_delayed(data, delay_seconds, task_id?, priority?, ttl?)）</span>
+tid = scheduler.submit_delayed(
+    data={<span class="hljs-string">&quot;user_id&quot;</span>: <span class="hljs-number">12345</span>, <span class="hljs-string">&quot;message&quot;</span>: <span class="hljs-string">&quot;订单即将过期&quot;</span>},
+    delay_seconds=<span class="hljs-number">30</span>,
+)
+
+<span class="hljs-comment"># 指定时间点（内部换算 delay）</span>
+<span class="hljs-keyword">from</span> datetime <span class="hljs-keyword">import</span> datetime, timedelta
+scheduler.submit_at(data={<span class="hljs-string">&quot;action&quot;</span>: <span class="hljs-string">&quot;daily_report&quot;</span>},
+                    execute_at=datetime.now() + timedelta(hours=<span class="hljs-number">1</span>))
+
+<span class="hljs-comment"># 每 5 分钟一次（默认 run_immediately=True：先立即跑一次，之后每 5 分钟）</span>
+scheduler.submit_interval(data={<span class="hljs-string">&quot;action&quot;</span>: <span class="hljs-string">&quot;heartbeat&quot;</span>},
+                          interval_seconds=<span class="hljs-number">300</span>,
+                          max_runs=<span class="hljs-number">24</span>, name=<span class="hljs-string">&quot;hb&quot;</span>)
+
+<span class="hljs-comment"># Cron：每天 9 点（本地时区）</span>
+scheduler.submit_cron(data={<span class="hljs-string">&quot;action&quot;</span>: <span class="hljs-string">&quot;summary&quot;</span>},
+                      cron_expr=<span class="hljs-string">&quot;0 9 * * *&quot;</span>, name=<span class="hljs-string">&quot;daily&quot;</span>)
+
+<span class="hljs-comment"># 延时任务同样支持结果等待</span>
+result = scheduler.wait_for_result(tid, timeout=<span class="hljs-number">60</span>)
+</code></pre>
+<hr>
+<h2>故障场景实战</h2>
+<h3>场景 1：进程重启，延时任务集体&quot;蒸发&quot;</h3>
+<p><strong>现象</strong>：提交了一批 <code>submit(delay=3600)</code>（1 小时后执行）的任务；凌晨发布重启进程；1 小时后任务没跑，<code>task:{id}</code> 状态永远停在 PENDING，无任何日志。</p>
+<p><strong>根因</strong>：触发计划在 DelayedQueue 内存堆里，重启即失；实体虽在 Redis 但没有任何恢复逻辑把它重新入队。<strong>重启前已到期未执行的会丢，重启后到期的更不会执行</strong>。</p>
+<p><strong>排查</strong>：对比提交日志与执行日志；<code>ZSCAN task:*</code> 找 PENDING 且 <code>created_at</code> 早于重启时刻的任务。</p>
+<p><strong>解决</strong>：v1.0.2 无内建恢复。生产方案（📝）：① 应用层补偿——启动时扫描&quot;应执行未执行&quot;的 PENDING 任务重新 submit；② 对必须不丢的延时业务，用独立组件（Redis 过期键监听 / 消息队列延时消息）驱动 NeoTask 提交，让 NeoTask 只做&quot;到期后如何执行&quot;；③ 接受&quot;延时计划易失&quot;，把不丢诉求放在业务侧（订单状态机自愈扫描）。<strong>发布窗口避开批量延时提交高峰</strong>是最低成本的止损。</p>
+<h3>场景 2：到期触发了，但任务没执行</h3>
+<p><strong>现象</strong>：偶发任务&quot;该到没到&quot;；<code>DelayedQueue</code> 统计 <code>executed</code> 在涨，但对应任务从未 RUNNING。</p>
+<p><strong>根因链</strong>（两处失败点）：</p>
+<ol>
+<li class="lvl-3">
+<p><code>_scheduler_loop</code> 回调段：任务一旦从堆中弹出，回调抛任何异常（Redis 连接抖动、事件循环阻塞超时）就<strong>永久失去触发机会</strong>——现在这个异常会以 <code>Delayed task {id} callback failed: ...</code> 记入 error 日志，不再是静默 <code>pass</code>；</p>
+</li>
+<li class="lvl-3">
+<p><code>QueueScheduler._on_delayed_task_ready</code> 调 <code>priority_queue.push(...)</code> 返回 False（队列满，max_size=10000）时，会记 <code>could not be promoted: priority queue is full</code> 的 error 日志。</p>
+</li>
+</ol>
+<p>两条路径的共同后果：任务实体 PENDING、无锁、无 node_id——回收器不回收（非 RUNNING 超时、非孤儿），<strong>永久滞留</strong>。日志是定位它们的唯一线索。</p>
+<p><strong>排查</strong>：对账 <code>delayed_queue.get_stats()</code> 的 <code>executed</code> 计数与实际执行数；按 error 日志里的 task_id 反查任务状态。</p>
+<p><strong>解决（📝）</strong>：日志只给出线索，补偿要自己做——对日志中出现的 task_id 主动 <code>redispatch(task_id)</code>；根因若是队列满，先扩 <code>max_size</code> 或提升消费能力再重投。</p>
+<h3>场景 3：开启时间轮后延时精度变粗</h3>
+<p><strong>现象</strong>：设了 <code>enable_time_wheel=True</code>，1~2 秒的短延时任务明显比预期晚触发，最多晚接近 1 秒。</p>
+<p><strong>根因</strong>：TaskScheduler 用 <code>SchedulerConfig.time_wheel_tick</code>（默认 <strong>1.0s</strong>）建轮，触发粒度就是 1 秒——一个落在刻度中间的任务要等到下一格。相比之下 DelayedQueue 堆是&quot;任务越近睡越准&quot;的自适应精度，短延时上更细。</p>
+<p><strong>排查</strong>：<code>get_stats()</code> 看轮配置；对比 <code>time_wheel_tick</code> 与你的延时量级。</p>
+<p><strong>解决</strong>：需要更细粒度就调小 <code>time_wheel_tick</code>（如 0.1），但记住量程 = <code>time_wheel_slots × max_rounds × tick</code> 会同步缩小——0.1s 粒度下默认 60 槽只剩 600 秒上限，超出部分会自动回退延时队列（见上文接线方式的量程回退）。若延时普遍在秒级且精度要求高，直接保持默认的堆实现更省心。</p>
+<h3>场景 4：周期任务 timeout 引发调度雪崩</h3>
+<p><strong>现象</strong>：给周期任务配了 <code>timeout=60</code> 后，其他周期任务开始不定期延迟，任务堆积。</p>
+<p><strong>根因</strong>：<code>_execute_periodic_task</code> 在 timeout 非空时 <code>await wait_for_result(...)</code>（最长 60s），而它是被 <code>_scheduler_loop</code> 顺序 await 的——<strong>一个慢任务把每秒扫描的调度循环堵死</strong>；若该任务失败重试链较长，阻塞更久，后面的周期任务集体错过 next_run，触发 missed 追赶（CATCH_UP 最多补 5 次）→ 追赶又排队 → 恶性循环。</p>
+<p><strong>解决</strong>：周期任务不设 timeout（默认异步 fire-and-forget，由 TaskPool 的 task_timeout 兜底执行超时）；确实需要同步确认结果的场景，把结果确认逻辑放进业务函数内部，别用调度器等结果。</p>
+<hr>
+<h2>版本与验证说明</h2>
+<p>本文属于项目文档而不是永久不变的 API 契约。以下情况发生时，应重新核对源码或发布说明：</p>
+<ol>
+<li class="lvl-3">
+<p>项目版本升级，尤其是公开 API、配置模型、存储实现和工作流发生变化；</p>
+</li>
+<li class="lvl-3">
+<p>本文中的默认值、性能数据或示例依赖外部服务版本；</p>
+</li>
+<li class="lvl-3">
+<p>运行环境与本文案例不同，例如 Python 版本、Redis/数据库版本、模型供应商或操作系统不同。</p>
+</li>
+</ol>
+<p>如果你要把本文内容用于生产环境，请优先使用仓库当前版本的 README、源码、测试和 Release 记录进行最终确认。</p>
+<h2>总结</h2>
+<table>
+<thead>
+<tr>
+<th>主题</th>
+<th>实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>延时主链路</td>
+<td><strong>DelayedQueue 最小堆</strong>，0.1s 精度，单节点内存</td>
+</tr>
+<tr>
+<td>任务详情存储</td>
+<td>String JSON <code>task:{id}</code></td>
+</tr>
+<tr>
+<td>Redis 延时队列</td>
+<td><code>queue:delayed</code> 主链路空置；旁路迁移不保留优先级，统一按 NORMAL 入队</td>
+</tr>
+<tr>
+<td>TimeWheel</td>
+<td>O(1) add / 量程上限 / cancel 非 O(1)；opt-in：开启后接 <code>submit_delayed</code>，量程外回退延时队列</td>
+</tr>
+<tr>
+<td>周期/Cron</td>
+<td>PeriodicTaskManager 1s 扫描 + definition/instance/record 三层</td>
+</tr>
+<tr>
+<td>持久化</td>
+<td>实体落库；<strong>触发计划易失</strong></td>
+</tr>
+<tr>
+<td>分布式防重</td>
+<td>worker 执行锁兜底；触发计划单点</td>
+</tr>
+<tr>
+<td>run_immediately / missed 策略</td>
+<td>均生效：run_immediately 决定首跑时刻（受 start_at 约束）；IGNORE/SKIP 同义、RUN_ONCE 单次、CATCH_UP 补跑≤5</td>
+</tr>
+</tbody>
+</table>
+<p>延时任务在 v1.0.2 是&quot;够用但别过度信任&quot;的模块：<strong>API 层语义完整（delay/at/interval/cron + 统一生命周期），调度层是朴素的单节点最小堆，可靠性层存在触发计划易失与多处静默失败</strong>。生产使用请记住三件事：发布窗口别压延时提交、到期回调要自己加补偿、周期任务别设 timeout。</p>
+<hr>
+<h2>相关链接</h2>
+<p><a href="index.html">返回首页</a></p>
+<p><strong>入门与参考</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="quickstart.html">快速上手</a> - 5 分钟入门</p>
+</li>
+<li class="lvl-2">
+<p><a href="api-reference.html">API 参考</a> - 完整 API 文档</p>
+</li>
+<li class="lvl-2">
+<p><a href="configuration.html">配置说明</a> - 配置参数详解</p>
+</li>
+<li class="lvl-2">
+<p><a href="best-practices.html">最佳实践</a> - 生产环境建议</p>
+</li>
+</ul>
+<p><strong>架构与设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="architecture.html">架构设计</a> - 整体架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="core-features.html">核心实现</a> - 功能设计</p>
+</li>
+<li class="lvl-2">
+<p><a href="evolution.html">版本演进</a> - 演进历程</p>
+</li>
+</ul>
+<p><strong>分布式核心</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="decentralization.html">去中心化</a> - 对等架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="failure-recovery.html">故障恢复</a> - 高可用保障</p>
+</li>
+<li class="lvl-2">
+<p><a href="prefetch.html">预取机制</a> - 高吞吐性能</p>
+</li>
+<li class="lvl-2">
+<p><a href="distributed-lock.html">分布式锁</a> - 并发控制</p>
+</li>
+</ul>
+<p><strong>存储与监控</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="persistence.html">持久化</a> - 多存储后端</p>
+</li>
+<li class="lvl-2">
+<p><a href="priority-queue.html">优先级</a> - 优先级队列</p>
+</li>
+<li class="lvl-2">
+<p><a href="delayed-tasks.html">延时任务</a> - 时间轮 + Redis 持久化</p>
+</li>
+<li class="lvl-2">
+<p><a href="monitoring.html">节点监控</a> - 可观测性</p>
+</li>
+</ul>
+<p><strong>资源</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/neotask">GitHub</a> - 源代码仓库</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://task.helpenx.com">NeoTask 官网</a> - 官方网站</p>
+</li>
+</ul>
+
+      </article>
+    </main>
+  </div>
+  <footer>
+    <a href="https://task.helpenx.com" target="_blank" rel="noopener">NeoTask 官网</a>·
+    <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>·
+    <a href="index.html">文档中心</a>
+    <div style="margin-top:6px">© 2026 helpenx.com · 文档基线以文中标注版本对应的源码为准</div>
+  </footer>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</body>
+</html>

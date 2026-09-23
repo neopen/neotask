@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录 · NeoTask 文档</title>
+  <meta name="description" content="从源码与 wheel 元数据出发与 Celery 的选型对比：v1.0.2 依赖清单（两个基础依赖）、嵌入式 vs 独立 worker 的架构差异、WorkflowEngine 编排与进度回调等能力边界说明、何时仍该用 Celery 的边界清单。">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://task.helpenx.com/docs/why-not-celery.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:title" content="为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录">
+  <meta property="og:description" content="从源码与 wheel 元数据出发与 Celery 的选型对比：v1.0.2 依赖清单（两个基础依赖）、嵌入式 vs 独立 worker 的架构差异、WorkflowEngine 编排与进度回调等能力边界说明、何时仍该用 Celery 的边界清单。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://task.helpenx.com/docs/why-not-celery.html">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>⏱️</text></svg>">
+  <style>
+:root{--brand:#0d9488;--brand-dark:#0f766e;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:var(--ink);background:#fff;line-height:1.75;font-size:16px}
+a{color:var(--brand);text-decoration:none}a:hover{color:var(--brand-dark);text-decoration:underline}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
+.topbar .brand .doc-badge{font-size:12px;font-weight:600;color:#fff;background:var(--brand);border-radius:6px;padding:2px 8px}
+.topbar nav{display:flex;gap:20px;font-size:14.5px}
+.topbar nav a{color:var(--muted);font-weight:500}
+.topbar nav a:hover{color:var(--brand)}
+.wrap{display:flex;max-width:1280px;margin:0 auto;padding:0 16px}
+.sidebar{width:264px;flex-shrink:0;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 40px 0;border-right:1px solid var(--line)}
+.sidebar .side-home{display:block;font-weight:600;color:var(--ink);margin-bottom:16px;font-size:15px}
+.sidebar .side-home:hover{color:var(--brand);text-decoration:none}
+.sidebar h4{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px;font-weight:600}
+.sidebar a{display:block;padding:5px 10px;border-radius:6px;font-size:14px;color:#334155;line-height:1.5}
+.sidebar a:hover{background:var(--bg);color:var(--brand);text-decoration:none}
+.sidebar a.active{background:var(--brand);color:#fff}
+.content{flex:1;min-width:0;padding:32px 20px 60px 36px;max-width:860px}
+.toc-mobile{display:none;margin-bottom:20px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.toc-mobile summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.toc-mobile a{display:block;padding:3px 0;font-size:14px}
+.article h1{font-size:1.9em;line-height:1.35;margin:.4em 0 .8em}
+.article h2{font-size:1.45em;margin:1.8em 0 .7em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
+.article h3{font-size:1.22em;margin:1.5em 0 .6em}
+.article h4{font-size:1.08em;margin:1.3em 0 .5em}
+.article p{margin:.85em 0}
+.article ul,.article ol{padding-left:1.6em;margin:.7em 0}
+.article li{margin:.35em 0}
+.article img{max-width:100%;height:auto;border-radius:8px}
+.article table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:.94em;display:block;overflow-x:auto}
+.article th,.article td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+.article th{background:var(--bg);font-weight:600}
+.article tr:nth-child(even) td{background:#fbfdff}
+.article blockquote{margin:1.1em 0;padding:.7em 1.1em;border-left:4px solid var(--brand);background:var(--bg);border-radius:0 8px 8px 0;color:#334155}
+.article blockquote p{margin:.3em 0}
+.article code:not(pre code){background:#eef2f7;color:#c7254e;padding:.15em .4em;border-radius:4px;font-size:.88em;word-break:break-word}
+.article pre.hljs{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0;line-height:1.6}
+.article pre.hljs code{background:none;padding:0;color:var(--ink);font-size:.9em;font-family:ui-monospace,SFMono-Regular,'Cascadia Code',Consolas,Menlo,monospace}
+.article pre.mermaid{text-align:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0}
+.article hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+.article .success,.article .tips,.article .warning,.article .danger{border-radius:8px;padding:.9em 1.1em;margin:1.1em 0;border:1px solid}
+.article .success{border-color:#a7f3d0;background:#ecfdf5}.article .success p:first-of-type::before{content:'✅ '}
+.article .tips{border-color:#bfdbfe;background:#eff6ff}.article .tips p:first-of-type::before{content:'💡 '}
+.article .warning{border-color:#fde68a;background:#fffbeb}.article .warning p:first-of-type::before{content:'⚠️ '}
+.article .danger{border-color:#fecaca;background:#fef2f2}.article .danger p:first-of-type::before{content:'🚫 '}
+.article .success>p:first-child,.article .tips>p:first-child,.article .warning>p:first-child,.article .danger>p:first-child{margin-top:0}
+.article .success>p:last-child,.article .tips>p:last-child,.article .warning>p:last-child,.article .danger>p:last-child{margin-bottom:0}
+.doc-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--muted)}
+.doc-meta .tag{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+.doc-nav{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
+.doc-nav a{font-weight:600}
+footer{border-top:1px solid var(--line);padding:22px 24px;text-align:center;color:var(--muted);font-size:13.5px}
+footer a{color:var(--muted);margin:0 10px}
+footer a:hover{color:var(--brand)}
+@media (max-width:960px){
+  .sidebar{display:none}
+  .toc-mobile{display:block}
+  .content{padding:20px 6px 50px}
+  .topbar nav{gap:12px}
+}
+</style>
+  <style>
+.hljs{color:#24292e;background:#f6f8fa}
+.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.constant_{color:#d73a49}
+.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}
+.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}
+.hljs-string,.hljs-meta .hljs-string,.hljs-regexp{color:#032f62}
+.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-tag,.hljs-subst,.hljs-symbol{color:#e36209}
+.hljs-built_in,.hljs-class .hljs-title{color:#e36209}
+.hljs-comment,.hljs-meta,.hljs-quote{color:#6a737d}
+.hljs-section{color:#005cc5;font-weight:700}
+.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">⏱️ NeoTask <span class="doc-badge">文档</span></a>
+    <nav>
+      <a href="https://task.helpenx.com" target="_blank" rel="noopener">产品官网</a>
+      <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+  <div class="wrap">
+    <aside class="sidebar">
+      <a class="side-home" href="index.html">⏱️ 分布式任务调度系统 · 文档中心</a>
+      <h4>技术分析</h4><a href="why-not-celery.html" class="active">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a>
+<h4>API 与配置参考</h4><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a>
+<h4>实现与源码分析</h4><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a>
+<h4>设计与方案</h4><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a>
+<h4>项目概览</h4><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a>
+<h4>入门与使用</h4><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a>
+<h4>性能与评测</h4><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a>
+<h4>实践与运维</h4><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a>
+<h4>架构与核心设计</h4><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a>
+<h4>版本与演进</h4><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a>
+    </aside>
+    <main class="content">
+      <details class="toc-mobile"><summary>📑 文档目录</summary><div><strong style="font-size:13px;color:var(--muted)">技术分析</strong><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a></div><div><strong style="font-size:13px;color:var(--muted)">API 与配置参考</strong><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a></div><div><strong style="font-size:13px;color:var(--muted)">实现与源码分析</strong><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a></div><div><strong style="font-size:13px;color:var(--muted)">设计与方案</strong><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a></div><div><strong style="font-size:13px;color:var(--muted)">项目概览</strong><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a></div><div><strong style="font-size:13px;color:var(--muted)">入门与使用</strong><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a></div><div><strong style="font-size:13px;color:var(--muted)">性能与评测</strong><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a></div><div><strong style="font-size:13px;color:var(--muted)">实践与运维</strong><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a></div><div><strong style="font-size:13px;color:var(--muted)">架构与核心设计</strong><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a></div><div><strong style="font-size:13px;color:var(--muted)">版本与演进</strong><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a></div></details>
+      <article class="article">
+        <div class="doc-meta"><span class="tag">NeoTask</span><span class="tag">更新 2026-04-21</span><a href="https://task.helpenx.com" target="_blank" rel="noopener">task.helpenx.com ↗</a></div>
+        <h1>为什么我不用 Celery 做轻量任务调度</h1>
+<p>📚 <a href="index.html">返回首页</a> | 📖 <a href="quickstart.html">快速上手</a> | 📘 <a href="api-reference.html">API 参考</a> | ⚙️ <a href="configuration.html">配置说明</a> | 🐙  <a href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a href="https://task.helpenx.com">NeoTask 官网</a></p>
+<blockquote>
+<p><strong>文档定位</strong>：这是一篇技术分析文档。它用于帮助读者理解项目与相关方案之间的边界，不把单一项目的实现经验包装成通用结论。<br>
+<strong>事实边界</strong>：分析文档：用于解释选型与实现边界，不属于 API/功能承诺。<br>
+<strong>权威来源</strong>：<a href="https://github.com/neopen/neotask">NeoTask 源码仓库</a>；涉及版本历史时，以仓库 Release / CHANGELOG 为准。<br>
+<strong>代码标记</strong>：如果正文出现“源码/实现”字样，表示对应代码路径可在仓库中核对；示例代码仅用于演示调用方式，不应理解为项目源码原样。<br>
+<strong>版本基线</strong>：本文对照 NeoTask <strong>v1.0.2</strong>（PyPI 发布版）与 Celery 公开生态常识；真实能力边界见第四节。<br>
+<strong>代码标注约定</strong>：🔧 表示<strong>真实源码</strong>（仓库原样摘录，附文件路径，可自行对照）；📝 表示<strong>示例代码</strong>（用法演示、改进建议或教学代码，不代表仓库实现）。</p>
+</blockquote>
+<h2>读完本文后，你应该知道什么</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>能够基于事实边界理解方案差异，而不是只看结论。</p>
+</li>
+<li class="lvl-2">
+<p>哪些内容属于当前版本的实现，哪些内容需要以仓库最新代码重新核对。</p>
+</li>
+<li class="lvl-2">
+<p>遇到行为与本文不一致时，应该优先检查版本、配置和源码，而不是继续沿用旧结论。</p>
+</li>
+</ul>
+<blockquote>
+<p>Celery 是 Python 生态最知名的分布式任务队列，成熟、庞大、生态完善；NeoTask 是一个 2026 年才发布 1.0 的轻量级 Python 异步任务池。这篇文章记录我从 Celery 迁移到 NeoTask 的实践对比。本文以 <a href="https://github.com/neopen/neotask">neotask-1.0.2</a> 源码与 PyPI wheel 元数据为准重写，Celery 侧描述基于其公开生态常识。</p>
+</blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>&quot;零依赖&quot;是 0.x 时代的旧闻，v1.0.2 有 2 个基础依赖</strong>：<code>aiosqlite</code>、<code>croniter</code> 在 1.0.2 的 wheel 元数据中无条件安装；<code>redis</code>、<code>psutil</code> 已回落到可选 extra（0.1.1/0.4.1 时代零硬依赖，1.0.1 曾一度四个全部转正，1.0.2 收敛回 2 个）。但 NeoTask 相对 Celery 的<strong>架构级轻量</strong>依然成立：它不需要单独部署 broker（RabbitMQ/Redis）与 result backend 两个外部服务，整个系统就是你的应用进程。</p>
+</li>
+<li class="lvl-3">
+<p><strong>三处能力边界要讲清</strong>：没有 <code>WorkflowEngine</code> DAG 编排（v1.5 路线图规划）、没有 <code>context.update_progress()</code> 进度回调（executor 只收一个 data 参数，<code>task.progress</code> 无发布方）、跨框架性能数字需自测（无官方对照基准）。详见第四节。</p>
+</li>
+<li class="lvl-3">
+<p><strong>选型分水岭不是&quot;快&quot;，是&quot;进程模型&quot;</strong>：Celery 是独立 worker 进程 + 外部消息代理；NeoTask 是嵌入应用进程的事件循环线程。要独立进程、多队列路由、语言异构 worker——选 Celery；要少一个服务、少一层运维、单进程内异步任务——NeoTask 合适得多。</p>
+</li>
+</ol>
+<hr>
+<h2>一、Celery 的痛点（为何我想换掉它）</h2>
+<h3>1.1 复杂的配置</h3>
+<p>让 Celery 真正可用，至少要配齐：broker（Redis/RabbitMQ）、result backend、worker 并发模型、序列化、时区、任务时限……这些配置项对中小项目大多不是&quot;能力&quot;，而是&quot;负担&quot;：</p>
+<p>📝 Celery 配置示例（节选真实常用项）：</p>
+<pre class="hljs"><code>celery.conf.update(
+    broker_url=<span class="hljs-string">&#x27;redis://localhost:6379/0&#x27;</span>,      <span class="hljs-comment"># 消息代理：需要单独部署</span>
+    result_backend=<span class="hljs-string">&#x27;redis://localhost:6379/1&#x27;</span>,  <span class="hljs-comment"># 结果后端：再占一个库</span>
+    task_serializer=<span class="hljs-string">&#x27;json&#x27;</span>,
+    accept_content=[<span class="hljs-string">&#x27;json&#x27;</span>],
+    timezone=<span class="hljs-string">&#x27;Asia/Shanghai&#x27;</span>,
+    enable_utc=<span class="hljs-literal">True</span>,
+    task_time_limit=<span class="hljs-number">30</span> * <span class="hljs-number">60</span>,
+    task_soft_time_limit=<span class="hljs-number">25</span> * <span class="hljs-number">60</span>,
+    worker_max_tasks_per_child=<span class="hljs-number">1000</span>,            <span class="hljs-comment"># 防内存泄漏的进程回收策略</span>
+    worker_prefetch_multiplier=<span class="hljs-number">1</span>,
+)
+</code></pre>
+<p>NeoTask 的对应物是配置对象 + 一行存储切换（以下三个工厂方法均为真实 API 🔧，见 <code>models/config.py:218-240</code>）：</p>
+<pre class="hljs"><code><span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskPool, TaskPoolConfig
+
+<span class="hljs-comment"># 开发环境 - 内存存储（零外部服务）</span>
+pool = TaskPool(executor=my_func, config=TaskPoolConfig.memory())
+
+<span class="hljs-comment"># 生产环境 - SQLite 持久化（单文件，无外部服务）</span>
+config = TaskPoolConfig.sqlite(<span class="hljs-string">&quot;tasks.db&quot;</span>)
+pool = TaskPool(executor=my_func, config=config)
+
+<span class="hljs-comment"># 分布式环境 - Redis（唯一需要外部服务的形态）</span>
+config = TaskPoolConfig.redis(<span class="hljs-string">&quot;redis://localhost:6379&quot;</span>)
+pool = TaskPool(executor=my_func, config=config)
+</code></pre>
+<p>对比要点：Celery 的复杂度来自<strong>架构本身</strong>（独立 worker + broker + backend 三件套），不是配置写法问题；NeoTask 把&quot;开发/生产&quot;差异压缩到一个存储参数，因为它的架构就是&quot;库&quot;。</p>
+<h3>1.2 依赖与部署链</h3>
+<p>Celery 的依赖树：<code>celery</code> 依赖 <code>kombu</code>（消息抽象）与 <code>billiard</code>（进程池）、<code>vine</code> 等；<code>kombu</code> 再依赖 <code>amqp</code> 等传输实现；加上 broker 本身与 result backend——<strong>一套部署涉及 1 个应用依赖树 + 2 个外部服务</strong>。</p>
+<p>NeoTask 的依赖清单需要分版本说（🔧 实证来自各版本 wheel 的 METADATA）：</p>
+<table>
+<thead>
+<tr>
+<th>版本</th>
+<th>硬依赖（无条件安装）</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0.1.1（2026-04）</td>
+<td><strong>无</strong></td>
+<td>&quot;零依赖核心&quot;叙事的历史原型；redis 也是 <code>extra</code></td>
+</tr>
+<tr>
+<td>0.4.1（2026-05）</td>
+<td><strong>无</strong></td>
+<td>依旧零硬依赖</td>
+</tr>
+<tr>
+<td>1.0.1（2026-08）</td>
+<td><code>aiosqlite&gt;=0.19</code>、<code>redis&gt;=4.5</code>、<code>psutil&gt;=5.9</code>、<code>croniter&gt;=1.0</code></td>
+<td>一度<strong>四个全部转正</strong>；<code>ui</code>（fastapi/uvicorn 等）仍为 extra</td>
+</tr>
+<tr>
+<td>1.0.2（2026-09）</td>
+<td><code>aiosqlite&gt;=0.19</code>、<code>croniter&gt;=1.0</code></td>
+<td><strong>收敛回 2 个</strong>；redis/psutil 移回可选 extra（<code>neotask[redis]</code>、<code>neotask[full]</code>）</td>
+</tr>
+</tbody>
+</table>
+<p>所以准确的表述是：<strong>v1.0.2 起 <code>pip install neotask</code> 只无条件安装 2 个库（aiosqlite、croniter），且依然不需要任何外部服务进程</strong>（SQLite/内存形态下）。redis 与 psutil 在源码中都带 import 守卫（redis 走 <code>HAS_REDIS</code> 标志，psutil 在函数内惰性导入），不装也能正常 <code>import neotask</code>，因此归入 extra 不会让用户踩 ImportError。选型时按&quot;外部服务数&quot;而不是&quot;pip 包数&quot;衡量轻量，结论不变：<strong>Celery = 至少 2 个外部服务，NeoTask = 0（SQLite 形态）</strong>。</p>
+<pre class="hljs"><code>pip install neotask            <span class="hljs-comment"># v1.0.2：自动带 aiosqlite/croniter</span>
+pip install <span class="hljs-string">&quot;neotask[redis]&quot;</span>  <span class="hljs-comment"># 加装 Redis 分布式支持（redis）</span>
+pip install <span class="hljs-string">&quot;neotask[ui]&quot;</span>     <span class="hljs-comment"># 加装 Web UI（fastapi/uvicorn/jinja2 等）</span>
+</code></pre>
+<h3>1.3 开发和调试体验</h3>
+<p>Celery 任务失败时，堆栈经常裹着 kombu/worker 的多层包装；本地调试要么起 worker 进程，要么 <code>task.apply()</code> 绕过分发层——后者又测不到真实路径。这是独立 worker 架构的固有摩擦。</p>
+<p>NeoTask 的任务函数就是普通 async 函数，运行在应用进程内的后台线程事件循环里，IDE 断点直接命中：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 任务函数可直接单步调试</span>
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">my_executor</span>(<span class="hljs-params">data: <span class="hljs-built_in">dict</span></span>) -&gt; <span class="hljs-built_in">dict</span>:
+    result = <span class="hljs-keyword">await</span> process_data(data)   <span class="hljs-comment"># 断点在这里命中</span>
+    <span class="hljs-keyword">return</span> result
+
+pool = TaskPool(executor=my_executor)
+pool.start()
+task_id = pool.submit({<span class="hljs-string">&quot;key&quot;</span>: <span class="hljs-string">&quot;value&quot;</span>})
+result = pool.wait_for_result(task_id)  <span class="hljs-comment"># 同步等待，超时默认 300s</span>
+</code></pre>
+<p>需要提醒的调试差异：任务执行在<strong>后台守护线程的事件循环</strong>里（<code>pool.start()</code> 才创建循环线程并按序拉起队列/Worker/心跳等组件，🔧 task_pool.py:310-350），不是主线程——单步调试没问题，但 <code>asyncio</code> 上下文（如当前 loop 的 Task 对象）与主线程不同；同步函数会被自动包装（task_pool.py:223-226），包装协程若在默认 ASYNC 模式下运行同步阻塞代码会卡死整个循环，这类坑见<a href="best-practices.html">最佳实践</a>排障手册。</p>
+<h3>1.4 资源占用与进程模型</h3>
+<p>Celery 默认 prefork 池：每个 worker 进程 fork 多个子进程，内存占用与任务量呈台阶式上涨；&quot;worker_max_tasks_per_child&quot;这类配置就是在给进程模型补漏。NeoTask 是单进程模型（事件循环线程 + 可选 ThreadPoolExecutor 执行器），内存增量以 MB 计，能与 FastAPI 等 Web 服务共存于同一进程：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 同进程运行 Web 服务 + 任务调度（NeoTask 的典型形态）</span>
+<span class="hljs-keyword">from</span> fastapi <span class="hljs-keyword">import</span> FastAPI
+<span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskPool
+
+app = FastAPI()
+pool = TaskPool(executor=background_task)
+pool.start()  <span class="hljs-comment"># 后台守护线程，不阻塞</span>
+
+<span class="hljs-meta">@app.post(<span class="hljs-params"><span class="hljs-string">&quot;/api/submit&quot;</span></span>)</span>
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">submit_task</span>(<span class="hljs-params">data: <span class="hljs-built_in">dict</span></span>):
+    task_id = <span class="hljs-keyword">await</span> pool.submit_async(data)   <span class="hljs-comment"># 🔧 submit_async 是真实 API（task_pool.py:488）</span>
+    <span class="hljs-keyword">return</span> {<span class="hljs-string">&quot;task_id&quot;</span>: task_id}
+</code></pre>
+<hr>
+<h2>二、NeoTask 的真实优势</h2>
+<h3>2.1 极简但真实的 API</h3>
+<p>以下 API 均已在 v1.0.2 源码中逐一核实（TaskPool 方法全集见 <code>api/task_pool.py:310-839</code>）：</p>
+<pre class="hljs"><code><span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskPool, TaskScheduler
+
+pool = TaskPool(executor=my_async_function)
+pool.start()
+
+<span class="hljs-comment"># 提交：同步 / 异步 / 批量 / 带优先级与延时</span>
+task_id = pool.submit({<span class="hljs-string">&quot;data&quot;</span>: <span class="hljs-string">&quot;value&quot;</span>})
+task_id = <span class="hljs-keyword">await</span> pool.submit_async({<span class="hljs-string">&quot;data&quot;</span>: <span class="hljs-string">&quot;value&quot;</span>})
+ids = pool.submit_batch([{<span class="hljs-string">&quot;n&quot;</span>: <span class="hljs-number">1</span>}, {<span class="hljs-string">&quot;n&quot;</span>: <span class="hljs-number">2</span>}], priority=TaskPriority.HIGH)
+task_id = pool.submit({<span class="hljs-string">&quot;data&quot;</span>: <span class="hljs-string">&quot;value&quot;</span>}, delay=<span class="hljs-number">60</span>, ttl=<span class="hljs-number">3600</span>)
+
+<span class="hljs-comment"># 查询与等待</span>
+result = pool.wait_for_result(task_id)          <span class="hljs-comment"># 同步阻塞等待（默认超时 300s）</span>
+result = <span class="hljs-keyword">await</span> pool.wait_for_result_async(task_id)
+status = pool.get_status(task_id)
+stats = pool.get_stats()
+
+<span class="hljs-comment"># 定时任务：TaskScheduler 门面</span>
+scheduler = TaskScheduler(executor=my_function)
+scheduler.submit_delayed({<span class="hljs-string">&quot;data&quot;</span>: <span class="hljs-string">&quot;value&quot;</span>}, delay_seconds=<span class="hljs-number">60</span>)      <span class="hljs-comment"># 延时单次</span>
+scheduler.submit_interval({<span class="hljs-string">&quot;data&quot;</span>: <span class="hljs-string">&quot;value&quot;</span>}, interval_seconds=<span class="hljs-number">300</span>) <span class="hljs-comment"># 周期</span>
+scheduler.submit_cron({<span class="hljs-string">&quot;data&quot;</span>: <span class="hljs-string">&quot;value&quot;</span>}, <span class="hljs-string">&quot;0 9 * * *&quot;</span>)              <span class="hljs-comment"># Cron</span>
+</code></pre>
+<p>优先级是真实内置的：<code>TaskPriority</code> 四级（CRITICAL/HIGH/NORMAL/LOW，🔧 <code>models/task.py</code>），入队即按 (priority, 序号) 排序；<code>TaskScheduler</code> 的 <code>executor</code> 参数与三个 submit 方法均为真实 API（🔧 <code>api/task_scheduler.py</code>）。Cron 解析依赖 croniter（1.0.2 基础依赖之一），非法表达式抛 ValueError。</p>
+<h3>2.2 开箱特性 vs 需要配装的特性</h3>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>Celery</th>
+<th>NeoTask（v1.0.2）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>优先级队列</td>
+<td>多队列 + 路由配置</td>
+<td>内置四级优先级，<code>submit(priority=...)</code></td>
+</tr>
+<tr>
+<td>延时任务</td>
+<td>countdown/eta</td>
+<td><code>submit(delay=...)</code> / <code>submit_delayed</code></td>
+</tr>
+<tr>
+<td>周期任务</td>
+<td>需要额外进程 celery beat</td>
+<td>内置 <code>PeriodicTaskManager</code>（内存注册表）</td>
+</tr>
+<tr>
+<td>Cron 表达式</td>
+<td>自带 <code>celery.schedules.crontab</code>（无需 croniter）</td>
+<td>依赖 croniter 解析（v1.0.2 基础依赖）</td>
+</tr>
+<tr>
+<td>任务重试</td>
+<td>装饰器/绑定任务显式 retry</td>
+<td>执行失败自动线性退避重试</td>
+</tr>
+<tr>
+<td>同步等待</td>
+<td>需自建轮询/AsyncResult.get</td>
+<td><code>wait_for_result</code> / <code>wait_all</code></td>
+</tr>
+<tr>
+<td>结果存储</td>
+<td>result backend（Redis/DB）</td>
+<td>存储层即结果层（同表 result 列）</td>
+</tr>
+<tr>
+<td>Web 监控</td>
+<td>Flower（独立服务）</td>
+<td><code>WebUIServer</code> 组件（extra ui，<strong>独立装配</strong>，TaskPool 不自动挂载）</td>
+</tr>
+<tr>
+<td>失败投递</td>
+<td>任务死信由 broker/插件承担</td>
+<td><code>DeadLetterQueue</code> 内置：重试超限自动投递（Redis 模式，默认启用，保留 7 天，支持 <code>replay</code>）</td>
+</tr>
+</tbody>
+</table>
+<p>注意 Web UI 一行：v1.0.2 的 Web UI 是&quot;组件存在、独立装配&quot;（详见<a href="architecture.html">架构设计</a>第三节）——把它当&quot;可选零件&quot;而不是&quot;开箱功能&quot;；死信则已默认接线，开箱可用。</p>
+<h3>2.3 存储即结果：少一个 backend</h3>
+<p>Celery 需要 result backend 存结果，需要单独选型与维护。NeoTask 的任务（含 data/status/result/error/progress 字段）与队列都在同一存储抽象内：memory 是 dict、SQLite 是单文件 14 列表、Redis 是 SET JSON + 状态索引（🔧 <code>storage/sqlite.py:44-48</code>、<code>storage/redis.py:39-51</code>）。<strong>结果查询与任务状态查询是同一个 API</strong>（<code>get_task</code>/<code>wait_for_result</code>），没有第二套存储要运维。</p>
+<hr>
+<h2>三、迁移实践</h2>
+<h3>3.1 任务定义迁移</h3>
+<p>📝 Celery 侧（绑定任务 + 显式重试）：</p>
+<pre class="hljs"><code><span class="hljs-keyword">from</span> celery <span class="hljs-keyword">import</span> Celery
+app = Celery(<span class="hljs-string">&#x27;tasks&#x27;</span>, broker=<span class="hljs-string">&#x27;redis://localhost:6379&#x27;</span>)
+
+<span class="hljs-meta">@app.task(<span class="hljs-params">bind=<span class="hljs-literal">True</span>, max_retries=<span class="hljs-number">3</span></span>)</span>
+<span class="hljs-keyword">def</span> <span class="hljs-title function_">process_order</span>(<span class="hljs-params">self, order_id</span>):
+    <span class="hljs-keyword">try</span>:
+        <span class="hljs-keyword">return</span> {<span class="hljs-string">&quot;status&quot;</span>: <span class="hljs-string">&quot;success&quot;</span>}
+    <span class="hljs-keyword">except</span> Exception <span class="hljs-keyword">as</span> e:
+        <span class="hljs-variable language_">self</span>.retry(exc=e, countdown=<span class="hljs-number">60</span>)  <span class="hljs-comment"># 手动控制退避</span>
+</code></pre>
+<p>📝 NeoTask 侧（异常即重试，策略集中在配置）：</p>
+<pre class="hljs"><code><span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskPool, TaskPoolConfig
+
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">process_order</span>(<span class="hljs-params">data: <span class="hljs-built_in">dict</span></span>) -&gt; <span class="hljs-built_in">dict</span>:
+    <span class="hljs-keyword">return</span> {<span class="hljs-string">&quot;status&quot;</span>: <span class="hljs-string">&quot;success&quot;</span>}
+
+config = TaskPoolConfig.sqlite(<span class="hljs-string">&quot;tasks.db&quot;</span>)
+pool = TaskPool(executor=process_order, config=config)
+pool.start()
+task_id = pool.submit({<span class="hljs-string">&quot;order_id&quot;</span>: <span class="hljs-number">123</span>})
+</code></pre>
+<p>语义差异要讲清楚：Celery 的重试时机由任务代码里的 <code>self.retry()</code> 决定（粒度细）；NeoTask 是<strong>执行抛异常自动重试</strong>（max_retries 内、线性退避 <code>delay = retry_delay × 新次数</code>，🔧 <code>worker/pool.py:400</code>），任务内无法自主控制&quot;何时重试&quot;。想在 NeoTask 里模拟&quot;业务判定重试&quot;，需要自行抛异常或返回错误码由外层决策。</p>
+<h3>3.2 定时任务迁移</h3>
+<p>📝 Celery Beat（独立 beat 进程 + 配置声明）：</p>
+<pre class="hljs"><code><span class="hljs-keyword">from</span> celery.schedules <span class="hljs-keyword">import</span> crontab
+app.conf.beat_schedule = {
+    <span class="hljs-string">&#x27;daily-report&#x27;</span>: {<span class="hljs-string">&#x27;task&#x27;</span>: <span class="hljs-string">&#x27;tasks.daily_report&#x27;</span>, <span class="hljs-string">&#x27;schedule&#x27;</span>: crontab(hour=<span class="hljs-number">9</span>, minute=<span class="hljs-number">0</span>)},
+}
+</code></pre>
+<p>📝 NeoTask（代码注册，无独立进程）：</p>
+<pre class="hljs"><code>scheduler = TaskScheduler(executor=daily_report)
+scheduler.start()
+scheduler.submit_cron({<span class="hljs-string">&quot;date&quot;</span>: today}, <span class="hljs-string">&quot;0 9 * * *&quot;</span>)
+</code></pre>
+<p>两条关键差异：① Celery beat 需要单独进程；NeoTask 的周期任务跑在调度器自己的线程里。② <strong>NeoTask 周期任务注册表是纯内存的</strong>——进程重启后所有 submit_interval/submit_cron 注册丢失且无任何持久化（1s 扫描驱动，🔧 task_scheduler.py）；Celery beat 的调度表在持久化存储（beat 默认 sqlite/文件）中。<strong>生产环境用 NeoTask 做周期任务，必须把&quot;注册&quot;放进启动流程</strong>（如应用初始化时重新注册），或考虑外部调度器。</p>
+<hr>
+<h2>四、三处能力边界与替代方案</h2>
+<h3>4.1 任务编排 / WorkflowEngine / DAG——v1.5 路线图，尚未实现</h3>
+<p>NeoTask 没有 <code>WorkflowEngine</code> 类，也没有任何编排/DAG 模块——<code>from neotask import WorkflowEngine</code> 与 <code>@workflow.task(depends_on=...)</code> 都不存在，任务编排是 v1.5 的规划能力。NeoTask 的真实能力只有&quot;单任务提交 + 周期/延时调度&quot;，任务之间没有依赖图、没有上下文传递、没有条件分支（<a href="core-features.html">核心功能</a>第一节有同样说明）。</p>
+<p>需要编排时的替代方案：① 业务层自己串联——任务 A 的 executor 内提交任务 B（拿到 task_id 后 <code>pool.submit</code>），配合 <code>wait_for_result</code> 做门控；② 状态机放在业务数据里，任务执行时检查前置状态；③ 编排需求复杂时选专用工作流引擎（如 Prefect/Temporal），任务队列不该硬扛 DAG。</p>
+<h3>4.2 进度回调：没有 context 参数，<code>task.progress</code> 也未接线</h3>
+<p>NeoTask 的 executor 只收一个 data 参数（🔧 <code>worker/pool.py:308</code>：<code>result = await self._executor.execute(task.data)</code>），<strong>不存在 <code>context</code> 参数</strong>，也没有 <code>context.update_progress()</code>。进度链路的现状是<strong>订阅侧齐备、发布侧缺失</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>数据面：Task 模型有 <code>progress/progress_message</code> 字段（<code>models/task.py:53-54</code>），SQLite 表也有这两列（<code>storage/sqlite.py:46-47</code>）；</p>
+</li>
+<li class="lvl-2">
+<p>订阅面：<code>TaskPool.on_progress(handler)</code> 注册器存在（<code>task_pool.py:833-835</code>），会订阅 <code>task.progress</code> 事件；</p>
+</li>
+<li class="lvl-2">
+<p>发布面：<code>WorkerPool._update_task_progress()</code> 方法存在（<code>pool.py:348-370</code>），但<strong>全库没有任何调用方</strong>，事件永远不会发出；存储抽象 <code>TaskRepository</code> 也没有 <code>update_progress</code> 方法。</p>
+</li>
+</ul>
+<p>即：<strong>订阅器、字段、方法都在，唯独没有一行代码触发它</strong>。需要进度上报时的替代方案：① 任务把进度写进业务库（executor 内直接操作业务表），Web 端查业务库；② 任务分片提交——把&quot;100 条处理&quot;拆成 100 个任务，用 <code>get_stats()</code>/队列水位算整体进度；③ 自建事件：executor 内调用你自己的回调函数，不要依赖框架层。</p>
+<h3>4.3 跨框架性能数字——没有官方对照基准</h3>
+<p>&quot;Celery 1-2ms vs NeoTask 0.3-0.5ms 提交延迟、5000/s vs 10000/s 吞吐&quot;这类精确数字<strong>双方均无公开对照基准可考</strong>，属于不可复现的营销数据。可靠的基准信息：NeoTask 官方仓库提供 <code>tests/benchmark</code> 脚本与文档报告，解读见<a href="benchmarks.html">性能基准</a>一文（结论包括：端到端吞吐远低于队列裸测、Windows 定时器粒度会拖垮持续负载等）。Celery 侧请以官方文档与自建压测为准。<strong>任何选型文章里的跨框架数字，动手前先自己跑一遍</strong>。</p>
+<hr>
+<h2>五、何时仍应使用 Celery（真实边界清单）</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>大规模生产与生态</strong>：Celery 十年级打磨，任务量千万级/天的部署案例与调优经验丰富；NeoTask 1.x 仅发布数月，生态与大规模生产案例远不及 Celery——核心业务建议先充分验证再上（回收与死信链路已就位，见<a href="failure-recovery.html">故障恢复</a>）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>多队列与复杂路由</strong>：Celery 按任务类型/参数路由到不同队列、不同 worker（优先级隔离、队列拆分、topic 路由）；NeoTask 只有一个 <code>PriorityQueue</code> + 一个 <code>DelayedQueue</code>，无队列级路由。</p>
+</li>
+<li class="lvl-2">
+<p><strong>语言异构</strong>：Celery 生态有跨语言 worker/消息协议支持；NeoTask 是纯 Python 单进程模型，worker 只能是你的 Python 进程。</p>
+</li>
+<li class="lvl-2">
+<p><strong>需要独立进程与故障隔离</strong>：Celery worker 与业务进程隔离，业务 OOM 不影响队列消费；NeoTask 嵌入应用进程，<strong>你的进程挂了任务队列跟着挂</strong>（Redis 形态下任务仍在库里，但要等进程恢复后重连消费）。</p>
+</li>
+</ul>
+<p>反过来，NeoTask 赢的场景：中小项目的异步化改造、FastAPI/Flask 同进程任务、不需要独立运维的定时任务、教学与原型验证——这些场景 Celery 的&quot;三件套架构&quot;确实过剩。</p>
+<hr>
+<h2>六、为什么这么设计（选型决策解码）</h2>
+<ol>
+<li class="lvl-3">
+<p><strong>嵌入式 vs 独立 worker 是根本分岔</strong>：Celery 把任务系统做成独立部署单元（多进程、可伸缩、可跨语言），换来的是部署、调试、运维三重复杂度；NeoTask 把任务系统做成 <code>TaskPool</code> 对象（构造即装配、start 即运行、shutdown 即回收），换来的是&quot;少一个服务&quot;，代价是伸缩上限与应用进程绑定。<strong>选型先选进程模型，再谈功能清单</strong>。</p>
+</li>
+<li class="lvl-3">
+<p><strong>NeoTask 用&quot;存储抽象&quot;吸收复杂度</strong>：memory/sqlite/redis 三形态共享同一套 TaskRepository/QueueRepository 接口（<a href="architecture.html">架构设计</a>第四节），所以&quot;开发到生产&quot;的切换只是一行配置——这正是嵌入式组件该有的交付形态。</p>
+</li>
+<li class="lvl-3">
+<p><strong>诚实的能力边界比夸大更有价值</strong>：v1.0.2 的绝大多数组件都已接线（死信、时间轮、回收、心跳），仍有一处链路未通——<code>task.progress</code> 事件没有发布方。评估任何新框架时，把&quot;文档功能清单&quot;与&quot;源码接线清单&quot;分开核对，再决定要不要为它迁移。</p>
+</li>
+</ol>
+<hr>
+<h2>版本与验证说明</h2>
+<p>本文属于项目文档而不是永久不变的 API 契约。以下情况发生时，应重新核对源码或发布说明：</p>
+<ol>
+<li class="lvl-3">
+<p>项目版本升级，尤其是公开 API、配置模型、存储实现和工作流发生变化；</p>
+</li>
+<li class="lvl-3">
+<p>本文中的默认值、性能数据或示例依赖外部服务版本；</p>
+</li>
+<li class="lvl-3">
+<p>运行环境与本文案例不同，例如 Python 版本、Redis/数据库版本、模型供应商或操作系统不同。</p>
+</li>
+</ol>
+<p>如果你要把本文内容用于生产环境，请优先使用仓库当前版本的 README、源码、测试和 Release 记录进行最终确认。</p>
+<h2>总结</h2>
+<p>Celery 的复杂度来自架构本身——它是一款为&quot;大规模独立部署&quot;设计的分布式任务平台；NeoTask 是一款为&quot;嵌入应用进程的轻量调度&quot;设计的任务池。如果你只需要在现有 Python 服务里跑异步/延时/周期任务，不希望为 broker 和 backend 各养一个服务，NeoTask 的 v1.0.2 值得一试（先读<a href="quickstart.html">快速上手</a>，再对照<a href="best-practices.html">最佳实践</a>排雷）。</p>
+<p>如果你要的是千万级任务、多队列路由、跨语言 worker 或独立进程的故障隔离，Celery 依然是对的答案。<strong>选型前把 API 示例与源码接线逐条核对——本文第四节列出的那三处能力边界，正是最容易被对比文章含糊带过的地方。</strong></p>
+<hr>
+<p><a href="index.html">返回首页</a></p>
+<p><strong>入门与参考</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="quickstart.html">快速上手</a> - 5 分钟入门</p>
+</li>
+<li class="lvl-2">
+<p><a href="api-reference.html">API 参考</a> - 完整 API 文档</p>
+</li>
+<li class="lvl-2">
+<p><a href="configuration.html">配置说明</a> - 配置参数详解</p>
+</li>
+<li class="lvl-2">
+<p><a href="best-practices.html">最佳实践</a> - 生产环境建议</p>
+</li>
+</ul>
+<p><strong>架构与设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="architecture.html">架构设计</a> - 整体架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="core-features.html">核心实现</a> - 功能设计</p>
+</li>
+<li class="lvl-2">
+<p><a href="evolution.html">版本演进</a> - 演进历程</p>
+</li>
+</ul>
+<p><strong>分布式核心</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="decentralization.html">去中心化</a> - 对等架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="failure-recovery.html">故障恢复</a> - 高可用保障</p>
+</li>
+<li class="lvl-2">
+<p><a href="prefetch.html">预取机制</a> - 高吞吐性能</p>
+</li>
+<li class="lvl-2">
+<p><a href="distributed-lock.html">分布式锁</a> - 并发控制</p>
+</li>
+</ul>
+<p><strong>存储与监控</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="persistence.html">持久化</a> - 多存储后端</p>
+</li>
+<li class="lvl-2">
+<p><a href="priority-queue.html">优先级</a> - 优先级队列</p>
+</li>
+<li class="lvl-2">
+<p><a href="delayed-tasks.html">延时任务</a> - 时间轮 + Redis 持久化</p>
+</li>
+<li class="lvl-2">
+<p><a href="monitoring.html">节点监控</a> - 可观测性</p>
+</li>
+</ul>
+<p><strong>资源</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/neotask">GitHub</a> - 源代码仓库</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://task.helpenx.com">NeoTask 官网</a> - 官方网站</p>
+</li>
+</ul>
+
+      </article>
+    </main>
+  </div>
+  <footer>
+    <a href="https://task.helpenx.com" target="_blank" rel="noopener">NeoTask 官网</a>·
+    <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>·
+    <a href="index.html">文档中心</a>
+    <div style="margin-top:6px">© 2026 helpenx.com · 文档基线以文中标注版本对应的源码为准</div>
+  </footer>
+</body>
+</html>

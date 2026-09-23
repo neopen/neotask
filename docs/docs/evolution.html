@@ -1,0 +1,2869 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>从单机任务池到分布式高可用：NeoTask 版本演进与关键设计决策 · NeoTask 文档</title>
+  <meta name="description" content="阐述 NeoTask 演进史：0.1.0 空壳包、0.1.1 首个完整版、0.2.0 高可用组件落地、0.3.0 调度子系统重构、0.4.x 分布式包与选举器七日夭折、1.0.0 死信队列落地、1.0.1 行为修复版、1.0.2 分布式链路修复与依赖收敛；v1.5 任务编排与 v2.0 企业级仍是路线图规划，尚未实现。">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://task.helpenx.com/docs/evolution.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:title" content="从单机任务池到分布式高可用：NeoTask 版本演进与关键设计决策">
+  <meta property="og:description" content="阐述 NeoTask 演进史：0.1.0 空壳包、0.1.1 首个完整版、0.2.0 高可用组件落地、0.3.0 调度子系统重构、0.4.x 分布式包与选举器七日夭折、1.0.0 死信队列落地、1.0.1 行为修复版、1.0.2 分布式链路修复与依赖收敛；v1.5 任务编排与 v2.0 企业级仍是路线图规划，尚未实现。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://task.helpenx.com/docs/evolution.html">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>⏱️</text></svg>">
+  <style>
+:root{--brand:#0d9488;--brand-dark:#0f766e;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:var(--ink);background:#fff;line-height:1.75;font-size:16px}
+a{color:var(--brand);text-decoration:none}a:hover{color:var(--brand-dark);text-decoration:underline}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
+.topbar .brand .doc-badge{font-size:12px;font-weight:600;color:#fff;background:var(--brand);border-radius:6px;padding:2px 8px}
+.topbar nav{display:flex;gap:20px;font-size:14.5px}
+.topbar nav a{color:var(--muted);font-weight:500}
+.topbar nav a:hover{color:var(--brand)}
+.wrap{display:flex;max-width:1280px;margin:0 auto;padding:0 16px}
+.sidebar{width:264px;flex-shrink:0;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 40px 0;border-right:1px solid var(--line)}
+.sidebar .side-home{display:block;font-weight:600;color:var(--ink);margin-bottom:16px;font-size:15px}
+.sidebar .side-home:hover{color:var(--brand);text-decoration:none}
+.sidebar h4{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px;font-weight:600}
+.sidebar a{display:block;padding:5px 10px;border-radius:6px;font-size:14px;color:#334155;line-height:1.5}
+.sidebar a:hover{background:var(--bg);color:var(--brand);text-decoration:none}
+.sidebar a.active{background:var(--brand);color:#fff}
+.content{flex:1;min-width:0;padding:32px 20px 60px 36px;max-width:860px}
+.toc-mobile{display:none;margin-bottom:20px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.toc-mobile summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.toc-mobile a{display:block;padding:3px 0;font-size:14px}
+.article h1{font-size:1.9em;line-height:1.35;margin:.4em 0 .8em}
+.article h2{font-size:1.45em;margin:1.8em 0 .7em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
+.article h3{font-size:1.22em;margin:1.5em 0 .6em}
+.article h4{font-size:1.08em;margin:1.3em 0 .5em}
+.article p{margin:.85em 0}
+.article ul,.article ol{padding-left:1.6em;margin:.7em 0}
+.article li{margin:.35em 0}
+.article img{max-width:100%;height:auto;border-radius:8px}
+.article table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:.94em;display:block;overflow-x:auto}
+.article th,.article td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+.article th{background:var(--bg);font-weight:600}
+.article tr:nth-child(even) td{background:#fbfdff}
+.article blockquote{margin:1.1em 0;padding:.7em 1.1em;border-left:4px solid var(--brand);background:var(--bg);border-radius:0 8px 8px 0;color:#334155}
+.article blockquote p{margin:.3em 0}
+.article code:not(pre code){background:#eef2f7;color:#c7254e;padding:.15em .4em;border-radius:4px;font-size:.88em;word-break:break-word}
+.article pre.hljs{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0;line-height:1.6}
+.article pre.hljs code{background:none;padding:0;color:var(--ink);font-size:.9em;font-family:ui-monospace,SFMono-Regular,'Cascadia Code',Consolas,Menlo,monospace}
+.article pre.mermaid{text-align:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0}
+.article hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+.article .success,.article .tips,.article .warning,.article .danger{border-radius:8px;padding:.9em 1.1em;margin:1.1em 0;border:1px solid}
+.article .success{border-color:#a7f3d0;background:#ecfdf5}.article .success p:first-of-type::before{content:'✅ '}
+.article .tips{border-color:#bfdbfe;background:#eff6ff}.article .tips p:first-of-type::before{content:'💡 '}
+.article .warning{border-color:#fde68a;background:#fffbeb}.article .warning p:first-of-type::before{content:'⚠️ '}
+.article .danger{border-color:#fecaca;background:#fef2f2}.article .danger p:first-of-type::before{content:'🚫 '}
+.article .success>p:first-child,.article .tips>p:first-child,.article .warning>p:first-child,.article .danger>p:first-child{margin-top:0}
+.article .success>p:last-child,.article .tips>p:last-child,.article .warning>p:last-child,.article .danger>p:last-child{margin-bottom:0}
+.doc-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--muted)}
+.doc-meta .tag{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+.doc-nav{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
+.doc-nav a{font-weight:600}
+footer{border-top:1px solid var(--line);padding:22px 24px;text-align:center;color:var(--muted);font-size:13.5px}
+footer a{color:var(--muted);margin:0 10px}
+footer a:hover{color:var(--brand)}
+@media (max-width:960px){
+  .sidebar{display:none}
+  .toc-mobile{display:block}
+  .content{padding:20px 6px 50px}
+  .topbar nav{gap:12px}
+}
+</style>
+  <style>
+.hljs{color:#24292e;background:#f6f8fa}
+.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.constant_{color:#d73a49}
+.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}
+.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}
+.hljs-string,.hljs-meta .hljs-string,.hljs-regexp{color:#032f62}
+.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-tag,.hljs-subst,.hljs-symbol{color:#e36209}
+.hljs-built_in,.hljs-class .hljs-title{color:#e36209}
+.hljs-comment,.hljs-meta,.hljs-quote{color:#6a737d}
+.hljs-section{color:#005cc5;font-weight:700}
+.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">⏱️ NeoTask <span class="doc-badge">文档</span></a>
+    <nav>
+      <a href="https://task.helpenx.com" target="_blank" rel="noopener">产品官网</a>
+      <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+  <div class="wrap">
+    <aside class="sidebar">
+      <a class="side-home" href="index.html">⏱️ 分布式任务调度系统 · 文档中心</a>
+      <h4>技术分析</h4><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a>
+<h4>API 与配置参考</h4><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a>
+<h4>实现与源码分析</h4><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a>
+<h4>设计与方案</h4><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a>
+<h4>项目概览</h4><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a>
+<h4>入门与使用</h4><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a>
+<h4>性能与评测</h4><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a>
+<h4>实践与运维</h4><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a>
+<h4>架构与核心设计</h4><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a>
+<h4>版本与演进</h4><a href="evolution.html" class="active">分布式任务调度（NeoTask）版本演进过程</a>
+    </aside>
+    <main class="content">
+      <details class="toc-mobile"><summary>📑 文档目录</summary><div><strong style="font-size:13px;color:var(--muted)">技术分析</strong><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a></div><div><strong style="font-size:13px;color:var(--muted)">API 与配置参考</strong><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a></div><div><strong style="font-size:13px;color:var(--muted)">实现与源码分析</strong><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a></div><div><strong style="font-size:13px;color:var(--muted)">设计与方案</strong><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a></div><div><strong style="font-size:13px;color:var(--muted)">项目概览</strong><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a></div><div><strong style="font-size:13px;color:var(--muted)">入门与使用</strong><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a></div><div><strong style="font-size:13px;color:var(--muted)">性能与评测</strong><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a></div><div><strong style="font-size:13px;color:var(--muted)">实践与运维</strong><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a></div><div><strong style="font-size:13px;color:var(--muted)">架构与核心设计</strong><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a></div><div><strong style="font-size:13px;color:var(--muted)">版本与演进</strong><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a></div></details>
+      <article class="article">
+        <div class="doc-meta"><span class="tag">NeoTask</span><span class="tag">更新 2026-03-29</span><a href="https://task.helpenx.com" target="_blank" rel="noopener">task.helpenx.com ↗</a></div>
+        <h1>分布式任务调度（NeoTask）版本演进</h1>
+<p>在微服务和分布式系统日益普及的今天，任务调度框架成为基础设施的重要组成部分。本文记录了从零开始设计和实现一个通用分布式任务池（NeoTask）的完整历程，包括架构设计、技术选型、演进路径以及关键问题的解决方案。希望能为正在构建类似系统的开发者提供参考。<br>
+📚 <a href="index.html">返回首页</a> | 📖 <a href="quickstart.html">快速上手</a> | 📘 <a href="api-reference.html">API 参考</a> | ⚙️ <a href="configuration.html">配置说明</a> | 🐙  <a href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a href="https://task.helpenx.com">NeoTask 官网</a></p>
+<blockquote>
+<p><strong>文档定位</strong>：这是一篇版本文档。重点是按版本说明功能变化、架构变化和兼容性边界；版本号与发布日期以项目仓库 Release/CHANGELOG 为最终依据。<br>
+<strong>事实边界</strong>：版本文档：版本历史与路线说明应以项目仓库 Release/CHANGELOG 为最终依据。<br>
+<strong>权威来源</strong>：<a href="https://github.com/neopen/neotask">NeoTask 源码仓库</a>；涉及版本历史时，以仓库 Release / CHANGELOG 为准。<br>
+<strong>代码标记</strong>：如果正文出现“源码/实现”字样，表示对应代码路径可在仓库中核对；示例代码仅用于演示调用方式，不应理解为项目源码原样。<br>
+<strong>版本基线</strong>：本文叙述 NeoTask 从 0.1.0 到 <strong>v1.0.2</strong>（PyPI 发布版）的真实演进史；文中不含 🔧/📝 代码标注，历史版本行为以对应版本的发布包为准。<br>
+<strong>阅读说明</strong>：本文既包含<strong>已实现</strong>的版本（截至 v1.0.2），也包含<strong>路线图规划</strong>（v1.5 任务编排、v2.0 企业级）。规划部分以「（规划）」标注，源码中尚无对应模块，请勿据此调用 API。当前源码的权威能力清单以「快速上手」与「API 参考」为准。</p>
+</blockquote>
+<hr>
+<h2>项目定位</h2>
+<p>NeoTask 是一个<strong>嵌入式通用任务池组件</strong>，以库的形式被其他应用引用，通过函数调用方式使用，而非独立的 HTTP 服务。这意味着开发者可以在现有项目中直接引入，无需部署额外的服务进程。</p>
+<h3>核心目标</h3>
+<table>
+<thead>
+<tr>
+<th>目标</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>嵌入友好</strong></td>
+<td>用户通过 <code>submit()</code> / <code>wait_for_result()</code> 使用，无需理解分布式细节</td>
+</tr>
+<tr>
+<td><strong>可扩展</strong></td>
+<td>从单机到分布式集群平滑演进，配置切换即可升级</td>
+</tr>
+<tr>
+<td><strong>高可用</strong></td>
+<td>节点故障时任务自动恢复，保证任务不丢失</td>
+</tr>
+<tr>
+<td><strong>可观测</strong></td>
+<td>提供内置监控能力，可选的 Web UI 面板</td>
+</tr>
+<tr>
+<td><strong>任务编排</strong>（规划）</td>
+<td>面向 v1.5 的路线图目标：支持复杂的工作流 DAG 依赖管理</td>
+</tr>
+</tbody>
+</table>
+<h3>核心设计原则</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>渐进式增强</strong></p>
+<p>每个版本都是独立可用的完整产品，用户可以根据需求选择合适的版本：</p>
+<pre class="hljs"><code><span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskPool, TaskPoolConfig
+
+<span class="hljs-comment"># 单机模式</span>
+pool = TaskPool(
+    executor=my_executor,
+    config=TaskPoolConfig(storage_type=<span class="hljs-string">&quot;memory&quot;</span>)
+)
+
+<span class="hljs-comment"># SQLite 持久化模式</span>
+pool = TaskPool(
+    executor=my_executor,
+    config=TaskPoolConfig(storage_type=<span class="hljs-string">&quot;sqlite&quot;</span>, sqlite_path=<span class="hljs-string">&quot;tasks.db&quot;</span>)
+)
+
+<span class="hljs-comment"># 分布式模式</span>
+pool = TaskPool(
+    executor=my_executor,
+    config=TaskPoolConfig(storage_type=<span class="hljs-string">&quot;redis&quot;</span>, redis_url=<span class="hljs-string">&quot;redis://localhost:6379&quot;</span>)
+)
+</code></pre>
+</li>
+<li class="lvl-2">
+<p><strong>向后兼容</strong></p>
+<ul class="lvl-2">
+<li class="lvl-4">新版本不破坏旧版 API</li>
+<li class="lvl-4">存储格式支持平滑升级</li>
+<li class="lvl-4">配置参数有合理默认值</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p><strong>可观测性优先</strong></p>
+<ul class="lvl-2">
+<li class="lvl-4">
+<p>关键操作都有事件埋点</p>
+</li>
+<li class="lvl-4">
+<p>指标默认收集</p>
+</li>
+<li class="lvl-4">
+<p>支持 Prometheus 集成</p>
+</li>
+</ul>
+</li>
+</ul>
+<h3>用户使用方式</h3>
+<pre class="hljs"><code><span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskPool
+
+<span class="hljs-comment"># 1. 定义业务执行函数</span>
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">my_executor</span>(<span class="hljs-params">task_data: <span class="hljs-built_in">dict</span></span>) -&gt; <span class="hljs-built_in">dict</span>:
+    <span class="hljs-comment"># 业务逻辑</span>
+    <span class="hljs-keyword">return</span> {<span class="hljs-string">&quot;result&quot;</span>: <span class="hljs-string">&quot;processed&quot;</span>}
+
+<span class="hljs-comment"># 2. 创建任务池</span>
+pool = TaskPool(executor=my_executor)
+
+<span class="hljs-comment"># 3. 使用</span>
+task_id = pool.submit({<span class="hljs-string">&quot;data&quot;</span>: <span class="hljs-string">&quot;value&quot;</span>})
+result = pool.wait_for_result(task_id)  <span class="hljs-comment"># 同步等待</span>
+
+<span class="hljs-comment"># 或异步等待</span>
+result = <span class="hljs-keyword">await</span> pool.wait_for_result_async(task_id)
+</code></pre>
+<h2>架构演进总览</h2>
+<h3>核心架构图</h3>
+<pre class="mermaid">graph TB
+    subgraph UserLayer[&quot;用户层&quot;]
+        APP[用户应用代码]
+    end
+
+    subgraph APILayer[&quot;API 层&quot;]
+        TP[TaskPool&lt;br/&gt;即时任务入口]
+        TS[TaskScheduler&lt;br/&gt;定时任务入口]
+    end
+
+    subgraph CoreLayer[&quot;核心层&quot;]
+        LM[LifecycleManager&lt;br/&gt;任务生命周期]
+        QS[QueueScheduler&lt;br/&gt;队列调度器]
+        WP[WorkerPool&lt;br/&gt;Worker池]
+        FM[FutureManager&lt;br/&gt;异步等待]
+        EB[EventBus&lt;br/&gt;事件总线]
+    end
+
+    subgraph HA[&quot;高可用层 v1.0&quot;]
+        WD[WatchDog&lt;br/&gt;看门狗]
+        TD[TimeoutDetector&lt;br/&gt;超时检测]
+        REC[Reclaimer&lt;br/&gt;任务回收]
+        HB[Heartbeat&lt;br/&gt;节点心跳]
+    end
+
+    subgraph OrchestrationLayer[&quot;编排层 v1.5（规划，尚未实现）&quot;]
+        DAG[DAG引擎]
+        COND[条件分支]
+        PARA[并行执行]
+    end
+
+    subgraph StorageLayer[&quot;存储层&quot;]
+        MEM[Memory]
+        SQL[(SQLite)]
+        REDIS[(Redis)]
+    end
+
+    subgraph MonitorLayer[&quot;监控层&quot;]
+        MC[MetricsCollector]
+        HM[HealthChecker]
+        REP[Reporter]
+    end
+
+    subgraph EnterpriseLayer[&quot;企业级层 v2.0（规划）&quot;]
+        WEB[Web UI]
+        TENANT[多租户]
+        PROM[Prometheus]
+    end
+
+    APP --&gt; TP &amp; TS
+    
+    TP --&gt; LM &amp; QS &amp; WP &amp; FM
+    TS --&gt; TP
+    
+    WP --&gt; WD &amp; TD &amp; HB
+    LM --&gt; REC
+    
+    LM --&gt; EB
+    WP --&gt; EB
+    
+    QS --&gt; REDIS
+    LM --&gt; MEM &amp; SQL &amp; REDIS
+    
+    EB --&gt; MC
+    MC --&gt; REP
+    WP --&gt; HM
+    
+    MC --&gt; PROM
+    APP --&gt; TENANT
+</pre>
+<h3>演进路线图</h3>
+<pre class="mermaid">timeline
+    title NeoTask 架构演进路线图
+    
+    section v0.1
+        基础任务池 : 本地内存队列
+                   : 异步执行引擎
+                   : 内存/SQLite存储
+                   
+    section v0.2
+        可观测性 : 事件总线
+                 : 指标收集器
+                 : 健康检查
+                 
+    section v0.3
+        定时调度 : 延时队列/时间轮
+                 : 周期任务调度
+                 : Cron表达式解析
+                 
+    section v0.4
+        分布式基础 : Redis共享队列
+                   : 分布式锁
+                   : 多节点协调
+                   
+    section v0.5
+        性能优化 : 预取机制
+                 : 批量操作
+                 : 连接池优化
+                 : 任务进度实时更新
+
+    section v1.0
+        高可用保障 : 看门狗续期
+                   : 超时检测
+                   : 故障自动恢复
+
+    section v1.5 规划
+        任务编排 : DAG工作流
+                 : 条件分支
+                 : 并行执行
+
+    section v2.0 规划
+        企业级特性 : 独立Web UI
+                   : 多租户隔离
+                   : Prometheus集成
+</pre>
+<h3>版本功能对比</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">功能</th>
+<th style="text-align:left">v0.1</th>
+<th style="text-align:left">v0.2</th>
+<th style="text-align:left">v0.3</th>
+<th style="text-align:left">v0.4</th>
+<th style="text-align:left">v0.5</th>
+<th style="text-align:left">v1.0</th>
+<th style="text-align:left">v1.5</th>
+<th style="text-align:left">v2.0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>即时任务</strong></td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left">优先级队列</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left">内存/SQLite存储</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>可观测性</strong></td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left">事件总线</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left">指标收集</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>定时调度</strong></td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left">延时执行</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left">周期任务/Cron</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>分布式</strong></td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left">Redis存储</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left">分布式锁</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>性能优化</strong></td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left">预取机制</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>高可用</strong></td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left">看门狗</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left">故障恢复</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>任务编排</strong></td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left">DAG工作流</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left">条件分支</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>企业级</strong></td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left">Web UI</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left">多租户</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+</tr>
+<tr>
+<td style="text-align:left">Prometheus</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">✅</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>注</strong>：<code>v1.5</code> 与 <code>v2.0</code> 两列为<strong>路线图规划</strong>，源码中尚无对应模块（无 WorkflowEngine / DAG 引擎 / 多租户）；<code>v1.0</code> 及之前各列为已实现能力。另，0.4.x 的分布式包与 1.0.0 的死信队列、1.0.1/1.0.2 的修复并未单列成列，其能力并入 <code>v1.0</code> 一列展示。</p>
+</blockquote>
+<h3>技术选型</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">组件</th>
+<th style="text-align:left">v0.1</th>
+<th style="text-align:left">v0.2</th>
+<th style="text-align:left">v0.3</th>
+<th style="text-align:left">v0.4</th>
+<th style="text-align:left">v0.5</th>
+<th style="text-align:left">v1.0</th>
+<th style="text-align:left">v1.5</th>
+<th style="text-align:left">v2.0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>异步框架</strong></td>
+<td style="text-align:left">asyncio</td>
+<td style="text-align:left">asyncio</td>
+<td style="text-align:left">asyncio</td>
+<td style="text-align:left">asyncio</td>
+<td style="text-align:left">asyncio</td>
+<td style="text-align:left">asyncio</td>
+<td style="text-align:left">asyncio</td>
+<td style="text-align:left">asyncio</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>存储</strong></td>
+<td style="text-align:left">内存/SQLite</td>
+<td style="text-align:left">内存/SQLite</td>
+<td style="text-align:left">内存/SQLite</td>
+<td style="text-align:left">Redis</td>
+<td style="text-align:left">Redis</td>
+<td style="text-align:left">Redis</td>
+<td style="text-align:left">Redis</td>
+<td style="text-align:left">Redis</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>分布式锁</strong></td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">SET NX</td>
+<td style="text-align:left">SET NX</td>
+<td style="text-align:left">看门狗</td>
+<td style="text-align:left">看门狗</td>
+<td style="text-align:left">看门狗</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>队列</strong></td>
+<td style="text-align:left">deque</td>
+<td style="text-align:left">deque</td>
+<td style="text-align:left">deque</td>
+<td style="text-align:left">Sorted Set</td>
+<td style="text-align:left">Sorted Set</td>
+<td style="text-align:left">Sorted Set</td>
+<td style="text-align:left">Sorted Set</td>
+<td style="text-align:left">Sorted Set</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>事件</strong></td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">EventBus</td>
+<td style="text-align:left">EventBus</td>
+<td style="text-align:left">EventBus</td>
+<td style="text-align:left">EventBus</td>
+<td style="text-align:left">EventBus</td>
+<td style="text-align:left">EventBus</td>
+<td style="text-align:left">+WebSocket</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>延时任务</strong></td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">堆/时间轮</td>
+<td style="text-align:left">堆/时间轮</td>
+<td style="text-align:left">堆/时间轮</td>
+<td style="text-align:left">堆/时间轮</td>
+<td style="text-align:left">堆/时间轮</td>
+<td style="text-align:left">堆/时间轮</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>周期任务</strong></td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">Cron</td>
+<td style="text-align:left">Cron</td>
+<td style="text-align:left">Cron</td>
+<td style="text-align:left">Cron</td>
+<td style="text-align:left">Cron</td>
+<td style="text-align:left">Cron</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Web框架</strong></td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">FastAPI</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>监控</strong></td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">基础指标</td>
+<td style="text-align:left">指标收集</td>
+<td style="text-align:left">指标收集</td>
+<td style="text-align:left">+批处理</td>
+<td style="text-align:left">+超时检测</td>
+<td style="text-align:left">+工作流指标</td>
+<td style="text-align:left">+Prometheus</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>编排引擎</strong></td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">DAG（规划）</td>
+<td style="text-align:left">DAG（规划）</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>注</strong>：<code>v1.5</code> / <code>v2.0</code> 两列为路线图规划值。延时任务默认走小顶堆（内存）/ Redis ZSET，时间轮为可选高性能路径（<code>enable_time_wheel</code>，默认关闭）。</p>
+</blockquote>
+<hr>
+<h2>v0.1：基础任务池</h2>
+<p>实现最核心的任务调度能力，验证架构可行性。</p>
+<pre class="mermaid">graph TB
+    subgraph User[&quot;用户应用层&quot;]
+        APP[用户代码]
+    end
+    
+    subgraph TaskPool[&quot;NeoTask 核心 v0.1&quot;]
+        TP[TaskPool&lt;br/&gt;入口门面]
+        
+        subgraph Core[&quot;核心组件&quot;]
+            LM[LifecycleManager&lt;br/&gt;任务生命周期管理]
+            QS[QueueScheduler&lt;br/&gt;队列调度器]
+            WP[WorkerPool&lt;br/&gt;Worker池/并发控制]
+            FM[FutureManager&lt;br/&gt;异步等待管理]
+        end
+        
+        EX[TaskExecutor&lt;br/&gt;用户业务逻辑]
+    end
+    
+    subgraph Storage[&quot;存储层&quot;]
+        MEM[MemoryStorage]
+        SQLITE[(SQLiteStorage)]
+    end
+    
+    APP --&gt;|submit/wait| TP
+    TP --&gt; LM
+    TP --&gt; QS
+    TP --&gt; WP
+    TP --&gt; FM
+    
+    LM --&gt; MEM
+    LM --&gt; SQLITE
+    
+    WP --&gt;|execute| EX
+</pre>
+<h3>核心设计</h3>
+<p><strong>任务状态机</strong></p>
+<pre class="mermaid">stateDiagram-v2
+    [*] --&gt; PENDING: 创建任务
+    
+    PENDING --&gt; RUNNING: Worker 开始执行
+    PENDING --&gt; CANCELLED: 用户取消
+    
+    RUNNING --&gt; SUCCESS: 执行成功
+    RUNNING --&gt; FAILED: 执行失败
+    RUNNING --&gt; CANCELLED: 用户取消
+    
+    FAILED --&gt; PENDING: 自动重试
+    FAILED --&gt; [*]: 超过重试次数
+    
+    SUCCESS --&gt; [*]: 完成
+    CANCELLED --&gt; [*]: 已取消
+</pre>
+<p><strong>数据流时序</strong></p>
+<pre class="mermaid">sequenceDiagram
+    participant User
+    participant Pool as TaskPool
+    participant LM as LifecycleManager
+    participant QS as QueueScheduler
+    participant WP as WorkerPool
+    participant FM as FutureManager
+    participant Storage as Storage
+
+    User-&gt;&gt;Pool: submit(data, priority)
+    Pool-&gt;&gt;LM: create_task()
+    LM-&gt;&gt;Storage: 保存任务(PENDING)
+    LM--&gt;&gt;Pool: 返回 Task 对象
+    Pool-&gt;&gt;QS: push(task_id, priority)
+    Pool-&gt;&gt;FM: get(task_id)
+    Pool--&gt;&gt;User: 返回 task_id
+    
+    loop Worker 调度循环
+        WP-&gt;&gt;QS: pop() 获取任务
+        WP-&gt;&gt;LM: start_task(task_id)
+        WP-&gt;&gt;Storage: 更新状态(RUNNING)
+        
+        alt 任务执行成功
+            WP-&gt;&gt;WP: executor.execute(data)
+            WP-&gt;&gt;LM: complete_task(result)
+            WP-&gt;&gt;FM: complete(task_id, result)
+            WP-&gt;&gt;Storage: 更新状态(SUCCESS)
+        else 任务执行失败
+            WP-&gt;&gt;LM: fail_task(error)
+            WP-&gt;&gt;FM: complete(task_id, error)
+            WP-&gt;&gt;Storage: 更新状态(FAILED)
+            WP-&gt;&gt;QS: push(重试入队)
+        else 任务取消
+            WP-&gt;&gt;LM: cancel_task()
+            WP-&gt;&gt;FM: complete(task_id, error)
+        end
+    end
+    
+    User-&gt;&gt;Pool: wait_for_result(task_id)
+    Pool-&gt;&gt;FM: wait()
+    FM--&gt;&gt;Pool: 返回结果
+    Pool--&gt;&gt;User: 任务结果
+</pre>
+<h3>关键设计决策</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">挑战</th>
+<th style="text-align:left">解决方案</th>
+<th style="text-align:left">设计理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">任务持久化</td>
+<td style="text-align:left">支持内存/SQLite 可选存储</td>
+<td style="text-align:left">满足不同场景需求，开发测试用内存，生产用 SQLite</td>
+</tr>
+<tr>
+<td style="text-align:left">并发控制</td>
+<td style="text-align:left">asyncio.Semaphore 控制并发数</td>
+<td style="text-align:left">充分利用 Python 异步能力，避免线程开销</td>
+</tr>
+<tr>
+<td style="text-align:left">优先级队列</td>
+<td style="text-align:left">heapq 堆实现优先级队列</td>
+<td style="text-align:left">内存高效，O(log n) 入队出队</td>
+</tr>
+<tr>
+<td style="text-align:left">异步等待</td>
+<td style="text-align:left">Future + Event 实现等待机制</td>
+<td style="text-align:left">符合 asyncio 编程模型，易于理解</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>v0.2：可观测性</h2>
+<p>增加可观测性，支持任务生命周期监控和指标收集。</p>
+<pre class="mermaid">graph TB
+    subgraph Core[&quot;核心组件&quot;]
+        TP[TaskPool]
+        LM[LifecycleManager]
+        QS[QueueScheduler]
+        WP[WorkerPool]
+    end
+    
+    subgraph Monitor[&quot;监控模块 v0.2&quot;]
+        EB[EventBus&lt;br/&gt;事件总线]
+        MC[MetricsCollector&lt;br/&gt;指标收集器]
+    end
+    
+    subgraph Storage[&quot;存储层&quot;]
+        MEM[Memory]
+        SQL[SQLite]
+    end
+    
+    WP -.-&gt;|emit event| EB
+    EB -.-&gt;|subscribe| MC
+    MC --&gt; STATS[统计数据]
+    
+    LM --&gt; EB
+    
+    User[用户] --&gt;|get_stats| TP
+    TP --&gt; MC
+</pre>
+<h3>核心设计</h3>
+<p><strong>事件驱动架构</strong></p>
+<p>事件总线是 v0.2 的核心组件，采用发布-订阅模式解耦各模块：</p>
+<pre class="mermaid">graph LR
+    subgraph Producers[&quot;事件生产者&quot;]
+        LM[LifecycleManager]
+        WP[WorkerPool]
+        QS[QueueScheduler]
+    end
+    
+    subgraph Bus[&quot;EventBus&quot;]
+        Q[事件队列]
+        DISPATCH[分发器]
+    end
+    
+    subgraph Consumers[&quot;事件消费者&quot;]
+        MC[MetricsCollector]
+        LOG[日志记录]
+        ALERT[告警系统]
+    end
+    
+    Producers --&gt;|emit| Bus
+    Bus --&gt;|notify| Consumers
+</pre>
+<pre class="mermaid">sequenceDiagram
+    participant TP as TaskProcessor
+    participant EB as EventBus
+    participant MC as MetricsCollector
+    participant User
+
+    TP-&gt;&gt;EB: emit(TASK_STARTED, task_id)
+    EB-&gt;&gt;MC: on_task_started()
+    MC-&gt;&gt;MC: 记录开始时间
+    
+    TP-&gt;&gt;TP: 执行任务...
+    
+    TP-&gt;&gt;EB: emit(TASK_COMPLETED, duration)
+    EB-&gt;&gt;MC: on_task_completed()
+    MC-&gt;&gt;MC: 计算耗时、更新吞吐量
+    
+    User-&gt;&gt;TP: get_stats()
+    TP-&gt;&gt;MC: get_current_stats()
+    MC--&gt;&gt;User: 统计数据
+</pre>
+<p><strong>事件类型定义</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">事件类型</th>
+<th style="text-align:left">触发时机</th>
+<th style="text-align:left">携带数据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code>task.created</code></td>
+<td style="text-align:left">任务创建</td>
+<td style="text-align:left">task_id, data</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>task.started</code></td>
+<td style="text-align:left">任务开始执行</td>
+<td style="text-align:left">task_id, node_id</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>task.completed</code></td>
+<td style="text-align:left">任务完成</td>
+<td style="text-align:left">task_id, result, duration</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>task.failed</code></td>
+<td style="text-align:left">任务失败</td>
+<td style="text-align:left">task_id, error</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>task.cancelled</code></td>
+<td style="text-align:left">任务取消</td>
+<td style="text-align:left">task_id</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>task.retry</code></td>
+<td style="text-align:left">任务重试</td>
+<td style="text-align:left">task_id, retry_count</td>
+</tr>
+</tbody>
+</table>
+<p><strong>指标收集体系</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">指标类型</th>
+<th style="text-align:left">指标名称</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">计数器</td>
+<td style="text-align:left">任务提交总数</td>
+<td style="text-align:left">累计提交的任务数量</td>
+</tr>
+<tr>
+<td style="text-align:left">计数器</td>
+<td style="text-align:left">任务完成总数</td>
+<td style="text-align:left">累计完成的任务数量</td>
+</tr>
+<tr>
+<td style="text-align:left">计数器</td>
+<td style="text-align:left">任务失败总数</td>
+<td style="text-align:left">累计失败的任务数量</td>
+</tr>
+<tr>
+<td style="text-align:left">瞬时值</td>
+<td style="text-align:left">当前待处理数</td>
+<td style="text-align:left">队列中等待执行的任务数</td>
+</tr>
+<tr>
+<td style="text-align:left">瞬时值</td>
+<td style="text-align:left">当前执行中数</td>
+<td style="text-align:left">正在执行的任务数</td>
+</tr>
+<tr>
+<td style="text-align:left">分布统计</td>
+<td style="text-align:left">执行时间分布</td>
+<td style="text-align:left">P50/P90/P95/P99 执行时间</td>
+</tr>
+<tr>
+<td style="text-align:left">分布统计</td>
+<td style="text-align:left">排队时间分布</td>
+<td style="text-align:left">任务在队列中的等待时间</td>
+</tr>
+<tr>
+<td style="text-align:left">比率</td>
+<td style="text-align:left">成功率</td>
+<td style="text-align:left">成功任务数 / 总执行数</td>
+</tr>
+<tr>
+<td style="text-align:left">比率</td>
+<td style="text-align:left">吞吐量</td>
+<td style="text-align:left">每秒完成任务数</td>
+</tr>
+</tbody>
+</table>
+<h3>挑战与解决方案</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">挑战</th>
+<th style="text-align:left">解决方案</th>
+<th style="text-align:left">设计理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">事件丢失</td>
+<td style="text-align:left">同步事件总线，失败重试</td>
+<td style="text-align:left">保证关键事件不丢失</td>
+</tr>
+<tr>
+<td style="text-align:left">指标膨胀</td>
+<td style="text-align:left">环形缓冲区，限制历史长度</td>
+<td style="text-align:left">控制内存使用，保留最新数据</td>
+</tr>
+<tr>
+<td style="text-align:left">性能影响</td>
+<td style="text-align:left">异步事件处理，不阻塞主流程</td>
+<td style="text-align:left">保证任务执行不受监控影响</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>v0.3：定时调度</h2>
+<p>支持延时执行、周期任务和 Cron 表达式，满足定时任务场景需求。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">类型</th>
+<th style="text-align:left">说明</th>
+<th style="text-align:left">示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>延时执行</strong></td>
+<td style="text-align:left">指定延迟时间后执行</td>
+<td style="text-align:left">5分钟后执行</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>定时执行</strong></td>
+<td style="text-align:left">指定具体时间点执行</td>
+<td style="text-align:left">2024-12-25 10:00:00 执行</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>周期性执行</strong></td>
+<td style="text-align:left">按固定间隔重复执行</td>
+<td style="text-align:left">每5分钟执行一次</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Cron 表达式</strong></td>
+<td style="text-align:left">复杂时间规则</td>
+<td style="text-align:left">每天9点执行</td>
+</tr>
+</tbody>
+</table>
+<pre class="mermaid">graph TB
+    subgraph User[&quot;用户层&quot;]
+        APP[用户应用]
+    end
+    
+    subgraph TaskScheduler[&quot;TaskScheduler v0.3&quot;]
+        SUB[任务提交接口]
+        
+        subgraph Scheduler[&quot;调度引擎&quot;]
+            TIMER[调度循环&lt;br/&gt;扫描到期任务]
+            CRON[Cron解析器]
+        end
+    end
+    
+    subgraph TaskPool[&quot;TaskPool&quot;]
+        POOL[TaskPool&lt;br/&gt;即时任务执行]
+    end
+    
+    subgraph Storage[&quot;存储层&quot;]
+        DELAY_Q[延时队列&lt;br/&gt;Sorted Set]
+        PERIODIC_H[周期任务配置]
+    end
+    
+    APP --&gt; SUB
+    SUB --&gt; POOL
+    SUB --&gt; DELAY_Q
+    SUB --&gt; PERIODIC_H
+    
+    TIMER --&gt;|扫描| DELAY_Q
+    TIMER --&gt;|触发| POOL
+    CRON --&gt;|计算| TIMER
+</pre>
+<h3>核心设计</h3>
+<p><strong>时间轮设计</strong></p>
+<p>时间轮是处理大量延时任务的高效数据结构，将时间划分为多个槽位，每个槽位存放该时间点需要执行的任务。</p>
+<pre class="mermaid">graph TB
+    subgraph TimeWheel[&quot;时间轮（60个槽位，每槽1秒）&quot;]
+        TW[环形数组]
+        
+        subgraph Slot0[&quot;槽位0&quot;]
+            T1[任务A]
+        end
+        
+        subgraph Slot1[&quot;槽位1&quot;]
+            T2[任务B]
+            T3[任务C]
+        end
+        
+        subgraph Slot2[&quot;槽位2&quot;]
+            T4[任务D]
+        end
+        
+        subgraph SlotN[&quot;...&quot;]
+            TN[更多任务]
+        end
+    end
+    
+    POINTER[指针&lt;br/&gt;每秒移动一格]
+    
+    POINTER --&gt; TW
+    POINTER --&gt;|指向槽位0| EXEC[执行槽位0中的任务]
+</pre>
+<p>时间轮的优势：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>O(1) 时间复杂度</strong>：添加和删除任务都是常数时间</p>
+</li>
+<li class="lvl-2">
+<p><strong>内存高效</strong>：无需为每个任务创建定时器</p>
+</li>
+<li class="lvl-2">
+<p><strong>批量处理</strong>：同一槽位的任务批量执行</p>
+</li>
+</ul>
+<p><strong>周期任务调度流程</strong></p>
+<pre class="mermaid">sequenceDiagram
+    participant User
+    participant API as TaskScheduler
+    participant Redis
+    participant Cron as Cron解析器
+    participant Timer as 时间轮
+    participant Executor
+
+    User-&gt;&gt;API: submit_cron(data, &quot;*/5 * * * *&quot;)
+    API-&gt;&gt;Redis: 存储周期任务配置
+    API-&gt;&gt;Redis: 计算下次执行时间
+    API-&gt;&gt;Redis: 加入延时队列
+    API--&gt;&gt;User: task_id
+
+    loop 每个周期
+        Timer-&gt;&gt;Redis: 扫描到期任务
+        Redis--&gt;&gt;Timer: 周期任务到期
+        
+        Timer-&gt;&gt;Cron: 计算下次执行时间
+        Cron--&gt;&gt;Timer: next_run_at
+        
+        Timer-&gt;&gt;Executor: 执行任务
+        Timer-&gt;&gt;Redis: 更新下次执行时间
+        Timer-&gt;&gt;Redis: 重新加入延时队列
+    end
+</pre>
+<h3>Cron 表达式支持</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">表达式</th>
+<th style="text-align:left">含义</th>
+<th style="text-align:left">示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code>* * * * *</code></td>
+<td style="text-align:left">每分钟执行</td>
+<td style="text-align:left">心跳检测</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>*/5 * * * *</code></td>
+<td style="text-align:left">每5分钟执行</td>
+<td style="text-align:left">定期检查</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>0 9 * * *</code></td>
+<td style="text-align:left">每天9:00执行</td>
+<td style="text-align:left">日报生成</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>0 9 * * 1</code></td>
+<td style="text-align:left">每周一9:00执行</td>
+<td style="text-align:left">周报生成</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>0 0 1 * *</code></td>
+<td style="text-align:left">每月1号0:00执行</td>
+<td style="text-align:left">月报生成</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>0 9-17 * * *</code></td>
+<td style="text-align:left">每天9-17点整点执行</td>
+<td style="text-align:left">营业时间任务</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>v0.4：分布式基础</h2>
+<p>支持多节点部署，任务可被任意节点消费，实现水平扩展。</p>
+<pre class="mermaid">graph TB
+    subgraph Nodes[&quot;任务执行节点（对等架构）&quot;]
+        subgraph Node1[&quot;Node 1&quot;]
+            P1[TaskPool]
+            Q1[QueueScheduler]
+            W1[WorkerPool]
+        end
+        
+        subgraph Node2[&quot;Node 2&quot;]
+            P2[TaskPool]
+            Q2[QueueScheduler]
+            W2[WorkerPool]
+        end
+        
+        subgraph Node3[&quot;Node 3&quot;]
+            P3[TaskPool]
+            Q3[QueueScheduler]
+            W3[WorkerPool]
+        end
+    end
+    
+    subgraph Redis[&quot;Redis 共享存储&quot;]
+        PQ[优先级队列&lt;br/&gt;Sorted Set]
+        DQ[延迟队列&lt;br/&gt;Sorted Set]
+        TASKS[任务详情&lt;br/&gt;Hash]
+        LOCKS[分布式锁&lt;br/&gt;String]
+        INDEX[状态索引&lt;br/&gt;Set]
+    end
+    
+    Nodes --&gt; Redis
+    Redis --&gt; Nodes
+</pre>
+<h3>核心设计</h3>
+<p><strong>去中心化对等架构</strong></p>
+<p>v0.4 采用去中心化设计，所有节点对等，无主从概念：</p>
+<pre class="mermaid">graph LR
+    subgraph Decentralized[&quot;去中心化架构&quot;]
+        direction LR
+        N1[节点A] --- N2[节点B]
+        N2 --- N3[节点C]
+        N3 --- N1
+    end
+    
+    subgraph Traditional[&quot;传统主从架构&quot;]
+        direction TB
+        L[Leader] --&gt; F1[Follower1]
+        L --&gt; F2[Follower2]
+        L --&gt; F3[Follower3]
+    end
+</pre>
+<p>去中心化架构的优势：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">特性</th>
+<th style="text-align:left">去中心化</th>
+<th style="text-align:left">主从架构</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">单点故障</td>
+<td style="text-align:left">无</td>
+<td style="text-align:left">有（Leader 故障）</td>
+</tr>
+<tr>
+<td style="text-align:left">水平扩展</td>
+<td style="text-align:left">线性扩展</td>
+<td style="text-align:left">受 Leader 瓶颈</td>
+</tr>
+<tr>
+<td style="text-align:left">任务分配</td>
+<td style="text-align:left">抢占式</td>
+<td style="text-align:left">Leader 分配</td>
+</tr>
+<tr>
+<td style="text-align:left">复杂度</td>
+<td style="text-align:left">较低</td>
+<td style="text-align:left">较高（需选举）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>分布式锁机制</strong></p>
+<p>分布式锁是保证任务不被重复执行的关键，使用 Redis 的 <code>SET NX EX</code> 命令实现原子操作：</p>
+<pre class="mermaid">sequenceDiagram
+    participant NodeA as 节点A
+    participant Redis as Redis
+    participant NodeB as 节点B
+
+    Note over NodeA,Redis: 节点A抢占任务
+    NodeA-&gt;&gt;Redis: SET lock:task-123 NX EX 30
+    Redis--&gt;&gt;NodeA: OK（获取锁成功）
+    NodeA-&gt;&gt;Redis: ZREM queue task-123
+    
+    Note over NodeB,Redis: 节点B尝试抢占同一任务
+    NodeB-&gt;&gt;Redis: SET lock:task-123 NX EX 30
+    Redis--&gt;&gt;NodeB: NULL（锁已被占用）
+    
+    Note over NodeA,Redis: 节点A执行完成，释放锁
+    NodeA-&gt;&gt;Redis: DEL lock:task-123
+</pre>
+<p><strong>多节点协调</strong></p>
+<pre class="mermaid">graph TB
+    subgraph NodeCoordination[&quot;多节点协调机制&quot;]
+        REG[节点注册&lt;br/&gt;/加入集群]
+        HB[心跳上报&lt;br/&gt;/健康证明]
+        DISCOVER[节点发现&lt;br/&gt;/获取活跃节点]
+        FAIL[故障检测&lt;br/&gt;/节点失联]
+    end
+    
+    REG --&gt; HB --&gt; DISCOVER
+    DISCOVER --&gt; FAIL
+    FAIL -.-&gt;|重新注册| REG
+</pre>
+<h3>挑战与解决方案</h3>
+<p>分布式任务调度系统在从单机演进到多节点时，面临以下关键挑战：</p>
+<pre class="mermaid">graph TB
+    subgraph Challenges[&quot;v0.4 核心挑战&quot;]
+        C1[任务重复消费]
+        C2[节点协调难题]
+        C3[数据一致性]
+        C4[网络分区处理]
+    end
+    
+    Challenges --&gt; S[解决方案]
+    
+    subgraph Solutions[&quot;解决方案&quot;]
+        S1[分布式锁 + Lua原子操作]
+        S2[去中心化对等架构]
+        S3[Redis共享存储]
+        S4[心跳检测 + 锁超时]
+    end
+</pre>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">挑战</th>
+<th style="text-align:left">解决方案</th>
+<th style="text-align:left">关键技术</th>
+<th style="text-align:left">复杂度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>任务重复消费</strong></td>
+<td style="text-align:left">分布式锁 + Lua 原子操作</td>
+<td style="text-align:left">SET NX EX, Lua 脚本</td>
+<td style="text-align:left">中</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>节点协调难题</strong></td>
+<td style="text-align:left">去中心化对等架构</td>
+<td style="text-align:left">抢占式消费，无主节点</td>
+<td style="text-align:left">低</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>数据一致性</strong></td>
+<td style="text-align:left">Redis 共享状态中心</td>
+<td style="text-align:left">原子操作，状态索引</td>
+<td style="text-align:left">中</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>网络分区处理</strong></td>
+<td style="text-align:left">心跳检测 + 锁超时</td>
+<td style="text-align:left">TTL 机制，定期扫描</td>
+<td style="text-align:left">中</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>决策理由</strong></p>
+<ol>
+<li class="lvl-3"><strong>去中心化架构</strong>：避免主节点瓶颈和单点故障，实现真正的水平扩展</li>
+<li class="lvl-3"><strong>Redis Sorted Set</strong>：天然支持优先级排序和原子操作，性能优异</li>
+<li class="lvl-3"><strong>悲观锁机制</strong>：在分布式环境下更可靠，配合 TTL 避免死锁</li>
+<li class="lvl-3"><strong>心跳+TTL 组合</strong>：既能快速检测故障，又能容忍短暂网络抖动</li>
+</ol>
+</blockquote>
+<h4>挑战一：任务重复消费</h4>
+<p>在分布式环境下，多个节点同时从队列消费任务时，可能出现同一任务被多个节点同时获取的情况：</p>
+<pre class="mermaid">sequenceDiagram
+    participant Redis as Redis队列
+    participant NodeA as 节点A
+    participant NodeB as 节点B
+
+    Note over NodeA,NodeB: 问题场景：任务被重复消费
+    
+    NodeA-&gt;&gt;Redis: ZPOPMIN（获取任务T1）
+    NodeB-&gt;&gt;Redis: ZPOPMIN（获取任务T1）
+    Redis--&gt;&gt;NodeA: 返回T1
+    Redis--&gt;&gt;NodeB: 返回T1（同一任务！）
+    
+    Note over NodeA,NodeB: 结果：T1被执行了两次
+</pre>
+<p><strong>解决方案：分布式锁 + Lua 原子操作</strong></p>
+<pre class="mermaid">flowchart LR
+    subgraph Atomic[&quot;原子操作流程&quot;]
+        A[从队列取任务] --&gt; B[尝试获取锁]
+        B --&gt;|成功| C[更新任务状态]
+        B --&gt;|失败| D[跳过该任务]
+        C --&gt; E[继续取下一个]
+        D --&gt; E
+    end
+</pre>
+<p><strong>核心设计要点</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">要点</th>
+<th style="text-align:left">实现方式</th>
+<th style="text-align:left">作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">原子性</td>
+<td style="text-align:left">Lua 脚本执行取任务+加锁</td>
+<td style="text-align:left">保证操作不可分割</td>
+</tr>
+<tr>
+<td style="text-align:left">锁唯一性</td>
+<td style="text-align:left">SET NX（不存在才设置）</td>
+<td style="text-align:left">只有一个节点能获取锁</td>
+</tr>
+<tr>
+<td style="text-align:left">锁自动释放</td>
+<td style="text-align:left">EX（过期时间）</td>
+<td style="text-align:left">防止节点崩溃导致死锁</td>
+</tr>
+<tr>
+<td style="text-align:left">锁归属校验</td>
+<td style="text-align:left">锁值存储节点ID</td>
+<td style="text-align:left">只有持有者才能释放锁</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h4>挑战二：节点协调难题</h4>
+<p>多节点环境下，需要解决以下协调问题：</p>
+<pre class="mermaid">graph LR
+    subgraph Problems[&quot;节点协调问题&quot;]
+        P1[节点发现&lt;br/&gt;如何知道其他节点存在？]
+        P2[任务分配&lt;br/&gt;任务该由哪个节点处理？]
+        P3[负载均衡&lt;br/&gt;如何避免节点忙闲不均？]
+        P4[故障检测&lt;br/&gt;如何发现节点已崩溃？]
+    end
+</pre>
+<p><strong>解决方案：去中心化对等架构</strong></p>
+<pre class="mermaid">graph TB
+    subgraph Decentralized[&quot;去中心化架构核心原则&quot;]
+        PR1[所有节点对等&lt;br/&gt;无主从概念]
+        PR2[抢占式消费&lt;br/&gt;谁抢到谁处理]
+        PR3[本地决策&lt;br/&gt;无需全局协调]
+        PR4[最终一致性&lt;br/&gt;可容忍短暂不一致]
+    end
+</pre>
+<p><strong>各节点工作流程</strong></p>
+<pre class="mermaid">flowchart TB
+    subgraph NodeLifecycle[&quot;节点生命周期&quot;]
+        START[节点启动] --&gt; REG[注册到Redis]
+        REG --&gt; HEARTBEAT[定期发送心跳]
+        HEARTBEAT --&gt; CONSUME[抢占消费任务]
+        CONSUME --&gt; CHECK{是否继续运行？}
+        CHECK --&gt;|是| HEARTBEAT
+        CHECK --&gt;|否| UNREG[注销节点]
+    end
+</pre>
+<p><strong>节点协调机制对比</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">机制</th>
+<th style="text-align:left">传统主从架构</th>
+<th style="text-align:left">NeoTask 去中心化</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">任务分配</td>
+<td style="text-align:left">Leader 统一分配</td>
+<td style="text-align:left">节点主动抢占</td>
+</tr>
+<tr>
+<td style="text-align:left">负载均衡</td>
+<td style="text-align:left">Leader 决策</td>
+<td style="text-align:left">自然竞争均衡</td>
+</tr>
+<tr>
+<td style="text-align:left">故障检测</td>
+<td style="text-align:left">Leader 检测</td>
+<td style="text-align:left">所有节点互相检测</td>
+</tr>
+<tr>
+<td style="text-align:left">协调开销</td>
+<td style="text-align:left">O(n)</td>
+<td style="text-align:left">O(1)</td>
+</tr>
+<tr>
+<td style="text-align:left">单点风险</td>
+<td style="text-align:left">有（Leader故障）</td>
+<td style="text-align:left">无</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h4>挑战三：数据一致性</h4>
+<p>分布式环境下，任务状态需要在多个节点间保持一致：</p>
+<pre class="mermaid">stateDiagram-v2
+    [*] --&gt; PENDING: 创建任务
+    
+    PENDING --&gt; RUNNING: 节点A认领
+    RUNNING --&gt; SUCCESS: 节点A完成
+    
+    note right of RUNNING
+        问题场景：
+        节点A认领后崩溃
+        状态仍为RUNNING
+        其他节点无法处理
+    end note
+</pre>
+<p><strong>解决方案：Redis 作为共享状态中心</strong></p>
+<pre class="mermaid">graph TB
+    subgraph StateStorage[&quot;任务状态存储设计&quot;]
+        TASK[任务Hash&lt;br/&gt;task:id]
+        LOCK[分布式锁&lt;br/&gt;lock:id]
+        QUEUE[优先级队列&lt;br/&gt;queue:priority]
+        INDEX[状态索引&lt;br/&gt;status:state]
+    end
+    
+    subgraph Benefits[&quot;设计优势&quot;]
+        B1[单一事实来源]
+        B2[原子操作支持]
+        B3[自动过期机制]
+        B4[天然持久化]
+    end
+    
+    StateStorage --&gt; Benefits
+</pre>
+<p><strong>状态一致性保证</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">操作</th>
+<th style="text-align:left">原子性保证</th>
+<th style="text-align:left">实现方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">任务创建</td>
+<td style="text-align:left">是</td>
+<td style="text-align:left">Redis HSET + SADD</td>
+</tr>
+<tr>
+<td style="text-align:left">任务认领</td>
+<td style="text-align:left">是</td>
+<td style="text-align:left">Lua 脚本（取队列+加锁+更新状态）</td>
+</tr>
+<tr>
+<td style="text-align:left">状态更新</td>
+<td style="text-align:left">是</td>
+<td style="text-align:left">分布式锁保护</td>
+</tr>
+<tr>
+<td style="text-align:left">故障恢复</td>
+<td style="text-align:left">最终一致</td>
+<td style="text-align:left">定期扫描 + 锁超时</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h4>挑战四：网络分区处理</h4>
+<p>分布式系统中，网络分区（节点间网络中断）是不可避免的：</p>
+<pre class="mermaid">graph LR
+    subgraph Normal[&quot;正常情况&quot;]
+        N1[节点A] &lt;--&gt; R[(Redis)]
+        N2[节点B] &lt;--&gt; R
+    end
+    
+    subgraph Partition[&quot;网络分区&quot;]
+        P1[节点A] -.-&gt;|断开| R
+        P2[节点B] &lt;--&gt; R
+    end
+</pre>
+<p><strong>解决方案：心跳检测 + 锁超时</strong></p>
+<pre class="mermaid">flowchart TB
+    subgraph Detection[&quot;故障检测机制&quot;]
+        HB[节点心跳&lt;br/&gt;每5秒更新]
+        LOCK[任务锁&lt;br/&gt;30秒TTL]
+        SCAN[扫描器&lt;br/&gt;每10秒运行]
+    end
+    
+    subgraph Judgement[&quot;判定逻辑&quot;]
+        J1{心跳超时&gt;15秒？}
+        J2{锁是否存在？}
+        J3{锁是否过期？}
+    end
+    
+    subgraph Action[&quot;处置动作&quot;]
+        A1[标记节点可疑]
+        A2[等待宽限期]
+        A3[回收任务]
+        A4[任务重新入队]
+    end
+    
+    Detection --&gt; Judgement --&gt; Action
+</pre>
+<p><strong>分区处理策略</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">场景</th>
+<th style="text-align:left">判定条件</th>
+<th style="text-align:left">处理动作</th>
+<th style="text-align:left">恢复后</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">临时网络抖动</td>
+<td style="text-align:left">心跳超时 &lt; 30秒</td>
+<td style="text-align:left">标记可疑，等待恢复</td>
+<td style="text-align:left">自动恢复</td>
+</tr>
+<tr>
+<td style="text-align:left">节点真崩溃</td>
+<td style="text-align:left">心跳超时 &gt; 30秒</td>
+<td style="text-align:left">回收该节点所有任务</td>
+<td style="text-align:left">重新注册</td>
+</tr>
+<tr>
+<td style="text-align:left">锁持有者失联</td>
+<td style="text-align:left">锁存在但心跳超时</td>
+<td style="text-align:left">等待锁过期</td>
+<td style="text-align:left">其他节点接管</td>
+</tr>
+<tr>
+<td style="text-align:left">脑裂</td>
+<td style="text-align:left">双主同时存在</td>
+<td style="text-align:left">锁机制保证互斥</td>
+<td style="text-align:left">版本号仲裁</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>v0.5：性能优化</h2>
+<p>通过预取机制和批量操作，大幅提升系统吞吐量，减少网络开销。</p>
+<h3>预取机制</h3>
+<pre class="mermaid">sequenceDiagram
+    participant Node as 节点
+    participant Redis as Redis
+    participant Local as 本地队列
+
+    loop 每 100ms
+        Node-&gt;&gt;Local: 检查本地队列大小
+        
+        alt 本地队列 &lt; 阈值（饥饿状态）
+            Node-&gt;&gt;Redis: 批量预取任务（Lua原子操作）
+            Note over Node,Redis: 1. 从队列取N个任务&lt;br/&gt;2. 为每个任务设置锁&lt;br/&gt;3. 更新任务状态
+            
+            Redis--&gt;&gt;Node: 返回 task_ids
+            Node-&gt;&gt;Local: 批量放入本地队列
+        else 本地队列充足
+            Node-&gt;&gt;Local: 直接从本地队列消费
+        end
+    end
+</pre>
+<h3>预取策略对比</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">策略</th>
+<th style="text-align:left">描述</th>
+<th style="text-align:left">适用场景</th>
+<th style="text-align:left">优缺点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>SIZE_BASED</strong></td>
+<td style="text-align:left">基于队列大小触发预取</td>
+<td style="text-align:left">负载平稳</td>
+<td style="text-align:left">简单有效，但对突发流量响应慢</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>TIME_BASED</strong></td>
+<td style="text-align:left">基于时间间隔触发预取</td>
+<td style="text-align:left">周期性负载</td>
+<td style="text-align:left">可预测，但可能浪费资源</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>HYBRID</strong></td>
+<td style="text-align:left">混合策略，结合大小和时间</td>
+<td style="text-align:left">通用场景</td>
+<td style="text-align:left">平衡响应速度和资源利用</td>
+</tr>
+</tbody>
+</table>
+<h3>性能提升数据</h3>
+<blockquote>
+<p><strong>注</strong>：以下数字为 v0.5 设计阶段的<strong>优化目标</strong>，用于说明预取/批量机制的预期收益，并非在统一硬件与方法学下实测的官方基准。实测数据请以「性能基准」文档为准。</p>
+</blockquote>
+<pre class="mermaid">graph LR
+    subgraph Before[&quot;优化前&quot;]
+        B1[单次获取1个任务] --&gt; B2[每次操作都访问Redis]
+        B3[高网络延迟] --&gt; B4[吞吐量: ~10k QPS]
+    end
+    
+    subgraph After[&quot;优化后&quot;]
+        A1[批量获取20个任务] --&gt; A2[减少95% Redis访问]
+        A3[本地队列缓存] --&gt; A4[吞吐量: ~30k QPS]
+    end
+    
+    Before --&gt;|预取机制| After
+</pre>
+<h3>批量操作优化</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">操作类型</th>
+<th style="text-align:left">优化前</th>
+<th style="text-align:left">优化后</th>
+<th style="text-align:left">提升倍数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">任务提交</td>
+<td style="text-align:left">单次提交</td>
+<td style="text-align:left">批量提交</td>
+<td style="text-align:left">10x</td>
+</tr>
+<tr>
+<td style="text-align:left">任务获取</td>
+<td style="text-align:left">单次获取</td>
+<td style="text-align:left">批量预取</td>
+<td style="text-align:left">20x</td>
+</tr>
+<tr>
+<td style="text-align:left">状态更新</td>
+<td style="text-align:left">逐一更新</td>
+<td style="text-align:left">批量更新</td>
+<td style="text-align:left">5x</td>
+</tr>
+<tr>
+<td style="text-align:left">指标上报</td>
+<td style="text-align:left">实时上报</td>
+<td style="text-align:left">批量聚合</td>
+<td style="text-align:left">10x</td>
+</tr>
+</tbody>
+</table>
+<h3>挑战与解决方案</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">挑战</th>
+<th style="text-align:left">解决方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">任务重复消费</td>
+<td style="text-align:left">分布式锁 + Lua 原子操作</td>
+</tr>
+<tr>
+<td style="text-align:left">优先级反转</td>
+<td style="text-align:left">本地队列使用 PriorityQueue</td>
+</tr>
+<tr>
+<td style="text-align:left">锁竞争</td>
+<td style="text-align:left">预取批量减少操作次数</td>
+</tr>
+<tr>
+<td style="text-align:left">节点负载不均</td>
+<td style="text-align:left">本地消费能力决定处理量</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>v1.0：高可用保障</h2>
+<p>解决节点故障、任务超时等异常场景，实现生产级高可用。</p>
+<pre class="mermaid">graph TB
+    subgraph Node[&quot;任务节点 v1.0&quot;]
+        EXE[任务执行器]
+        WD[看门狗&lt;br/&gt;锁续期]
+        HB[心跳上报]
+    end
+    
+    subgraph HA[&quot;高可用组件&quot;]
+        DET[超时检测器&lt;br/&gt;定期扫描]
+        REC[任务回收器&lt;br/&gt;故障恢复]
+        HM[健康监控&lt;br/&gt;节点心跳]
+    end
+    
+    subgraph Storage[&quot;Redis存储&quot;]
+        LOCKS[分布式锁]
+        HEART[节点心跳]
+        TASKS[任务状态]
+    end
+    
+    WD --&gt;|续期| LOCKS
+    HB --&gt;|写入| HEART
+    DET --&gt;|扫描| TASKS
+    DET --&gt;|检查| LOCKS
+    DET --&gt;|检查| HEART
+    REC --&gt;|回收| TASKS
+    HM --&gt;|检测| HEART
+</pre>
+<h3>看门狗机制</h3>
+<p>长时间任务需要定期续期锁，防止锁过期导致任务被重复执行</p>
+<pre class="mermaid">sequenceDiagram
+    participant Node as 节点
+    participant WD as 看门狗
+    participant Redis as Redis
+
+    Node-&gt;&gt;Redis: SET lock NX EX 30
+    Node-&gt;&gt;WD: 启动看门狗
+    
+    loop 每 10 秒
+        WD-&gt;&gt;Redis: 检查锁归属
+        alt 锁仍被当前节点持有
+            WD-&gt;&gt;Redis: EXPIRE lock 30（续期）
+        else 锁已丢失
+            WD-&gt;&gt;WD: 停止续期，任务失败
+        end
+    end
+    
+    Node-&gt;&gt;Redis: 任务完成，DEL lock
+    WD-&gt;&gt;WD: 停止
+</pre>
+<h3>故障恢复流程</h3>
+<pre class="mermaid">flowchart TB
+    START[开始] --&gt; SCAN[扫描 RUNNING 状态任务]
+    SCAN --&gt; CHECK_LOCK{检查锁是否存在}
+    
+    CHECK_LOCK --&gt;|锁存在| CHECK_NODE{节点心跳正常？}
+    CHECK_NODE --&gt;|正常| WAIT[继续等待]
+    CHECK_NODE --&gt;|超时| MARK_DEAD[标记节点死亡]
+    
+    CHECK_LOCK --&gt;|锁不存在| MARK_ORPHAN[标记为孤儿任务]
+    
+    MARK_DEAD --&gt; RECOVER
+    MARK_ORPHAN --&gt; RECOVER[任务恢复]
+    
+    RECOVER --&gt; CHECK_RETRY{重试次数&lt;br/&gt;是否超限？}
+    CHECK_RETRY --&gt;|未超限| REQUEUE[重新入队]
+    CHECK_RETRY --&gt;|已超限| DLQ[移入死信队列]
+    
+    REQUEUE --&gt; END([结束])
+    DLQ --&gt; ALERT[发送告警]
+    ALERT --&gt; END
+</pre>
+<h3>恢复时间目标</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">故障类型</th>
+<th style="text-align:left">检测时间</th>
+<th style="text-align:left">恢复时间</th>
+<th style="text-align:left">总 RTO</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">节点崩溃</td>
+<td style="text-align:left">15秒</td>
+<td style="text-align:left">15秒</td>
+<td style="text-align:left">30秒</td>
+</tr>
+<tr>
+<td style="text-align:left">网络分区</td>
+<td style="text-align:left">30秒</td>
+<td style="text-align:left">30秒</td>
+<td style="text-align:left">60秒</td>
+</tr>
+<tr>
+<td style="text-align:left">任务超时</td>
+<td style="text-align:left">可配置</td>
+<td style="text-align:left">立即</td>
+<td style="text-align:left">超时阈值</td>
+</tr>
+<tr>
+<td style="text-align:left">锁过期</td>
+<td style="text-align:left">30秒</td>
+<td style="text-align:left">5秒</td>
+<td style="text-align:left">35秒</td>
+</tr>
+</tbody>
+</table>
+<h3>死信队列设计</h3>
+<pre class="mermaid">graph LR
+    subgraph Normal[&quot;正常流程&quot;]
+        T[任务] --&gt; Q[队列] --&gt; W[Worker] --&gt; S[成功]
+    end
+    
+    subgraph Failure[&quot;失败流程&quot;]
+        F[任务失败] --&gt; R1[重试1]
+        R1 --&gt; R2[重试2]
+        R2 --&gt; R3[重试3]
+        R3 --&gt; DLQ[(死信队列)]
+    end
+    
+    subgraph DLQProcess[&quot;死信处理&quot;]
+        DLQ --&gt; ALERT[告警通知]
+        DLQ --&gt; REVIEW[人工审核]
+        REVIEW --&gt;|可恢复| REQUEUE[重新入队]
+        REVIEW --&gt;|业务错误| DISCARD[丢弃]
+    end
+</pre>
+<h3>挑战与解决方案</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">挑战</th>
+<th style="text-align:left">解决方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">锁续期与节点故障</td>
+<td style="text-align:left">心跳 + 锁双重检测</td>
+</tr>
+<tr>
+<td style="text-align:left">任务卡死检测</td>
+<td style="text-align:left">进度更新 + 超时阈值</td>
+</tr>
+<tr>
+<td style="text-align:left">节点宕机任务丢失</td>
+<td style="text-align:left">心跳检测 + 自动回收</td>
+</tr>
+<tr>
+<td style="text-align:left">重复回收</td>
+<td style="text-align:left">分布式锁保护回收操作</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>v1.5（规划）：任务编排</h2>
+<blockquote>
+<p><strong>本节为路线图设计，尚未实现。</strong> 截至 v1.0.2，源码中没有 WorkflowEngine、DAG 引擎或工作流存储；以下 API、状态机与存储结构均为规划草案，请勿据此调用。当前如需编排，可在业务层用 <code>submit()</code> 组合实现。</p>
+</blockquote>
+<p>规划目标：支持复杂的工作流 DAG 依赖管理，实现任务编排能力。</p>
+<p><strong>规划使用场景</strong></p>
+<blockquote>
+<p>任务编排使用场景：</p>
+<ol>
+<li class="lvl-3">顺序执行：A → B → C</li>
+<li class="lvl-3">并行执行：A 完成后，B 和 C 并行</li>
+<li class="lvl-3">条件分支：根据 A 的结果决定执行 B 还是 C</li>
+<li class="lvl-3">聚合等待：等待 B 和 C 都完成后执行 D</li>
+<li class="lvl-3">超时控制：整个 DAG 的超时时间</li>
+<li class="lvl-3">重试策略：子任务独立重试</li>
+</ol>
+</blockquote>
+<pre class="mermaid">graph TB
+    subgraph Orchestration[&quot;任务编排层 v1.5（规划）&quot;]
+        DAG[DAG定义&lt;br/&gt;任务依赖图]
+        SCH[WorkflowScheduler&lt;br/&gt;工作流调度器]
+        ENG[WorkflowEngine&lt;br/&gt;工作流执行引擎]
+        CTX[WorkflowContext&lt;br/&gt;上下文传递]
+    end
+    
+    subgraph Core[&quot;核心层（已有）&quot;]
+        TP[TaskPool&lt;br/&gt;即时任务执行]
+        TS[TaskScheduler&lt;br/&gt;定时任务调度]
+        EB[EventBus&lt;br/&gt;事件总线]
+    end
+    
+    subgraph Storage[&quot;存储层扩展&quot;]
+        WF[(Workflow存储)]
+        EXEC[(执行记录)]
+        STATE[(状态存储)]
+    end
+    
+    DAG --&gt; SCH
+    SCH --&gt; ENG
+    ENG --&gt; TP
+    ENG --&gt; TS
+    CTX --&gt; ENG
+    ENG --&gt; WF
+    ENG --&gt; EXEC
+    ENG --&gt; STATE
+    EB -.-&gt;|事件监听| ENG
+</pre>
+<h3>工作流类型</h3>
+<pre class="mermaid">graph LR
+    subgraph Sequential[&quot;顺序执行&quot;]
+        A[A] --&gt; B[B] --&gt; C[C]
+    end
+    
+    subgraph Parallel[&quot;并行执行&quot;]
+        A2[A] --&gt; B2[B]
+        A2 --&gt; C2[C]
+        B2 --&gt; D2[D]
+        C2 --&gt; D2
+    end
+    
+    subgraph Conditional[&quot;条件分支&quot;]
+        A3[A] --&gt; COND{条件判断}
+        COND --&gt;|True| B3[B]
+        COND --&gt;|False| C3[C]
+        B3 --&gt; D3[D]
+        C3 --&gt; D3
+    end
+    
+    subgraph Complex[&quot;复杂DAG&quot;]
+        E[E] --&gt; F[F]
+        E --&gt; G[G]
+        F --&gt; H[H]
+        G --&gt; H
+        H --&gt; I[I]
+    end
+</pre>
+<h3>工作流状态机</h3>
+<pre class="mermaid">stateDiagram-v2
+    [*] --&gt; PENDING: 创建工作流
+    
+    PENDING --&gt; RUNNING: 开始执行
+    PENDING --&gt; CANCELLED: 用户取消
+    
+    RUNNING --&gt; WAITING: 等待子任务完成
+    WAITING --&gt; RUNNING: 依赖满足
+    
+    RUNNING --&gt; SUCCESS: 所有节点成功
+    RUNNING --&gt; FAILED: 任一节点失败
+    RUNNING --&gt; CANCELLED: 用户取消
+    RUNNING --&gt; TIMEOUT: 整体超时
+    
+    SUCCESS --&gt; [*]
+    FAILED --&gt; [*]
+    CANCELLED --&gt; [*]
+    TIMEOUT --&gt; [*]
+</pre>
+<h3>节点状态机</h3>
+<pre class="mermaid">stateDiagram-v2
+    [*] --&gt; PENDING: 创建节点
+    
+    PENDING --&gt; READY: 依赖满足
+    PENDING --&gt; SKIPPED: 条件不满足
+    
+    READY --&gt; RUNNING: 开始执行
+    READY --&gt; CANCELLED: 工作流取消
+    
+    RUNNING --&gt; SUCCESS: 执行成功
+    RUNNING --&gt; FAILED: 执行失败
+    RUNNING --&gt; CANCELLED: 工作流取消
+    
+    SUCCESS --&gt; [*]
+    FAILED --&gt; [*]
+    SKIPPED --&gt; [*]
+    CANCELLED --&gt; [*]
+</pre>
+<h3>条件分支示例</h3>
+<pre class="hljs"><code><span class="hljs-comment"># 条件表达式示例</span>
+conditions = {
+    <span class="hljs-string">&quot;status_check&quot;</span>: <span class="hljs-string">&quot;result.status == &#x27;valid&#x27;&quot;</span>,
+    <span class="hljs-string">&quot;numeric_check&quot;</span>: <span class="hljs-string">&quot;result.count &gt; 10&quot;</span>,
+    <span class="hljs-string">&quot;user_check&quot;</span>: <span class="hljs-string">&quot;context.user_id in [&#x27;admin&#x27;, &#x27;root&#x27;]&quot;</span>,
+    <span class="hljs-string">&quot;range_check&quot;</span>: <span class="hljs-string">&quot;10 &lt; result.value &lt; 100&quot;</span>
+}
+</code></pre>
+<h3>错误处理策略</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">策略</th>
+<th style="text-align:left">行为</th>
+<th style="text-align:left">适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>FAIL_FAST</strong></td>
+<td style="text-align:left">一失败立即停止工作流</td>
+<td style="text-align:left">关键任务，不允许部分成功</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>FAIL_SAFE</strong></td>
+<td style="text-align:left">继续执行，记录失败节点</td>
+<td style="text-align:left">非关键任务，允许部分成功</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>RETRY</strong></td>
+<td style="text-align:left">失败节点自动重试</td>
+<td style="text-align:left">网络波动等临时故障</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>FALLBACK</strong></td>
+<td style="text-align:left">使用备用节点/数据</td>
+<td style="text-align:left">有降级方案的任务</td>
+</tr>
+</tbody>
+</table>
+<h3>DAG 可视化</h3>
+<pre class="mermaid">graph LR
+    subgraph DAG[&quot;DAG 工作流示例&quot;]
+        FETCH[fetch_data] --&gt; VALIDATE[validate_data]
+        
+        VALIDATE --&gt; PROCESS_A[process_a]
+        VALIDATE --&gt; PROCESS_B[process_b]
+        
+        PROCESS_A --&gt; AGGREGATE[aggregate]
+        PROCESS_B --&gt; AGGREGATE
+        
+        AGGREGATE --&gt; SAVE[save_result]
+    end
+    
+    subgraph Status[&quot;执行状态&quot;]
+        direction LR
+        S1[fetch_data] --&gt; S2[validate_data]
+        S2 --&gt; S3[process_a]
+        S2 --&gt; S4[process_b]
+    end
+</pre>
+<hr>
+<h2>v2.0（规划）：企业级特性</h2>
+<blockquote>
+<p><strong>本节为路线图设计，尚未实现。</strong> 当前 <code>WebUIServer</code> 需手动启动（仅提供 <code>/</code> 与 <code>/api/stats</code>），无多租户，无 HTTP <code>/metrics</code> 拉取端点（仅 <code>to_prometheus_format()</code> 文本与 <code>PrometheusReporter</code> 推送）。以下为规划目标。</p>
+</blockquote>
+<p>规划目标：提供可选的 Web 监控面板，支持多租户和 Prometheus 集成。</p>
+<pre class="mermaid">graph TB
+    subgraph Nodes[&quot;任务节点&quot;]
+        N1[Node1&lt;br/&gt;TaskPool]
+        N2[Node2&lt;br/&gt;TaskPool]
+        N3[Node3&lt;br/&gt;TaskPool]
+    end
+    
+    subgraph Redis[&quot;Redis 共享存储&quot;]
+        DATA[(任务数据)]
+        STATS[(统计数据)]
+        TENANT[(租户隔离)]
+    end
+    
+    subgraph UI[&quot;独立 Web UI 服务 v2.0&quot;]
+        API[FastAPI&lt;br/&gt;REST API]
+        WS[WebSocket&lt;br/&gt;实时推送]
+        FRONT[前端&lt;br/&gt;HTMX/React]
+        AUTH[认证授权&lt;br/&gt;多租户]
+    end
+    
+    subgraph Monitor[&quot;监控集成&quot;]
+        PROM[Prometheus&lt;br/&gt;指标暴露]
+        GRAFANA[Grafana&lt;br/&gt;可视化]
+    end
+    
+    Nodes --&gt; Redis
+    UI --&gt; Redis
+    UI --&gt; PROM
+    PROM --&gt; GRAFANA
+    
+    User[用户] --&gt; FRONT
+    FRONT --&gt; API &amp; WS
+    FRONT --&gt; AUTH
+</pre>
+<h3>Web UI 设计</h3>
+<p><strong>嵌入式部署模式</strong></p>
+<blockquote>
+<p>UI 作为<strong>后台线程</strong>自动启动，用户无需额外命令，一个进程搞定所有。</p>
+</blockquote>
+<pre class="mermaid">graph TB
+    subgraph Process[&quot;用户进程&quot;]
+        APP[用户应用]
+        SCH[TaskScheduler]
+        UI[FastAPI App&lt;br/&gt;运行在独立线程]
+    end
+    
+    APP --&gt;|调用| SCH
+    SCH --&gt;|自动启动| UI
+    UI --&gt;|同进程| APP
+</pre>
+<p><strong>API 端点设计</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">方法</th>
+<th style="text-align:left">路径</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">GET</td>
+<td style="text-align:left"><code>/api/stats</code></td>
+<td style="text-align:left">实时统计</td>
+</tr>
+<tr>
+<td style="text-align:left">GET</td>
+<td style="text-align:left"><code>/api/tasks</code></td>
+<td style="text-align:left">任务列表（支持分页、筛选）</td>
+</tr>
+<tr>
+<td style="text-align:left">GET</td>
+<td style="text-align:left"><code>/api/tasks/{id}</code></td>
+<td style="text-align:left">任务详情</td>
+</tr>
+<tr>
+<td style="text-align:left">POST</td>
+<td style="text-align:left"><code>/api/tasks/{id}/cancel</code></td>
+<td style="text-align:left">取消任务</td>
+</tr>
+<tr>
+<td style="text-align:left">POST</td>
+<td style="text-align:left"><code>/api/tasks/{id}/retry</code></td>
+<td style="text-align:left">重试任务</td>
+</tr>
+<tr>
+<td style="text-align:left">GET</td>
+<td style="text-align:left"><code>/api/workflows</code></td>
+<td style="text-align:left">工作流列表</td>
+</tr>
+<tr>
+<td style="text-align:left">GET</td>
+<td style="text-align:left"><code>/api/workflows/{id}</code></td>
+<td style="text-align:left">工作流详情</td>
+</tr>
+<tr>
+<td style="text-align:left">GET</td>
+<td style="text-align:left"><code>/api/workflows/{id}/dag</code></td>
+<td style="text-align:left">工作流 DAG 可视化</td>
+</tr>
+<tr>
+<td style="text-align:left">GET</td>
+<td style="text-align:left"><code>/api/nodes</code></td>
+<td style="text-align:left">节点列表</td>
+</tr>
+<tr>
+<td style="text-align:left">GET</td>
+<td style="text-align:left"><code>/api/metrics</code></td>
+<td style="text-align:left">指标数据</td>
+</tr>
+<tr>
+<td style="text-align:left">WS</td>
+<td style="text-align:left"><code>/ws</code></td>
+<td style="text-align:left">WebSocket 实时推送</td>
+</tr>
+</tbody>
+</table>
+<p><strong>WebSocket 实时推送</strong></p>
+<pre class="mermaid">sequenceDiagram
+    participant Browser as 浏览器
+    participant Server as Web UI 服务
+    participant EB as EventBus
+
+    Browser-&gt;&gt;Server: WebSocket 连接
+    Server-&gt;&gt;EB: 订阅所有事件
+    
+    loop 实时推送
+        EB-&gt;&gt;Server: 任务状态变更事件
+        Server-&gt;&gt;Browser: 推送更新
+        Browser-&gt;&gt;Browser: 更新界面
+    end
+</pre>
+<h3>多租户设计</h3>
+<p><strong>租户隔离模型</strong></p>
+<pre class="mermaid">graph TB
+    subgraph TenantA[&quot;租户A&quot;]
+        TA1[任务队列]
+        TA2[任务数据]
+        TA3[工作流]
+    end
+    
+    subgraph TenantB[&quot;租户B&quot;]
+        TB1[任务队列]
+        TB2[任务数据]
+        TB3[工作流]
+    end
+    
+    subgraph Shared[&quot;共享资源&quot;]
+        WORKERS[Worker Pool]
+        REDIS[Redis]
+    end
+    
+    TenantA --&gt; Shared
+    TenantB --&gt; Shared
+</pre>
+<p><strong>租户配额管理</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">配额项</th>
+<th style="text-align:left">说明</th>
+<th style="text-align:left">默认值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code>max_tasks</code></td>
+<td style="text-align:left">最大任务数</td>
+<td style="text-align:left">10,000</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>max_queue_size</code></td>
+<td style="text-align:left">最大队列大小</td>
+<td style="text-align:left">1,000</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>max_concurrent</code></td>
+<td style="text-align:left">最大并发数</td>
+<td style="text-align:left">10</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>max_workflows</code></td>
+<td style="text-align:left">最大工作流数</td>
+<td style="text-align:left">100</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>task_ttl</code></td>
+<td style="text-align:left">任务保留时间</td>
+<td style="text-align:left">7天</td>
+</tr>
+</tbody>
+</table>
+<h3>Prometheus 集成</h3>
+<p><strong>指标暴露</strong></p>
+<pre class="mermaid">graph LR
+    subgraph NeoTask
+        MC[MetricsCollector]
+        EXP[Exporter]
+    end
+    
+    subgraph Prometheus
+        SCRAPE[抓取器]
+        TSDB[时序数据库]
+    end
+    
+    subgraph Grafana
+        DASH[仪表盘]
+        ALERT[告警]
+    end
+    
+    MC --&gt; EXP
+    EXP --&gt;|HTTP:9090/metrics| SCRAPE
+    SCRAPE --&gt; TSDB
+    TSDB --&gt; DASH
+    TSDB --&gt; ALERT
+</pre>
+<p><strong>核心指标</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">指标名</th>
+<th style="text-align:left">类型</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code>neotask_tasks_total</code></td>
+<td style="text-align:left">Counter</td>
+<td style="text-align:left">任务总数（按状态、租户）</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>neotask_task_duration_seconds</code></td>
+<td style="text-align:left">Histogram</td>
+<td style="text-align:left">任务执行时长分布</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>neotask_queue_size</code></td>
+<td style="text-align:left">Gauge</td>
+<td style="text-align:left">队列大小</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>neotask_active_workers</code></td>
+<td style="text-align:left">Gauge</td>
+<td style="text-align:left">活跃 Worker 数</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>neotask_success_rate</code></td>
+<td style="text-align:left">Gauge</td>
+<td style="text-align:left">成功率</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>neotask_throughput</code></td>
+<td style="text-align:left">Gauge</td>
+<td style="text-align:left">吞吐量</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>架构决策记录（ADR）</h2>
+<p><strong>ADR-001: 选择嵌入式而非独立服务</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>状态</strong>: 已采纳</p>
+</li>
+<li class="lvl-2">
+<p><strong>日期</strong>: 2026-04-01</p>
+</li>
+<li class="lvl-2">
+<p><strong>决策</strong>: 以库的形式提供，而非独立 HTTP 服务</p>
+</li>
+<li class="lvl-2">
+<p><strong>原因</strong>: 降低使用门槛，减少部署复杂度，用户无需额外运维</p>
+</li>
+</ul>
+<p><strong>ADR-002: 使用 Sorted Set 实现优先级队列</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>状态</strong>: 已采纳</p>
+</li>
+<li class="lvl-2">
+<p><strong>日期</strong>: 2026-04-01</p>
+</li>
+<li class="lvl-2">
+<p><strong>决策</strong>: Redis Sorted Set 存储任务队列</p>
+</li>
+<li class="lvl-2">
+<p><strong>原因</strong>: 天然支持优先级排序，原子操作，性能优异</p>
+</li>
+</ul>
+<p><strong>ADR-003: 预取机制设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>状态</strong>: 已采纳</p>
+</li>
+<li class="lvl-2">
+<p><strong>日期</strong>: 2026-04-01</p>
+</li>
+<li class="lvl-2">
+<p><strong>决策</strong>: 本地队列 + 批量预取</p>
+</li>
+<li class="lvl-2">
+<p><strong>原因</strong>: 减少 Redis 访问次数 95%，提高吞吐量 3 倍</p>
+</li>
+</ul>
+<p><strong>ADR-004: 去中心化架构（无主节点）</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>状态</strong>: 已采纳</p>
+</li>
+<li class="lvl-2">
+<p><strong>日期</strong>: 2026-05-02</p>
+</li>
+<li class="lvl-2">
+<p><strong>决策</strong>: 所有节点对等，采用抢占式消费</p>
+</li>
+<li class="lvl-2">
+<p><strong>原因</strong>: 避免单点故障，简化架构，线性扩展</p>
+</li>
+</ul>
+<p><strong>ADR-005: 任务编排 DAG 设计（路线图，尚未实现）</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>状态</strong>: 规划中（源码中尚无 DAG 引擎 / WorkflowEngine）</p>
+</li>
+<li class="lvl-2">
+<p><strong>日期</strong>: 2026-04-15</p>
+</li>
+<li class="lvl-2">
+<p><strong>决策</strong>: 拟基于依赖图的 DAG 执行引擎</p>
+</li>
+<li class="lvl-2">
+<p><strong>原因</strong>: 支持复杂业务场景，提升用户体验</p>
+</li>
+</ul>
+<p><strong>ADR-006: 故障恢复策略</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>状态</strong>: 已采纳</p>
+</li>
+<li class="lvl-2">
+<p><strong>日期</strong>: 2026-05-06</p>
+</li>
+<li class="lvl-2">
+<p><strong>决策</strong>: 心跳检测 + 锁超时 + 任务回收</p>
+</li>
+<li class="lvl-2">
+<p><strong>原因</strong>: 保证任务不丢失，5 分钟内自动恢复</p>
+</li>
+</ul>
+<hr>
+<h2>性能基准</h2>
+<blockquote>
+<p><strong>注</strong>：下表中的数字为<strong>设计目标</strong>，用于刻画各版本的预期能力量级，并非统一硬件与方法学下的官方实测基准；实测方法学与数据请见「性能基准」文档。任务编排尚未实现，故不列出对应行。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">场景</th>
+<th style="text-align:left">配置</th>
+<th style="text-align:left">QPS</th>
+<th style="text-align:left">P99延迟</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">单机内存队列</td>
+<td style="text-align:left">1 Worker</td>
+<td style="text-align:left">50k</td>
+<td style="text-align:left">2ms</td>
+<td style="text-align:left">基础性能</td>
+</tr>
+<tr>
+<td style="text-align:left">单机内存队列</td>
+<td style="text-align:left">10 Worker</td>
+<td style="text-align:left">100k</td>
+<td style="text-align:left">5ms</td>
+<td style="text-align:left">并发提升</td>
+</tr>
+<tr>
+<td style="text-align:left">Redis 分布式</td>
+<td style="text-align:left">1 节点</td>
+<td style="text-align:left">10k</td>
+<td style="text-align:left">10ms</td>
+<td style="text-align:left">网络开销</td>
+</tr>
+<tr>
+<td style="text-align:left">Redis 分布式</td>
+<td style="text-align:left">3 节点</td>
+<td style="text-align:left">25k</td>
+<td style="text-align:left">15ms</td>
+<td style="text-align:left">水平扩展</td>
+</tr>
+<tr>
+<td style="text-align:left">预取机制</td>
+<td style="text-align:left">预取=20</td>
+<td style="text-align:left">30k</td>
+<td style="text-align:left">8ms</td>
+<td style="text-align:left">性能提升 3x</td>
+</tr>
+<tr>
+<td style="text-align:left">高可用模式</td>
+<td style="text-align:left">全功能</td>
+<td style="text-align:left">15k</td>
+<td style="text-align:left">20ms</td>
+<td style="text-align:left">稳定运行</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>版本兼容性</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">升级路径</th>
+<th style="text-align:left">API 变更</th>
+<th style="text-align:left">存储变更</th>
+<th style="text-align:left">迁移成本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">v0.1 → v0.2</td>
+<td style="text-align:left">新增事件 API</td>
+<td style="text-align:left">无</td>
+<td style="text-align:left">自动迁移</td>
+</tr>
+<tr>
+<td style="text-align:left">v0.2 → v0.3</td>
+<td style="text-align:left">新增定时 API</td>
+<td style="text-align:left">新增延时队列</td>
+<td style="text-align:left">自动迁移</td>
+</tr>
+<tr>
+<td style="text-align:left">v0.3 → v0.4</td>
+<td style="text-align:left">无</td>
+<td style="text-align:left">新增 Redis 结构</td>
+<td style="text-align:left">自动迁移</td>
+</tr>
+<tr>
+<td style="text-align:left">v0.4 → v0.5</td>
+<td style="text-align:left">无</td>
+<td style="text-align:left">无</td>
+<td style="text-align:left">无需迁移</td>
+</tr>
+<tr>
+<td style="text-align:left">v0.5 → v1.0</td>
+<td style="text-align:left">无</td>
+<td style="text-align:left">新增心跳表</td>
+<td style="text-align:left">自动迁移</td>
+</tr>
+<tr>
+<td style="text-align:left">v1.0 → v1.5（规划）</td>
+<td style="text-align:left">新增编排 API</td>
+<td style="text-align:left">新增 DAG 表</td>
+<td style="text-align:left">自动迁移</td>
+</tr>
+<tr>
+<td style="text-align:left">v1.5 → v2.0（规划）</td>
+<td style="text-align:left">新增 Web API</td>
+<td style="text-align:left">新增租户表</td>
+<td style="text-align:left">自动迁移</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>版本与验证说明</h2>
+<p>本文属于项目文档而不是永久不变的 API 契约。以下情况发生时，应重新核对源码或发布说明：</p>
+<ol>
+<li class="lvl-3">
+<p>项目版本升级，尤其是公开 API、配置模型、存储实现和工作流发生变化；</p>
+</li>
+<li class="lvl-3">
+<p>本文中的默认值、性能数据或示例依赖外部服务版本；</p>
+</li>
+<li class="lvl-3">
+<p>运行环境与本文案例不同，例如 Python 版本、Redis/数据库版本、模型供应商或操作系统不同。</p>
+</li>
+</ol>
+<p>如果你要把本文内容用于生产环境，请优先使用仓库当前版本的 README、源码、测试和 Release 记录进行最终确认。</p>
+<h2>总结</h2>
+<p><strong>架构演进历程</strong></p>
+<pre class="mermaid">graph TB
+    subgraph Phase1[&quot;Phase 1: 基础能力 v0.1-0.3&quot;]
+        P1[基础任务队列&lt;br/&gt;可观测性&lt;br/&gt;定时调度]
+    end
+    
+    subgraph Phase2[&quot;Phase 2: 分布式 v0.4-0.5&quot;]
+        P2[Redis共享队列&lt;br/&gt;分布式锁&lt;br/&gt;预取机制]
+    end
+    
+    subgraph Phase3[&quot;Phase 3: 高可用 v1.0&quot;]
+        P3[看门狗续期&lt;br/&gt;超时检测&lt;br/&gt;故障恢复]
+    end
+    
+    subgraph Phase4[&quot;Phase 4: 任务编排 v1.5（规划）&quot;]
+        P4[DAG工作流&lt;br/&gt;条件分支&lt;br/&gt;并行执行]
+    end
+
+    subgraph Phase5[&quot;Phase 5: 企业级 v2.0（规划）&quot;]
+        P5[Web UI&lt;br/&gt;多租户&lt;br/&gt;Prometheus]
+    end
+    
+    Phase1 --&gt; Phase2 --&gt; Phase3 --&gt; Phase4 --&gt; Phase5
+</pre>
+<p><strong>各版本核心能力总结</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">版本</th>
+<th style="text-align:left">核心能力</th>
+<th style="text-align:left">关键组件</th>
+<th style="text-align:left">里程碑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">v0.1</td>
+<td style="text-align:left">基础任务队列</td>
+<td style="text-align:left">LifecycleManager, WorkerPool</td>
+<td style="text-align:left">可用</td>
+</tr>
+<tr>
+<td style="text-align:left">v0.2</td>
+<td style="text-align:left">可观测性</td>
+<td style="text-align:left">EventBus, MetricsCollector</td>
+<td style="text-align:left">可监控</td>
+</tr>
+<tr>
+<td style="text-align:left">v0.3</td>
+<td style="text-align:left">定时调度</td>
+<td style="text-align:left">TaskScheduler, 时间轮, Cron</td>
+<td style="text-align:left">功能完整</td>
+</tr>
+<tr>
+<td style="text-align:left">v0.4</td>
+<td style="text-align:left">分布式基础</td>
+<td style="text-align:left">Redis 存储, 分布式锁</td>
+<td style="text-align:left">可扩展</td>
+</tr>
+<tr>
+<td style="text-align:left">v0.5</td>
+<td style="text-align:left">性能优化</td>
+<td style="text-align:left">预取机制, 批量操作</td>
+<td style="text-align:left">高性能</td>
+</tr>
+<tr>
+<td style="text-align:left">v1.0</td>
+<td style="text-align:left">高可用保障</td>
+<td style="text-align:left">看门狗, 故障恢复, 死信队列</td>
+<td style="text-align:left">生产级</td>
+</tr>
+<tr>
+<td style="text-align:left">v1.5</td>
+<td style="text-align:left">任务编排（规划）</td>
+<td style="text-align:left">DAG 引擎, 条件分支</td>
+<td style="text-align:left">复杂场景</td>
+</tr>
+<tr>
+<td style="text-align:left">v2.0</td>
+<td style="text-align:left">企业级（规划）</td>
+<td style="text-align:left">Web UI, 多租户</td>
+<td style="text-align:left">商业化</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键设计决策回顾</strong></p>
+<ol>
+<li class="lvl-3">
+<p><strong>嵌入式设计</strong>：以库的形式提供，降低使用门槛</p>
+</li>
+<li class="lvl-3">
+<p><strong>渐进式增强</strong>：每个版本都是完整产品，用户可按需选择</p>
+</li>
+<li class="lvl-3">
+<p><strong>存储抽象</strong>：支持多种存储后端，平滑演进</p>
+</li>
+<li class="lvl-3">
+<p><strong>事件驱动</strong>：EventBus 解耦各模块，支持监控和扩展</p>
+</li>
+<li class="lvl-3">
+<p><strong>异步优先</strong>：基于 asyncio，充分利用 Python 异步能力</p>
+</li>
+<li class="lvl-3">
+<p><strong>去中心化</strong>：无主节点，抢占式消费，简单可靠</p>
+</li>
+<li class="lvl-3">
+<p><strong>DAG 编排</strong>（规划）：拟支持复杂工作流，满足企业级需求</p>
+</li>
+</ol>
+<hr>
+<h2>相关链接</h2>
+<p><a href="index.html">返回首页</a></p>
+<p><strong>入门与参考</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="quickstart.html">快速上手</a> - 5 分钟入门</p>
+</li>
+<li class="lvl-2">
+<p><a href="api-reference.html">API 参考</a> - 完整 API 文档</p>
+</li>
+<li class="lvl-2">
+<p><a href="configuration.html">配置说明</a> - 配置参数详解</p>
+</li>
+<li class="lvl-2">
+<p><a href="best-practices.html">最佳实践</a> - 生产环境建议</p>
+</li>
+</ul>
+<p><strong>架构与设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="architecture.html">架构设计</a> - 整体架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="core-features.html">核心实现</a> - 功能设计</p>
+</li>
+<li class="lvl-2">
+<p><a href="evolution.html">版本演进</a> - 演进历程</p>
+</li>
+</ul>
+<p><strong>分布式核心</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="decentralization.html">去中心化</a> - 对等架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="failure-recovery.html">故障恢复</a> - 高可用保障</p>
+</li>
+<li class="lvl-2">
+<p><a href="prefetch.html">预取机制</a> - 高吞吐性能</p>
+</li>
+<li class="lvl-2">
+<p><a href="distributed-lock.html">分布式锁</a> - 并发控制</p>
+</li>
+</ul>
+<p><strong>存储与监控</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="persistence.html">持久化</a> - 多存储后端</p>
+</li>
+<li class="lvl-2">
+<p><a href="priority-queue.html">优先级</a> - 优先级队列</p>
+</li>
+<li class="lvl-2">
+<p><a href="monitoring.html">节点监控</a> - 可观测性</p>
+</li>
+</ul>
+<p><strong>资源</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/neotask">GitHub</a> - 源代码仓库</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://task.helpenx.com">NeoTask 官网</a> - 官方网站</p>
+</li>
+</ul>
+
+      </article>
+    </main>
+  </div>
+  <footer>
+    <a href="https://task.helpenx.com" target="_blank" rel="noopener">NeoTask 官网</a>·
+    <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>·
+    <a href="index.html">文档中心</a>
+    <div style="margin-top:6px">© 2026 helpenx.com · 文档基线以文中标注版本对应的源码为准</div>
+  </footer>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</body>
+</html>

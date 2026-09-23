@@ -1,720 +1,948 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>架构设计 - NeoTask</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="../assets/css/style.css">
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-    <style>
-        .arch-mermaid {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 16px;
-            padding: 1.5rem;
-            margin: 1.5rem 0;
-            text-align: center;
-            overflow-x: auto;
-        }
-        .design-pattern {
-            background: rgba(168, 85, 247, 0.1);
-            border-left: 3px solid #a855f7;
-            padding: 1rem;
-            margin: 1rem 0;
-            border-radius: 0 8px 8px 0;
-        }
-        .design-pattern h4 {
-            color: #a855f7;
-            margin-bottom: 0.5rem;
-        }
-        .version-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 1rem 0;
-        }
-        .version-table th, .version-table td {
-            padding: 0.75rem;
-            text-align: left;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .version-table th {
-            background: rgba(168, 85, 247, 0.2);
-            font-weight: 600;
-        }
-        .version-badge {
-            display: inline-block;
-            padding: 0.2rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-        .version-badge.completed { background: #10b981; }
-        .version-badge.current { background: #f59e0b; }
-        .version-badge.planned { background: #6b7280; }
-        .mermaid {
-            background: #1e1e2e;
-            border-radius: 12px;
-            padding: 1rem;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策 · NeoTask 文档</title>
+  <meta name="description" content="NeoTask 架构设计：一种代码三种形态的能力阶梯、TaskPool 装配拓扑与两阶段生命周期、组件接线状态清单、高可用与可观测性的真实形态。">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://task.helpenx.com/docs/architecture.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:title" content="NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策">
+  <meta property="og:description" content="NeoTask 架构设计：一种代码三种形态的能力阶梯、TaskPool 装配拓扑与两阶段生命周期、组件接线状态清单、高可用与可观测性的真实形态。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://task.helpenx.com/docs/architecture.html">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>⏱️</text></svg>">
+  <style>
+:root{--brand:#0d9488;--brand-dark:#0f766e;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:var(--ink);background:#fff;line-height:1.75;font-size:16px}
+a{color:var(--brand);text-decoration:none}a:hover{color:var(--brand-dark);text-decoration:underline}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
+.topbar .brand .doc-badge{font-size:12px;font-weight:600;color:#fff;background:var(--brand);border-radius:6px;padding:2px 8px}
+.topbar nav{display:flex;gap:20px;font-size:14.5px}
+.topbar nav a{color:var(--muted);font-weight:500}
+.topbar nav a:hover{color:var(--brand)}
+.wrap{display:flex;max-width:1280px;margin:0 auto;padding:0 16px}
+.sidebar{width:264px;flex-shrink:0;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 40px 0;border-right:1px solid var(--line)}
+.sidebar .side-home{display:block;font-weight:600;color:var(--ink);margin-bottom:16px;font-size:15px}
+.sidebar .side-home:hover{color:var(--brand);text-decoration:none}
+.sidebar h4{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px;font-weight:600}
+.sidebar a{display:block;padding:5px 10px;border-radius:6px;font-size:14px;color:#334155;line-height:1.5}
+.sidebar a:hover{background:var(--bg);color:var(--brand);text-decoration:none}
+.sidebar a.active{background:var(--brand);color:#fff}
+.content{flex:1;min-width:0;padding:32px 20px 60px 36px;max-width:860px}
+.toc-mobile{display:none;margin-bottom:20px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.toc-mobile summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.toc-mobile a{display:block;padding:3px 0;font-size:14px}
+.article h1{font-size:1.9em;line-height:1.35;margin:.4em 0 .8em}
+.article h2{font-size:1.45em;margin:1.8em 0 .7em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
+.article h3{font-size:1.22em;margin:1.5em 0 .6em}
+.article h4{font-size:1.08em;margin:1.3em 0 .5em}
+.article p{margin:.85em 0}
+.article ul,.article ol{padding-left:1.6em;margin:.7em 0}
+.article li{margin:.35em 0}
+.article img{max-width:100%;height:auto;border-radius:8px}
+.article table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:.94em;display:block;overflow-x:auto}
+.article th,.article td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+.article th{background:var(--bg);font-weight:600}
+.article tr:nth-child(even) td{background:#fbfdff}
+.article blockquote{margin:1.1em 0;padding:.7em 1.1em;border-left:4px solid var(--brand);background:var(--bg);border-radius:0 8px 8px 0;color:#334155}
+.article blockquote p{margin:.3em 0}
+.article code:not(pre code){background:#eef2f7;color:#c7254e;padding:.15em .4em;border-radius:4px;font-size:.88em;word-break:break-word}
+.article pre.hljs{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0;line-height:1.6}
+.article pre.hljs code{background:none;padding:0;color:var(--ink);font-size:.9em;font-family:ui-monospace,SFMono-Regular,'Cascadia Code',Consolas,Menlo,monospace}
+.article pre.mermaid{text-align:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0}
+.article hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+.article .success,.article .tips,.article .warning,.article .danger{border-radius:8px;padding:.9em 1.1em;margin:1.1em 0;border:1px solid}
+.article .success{border-color:#a7f3d0;background:#ecfdf5}.article .success p:first-of-type::before{content:'✅ '}
+.article .tips{border-color:#bfdbfe;background:#eff6ff}.article .tips p:first-of-type::before{content:'💡 '}
+.article .warning{border-color:#fde68a;background:#fffbeb}.article .warning p:first-of-type::before{content:'⚠️ '}
+.article .danger{border-color:#fecaca;background:#fef2f2}.article .danger p:first-of-type::before{content:'🚫 '}
+.article .success>p:first-child,.article .tips>p:first-child,.article .warning>p:first-child,.article .danger>p:first-child{margin-top:0}
+.article .success>p:last-child,.article .tips>p:last-child,.article .warning>p:last-child,.article .danger>p:last-child{margin-bottom:0}
+.doc-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--muted)}
+.doc-meta .tag{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+.doc-nav{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
+.doc-nav a{font-weight:600}
+footer{border-top:1px solid var(--line);padding:22px 24px;text-align:center;color:var(--muted);font-size:13.5px}
+footer a{color:var(--muted);margin:0 10px}
+footer a:hover{color:var(--brand)}
+@media (max-width:960px){
+  .sidebar{display:none}
+  .toc-mobile{display:block}
+  .content{padding:20px 6px 50px}
+  .topbar nav{gap:12px}
+}
+</style>
+  <style>
+.hljs{color:#24292e;background:#f6f8fa}
+.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.constant_{color:#d73a49}
+.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}
+.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}
+.hljs-string,.hljs-meta .hljs-string,.hljs-regexp{color:#032f62}
+.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-tag,.hljs-subst,.hljs-symbol{color:#e36209}
+.hljs-built_in,.hljs-class .hljs-title{color:#e36209}
+.hljs-comment,.hljs-meta,.hljs-quote{color:#6a737d}
+.hljs-section{color:#005cc5;font-weight:700}
+.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
+</style>
 </head>
 <body>
-    <nav class="navbar" id="navbar">
-        <div class="nav-container">
-            <div class="logo">
-                <div class="logo-icon"><i class="fas fa-tasks"></i></div>
-                <span>NeoTask</span>
-            </div>
-            <div class="menu-btn" id="menuBtn"><i class="fas fa-bars"></i></div>
-            <div class="nav-links" id="navLinks">
-                <a href="../index.html">首页</a>
-                <a href="quickstart.html" class="active">文档</a>
-                <a href="https://pengline.cn/2026/03/0ec8d887591a40c98be76645d33a2f23" class="blog-btn">
-                    <i class="fas fa-blog"></i>
-                    博客
-                </a>
-                <a href="https://github.com/neopen/neotask" class="github-btn">
-                    <i class="fab fa-github"></i> GitHub
-                </a>
-            </div>
-        </div>
+  <header class="topbar">
+    <a class="brand" href="index.html">⏱️ NeoTask <span class="doc-badge">文档</span></a>
+    <nav>
+      <a href="https://task.helpenx.com" target="_blank" rel="noopener">产品官网</a>
+      <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
     </nav>
-
-    <div class="docs-container">
-        <aside class="docs-sidebar">
-            <h4>文档导航</h4>
-            <ul>
-                <li><a href="quickstart.html">快速上手</a></li>
-                <li><a href="api-reference.html">API 参考</a></li>
-                <li><a href="configuration.html">配置说明</a></li>
-                <li><a href="architecture.html" class="active">架构设计</a></li>
-            </ul>
-            <div class="toc">
-                <h4>本页目录</h4>
-                <ul>
-                    <li><a href="#overview">架构概览</a></li>
-                    <li><a href="#layers">分层架构</a></li>
-                    <li><a href="#dataflow">数据流</a></li>
-                    <li><a href="#design-patterns">设计模式</a></li>
-                    <li><a href="#evolution">架构演进</a></li>
-                    <li><a href="#tech-stack">技术选型</a></li>
-                </ul>
-            </div>
-        </aside>
-
-        <main class="docs-content">
-            <h1>架构设计</h1>
-            <p>NeoTask 是一个嵌入式通用任务池组件，以库的形式被其他应用引用，通过函数调用方式使用。</p>
-
-            <h2 id="overview">架构概览</h2>
-            <p>NeoTask 采用分层架构设计，模块化清晰，易于扩展。</p>
-
-            <div class="arch-mermaid">
-                <pre class="mermaid">
-graph TB
-    subgraph User["👤 用户应用层"]
-        APP[用户代码]
+  </header>
+  <div class="wrap">
+    <aside class="sidebar">
+      <a class="side-home" href="index.html">⏱️ 分布式任务调度系统 · 文档中心</a>
+      <h4>技术分析</h4><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a>
+<h4>API 与配置参考</h4><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a>
+<h4>实现与源码分析</h4><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a>
+<h4>设计与方案</h4><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a>
+<h4>项目概览</h4><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a>
+<h4>入门与使用</h4><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a>
+<h4>性能与评测</h4><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a>
+<h4>实践与运维</h4><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a>
+<h4>架构与核心设计</h4><a href="architecture.html" class="active">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a>
+<h4>版本与演进</h4><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a>
+    </aside>
+    <main class="content">
+      <details class="toc-mobile"><summary>📑 文档目录</summary><div><strong style="font-size:13px;color:var(--muted)">技术分析</strong><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a></div><div><strong style="font-size:13px;color:var(--muted)">API 与配置参考</strong><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a></div><div><strong style="font-size:13px;color:var(--muted)">实现与源码分析</strong><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a></div><div><strong style="font-size:13px;color:var(--muted)">设计与方案</strong><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a></div><div><strong style="font-size:13px;color:var(--muted)">项目概览</strong><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a></div><div><strong style="font-size:13px;color:var(--muted)">入门与使用</strong><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a></div><div><strong style="font-size:13px;color:var(--muted)">性能与评测</strong><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a></div><div><strong style="font-size:13px;color:var(--muted)">实践与运维</strong><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a></div><div><strong style="font-size:13px;color:var(--muted)">架构与核心设计</strong><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a></div><div><strong style="font-size:13px;color:var(--muted)">版本与演进</strong><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a></div></details>
+      <article class="article">
+        <div class="doc-meta"><span class="tag">NeoTask</span><span class="tag">更新 2026-04-21</span><a href="https://task.helpenx.com" target="_blank" rel="noopener">task.helpenx.com ↗</a></div>
+        <h1>NeoTask 架构设计</h1>
+<p>📚 <a href="index.html">返回首页</a> | 📖 <a href="quickstart.html">快速上手</a> | 📘 <a href="api-reference.html">API 参考</a> | ⚙️ <a href="configuration.html">配置说明</a> | 🐙  <a href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a href="https://task.helpenx.com">NeoTask 官网</a></p>
+<blockquote>
+<p><strong>文档定位</strong>：这是一篇架构文档。重点是解释组件之间的职责、数据流和关键设计取舍，并区分当前实现与设计层面的推演。<br>
+<strong>事实边界</strong>：实现文档：功能、接口和代码行为以文中标注版本对应的源码为准；仓库后续版本可能发生变化。<br>
+<strong>权威来源</strong>：<a href="https://github.com/neopen/neotask">NeoTask 源码仓库</a>；涉及版本历史时，以仓库 Release / CHANGELOG 为准。<br>
+<strong>代码标记</strong>：如果正文出现“源码/实现”字样，表示对应代码路径可在仓库中核对；示例代码仅用于演示调用方式，不应理解为项目源码原样。<br>
+<strong>版本基线</strong>：本文对照 NeoTask <strong>v1.0.2</strong>（PyPI 发布版）。<br>
+<strong>代码标注约定</strong>：🔧 表示<strong>真实源码</strong>（仓库原样摘录，附文件路径，可自行对照）；📝 表示<strong>示例代码</strong>（用法演示、改进建议或教学代码，不代表仓库实现）。<br>
+本文是系列&quot;整体架构&quot;篇。三个核心认知：<strong>形态由存储后端决定（能力阶梯）→ TaskPool 是装配枢纽（两阶段生命周期）→ 组件存在≠组件可用（接线状态清单）</strong>。</p>
+</blockquote>
+<p><strong>太长不看</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>NeoTask 是一套代码、三种形态</strong>：<code>storage_type</code> 一个配置决定你得到的是&quot;进程内队列&quot;（memory）、“单机持久队列”（sqlite）还是&quot;真正分布式调度&quot;（redis）。分布式组件（节点注册、心跳、回收器、协调器、死信）<strong>只在 Redis 形态下装配</strong>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/api/task_pool.py">task_pool.py:134</a>），其余形态连代码路径都不存在——能力不是&quot;全有全无&quot;，而是阶梯式供给。</p>
+</li>
+<li class="lvl-3">
+<p><strong>架构的灵魂是 TaskPool 的装配拓扑，而不是分层</strong>。真实结构是一个<strong>门面对象在构造期组合 10 类组件、启动期在后台线程的事件循环里按依赖序拉起 9 个异步部件</strong>（含指标收集器；详见表 2-1/2-2）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>组件存在 ≠ 组件可用</strong>：完整接线（如生命周期→存储→事件）、条件接线（Redis 才有分布式组件）、以及仍需注意的<strong>未接线</strong>项——<code>task.progress</code> 事件无发布方、Coordinator 的选节点/再平衡为占位实现、<code>NodeManager._health_check_loop</code> 的故障处理是 TODO。另一方面，<strong>死信队列与时间轮都已接线</strong>（前者由 Worker/回收器自动投递，后者承接 <code>submit_delayed</code> 的延时任务）。评估 NeoTask 能力时，应以&quot;谁调用谁&quot;为准，而不是以&quot;存在哪个类&quot;为准。</p>
+</li>
+</ol>
+<hr>
+<h2>一、三种部署形态：由存储后端决定的能力阶梯</h2>
+<h3>1.1 形态总览</h3>
+<p>NeoTask 用 <code>TaskPoolConfig.memory() / sqlite(path) / redis(url)</code> 三个工厂方法（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/models/config.py">models/config.py:161-244</a>）切换形态。同一条 <code>submit → dispatch → queue → worker</code> 主链路在不同形态下组件不同、语义不同：</p>
+<pre class="mermaid">graph TB
+    subgraph F1[&quot;形态一：嵌入式内存（开发/单进程测试）&quot;]
+        A1[TaskPool] --&gt; A2[内存 TaskRepository dict]
+        A1 --&gt; A3[内存双堆队列&lt;br/&gt;PriorityQueue + DelayedQueue]
+        A1 --&gt; A4[MemoryLock 直通]
+        A5[无分布式组件&lt;br/&gt;无持久化]
     end
-    
-    subgraph Entry["🚪 API 入口层"]
-        TP[TaskPool<br/>即时任务]
-        TS[TaskScheduler<br/>定时任务]
-        WF[WorkflowEngine<br/>工作流编排]
+
+    subgraph F2[&quot;形态二：SQLite 单机持久&quot;]
+        B1[TaskPool] --&gt; B2[SQLite 14 列任务表]
+        B1 --&gt; B3[内存队列（同形态一）]
+        B1 --&gt; B4[MemoryLock 直通]
+        B5[无分布式组件&lt;br/&gt;任务可跨重启]
     end
-    
-    subgraph Core["⚙️ 核心层"]
-        DIS[Dispatcher<br/>任务分发]
-        LM[LifecycleManager<br/>生命周期管理]
-        FM[FutureManager<br/>异步等待]
-        EB[EventBus<br/>事件总线]
+
+    subgraph F3[&quot;形态三：Redis 分布式&quot;]
+        C1[TaskPool] --&gt; C2[Redis SET JSON 任务 + 状态索引]
+        C1 --&gt; C3[Redis ZSET 共享队列&lt;br/&gt;Lua 原子弹出]
+        C1 --&gt; C4[RedisLock + WatchDog]
+        C1 --&gt; C6[NodeManager + HeartbeatManager]
+        C1 --&gt; C7[TaskReclaimer + Coordinator + DeadLetter]
+        C8[多节点抢占消费]
     end
-    
-    subgraph Queue["📊 队列层"]
-        PQ[PriorityQueue<br/>优先级队列]
-        DQ[DelayedQueue<br/>延迟队列]
+
+    A1 -.提升存储能力.-&gt; B1
+    B1 -.切换共享后端.-&gt; C1
+</pre>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">维度</th>
+<th style="text-align:left">memory 形态</th>
+<th style="text-align:left">sqlite 形态</th>
+<th style="text-align:left">redis 形态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">任务持久化</td>
+<td style="text-align:left">无（deepcopy 于内存）</td>
+<td style="text-align:left">有（本地文件）</td>
+<td style="text-align:left">有（Redis）</td>
+</tr>
+<tr>
+<td style="text-align:left">队列实现</td>
+<td style="text-align:left">进程内双堆</td>
+<td style="text-align:left">进程内双堆（任务表持久）</td>
+<td style="text-align:left">Redis 双 ZSET + Lua 弹出</td>
+</tr>
+<tr>
+<td style="text-align:left">多进程/多节点</td>
+<td style="text-align:left">❌ 完全不可见</td>
+<td style="text-align:left">⚠️ 任务表可共享但队列不共享，且单写约束</td>
+<td style="text-align:left">✅ 全链路共享</td>
+</tr>
+<tr>
+<td style="text-align:left">分布式锁</td>
+<td style="text-align:left">MemoryLock（直通）</td>
+<td style="text-align:left">MemoryLock（直通）</td>
+<td style="text-align:left">RedisLock（SET NX + TTL30s + 看门狗）</td>
+</tr>
+<tr>
+<td style="text-align:left">节点注册/心跳</td>
+<td style="text-align:left">不装配</td>
+<td style="text-align:left">不装配</td>
+<td style="text-align:left">装配（interval=5s / timeout=20s）</td>
+</tr>
+<tr>
+<td style="text-align:left">任务回收器</td>
+<td style="text-align:left">不装配</td>
+<td style="text-align:left">不装配</td>
+<td style="text-align:left">装配（interval=30s，超时 + 孤儿回收 + 僵尸锁扫描）</td>
+</tr>
+<tr>
+<td style="text-align:left">死信队列</td>
+<td style="text-align:left">不装配</td>
+<td style="text-align:left">不装配</td>
+<td style="text-align:left">装配并由 Worker/回收器自动投递（见 5.2 节）</td>
+</tr>
+<tr>
+<td style="text-align:left">典型场景</td>
+<td style="text-align:left">单元测试、原型</td>
+<td style="text-align:left">单机生产、嵌入业务</td>
+<td style="text-align:left">多实例水平扩展</td>
+</tr>
+</tbody>
+</table>
+<p>⚠️ 三个易错点（架构级）：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>sqlite 形态下队列仍在内存</strong>：重启后 PENDING 任务在任务表里&quot;复活&quot;，但队列水位归零——任务不会自动重新入队；此外多个进程共用一个 sqlite 文件时，各自维护独立的内存队列，会出现&quot;任务记录可见、队列无人消费&quot;的脑裂（详见故障场景 2）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>&quot;分布式&quot;三个字只属于 Redis 形态</strong>：&quot;高可用、去中心化&quot;能力全部由 Redis 形态提供；SQLite 形态连回收器都不会启动，节点宕机后的任务没有自动接管机制。</p>
+</li>
+<li class="lvl-3">
+<p><strong>切换形态只需改 config</strong>，这正是架构最大的卖点——同一套业务代码可以在开发（memory）、单机（sqlite）、集群（redis）之间无痛迁移。</p>
+</li>
+</ol>
+<h3>1.2 为什么按存储后端而非功能开关来分形态</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">问题</th>
+<th style="text-align:left">答案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">为什么不做&quot;always on&quot;的全量组件？</td>
+<td style="text-align:left">分布式组件的每条心跳、每次回收都是对共享存储的写操作；memory/sqlite 形态没有&quot;其他节点&quot;概念，装配它们只会空转耗资源。孤儿回收本身也要求有节点管理器才能判定活跃节点——未装配时回收器会直接跳过该路径（见 5.2 节），不会误判单机任务</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么锁不跟着存储走？</td>
+<td style="text-align:left">锁语义取决于&quot;谁会竞争&quot;：内存形态单进程内无竞争（状态守门已够）；Redis 形态才需要跨进程互斥。TaskPool 因此把锁类型做成独立配置项 <code>lock_type</code>，但<strong>执行路径写死 TTL=30</strong>（worker/pool.py:268），<code>lock_timeout</code> 配置仅影响 LockFactory 构造默认值</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么队列实现要跟存储绑定？</td>
+<td style="text-align:left">队列是&quot;消费竞争&quot;发生的场所：单进程内用 heapq 足够，多进程必须把队列放到共享存储并原子弹出。TaskRepository 与 QueueRepository 由 <code>StorageFactory</code> <strong>成对返回</strong>（<a href="http://factory.py">factory.py</a>），天然保证形态内聚</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>二、装配拓扑：TaskPool 作为枢纽的两阶段生命周期</h2>
+<h3>2.1 架构视图</h3>
+<p>真实结构是 <strong>TaskPool 门面 + 星型组合</strong>：几乎每个组件都通过构造函数注入 TaskPool 持有的共享实例（事件总线、生命周期、队列、存储），组件之间<strong>不直接互相查找</strong>：</p>
+<pre class="mermaid">graph TB
+    subgraph API[&quot;api 层（门面）&quot;]
+        TP[TaskPool]
+        TS[TaskScheduler]
+        TE[TaskEngine&lt;br/&gt;core/engine.py 未导出]
     end
-    
-    subgraph Worker["🔧 Worker 层"]
-        WP[WorkerPool<br/>Worker池]
-        SP[Supervisor<br/>监督者]
+
+    subgraph CORE[&quot;core 内核（状态与流转）&quot;]
+        LIFE[TaskLifecycleManager&lt;br/&gt;状态/缓存/事件]
+        DISP[TaskDispatcher&lt;br/&gt;提交归一化]
+        FUT[FutureManager&lt;br/&gt;等待通知]
+        HB[HeartbeatManager&lt;br/&gt;仅 Redis 形态]
     end
-    
-    subgraph Orchestration["🔄 编排层"]
-        DAG[DAGEngine<br/>依赖解析]
-        COND[ConditionEvaluator<br/>条件分支]
-        PARA[ParallelExecutor<br/>并行执行]
-    end
-    
-    subgraph Storage["💾 存储层"]
-        MEM[(Memory)]
-        SQL[(SQLite)]
-        RDS[(Redis)]
-    end
-    
-    APP --> TP & TS & WF
-    TS --> TP
-    WF --> TP & DAG & COND & PARA
-    
-    TP --> DIS
-    DIS --> LM & FM
-    TP --> PQ & DQ
-    WP --> PQ & DQ
-    WP --> LM & EB
-    
-    LM --> MEM & SQL & RDS
-    
-    subgraph External["外部依赖"]
-        PROM[Prometheus]
-        WEB[Web UI]
-    end
-    
-    EB --> PROM
-    EB --> WEB
-                </pre>
-            </div>
 
-            <h2 id="layers">分层架构详解</h2>
-
-            <div class="arch-mermaid">
-                <pre class="mermaid">
-flowchart LR
-    subgraph L1["入口层 v0.1/v0.3/v1.5"]
-        direction LR
-        A1[TaskPool<br/>即时任务]
-        A2[TaskScheduler<br/>定时任务]
-        A3[WorkflowEngine<br/>工作流]
-    end
-    
-    subgraph L2["核心层 v0.1/v0.2"]
-        direction LR
-        B1[Dispatcher]
-        B2[LifecycleManager]
-        B3[FutureManager]
-        B4[EventBus]
-    end
-    
-    subgraph L3["队列层 v0.1/v0.3"]
-        direction LR
-        C1[PriorityQueue]
-        C2[DelayedQueue]
-    end
-    
-    subgraph L4["Worker层 v0.1"]
-        direction LR
-        D1[WorkerPool]
-        D2[Supervisor]
-    end
-    
-    subgraph L5["编排层 v1.5"]
-        direction LR
-        E1[DAGEngine]
-        E2[ConditionEvaluator]
-        E3[ParallelExecutor]
-    end
-    
-    subgraph L6["存储层 v0.1/v0.4"]
-        direction LR
-        F1[Memory]
-        F2[SQLite]
-        F3[Redis]
-    end
-    
-    L1 --> L2 --> L3 --> L4 --> L5 --> L6
-                </pre>
-            </div>
-
-            <h3>API Layer</h3>
-            <p>提供统一的外观接口，简化使用复杂度。</p>
-            <ul>
-                <li><strong>TaskPool</strong> - 即时任务入口（v0.1），专注于立即执行的任务</li>
-                <li><strong>TaskScheduler</strong> - 定时任务入口（v0.3），专注于延时/周期任务</li>
-                <li><strong>WorkflowEngine</strong> - 工作流编排入口（v1.5），专注于DAG任务依赖</li>
-            </ul>
-
-            <h3>Core Layer</h3>
-            <p>核心业务逻辑层，负责任务生命周期管理。</p>
-            <ul>
-                <li><strong>Dispatcher</strong> - 任务分发器，接收任务并放入队列</li>
-                <li><strong>LifecycleManager</strong> - 任务生命周期管理，状态转换</li>
-                <li><strong>FutureManager</strong> - 异步等待管理，支持任务结果回调</li>
-                <li><strong>EventBus</strong> - 事件总线，解耦各模块（v0.2）</li>
-            </ul>
-
-            <h3>Queue & Worker Layer</h3>
-            <p>队列和 Worker 管理层，负责任务调度和执行。</p>
-            <ul>
-                <li><strong>PriorityQueue</strong> - 优先级队列，支持多级优先级</li>
-                <li><strong>DelayedQueue</strong> - 延迟队列，基于时间轮实现（v0.3）</li>
-                <li><strong>WorkerPool</strong> - Worker 池，并发控制</li>
-                <li><strong>Supervisor</strong> - 监督者，Worker 健康管理</li>
-            </ul>
-
-            <h3>Orchestration Layer</h3>
-            <p>任务编排层（v1.5），支持复杂工作流。</p>
-            <ul>
-                <li><strong>DAG Engine</strong> - DAG解析和依赖管理</li>
-                <li><strong>Condition Evaluator</strong> - 条件分支表达式求值</li>
-                <li><strong>ParallelExecutor</strong> - 并行执行器</li>
-            </ul>
-
-            <h3>Storage Layer</h3>
-            <p>存储抽象层，支持多种存储后端。</p>
-            <ul>
-                <li><strong>MemoryStorage</strong> - 内存存储，适合开发测试</li>
-                <li><strong>SQLiteStorage</strong> - SQLite 持久化，适合单机生产</li>
-                <li><strong>RedisStorage</strong> - Redis 存储，适合分布式部署（v0.4）</li>
-            </ul>
-
-            <h2 id="dataflow">数据流</h2>
-
-            <h3>即时任务数据流</h3>
-            <div class="arch-mermaid">
-                <pre class="mermaid">
-sequenceDiagram
-    participant User
-    participant Pool as TaskPool
-    participant LM as LifecycleManager
-    participant QS as QueueScheduler
-    participant WP as WorkerPool
-    participant FM as FutureManager
-    participant Storage as Storage
-
-    User->>Pool: submit(data, priority)
-    Pool->>LM: create_task()
-    LM->>Storage: 保存任务(PENDING)
-    LM-->>Pool: 返回 Task 对象
-    Pool->>QS: push(task_id, priority)
-    Pool->>FM: get(task_id)
-    Pool-->>User: 返回 task_id
-    
-    loop Worker 调度循环
-        WP->>QS: pop() 获取任务
-        WP->>LM: start_task(task_id)
-        WP->>Storage: 更新状态(RUNNING)
-        
-        alt 任务执行成功
-            WP->>WP: executor.execute(data)
-            WP->>LM: complete_task(result)
-            WP->>FM: complete(task_id, result)
-            WP->>Storage: 更新状态(SUCCESS)
-        else 任务执行失败
-            WP->>LM: fail_task(error)
-            WP->>FM: complete(task_id, error)
-            WP->>Storage: 更新状态(FAILED)
-            WP->>QS: push(重试入队)
-        end
-    end
-    
-    User->>Pool: wait_for_result(task_id)
-    Pool->>FM: wait()
-    FM-->>Pool: 返回结果
-    Pool-->>User: 任务结果
-                </pre>
-            </div>
-
-            <h3>工作流编排数据流</h3>
-            <div class="arch-mermaid">
-                <pre class="mermaid">
-sequenceDiagram
-    participant User
-    participant WF as WorkflowEngine
-    participant DAG as DAGEngine
-    participant Pool as TaskPool
-    participant Storage as Storage
-
-    User->>WF: submit_workflow(definition)
-    WF->>DAG: build(nodes)
-    DAG-->>WF: 验证通过
-    WF->>Storage: 保存工作流定义
-    WF-->>User: execution_id
-    
-    loop DAG 执行
-        WF->>DAG: get_ready_nodes(completed)
-        DAG-->>WF: ready_nodes
-        
-        par 并行执行
-            WF->>Pool: submit(node.task)
-            Pool-->>WF: task_id
-            WF->>Storage: 更新节点状态
-        end
-        
-        Pool->>WF: on_node_complete(node_id, result)
-        WF->>WF: evaluate_condition(node)
-        
-        alt 条件满足
-            WF->>WF: store_node_result()
-            WF->>DAG: mark_dependency_satisfied()
-        else 条件不满足
-            WF->>WF: skip_downstream_nodes()
-        end
-    end
-    
-    WF->>Storage: 更新工作流状态
-    WF-->>User: 工作流完成
-                </pre>
-            </div>
-
-            <h3>分布式锁时序图</h3>
-            <div class="arch-mermaid">
-                <pre class="mermaid">
-sequenceDiagram
-    participant Node1 as Node 1
-    participant Node2 as Node 2
-    participant Redis as Redis
-    participant WD as WatchDog
-
-    Node1->>Redis: SET lock:task:123 NX EX 30
-    Redis-->>Node1: OK (acquired)
-    
-    Node1->>WD: 启动看门狗
-    
-    loop 每 10 秒
-        WD->>Redis: GET lock:task:123
-        Redis-->>WD: Node1
-        WD->>Redis: EXPIRE lock:task:123 30
-        Redis-->>WD: 1 (续期成功)
-    end
-    
-    Node2->>Redis: SET lock:task:123 NX EX 30
-    Redis-->>Node2: NULL (获取失败)
-    Node2->>Node2: 等待或放弃
-    
-    Node1->>Node1: 任务执行完成
-    Node1->>Redis: DEL lock:task:123
-    Redis-->>Node1: 1 (释放成功)
-    
-    Node1->>WD: 停止看门狗
-                </pre>
-            </div>
-
-            <h2 id="design-patterns">设计模式</h2>
-
-            <div class="design-pattern">
-                <h4>Facade Pattern（外观模式）</h4>
-                <p>TaskPool、TaskScheduler、WorkflowEngine 提供统一的外观接口，封装底层复杂组件，简化使用。</p>
-            </div>
-
-            <div class="design-pattern">
-                <h4>Factory Pattern（工厂模式）</h4>
-                <p>StorageFactory、ExecutorFactory、LockFactory 根据配置创建相应的存储、执行器、锁实例。</p>
-            </div>
-
-            <div class="design-pattern">
-                <h4>Observer Pattern（观察者模式）</h4>
-                <p>EventBus 实现任务事件的发布订阅，支持自定义回调，解耦各模块（v0.2）。</p>
-            </div>
-
-            <div class="design-pattern">
-                <h4>Strategy Pattern（策略模式）</h4>
-                <p>多种存储策略（Memory、SQLite、Redis），可动态切换，满足不同场景需求。</p>
-            </div>
-
-            <div class="design-pattern">
-                <h4>Singleton Pattern（单例模式）</h4>
-                <p>锁管理器、事件总线等全局组件采用单例模式，确保唯一实例。</p>
-            </div>
-
-            <div class="design-pattern">
-                <h4>Builder Pattern（建造者模式）</h4>
-                <p>WorkflowDefinition 支持链式构建 DAG 工作流。</p>
-            </div>
-
-            <h2 id="evolution">架构演进路线图</h2>
-
-            <div class="arch-mermaid">
-                <pre class="mermaid">
-timeline
-    title NeoTask 架构演进路线图
-    
-    section v0.1
-        基础任务池 : 本地内存队列
-                   : 异步执行
-                   : 内存/SQLite存储
-                   
-    section v0.2
-        可观测性 : 事件总线
-                 : 指标收集
-                 : 健康检查
-                 
-    section v0.3
-        定时调度 : 延时队列
-                 : 周期任务
-                 : Cron表达式
-                 
-    section v0.4
-        分布式基础 : Redis共享队列
-                   : 分布式锁
-                   
-    section v0.5
-        性能优化 : 预取机制
-                 : 批量操作
-                 : 连接池优化
-
-    section v1.0
-        高可用保障 : 看门狗续期
-                   : 超时检测
-                   : 故障自动恢复
-
-    section v1.5
-        任务编排 : DAG工作流
-                 : 条件分支
-                 : 并行执行
-
-    section v2.0
-        企业级特性 : 独立Web UI
-                   : 多租户隔离
-                   : Prometheus集成
-                </pre>
-            </div>
-
-            <h3>版本演进总览</h3>
-            <table class="version-table">
-                <thead>
-                    <tr>
-                        <th>版本</th>
-                        <th>核心能力</th>
-                        <th>关键组件</th>
-                        <th>状态</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td><span class="version-badge completed">v0.1</span></td>
-                        <td>基础任务队列</td>
-                        <td>LifecycleManager, QueueScheduler, WorkerPool</td>
-                        <td>✅ 已完成</td>
-                    </tr>
-                    <tr>
-                        <td><span class="version-badge completed">v0.2</span></td>
-                        <td>可观测性</td>
-                        <td>EventBus, MetricsCollector</td>
-                        <td>✅ 已完成</td>
-                    </tr>
-                    <tr>
-                        <td><span class="version-badge completed">v0.3</span></td>
-                        <td>定时调度</td>
-                        <td>TaskScheduler, 延时队列, Cron</td>
-                        <td>✅ 已完成</td>
-                    </tr>
-                    <tr>
-                        <td><span class="version-badge current">v0.4</span></td>
-                        <td>分布式基础</td>
-                        <td>Redis 存储, 分布式锁</td>
-                        <td>🔄 进行中</td>
-                    </tr>
-                    <tr>
-                        <td><span class="version-badge planned">v0.5</span></td>
-                        <td>性能优化</td>
-                        <td>预取机制, 批量操作</td>
-                        <td>📋 计划中</td>
-                    </tr>
-                    <tr>
-                        <td><span class="version-badge planned">v1.0</span></td>
-                        <td>高可用保障</td>
-                        <td>看门狗, 超时检测, 故障恢复</td>
-                        <td>📋 计划中</td>
-                    </tr>
-                    <tr>
-                        <td><span class="version-badge planned">v1.5</span></td>
-                        <td>任务编排</td>
-                        <td>DAG引擎, 条件分支, 并行执行</td>
-                        <td>📋 计划中</td>
-                    </tr>
-                    <tr>
-                        <td><span class="version-badge planned">v2.0</span></td>
-                        <td>企业级</td>
-                        <td>Web UI, 多租户, Prometheus</td>
-                        <td>📋 计划中</td>
-                    </tr>
-                </tbody>
-            </table>
-
-            <h3>各版本核心功能</h3>
-            <div class="arch-mermaid">
-                <pre class="mermaid">
-gitGraph
-    commit id: "v0.1 基础任务池"
-    branch v0.2
-    checkout v0.2
-    commit id: "v0.2 可观测性"
-    branch v0.3
-    checkout v0.3
-    commit id: "v0.3 定时调度"
-    branch v0.4
-    checkout v0.4
-    commit id: "v0.4 分布式基础"
-    branch v0.5
-    checkout v0.5
-    commit id: "v0.5 性能优化"
-    branch v1.0
-    checkout v1.0
-    commit id: "v1.0 高可用保障"
-    branch v1.5
-    checkout v1.5
-    commit id: "v1.5 任务编排"
-    branch v2.0
-    checkout v2.0
-    commit id: "v2.0 企业级特性"
-                </pre>
-            </div>
-
-            <h2 id="tech-stack">技术选型</h2>
-
-            <h3>核心框架</h3>
-            <table class="version-table">
-                <thead>
-                    <tr><th>组件</th><th>技术选型</th><th>说明</th></tr>
-                </thead>
-                <tbody>
-                    <tr><td>异步框架</td><td>asyncio</td><td>Python 原生异步支持</td></tr>
-                    <tr><td>存储</td><td>Memory / SQLite / Redis</td><td>多种存储后端，渐进式增强</td></tr>
-                    <tr><td>分布式锁</td><td>Redis SET NX / 看门狗</td><td>原子操作保证，支持自动续期</td></tr>
-                    <tr><td>队列</td><td>heapq / Sorted Set</td><td>优先级队列实现</td></tr>
-                    <tr><td>时间轮</td><td>Redis Sorted Set + 扫描器</td><td>延迟队列实现（v0.3）</td></tr>
-                    <tr><td>Web框架</td><td>FastAPI</td><td>Web UI 后端（v2.0）</td></tr>
-                    <tr><td>监控</td><td>Prometheus</td><td>指标暴露和集成（v2.0）</td></tr>
-                </tbody>
-            </table>
-
-            <h3>组件依赖关系图</h3>
-            <div class="arch-mermaid">
-                <pre class="mermaid">
-graph LR
-    subgraph External["外部"]
-        USER[用户代码]
-        EXEC[业务执行函数]
-    end
-    
-    subgraph Entry["入口层"]
-        POOL[TaskPool]
-        SCHED[TaskScheduler]
-        WORKFLOW[WorkflowEngine]
-    end
-    
-    subgraph Core["核心层"]
-        LM[LifecycleManager]
+    subgraph Q[&quot;queue（队列调度）&quot;]
         QS[QueueScheduler]
-        WP[WorkerPool]
-        FM[FutureManager]
-    end
-    
-    subgraph Internal["内部组件"]
-        EB[EventBus]
-        MC[MetricsCollector]
-        LF[LockFactory]
-        DQ[DelayedQueue]
         PQ[PriorityQueue]
+        DQ[DelayedQueue&lt;br/&gt;0.1s 自循环]
     end
-    
-    subgraph Storage["存储层"]
-        MEM[Memory]
-        SQL[SQLite]
-        RDS[Redis]
+
+    subgraph W[&quot;worker（执行体系）&quot;]
+        WP[WorkerPool&lt;br/&gt;Semaphore]
+        PF[TaskPrefetcher&lt;br/&gt;预取器]
+        SV[WorkerSupervisor&lt;br/&gt;30s 检查/整池重启]
+        RC[TaskReclaimer&lt;br/&gt;仅 Redis 形态]
     end
-    
-    USER --> POOL
-    USER --> SCHED
-    USER --> WORKFLOW
-    SCHED --> POOL
-    WORKFLOW --> POOL
-    
-    POOL --> LM
-    POOL --> QS
-    POOL --> WP
-    POOL --> FM
-    
-    LM --> MEM
-    LM --> SQL
-    LM --> RDS
-    
-    QS --> DQ
-    QS --> PQ
-    
-    WP --> EB
-    WP --> MC
-    WP --> LF
-                </pre>
-            </div>
 
-            <h3>设计原则</h3>
-            <ul>
-                <li><strong>渐进式增强</strong> - 每个版本都是独立可用的完整产品</li>
-                <li><strong>向后兼容</strong> - 新版本不破坏旧版 API，存储格式支持平滑升级</li>
-                <li><strong>可观测性优先</strong> - 关键操作都有事件埋点，指标默认收集</li>
-                <li><strong>嵌入友好</strong> - 用户通过 submit()/wait_for_result() 使用，无需理解分布式细节</li>
-            </ul>
-        </main>
-    </div>
+    subgraph SVC[&quot;支撑与横切&quot;]
+        EB[EventBus]
+        LF[LockFactory → Memory/RedisLock]
+        WD[WatchDog&lt;br/&gt;interval=max(0.5, ttl×0.3)]
+        MON[MetricsCollector&lt;br/&gt;HealthChecker&lt;br/&gt;ReporterManager]
+        DLQ[DeadLetterQueue&lt;br/&gt;仅 Redis 形态·已注入 Worker/回收器]
+    end
 
-    <footer class="footer">
-        <div class="footer-container">
-            <div class="footer-column">
-                <div class="footer-logo">
-                    <div class="logo-icon"><i class="fas fa-tasks"></i></div>
-                    <span>NeoTask</span>
-                </div>
-                <p>下一代分布式任务调度框架</p>
-            </div>
-            <div class="footer-column">
-                <h4>文档</h4>
-                <a href="quickstart.html">快速上手</a>
-                <a href="api-reference.html">API 参考</a>
-                <a href="configuration.html">配置说明</a>
-                <a href="architecture.html">架构设计</a>
-            </div>
-            <div class="footer-column">
-                <h4>社区</h4>
-                <a href="https://github.com/neopen/neotask">GitHub</a>
-                <a href="https://github.com/neopen/neotask/issues">Issues</a>
-                <a href="https://github.com/neopen/neotask/discussions">Discussions</a>
-            </div>
-            <div class="footer-column">
-                <h4>资源</h4>
-                <a href="https://pypi.org/project/neotask/">PyPI</a>
-                <a href="https://github.com/neopen/neotask/blob/main/LICENSE">License</a>
-                <a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5">详细文档</a>
-            </div>
-        </div>
-        <div class="footer-bottom">
-            <p>&copy; 2026 NeoTask. 基于 MIT 协议开源.</p>
-        </div>
-    </footer>
+    subgraph ST[&quot;storage 成对产出&quot;]
+        TR[(TaskRepository)]
+        QR[(QueueRepository)]
+    end
 
-    <script src="../assets/js/main.js"></script>
-    <script>
-        mermaid.initialize({ 
-            startOnLoad: true,
-            theme: 'dark',
-            themeVariables: {
-                'background': '#1e1e2e',
-                'primaryColor': '#a855f7',
-                'primaryTextColor': '#ffffff',
-                'primaryBorderColor': '#a855f7',
-                'lineColor': '#a855f7',
-                'secondaryColor': '#3b82f6',
-                'tertiaryColor': '#10b981'
-            },
-            sequence: {
-                diagramMarginX: 50,
-                diagramMarginY: 10,
-                actorMargin: 50,
-                width: 150,
-                height: 65,
-                boxMargin: 10,
-                boxTextMargin: 5,
-                noteMargin: 10,
-                messageMargin: 35,
-                mirrorActors: true
-            },
-            flowchart: {
-                useMaxWidth: true,
-                htmlLabels: true,
-                curve: 'cardinal'
-            }
-        });
-    </script>
+    TS --&gt;|委托| TP
+    TE --&gt;|内部编排| TP
+    TP --&gt; DISP
+    DISP --&gt; LIFE &amp; QS
+    LIFE --&gt; TR &amp; EB &amp; FUT
+    QS --&gt; PQ &amp; DQ
+    WP --&gt; PF &amp; LIFE &amp; EB &amp; LF &amp; WD
+    SV --&gt; WP
+    RC --&gt; LIFE &amp; QS &amp; LF
+    HB --&gt; TR
+    EB --&gt; MON
+    LF --&gt; WD
+    ST --&gt; TR &amp; QR
+</pre>
+<p>要点（与旧图的关键差异）：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>TaskScheduler 是 TaskPool 的客户而非兄弟</strong>：它内部持有一个 TaskPool 并全量委托（<code>submit_delayed</code> 直接调 <code>pool.submit</code>），还复用了 TaskPool 的事件循环（task_scheduler.py:103-126）。TaskEngine（core/engine.py）同理但<strong>未导出</strong>，用户不可直接使用。</p>
+</li>
+<li class="lvl-2">
+<p><strong>Supervisor、Reclaimer 在真实代码里不是 WorkerPool 的兄弟节点</strong>：Supervisor 由 TaskPool 持有并观察 WorkerPool（supervisor.py:32-42）；Reclaimer 直接依赖 lifecycle/queue/lock 三个组件（reclaimer.py:90-104），与 WorkerPool 平行。</p>
+</li>
+<li class="lvl-2">
+<p><strong>DelayedQueue 自带 0.1s 调度循环</strong>，从队列系统内部到期转正（queue_scheduler.py:59-70）；<strong>TimeWheel 在 TaskScheduler 侧</strong>，<code>enable_time_wheel=True</code> 时承接 <code>submit_delayed</code> / <code>submit_at</code> 的延时任务（见 3.4 节）。</p>
+</li>
+</ul>
+<h3>2.2 两阶段生命周期的完整清单</h3>
+<p><strong>阶段一：<code>__init__</code>（构造期，调用方进程内纯组装，10 类组件）</strong> 🔧</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">步</th>
+<th style="text-align:left">组件</th>
+<th style="text-align:left">关键事实</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">1</td>
+<td style="text-align:left">Executor</td>
+<td style="text-align:left">默认执行器 <code>{&quot;result&quot;:&quot;executed&quot;,&quot;data&quot;:data}</code>；同步函数被包装（task_pool.py:212-232）</td>
+</tr>
+<tr>
+<td style="text-align:center">2</td>
+<td style="text-align:left">存储</td>
+<td style="text-align:left"><code>StorageFactory.create</code> 一次返回 Task/Queue 双仓库</td>
+</tr>
+<tr>
+<td style="text-align:center">3</td>
+<td style="text-align:left">Lock</td>
+<td style="text-align:left">memory/redis 由 <code>lock_type</code> 决定（task_pool.py:247-256）</td>
+</tr>
+<tr>
+<td style="text-align:center">4</td>
+<td style="text-align:left">EventBus</td>
+<td style="text-align:left">全局唯一实例，后续组件共享</td>
+</tr>
+<tr>
+<td style="text-align:center">5</td>
+<td style="text-align:left">FutureManager</td>
+<td style="text-align:left">等待通道</td>
+</tr>
+<tr>
+<td style="text-align:center">6</td>
+<td style="text-align:left">QueueScheduler</td>
+<td style="text-align:left">接收 queue_repo 与 <code>queue_max_size</code></td>
+</tr>
+<tr>
+<td style="text-align:center">7</td>
+<td style="text-align:left">TaskLifecycleManager</td>
+<td style="text-align:left">含缓存字典（cache_enabled=True）</td>
+</tr>
+<tr>
+<td style="text-align:center">8</td>
+<td style="text-align:left">TaskDispatcher</td>
+<td style="text-align:left">node_id 来自 config</td>
+</tr>
+<tr>
+<td style="text-align:center">9</td>
+<td style="text-align:left">WorkerPool + Supervisor</td>
+<td style="text-align:left"><code>set_retry_config</code> 注入 max_retries/retry_delay</td>
+</tr>
+<tr>
+<td style="text-align:center">10</td>
+<td style="text-align:left">分布式五件套</td>
+<td style="text-align:left"><strong>仅 Redis 形态</strong>：NodeManager/HeartbeatManager/Reclaimer/Coordinator/DeadLetter（task_pool.py:148-210）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>阶段二：<code>start()</code>（启动期，后台线程事件循环中按序拉起 9 个异步部件）</strong> 🔧</p>
+<p>事件总线 → 队列调度器 → Worker 池 → 监督者 → （Redis 形态）节点管理 → 心跳 → 回收器 → 指标收集器 → （可选）Reporter。启动失败（如心跳连不上 Redis）只会打 error 日志，<strong>不中断整体启动</strong>——这是&quot;看起来起了，实际组件瘫了&quot;类故障的温床。</p>
+<p><strong>阶段三：<code>shutdown()</code>（逆向优雅关闭）</strong> 🔧</p>
+<p><code>disable()</code> 停收新任务 → <code>graceful</code> 时 <code>wait_until_empty(timeout)</code> → 停 回收器/心跳/节点 → Supervisor → WorkerPool（带超时强杀）→ 队列 → Reporter → 事件总线 → 存储连接（捕获 “different loop” 冲突异常）。</p>
+<h3>2.3 为什么门面 + 独立事件循环是正确取舍</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">问题</th>
+<th style="text-align:left">答案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">为什么不是&quot;在用户协程里跑&quot;？</td>
+<td style="text-align:left">嵌入式调度器的目标用户是任意 Python 进程（含同步 Web 框架、脚本、线程池代码）。让每个调用方管理 loop 会毁掉易用性；自带守护线程 + <code>run_coroutine_threadsafe</code> 桥接让同步 API 处处可用</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么 start 前允许构造？</td>
+<td style="text-align:left">门面先组装后启动，使 <code>submit()</code> 内的 <code>_ensure_running()</code> 自动起步成为可能，也便于测试时只构造不启动</td>
+</tr>
+<tr>
+<td style="text-align:left">代价是什么？</td>
+<td style="text-align:left">组件状态横跨两个线程（构造在调用线程、运行在后台循环），<strong>直接读内部字段可能读到过期值</strong>；所有状态查询 API 都经线程桥回到事件循环执行，慢但一致。web 监控线程同理另起 uvicorn（web/server.py:16-27），形成第三条线程</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>三、关键架构决策解码</h2>
+<h3>3.1 D1：状态守门 + 执行前锁 = 两道防重，缺一不可</h3>
+<p>提交→执行的正确性依赖三层机制，职责完全不同：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">层</th>
+<th style="text-align:left">机制</th>
+<th style="text-align:left">位置</th>
+<th style="text-align:left">防什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">1</td>
+<td style="text-align:left">原子弹出（Redis Lua <code>ZRANGE+ZREM</code>）</td>
+<td style="text-align:left">storage/redis.py:238-252</td>
+<td style="text-align:left">多节点不会取到同一任务</td>
+</tr>
+<tr>
+<td style="text-align:center">2</td>
+<td style="text-align:left">执行前分布式锁（<code>task:{id}</code> TTL=30 + 看门狗续期）</td>
+<td style="text-align:left">worker/pool.py:260-281</td>
+<td style="text-align:left">同一任务被两个 Worker 同时执行（含重试/回收路径的重复入队）</td>
+</tr>
+<tr>
+<td style="text-align:center">3</td>
+<td style="text-align:left">PENDING 状态守门</td>
+<td style="text-align:left">worker/pool.py:255-258 + lifecycle.py:136-141</td>
+<td style="text-align:left">跳过已被取消/已完成的任务</td>
+</tr>
+</tbody>
+</table>
+<p>为什么锁在<strong>弹出之后、执行之前</strong>拿而不是在弹出脚本里拿？因为<strong>队列只保证分发不重复，执行前再拿锁是为了覆盖&quot;任务在队列里被重复放入&quot;的场景</strong>（重试、回收、redispatch 都可能再次入队，见<a href="decentralization.html">去中心化</a>篇）。内存形态没有锁管理器，防重完全依赖第 3 层守门。</p>
+<h3>3.2 D2：双通知通道——Future 快通道 + 事件慢通道</h3>
+<p><code>wait_for_result</code> 与外部订阅走完全不同的通道：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>FutureManager</strong>（core/future.py）：内存 asyncio.Event，<code>complete()</code> 由 lifecycle 直接调用（<a href="http://lifecycle.py:181/220/245%EF%BC%89%EF%BC%8CO(1)">lifecycle.py:181/220/245），O(1)</a> 唤醒等待方；<code>wait_for_task</code> 异常后二次查状态兜底（lifecycle.py:291-306）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>EventBus</strong>（event/bus.py）：发布/订阅，供 MetricsCollector、用户扩展等<strong>多接收方</strong>使用，TaskPool 内部也靠它把 completed/failed/cancelled 转给 FutureManager（task_pool.py:276-288）——注意这里<strong>事件又转回了 Future 通道</strong>，说明事件总线是扩展面而非等待链路的必要环节。</p>
+</li>
+</ul>
+<p>代价：双通道可能失同步。当前仍存在的唯一断链是 <code>task.progress</code>（有订阅接口、无发布方，<code>_update_task_progress</code> 无调用点）；<code>task.retry</code> 已由指标采集器订阅，<code>task.reclaimed</code> 仅用于 debug 日志。详见<a href="core-features.html">核心功能</a>篇 7.1 节。</p>
+<h3>3.3 D3：抢占消费 + 内存缓冲（预取器）解耦&quot;竞争&quot;与&quot;吞吐&quot;</h3>
+<p>Redis 形态下如果每个 Worker 每次都直接 pop 共享 ZSET，Redis 会成为瓶颈。架构给出的答案是 WorkerPool 内嵌 TaskPrefetcher（pool.py:80-91）：预取器按水位（min/max 阈值由 <code>prefetch_size</code> 派生）批量搬运任务到进程内缓冲，Worker 只消费本地队列，缺货才触发下次搬运。<strong>单机形态没有预取器</strong>（enable_prefetch 虽默认 True，但内存队列 pop 几乎零成本，预取不改变语义）。吞吐调优的唯一入口是 <code>TaskPoolConfig.prefetch_size</code>（详见<a href="prefetch.html">预取机制</a>篇）。</p>
+<h3>3.4 D4：能力要&quot;存在&quot;，也要&quot;接线&quot;</h3>
+<p>架构评估最重要的清单：各组件的接线状态。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">组件</th>
+<th style="text-align:left">接线状态</th>
+<th style="text-align:left">证据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">Lifecycle → Repository → EventBus</td>
+<td style="text-align:left">✅ 完整接线</td>
+<td style="text-align:left">create_task 落库+事件（lifecycle.py:76-82）</td>
+</tr>
+<tr>
+<td style="text-align:left">FutureManager（等待）</td>
+<td style="text-align:left">✅ 完整接线</td>
+<td style="text-align:left">lifecycle 三处 complete 直接调用</td>
+</tr>
+<tr>
+<td style="text-align:left">NodeManager/HeartbeatManager/Reclaimer</td>
+<td style="text-align:left">✅ 条件接线</td>
+<td style="text-align:left">仅 Redis 形态（task_pool.py:134）</td>
+</tr>
+<tr>
+<td style="text-align:left">Prefetcher/Dispatcher/Supervisor</td>
+<td style="text-align:left">✅ 完整接线</td>
+<td style="text-align:left">pool/start 中创建并运行</td>
+</tr>
+<tr>
+<td style="text-align:left">DeadLetterQueue</td>
+<td style="text-align:left">✅ 完整接线</td>
+<td style="text-align:left">装配后注入 WorkerPool（<code>set_dead_letter_queue</code>）与 Reclaimer，重试超限/回收失败时自动 <code>send</code>（task_pool.py:180-207）</td>
+</tr>
+<tr>
+<td style="text-align:left">TimeWheel</td>
+<td style="text-align:left">✅ 完整接线</td>
+<td style="text-align:left">TaskScheduler 启动它（task_scheduler.py:147-153）；<code>enable_time_wheel=True</code> 时 <code>submit_delayed</code>/<code>submit_at</code> 经 <code>add_task</code> 入轮，<code>shutdown</code> 时 <code>drain</code> 回延时队列</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>task.progress</code> 事件 / <code>_update_task_progress</code></td>
+<td style="text-align:left">⛔ 未接线</td>
+<td style="text-align:left">方法存在（pool.py:381-403）但无调用方</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>task.retry</code> 事件</td>
+<td style="text-align:left">✅ 完整接线</td>
+<td style="text-align:left">发布方 <a href="http://pool.py">pool.py</a>（失败重试路径），订阅方为指标采集器（task_pool.py:292）</td>
+</tr>
+<tr>
+<td style="text-align:left">ConsistentHashSharder</td>
+<td style="text-align:left">⛔ 未接线</td>
+<td style="text-align:left">完整实现（150 虚拟节点/三种哈希）但 TaskPool/Coordinator 未使用</td>
+</tr>
+<tr>
+<td style="text-align:left">Coordinator（<code>_select_node</code>/<code>rebalance</code>/<code>handle_node_failure</code>）</td>
+<td style="text-align:left">⛔ 未接线</td>
+<td style="text-align:left">实例被创建，但真实提交走 TaskDispatcher，上述方法为占位实现</td>
+</tr>
+<tr>
+<td style="text-align:left">PeriodicTaskManager</td>
+<td style="text-align:left">✅ 完整接线</td>
+<td style="text-align:left">TaskScheduler 默认启用（enable_periodic_manager=True，storage=None 内存态）</td>
+</tr>
+</tbody>
+</table>
+<p>教训：<strong>文档能力清单 ≠ 可用能力清单</strong>。判断某个功能能不能用，应 grep 它的调用方，而不是看类是否存在。</p>
+<hr>
+<h2>四、存储抽象：仓库模式与成对返回</h2>
+<h3>4.1 接口类图 🔧</h3>
+<p><a href="https://github.com/neopen/neotask/blob/main/src/neotask/storage/base.py">storage/base.py</a> 定义两组抽象（Repository Pattern）：</p>
+<pre class="mermaid">classDiagram
+    class TaskRepository {
+        &lt;&lt;abstract&gt;&gt;
+        +save(task) None
+        +get(task_id) Optional[Task]
+        +delete(task_id) None
+        +list_by_status(status, limit=100, offset=0) List[Task]
+        +update_status(task_id, status) None
+        +update_status_batch(updates) int
+        +delete_batch(task_ids) int
+        +exists(task_id) bool
+    }
+    class QueueRepository {
+        &lt;&lt;abstract&gt;&gt;
+        +push(task_id, priority) None
+        +pop(count=1) List[str]
+        +remove(task_id) bool
+        +size() int
+        +peek(count=1) List[str]
+        +clear() None
+    }
+    class MemoryTaskRepository {
+        -_tasks: Dict
+        +save(task)  # deepcopy
+    }
+    class SQLiteTaskRepository {
+        -_conn  # 14 列 tasks 表
+    }
+    class RedisTaskRepository {
+        -_client  # SET task:id JSON
+    }
+    class MemoryQueueRepository
+    class SQLiteQueueRepository
+    class RedisQueueRepository {
+        -ZSET queue:priority / queue:delayed
+        +Lua 原子 pop
+    }
+    TaskRepository &lt;|-- MemoryTaskRepository
+    TaskRepository &lt;|-- SQLiteTaskRepository
+    TaskRepository &lt;|-- RedisTaskRepository
+    QueueRepository &lt;|-- MemoryQueueRepository
+    QueueRepository &lt;|-- SQLiteQueueRepository
+    QueueRepository &lt;|-- RedisQueueRepository
+</pre>
+<p>三处值得注意的细节：① <code>TaskRepository</code> 除基本 CRUD 外还有 <code>update_status_batch</code> / <code>delete_batch</code> / <code>exists</code>（reclaimer 与心跳回收依赖批量能力）；② <code>QueueRepository</code> 只有 6 个方法，<code>contains</code> 等是各实现自行扩展（Redis 实现额外提供 pause/disable）；③ 抽象方法声明 <code>delete → None</code>，但各实现实际返回 bool——接口与实现存在小的签名漂移。</p>
+<h3>4.2 工厂：一次调用、成对返回 🔧</h3>
+<p><code>StorageFactory.create(config)</code>（storage/factory.py）按 StorageConfig 返回 <code>(TaskRepository, QueueRepository)</code> 元组，TaskPool 一行完成存储装配（task_pool.py:64）。三个后端的实现差异（键格式、索引、写策略）详见<a href="persistence.html">持久化</a>篇与<a href="core-features.html">核心功能</a>篇 8.1 节；此处只强调架构级结论：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>Memory/SQLite 的任务仓库与队列仓库都活在进程内</strong>——SQLite 的持久化只覆盖任务记录，不覆盖队列与周期任务注册表；</p>
+</li>
+<li class="lvl-2">
+<p><strong>Redis 是全异步实现</strong>（redis.asyncio + ConnectionPool，decode_responses=True），存储调用全部经事件循环执行——同步 API 的每次 submit/get 都包含一次线程桥 + Redis 往返，批量场景应使用 <code>submit_batch</code> 或异步 API 减少桥接次数。</p>
+</li>
+</ul>
+<hr>
+<h2>五、高可用架构的真实形态</h2>
+<h3>5.1 节点生命周期：不是&quot;注册→可疑→死亡&quot;，是三个字面状态</h3>
+<p>真实的节点管理很简单——<strong>只有三个字面状态，没有&quot;可疑&quot;中间态，也没有分级超时</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>节点注册</strong>：<code>NodeManager</code> 与 <code>HeartbeatManager</code> 共用同一份注册表，写 <code>HSET neotask:node:{node_id}</code>（node_id/status/started_at/last_heartbeat），键 TTL = <code>timeout × 2</code>；同时 <code>SADD neotask:nodes</code>（<a href="https://github.com/neopen/neotask/blob/main/src/neotask/distributed/node.py">node.py:64-65</a>、<a href="https://github.com/neopen/neotask/blob/main/src/neotask/core/heartbeat.py">heartbeat.py:46-52</a>）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>节点状态只有三种值</strong>：<code>active</code>（心跳中）、<code>stopped</code>（优雅关闭时写入，TTL 60s）、<code>reclaimed</code>（被其他节点判死后标记）——<strong>没有&quot;可疑&quot;中间态</strong>。</p>
+</li>
+<li class="lvl-2">
+<p><strong>判死逻辑一刀切</strong>：每个节点在自己的 <code>_monitor_loop</code> 里（每 <code>cleanup_interval=30s</code>）扫描其他节点，<code>status != &quot;stopped&quot;</code> 且 <code>now - last_heartbeat &gt; timeout(20s)</code> 即判死（heartbeat.py:162-165）。心跳周期 5s、超时 20s（4 个周期），<strong>没有宽限期、没有分级</strong>。</p>
+</li>
+</ul>
+<pre class="mermaid">stateDiagram-v2
+    [*] --&gt; active: 注册（HSET neotask:node:{id} + SADD neotask:nodes）
+    active --&gt; active: 每 5s 刷新 last_heartbeat
+    active --&gt; stopped: 优雅关闭（TTL 60s 后消失）
+    active --&gt; reclaimed: 他节点判死（20s 无心跳）
+    reclaimed --&gt; [*]: 任务回收后节点键过期
+</pre>
+<h3>5.2 任务回收：两条已闭环的路径</h3>
+<p>Redis 形态装配了两套回收机制，任务状态一律经 <code>TaskRepository</code> 读写：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">机制</th>
+<th style="text-align:left">周期</th>
+<th style="text-align:left">触发条件</th>
+<th style="text-align:left">真实状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">HeartbeatManager 死节点回收</td>
+<td style="text-align:left">30s 检查</td>
+<td style="text-align:left">他节点 20s 无心跳</td>
+<td style="text-align:left">✅ 经 <code>list_by_status(RUNNING)</code> 取任务，<strong>只回收 <code>task.node_id == 死亡节点</code> 的任务</strong>；置 PENDING、清 node_id/started_at、写 error、<code>repo.save</code>、重新入队；入队失败则置 FAILED</td>
+</tr>
+<tr>
+<td style="text-align:left">TaskReclaimer 超时回收</td>
+<td style="text-align:left">30s</td>
+<td style="text-align:left">RUNNING 且执行时长 &gt; task.ttl（默认 3600s）</td>
+<td style="text-align:left">✅ 生效（&quot;超时&quot;口径是任务 ttl 而非执行超时）；重试入队被拒或超限时置 FAILED + 投递死信</td>
+</tr>
+<tr>
+<td style="text-align:left">TaskReclaimer 孤儿回收</td>
+<td style="text-align:left">30s</td>
+<td style="text-align:left">RUNNING 且非本节点、node_id 不在活跃节点</td>
+<td style="text-align:left">✅ 活跃节点来自 <code>NodeManager.get_active_nodes()</code>；<strong>未装配节点管理器时返回 <code>None</code> 并跳过整轮</strong>，本节点任务显式跳过——不会误伤正常执行的任务</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>架构结论：Redis 形态的&quot;高可用自动恢复&quot;链条（判死 → 回收 → 重入队 → 重执行）<strong>已闭环</strong>，失败任务有明确归宿（FAILED + 死信队列）。唯一仍需注意的未实现项是 <code>NodeManager._health_check_loop</code> 内部的 <code># TODO: 处理故障节点</code>（节点管理器自身的健康巡检）。详见<a href="failure-recovery.html">故障恢复</a>篇与<a href="core-features.html">核心功能</a>篇 6.2 节。</p>
+</blockquote>
+<h3>5.3 Supervisor：执行侧的&quot;健康守护&quot;，粒度是整池</h3>
+<p>TaskPool 启动顺序里第 4 位是 WorkerSupervisor（默认 30s 检查一次）：对每个 Worker 做<strong>挂起检查</strong>（busy 且 300s 无活动）与<strong>失败率检查</strong>（样本 &gt;10 且失败率 &gt;50%）。但&quot;重启 Worker&quot;的实现是<strong>停掉并重启整个 WorkerPool</strong>（supervisor.py:113-115）——挂起判定与并发任务时长强相关（长任务超过 300s 会被误判），且整池重启会中断所有在途任务。这是执行侧 HA 的已知粗糙点。</p>
+<hr>
+<h2>六、可观测性：事件采集 + 注册式检查 + 上报器</h2>
+<p>可观测性由四个相互独立的组件构成（都在 <code>monitor/</code> 包）：</p>
+<h3>6.1 MetricsCollector：事件驱动计数 + 周期系统采样 🔧</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>任务指标</strong>：TaskPool 内部以一个全局事件订阅把 <code>task.created/started/completed/failed/cancelled/retry</code> 转发给采集器（task_pool.py:274-295），<code>task.created</code> 带 <code>priority</code>、<code>task.retry</code> 带 <code>retry_count</code>；内部维护 per-task 的时间账本，产出 TaskMetrics：成功率/失败率、平均与 p50/p90/p95/p99 执行耗时、平均排队时间、吞吐量（<a href="http://metrics.py">metrics.py</a> 计算属性）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>系统指标</strong>：<code>metrics.start()</code> 在启动期拉起后台循环周期采集 CPU/内存等（<code>_collect_system_metrics_loop</code>），<code>metrics.stop()</code> 在关闭期停止；<code>get_stats()</code> 返回完整摘要，因此经 <code>pool.get_stats()[&quot;metrics&quot;]</code> 能看到 <code>system</code> 段（psutil 为可选依赖，缺失时为 <code>None</code>）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>Prometheus 出口</strong>：<code>to_prometheus_format()</code> 直接输出文本格式（另有 contrib/prometheus.py 生态桥接）。注意：<strong>没有 HTTP <code>/metrics</code> 拉取端点</strong>，该出口需要调用方自行暴露。</p>
+</li>
+</ul>
+<h3>6.2 SystemHealthChecker：注册式，三项内置检查 🔧</h3>
+<p><a href="https://github.com/neopen/neotask/blob/main/src/neotask/monitor/health.py">monitor/health.py</a> 的 SystemHealthChecker 基于通用 HealthChecker（register/check_all/get_status，healthy/degraded/unhealthy 三态聚合）注册了<strong>恰好三个</strong>检查：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">检查项</th>
+<th style="text-align:left">做法</th>
+<th style="text-align:left">降级条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">storage</td>
+<td style="text-align:left"><code>repo.exists(&quot;health_check&quot;)</code> 探活</td>
+<td style="text-align:left">抛异常 → UNHEALTHY</td>
+</tr>
+<tr>
+<td style="text-align:left">queue</td>
+<td style="text-align:left"><code>queue.size()</code></td>
+<td style="text-align:left">&gt;10000 → DEGRADED</td>
+</tr>
+<tr>
+<td style="text-align:left">system</td>
+<td style="text-align:left">psutil CPU/内存/磁盘</td>
+<td style="text-align:left">任一 &gt;90% → DEGRADED</td>
+</tr>
+</tbody>
+</table>
+<p>健壮性要点：<code>get_health_status()</code>/<code>_async</code> 会先调 <code>_refresh_health_if_stale()</code>——结果在 <code>HEALTH_CHECK_TTL = 5.0s</code> 内直接复用，过期才重新检查；<strong>每个检查都包在 <code>asyncio.wait_for(..., timeout=DEFAULT_CHECK_TIMEOUT=5.0)</code> 里</strong>，超时则该项判为 UNHEALTHY 并给出 <code>timed out after Xs</code> 消息，因此某个依赖不可达不会再无限期挂住调用方。psutil 缺失时 system 检查返回 HEALTHY 且 details 为 <code>{&quot;available&quot;: False}</code>（可选依赖，不代表系统不健康）。<code>get_health_status()</code> 会把 WorkerPool 统计 + 上述结果拼成一个 dict。启用条件为 <code>enable_health_check=True</code>（默认开）。</p>
+<h3>6.3 ReporterManager：周期推送（默认关闭） 🔧</h3>
+<p><code>enable_reporter=True</code> 时才装配（默认 False）：ReporterManager 每 60s 取一次 <code>get_stats()</code> 回调结果，推给已注册的 reporter。内置三种 reporter：<strong>ConsoleReporter</strong>（默认注册）、<strong>FileReporter</strong>、<strong>PrometheusReporter</strong>（pushgateway 模式）。</p>
+<h3>6.4 Web UI 与 CLI：不参与装配的独立面</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>WebUIServer</strong>（web/server.py）：FastAPI + uvicorn 后台线程，默认 <code>127.0.0.1:8080</code>。<strong>TaskPool 不持有、也不会实例化它</strong>——全库没有 <code>WebUIServer(...)</code> 的调用方，只能由调用方<strong>自行传入 scheduler 手动启动</strong>；当前仅暴露 <code>/</code> 与 <code>/api/stats</code> 两个路由（不是完整的任务/节点 REST + WebSocket 面板）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>CLI</strong>（cli/）：<code>start</code> / <code>webui</code> 两个命令，薄封装。</p>
+</li>
+<li class="lvl-2">
+<p>结论：监控面板是&quot;可选外挂&quot;，不是架构内件；进程内可观测性的正式出口是 metrics + health 两个组件。</p>
+</li>
+</ul>
+<hr>
+<h2>七、架构事实速查表</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">#</th>
+<th style="text-align:left">易混淆点</th>
+<th style="text-align:left">当前真实情况</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">1</td>
+<td style="text-align:left">是否有 WorkflowEngine 入口</td>
+<td style="text-align:left">不存在；入口只有 TaskPool/TaskScheduler（+未导出 TaskEngine）</td>
+</tr>
+<tr>
+<td style="text-align:center">2</td>
+<td style="text-align:left">是否有 Elector 选举器</td>
+<td style="text-align:left">无此模块；去中心化架构无主节点，无需选举</td>
+</tr>
+<tr>
+<td style="text-align:center">3</td>
+<td style="text-align:left">架构分层</td>
+<td style="text-align:left">不是线性分层；TaskPool 星型装配 + 两阶段生命周期</td>
+</tr>
+<tr>
+<td style="text-align:center">4</td>
+<td style="text-align:left">TimeWheel 归属与状态</td>
+<td style="text-align:left">属 scheduler/，由 TaskScheduler 装配；<code>enable_time_wheel=True</code> 时 <code>submit_delayed</code>/<code>submit_at</code> 经 <code>add_task</code> 入轮（已接线）</td>
+</tr>
+<tr>
+<td style="text-align:center">5</td>
+<td style="text-align:left">心跳与判死</td>
+<td style="text-align:left">心跳 5s、判死 timeout=20s 一刀切，状态仅 active/stopped/reclaimed</td>
+</tr>
+<tr>
+<td style="text-align:center">6</td>
+<td style="text-align:left">抢占与加锁</td>
+<td style="text-align:left">Lua 只做 ZRANGE+ZREM 原子弹出；锁在 Worker 执行前单独 acquire（TTL=30）</td>
+</tr>
+<tr>
+<td style="text-align:center">7</td>
+<td style="text-align:left">超过重试次数的去向</td>
+<td style="text-align:left">FAILED + 自动投递死信队列（Worker/回收器均已接线），<code>dlq.replay()</code> 支持运维重放</td>
+</tr>
+<tr>
+<td style="text-align:center">8</td>
+<td style="text-align:left">失败重试退避</td>
+<td style="text-align:left">线性：<code>delay = retry_delay × 新次数</code></td>
+</tr>
+<tr>
+<td style="text-align:center">9</td>
+<td style="text-align:left">监控结构</td>
+<td style="text-align:left">MetricsCollector 事件驱动 + SystemHealthChecker 三项注册式检查（5s TTL / 5s 单项超时）+ ReporterManager；web 为独立组件</td>
+</tr>
+<tr>
+<td style="text-align:center">10</td>
+<td style="text-align:left">状态机</td>
+<td style="text-align:left">创建即 PENDING；FAILED 为终态；重试是 RUNNING→PENDING 的复位入队（worker 内部）</td>
+</tr>
+<tr>
+<td style="text-align:center">11</td>
+<td style="text-align:left">分片/一致性哈希</td>
+<td style="text-align:left">ConsistentHashSharder 完整实现但无装配（Coordinator 未使用）</td>
+</tr>
+<tr>
+<td style="text-align:center">12</td>
+<td style="text-align:left">分布式&quot;高可用/回收&quot;</td>
+<td style="text-align:left">回收链路已闭环（HeartbeatManager 按 node_id 回收、Reclaimer 超时/孤儿回收），见 5.2 节；<code>NodeManager._health_check_loop</code> 的 <code># TODO: 处理故障节点</code> 仍未实现</td>
+</tr>
+<tr>
+<td style="text-align:center">13</td>
+<td style="text-align:left">Coordinator</td>
+<td style="text-align:left">已实例化但未接线，<code>_select_node</code>/<code>rebalance</code>/<code>handle_node_failure</code> 为占位实现；真实提交走 TaskDispatcher</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>八、为什么这么设计（架构层汇总）</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">问题</th>
+<th style="text-align:left">答案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">为什么 TaskScheduler 复用 TaskPool 的事件循环，而不是自建？</td>
+<td style="text-align:left">单进程只跑一个事件循环，避免两套 loop 间任务互投的死锁；TaskScheduler 本质是 TaskPool 的&quot;定时投递器&quot;</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么状态推进集中在 lifecycle，而不是让 Worker 直接改状态？</td>
+<td style="text-align:left">状态变更伴随缓存更新、Future 通知、事件发布三件套；集中式门面保证任一执行路径都不会漏掉通知（除 <code>task.progress</code> 外均已收敛到单点）</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么 Redis 队列延迟到期用 ZSET score=5 转正而非原优先级？</td>
+<td style="text-align:left">源码未注释动机；行为上&quot;延迟任务不插队即时任务&quot;。多延迟场景下需实测，勿按直觉假设</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么周期任务默认由 PeriodicTaskManager 管理却持久化缺位？</td>
+<td style="text-align:left"><code>enable_periodic_manager=True</code> 但 <code>storage=None</code>：架构预留了存储参数（<a href="http://periodic.py">periodic.py</a> 有 _load/_save_tasks），尚未接通——属于&quot;接口先行、接线后补&quot;</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么仍有组件&quot;存在但没接线&quot;？</td>
+<td style="text-align:left">仓库代码呈现&quot;能力先行&quot;的演进痕迹：分片器、Coordinator 的选节点/再平衡、<code>periodic.py</code> 的加载保存均为先落地接口、再等调用方接入的形态。阅读时应以本文&quot;接线状态&quot;清单为准；死信队列与时间轮则已有明确调用方（Worker/回收器投递死信、<code>enable_time_wheel=True</code> 时延时任务走时间轮）</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>九、故障场景实战（架构级）</h2>
+<h3>场景 1：以为在用&quot;分布式&quot;，实际是三个独立的内存队列 📝</h3>
+<p><strong>现象</strong>：<code>python main.py --worker</code> 起了 3 个进程，都用默认配置（<code>TaskPoolConfig()</code> → memory）。提交 100 个任务，3 个进程各自执行了一部分，<code>get_stats()</code> 各自只看到自己的任务。</p>
+<p><strong>根因</strong>：memory 形态的任务仓库与队列都是进程内对象——进程间既看不到任务也抢不到队列。这不是&quot;分布式失败&quot;，而是<strong>形态选择错误</strong>：多进程消费必须 <code>TaskPoolConfig.redis(url=...)</code>。</p>
+<p><strong>对策</strong>：按 1.1 节能力阶梯表核对部署拓扑：单进程内多线程/多协程可 memory；单机多进程或跨机必须 redis 形态（或每进程独立 memory 池做隔离用途）。</p>
+<h3>场景 2：SQLite 双进程：任务表共享、队列脑裂 📝</h3>
+<p><strong>现象</strong>：两个进程以 sqlite 形态共用一个 db 文件。A 进程提交任务后崩溃，B 进程 <code>get_task</code> 能看到 PENDING 记录，但永远等不到执行；重启 A 后任务才被消费。</p>
+<p><strong>根因</strong>：SQLite 只持久化任务记录；<strong>队列与 Worker 状态都在各自进程内</strong>。A 崩溃时任务在 A 的内存队列里消失，落库状态停留在 PENDING，B 无从知晓（B 的队列里没有该 task_id）。sqlite 形态无心跳/回收组件，无人接管。</p>
+<p><strong>对策</strong>：SQLite 形态严格限定<strong>单进程</strong>（官方默认单写约束）；需要多进程接管能力的场景直接上 Redis 形态；实在要双进程，用 Redis 队列 + SQLite 存储的混合方案（NeoTask 不支持，需自行扩展 QueueRepository）。</p>
+<h3>场景 3：把&quot;存在的类&quot;当成&quot;可用的能力&quot; 📝</h3>
+<p><strong>现象</strong>：项目引入 NeoTask 后，以为分片/协调等能力开箱即用，结果任务分发并没有按一致性哈希路由，Coordinator 也没有做负载再平衡。</p>
+<p><strong>根因</strong>：这些组件属于&quot;已实现但未接线&quot;（3.4 节）：<code>ConsistentHashSharder</code> 无装配点，<code>Coordinator</code> 被实例化但真实提交走 <code>TaskDispatcher</code>，其 <code>_select_node</code>/<code>rebalance</code>/<code>handle_node_failure</code> 是占位实现。对照之下，<strong>死信队列与时间轮已经接线</strong>——失败任务会自动进死信（<code>enable_dead_letter</code> 默认开）、<code>enable_time_wheel=True</code> 时延时任务会走时间轮。</p>
+<p><strong>对策</strong>：① 以本文 3.4 节&quot;接线状态&quot;清单作为能力底账，逐项对照要用的功能；② 需要分片/再平衡时，需自行扩展（框架未提供装配点）；③ 评估新能力前先 <code>grep</code> 它的调用方，避免被&quot;开关存在&quot;误导。</p>
+<h3>场景 4：Supervisor 把整个池重启了 📝</h3>
+<p><strong>现象</strong>：一个任务运行超过 300 秒（如视频处理），随后日志显示 WorkerPool 被 stop/start，所有在途任务被中断。</p>
+<p><strong>根因</strong>：WorkerSupervisor 默认 <code>worker_timeout=300s</code>，busy 且 300s 无活动即判挂起（supervisor.py:80-83）——<strong>长任务天然满足触发条件</strong>；<code>_restart_worker</code> 以整池 stop(graceful=False) + start() 收尾（113-115 行）。</p>
+<p><strong>对策</strong>：长任务场景调大 <code>SupervisorConfig.worker_timeout</code>（TaskPool 未暴露该配置，需在构造后替换 <code>pool._supervisor._config</code> 或自行实例化 WorkerSupervisor）；或把长任务拆分为进度上报型短任务，保证 last_active 持续刷新（但注意 <code>task.progress</code> 更新链路未接线，进度需由业务自行回写）。</p>
+<hr>
+<h2>版本与验证说明</h2>
+<p>本文属于项目文档而不是永久不变的 API 契约。以下情况发生时，应重新核对源码或发布说明：</p>
+<ol>
+<li class="lvl-3">
+<p>项目版本升级，尤其是公开 API、配置模型、存储实现和工作流发生变化；</p>
+</li>
+<li class="lvl-3">
+<p>本文中的默认值、性能数据或示例依赖外部服务版本；</p>
+</li>
+<li class="lvl-3">
+<p>运行环境与本文案例不同，例如 Python 版本、Redis/数据库版本、模型供应商或操作系统不同。</p>
+</li>
+</ol>
+<p>如果你要把本文内容用于生产环境，请优先使用仓库当前版本的 README、源码、测试和 Release 记录进行最终确认。</p>
+<h2>相关链接</h2>
+<p><a href="index.html">返回首页</a></p>
+<p><strong>入门与参考</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="quickstart.html">快速上手</a> - 5 分钟入门</p>
+</li>
+<li class="lvl-2">
+<p><a href="api-reference.html">API 参考</a> - 完整 API 文档</p>
+</li>
+<li class="lvl-2">
+<p><a href="configuration.html">配置说明</a> - 配置参数详解</p>
+</li>
+<li class="lvl-2">
+<p><a href="best-practices.html">最佳实践</a> - 生产环境建议</p>
+</li>
+</ul>
+<p><strong>架构与设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="architecture.html">架构设计</a> - 整体架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="core-features.html">核心实现</a> - 功能设计</p>
+</li>
+<li class="lvl-2">
+<p><a href="evolution.html">版本演进</a> - 演进历程</p>
+</li>
+</ul>
+<p><strong>分布式核心</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="decentralization.html">去中心化</a> - 对等架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="failure-recovery.html">故障恢复</a> - 高可用保障</p>
+</li>
+<li class="lvl-2">
+<p><a href="prefetch.html">预取机制</a> - 高吞吐性能</p>
+</li>
+<li class="lvl-2">
+<p><a href="distributed-lock.html">分布式锁</a> - 并发控制</p>
+</li>
+</ul>
+<p><strong>存储与监控</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="persistence.html">持久化</a> - 多存储后端</p>
+</li>
+<li class="lvl-2">
+<p><a href="priority-queue.html">优先级</a> - 优先级队列</p>
+</li>
+<li class="lvl-2">
+<p><a href="delayed-tasks.html">延时任务</a> - 时间轮 + Redis 持久化</p>
+</li>
+<li class="lvl-2">
+<p><a href="monitoring.html">节点监控</a> - 可观测性</p>
+</li>
+</ul>
+<p><strong>资源</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/neotask">GitHub</a> - 源代码仓库</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://task.helpenx.com">NeoTask 官网</a> - 官方网站</p>
+</li>
+</ul>
+
+      </article>
+    </main>
+  </div>
+  <footer>
+    <a href="https://task.helpenx.com" target="_blank" rel="noopener">NeoTask 官网</a>·
+    <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>·
+    <a href="index.html">文档中心</a>
+    <div style="margin-top:6px">© 2026 helpenx.com · 文档基线以文中标注版本对应的源码为准</div>
+  </footer>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
 </body>
 </html>

@@ -1,337 +1,921 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>配置说明 - NeoTask</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="../assets/css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoTask 配置手册：真实字段总表 + 死参数清单与调度器开关 · NeoTask 文档</title>
+  <meta name="description" content="NeoTask 配置手册：config.py 全部配置类与字段默认值、TaskPoolConfig 从未被读取的死参数清单、存储/锁/监控/调度器开关的真实生效情况，以及部署档位与调优建议。">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://task.helpenx.com/docs/configuration.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:title" content="NeoTask 配置手册：真实字段总表 + 死参数清单与调度器开关">
+  <meta property="og:description" content="NeoTask 配置手册：config.py 全部配置类与字段默认值、TaskPoolConfig 从未被读取的死参数清单、存储/锁/监控/调度器开关的真实生效情况，以及部署档位与调优建议。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://task.helpenx.com/docs/configuration.html">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>⏱️</text></svg>">
+  <style>
+:root{--brand:#0d9488;--brand-dark:#0f766e;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:var(--ink);background:#fff;line-height:1.75;font-size:16px}
+a{color:var(--brand);text-decoration:none}a:hover{color:var(--brand-dark);text-decoration:underline}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
+.topbar .brand .doc-badge{font-size:12px;font-weight:600;color:#fff;background:var(--brand);border-radius:6px;padding:2px 8px}
+.topbar nav{display:flex;gap:20px;font-size:14.5px}
+.topbar nav a{color:var(--muted);font-weight:500}
+.topbar nav a:hover{color:var(--brand)}
+.wrap{display:flex;max-width:1280px;margin:0 auto;padding:0 16px}
+.sidebar{width:264px;flex-shrink:0;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 40px 0;border-right:1px solid var(--line)}
+.sidebar .side-home{display:block;font-weight:600;color:var(--ink);margin-bottom:16px;font-size:15px}
+.sidebar .side-home:hover{color:var(--brand);text-decoration:none}
+.sidebar h4{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px;font-weight:600}
+.sidebar a{display:block;padding:5px 10px;border-radius:6px;font-size:14px;color:#334155;line-height:1.5}
+.sidebar a:hover{background:var(--bg);color:var(--brand);text-decoration:none}
+.sidebar a.active{background:var(--brand);color:#fff}
+.content{flex:1;min-width:0;padding:32px 20px 60px 36px;max-width:860px}
+.toc-mobile{display:none;margin-bottom:20px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.toc-mobile summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.toc-mobile a{display:block;padding:3px 0;font-size:14px}
+.article h1{font-size:1.9em;line-height:1.35;margin:.4em 0 .8em}
+.article h2{font-size:1.45em;margin:1.8em 0 .7em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
+.article h3{font-size:1.22em;margin:1.5em 0 .6em}
+.article h4{font-size:1.08em;margin:1.3em 0 .5em}
+.article p{margin:.85em 0}
+.article ul,.article ol{padding-left:1.6em;margin:.7em 0}
+.article li{margin:.35em 0}
+.article img{max-width:100%;height:auto;border-radius:8px}
+.article table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:.94em;display:block;overflow-x:auto}
+.article th,.article td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+.article th{background:var(--bg);font-weight:600}
+.article tr:nth-child(even) td{background:#fbfdff}
+.article blockquote{margin:1.1em 0;padding:.7em 1.1em;border-left:4px solid var(--brand);background:var(--bg);border-radius:0 8px 8px 0;color:#334155}
+.article blockquote p{margin:.3em 0}
+.article code:not(pre code){background:#eef2f7;color:#c7254e;padding:.15em .4em;border-radius:4px;font-size:.88em;word-break:break-word}
+.article pre.hljs{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0;line-height:1.6}
+.article pre.hljs code{background:none;padding:0;color:var(--ink);font-size:.9em;font-family:ui-monospace,SFMono-Regular,'Cascadia Code',Consolas,Menlo,monospace}
+.article pre.mermaid{text-align:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0}
+.article hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+.article .success,.article .tips,.article .warning,.article .danger{border-radius:8px;padding:.9em 1.1em;margin:1.1em 0;border:1px solid}
+.article .success{border-color:#a7f3d0;background:#ecfdf5}.article .success p:first-of-type::before{content:'✅ '}
+.article .tips{border-color:#bfdbfe;background:#eff6ff}.article .tips p:first-of-type::before{content:'💡 '}
+.article .warning{border-color:#fde68a;background:#fffbeb}.article .warning p:first-of-type::before{content:'⚠️ '}
+.article .danger{border-color:#fecaca;background:#fef2f2}.article .danger p:first-of-type::before{content:'🚫 '}
+.article .success>p:first-child,.article .tips>p:first-child,.article .warning>p:first-child,.article .danger>p:first-child{margin-top:0}
+.article .success>p:last-child,.article .tips>p:last-child,.article .warning>p:last-child,.article .danger>p:last-child{margin-bottom:0}
+.doc-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--muted)}
+.doc-meta .tag{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+.doc-nav{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
+.doc-nav a{font-weight:600}
+footer{border-top:1px solid var(--line);padding:22px 24px;text-align:center;color:var(--muted);font-size:13.5px}
+footer a{color:var(--muted);margin:0 10px}
+footer a:hover{color:var(--brand)}
+@media (max-width:960px){
+  .sidebar{display:none}
+  .toc-mobile{display:block}
+  .content{padding:20px 6px 50px}
+  .topbar nav{gap:12px}
+}
+</style>
+  <style>
+.hljs{color:#24292e;background:#f6f8fa}
+.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.constant_{color:#d73a49}
+.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}
+.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}
+.hljs-string,.hljs-meta .hljs-string,.hljs-regexp{color:#032f62}
+.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-tag,.hljs-subst,.hljs-symbol{color:#e36209}
+.hljs-built_in,.hljs-class .hljs-title{color:#e36209}
+.hljs-comment,.hljs-meta,.hljs-quote{color:#6a737d}
+.hljs-section{color:#005cc5;font-weight:700}
+.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
+</style>
 </head>
 <body>
-    <nav class="navbar" id="navbar">
-        <div class="nav-container">
-            <div class="logo">
-                <div class="logo-icon"><i class="fas fa-tasks"></i></div>
-                <span>NeoTask</span>
-            </div>
-            <div class="menu-btn" id="menuBtn"><i class="fas fa-bars"></i></div>
-            <div class="nav-links" id="navLinks">
-                <a href="../index.html">首页</a>
-                <a href="quickstart.html" class="active">文档</a>
-                <a href="https://pengline.cn/2026/04/fa51edd849b24f48b4d7fa8e27efef77" class="blog-btn">
-                    <i class="fas fa-blog"></i>
-                    博客
-                </a>
-                <a href="https://github.com/neopen/neotask" class="github-btn">
-                    <i class="fab fa-github"></i> GitHub
-                </a>
-            </div>
-        </div>
+  <header class="topbar">
+    <a class="brand" href="index.html">⏱️ NeoTask <span class="doc-badge">文档</span></a>
+    <nav>
+      <a href="https://task.helpenx.com" target="_blank" rel="noopener">产品官网</a>
+      <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
     </nav>
+  </header>
+  <div class="wrap">
+    <aside class="sidebar">
+      <a class="side-home" href="index.html">⏱️ 分布式任务调度系统 · 文档中心</a>
+      <h4>技术分析</h4><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a>
+<h4>API 与配置参考</h4><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html" class="active">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a>
+<h4>实现与源码分析</h4><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a>
+<h4>设计与方案</h4><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a>
+<h4>项目概览</h4><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a>
+<h4>入门与使用</h4><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a>
+<h4>性能与评测</h4><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a>
+<h4>实践与运维</h4><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a>
+<h4>架构与核心设计</h4><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a>
+<h4>版本与演进</h4><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a>
+    </aside>
+    <main class="content">
+      <details class="toc-mobile"><summary>📑 文档目录</summary><div><strong style="font-size:13px;color:var(--muted)">技术分析</strong><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a></div><div><strong style="font-size:13px;color:var(--muted)">API 与配置参考</strong><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a></div><div><strong style="font-size:13px;color:var(--muted)">实现与源码分析</strong><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a></div><div><strong style="font-size:13px;color:var(--muted)">设计与方案</strong><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a></div><div><strong style="font-size:13px;color:var(--muted)">项目概览</strong><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a></div><div><strong style="font-size:13px;color:var(--muted)">入门与使用</strong><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a></div><div><strong style="font-size:13px;color:var(--muted)">性能与评测</strong><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a></div><div><strong style="font-size:13px;color:var(--muted)">实践与运维</strong><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a></div><div><strong style="font-size:13px;color:var(--muted)">架构与核心设计</strong><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a></div><div><strong style="font-size:13px;color:var(--muted)">版本与演进</strong><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a></div></details>
+      <article class="article">
+        <div class="doc-meta"><span class="tag">NeoTask</span><span class="tag">更新 2026-04-09</span><a href="https://task.helpenx.com" target="_blank" rel="noopener">task.helpenx.com ↗</a></div>
+        <h1>NeoTask 配置说明</h1>
+<p>📚 <a href="index.html">返回首页</a> | 📖 <a href="quickstart.html">快速上手</a> | 📘 <a href="api-reference.html">API 参考</a> | ⚙️ <a href="configuration.html">配置说明</a> | 🐙  <a href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a href="https://task.helpenx.com">NeoTask 官网</a></p>
+<blockquote>
+<p><strong>文档定位</strong>：这是一篇参考文档。重点是准确描述接口、参数、行为和调用边界；示例用于帮助理解 API，不代表所有版本都保持完全一致。<br>
+<strong>事实边界</strong>：实现文档：功能、接口和代码行为以文中标注版本对应的源码为准；仓库后续版本可能发生变化。<br>
+<strong>权威来源</strong>：<a href="https://github.com/neopen/neotask">NeoTask 源码仓库</a>；涉及版本历史时，以仓库 Release / CHANGELOG 为准。<br>
+<strong>代码标记</strong>：如果正文出现“源码/实现”字样，表示对应代码路径可在仓库中核对；示例代码仅用于演示调用方式，不应理解为项目源码原样。<br>
+<strong>版本基线</strong>：本文对照 NeoTask <strong>v1.0.2</strong>（PyPI 发布版），所有字段默认值出自 <code>neotask/models/config.py</code>（全文 372 行，本文配置类地图即该文件目录）。<br>
+<strong>代码标注约定</strong>：🔧 表示<strong>真实源码</strong>（仓库原样摘录，附文件路径，可自行对照）；📝 表示<strong>示例代码</strong>（用法演示、改进建议或教学代码，不代表仓库实现）。</p>
+</blockquote>
+<hr>
+<h2>概述：三个必须先知道的要点</h2>
+<ol>
+<li class="lvl-3">
+<p><strong>配置来源只有两层</strong>：代码传入的 config 对象 &gt; dataclass 默认值。<strong>没有环境变量层</strong>——源码中不存在任何 <code>os.environ</code>/<code>NEOTASK_*</code> 读取逻辑。</p>
+</li>
+<li class="lvl-3">
+<p><strong><code>WorkflowConfig</code> 不存在</strong>：编排类能力在 1.0.2 无配置落点；<code>TaskConfig</code> 是旧版兼容配置（见第六节）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>绝大多数参数&quot;写了就生效&quot;</strong>，但仍有一批参数<strong>从未被读取</strong>（死参数，见第二节清单）。调参前先核对该清单，否则会得到&quot;配置了却没反应&quot;的困惑。</p>
+</li>
+</ol>
+<p>配置类全景（🔧 <code>models/config.py</code>）：</p>
+<table>
+<thead>
+<tr>
+<th>配置类</th>
+<th>服务对象</th>
+<th>关键备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TaskPoolConfig</code></td>
+<td>TaskPool（即时任务）</td>
+<td>主配置，见第二节</td>
+</tr>
+<tr>
+<td><code>SchedulerConfig</code></td>
+<td>TaskScheduler（定时任务）</td>
+<td>与 TaskPoolConfig 字段同构但独立，见第五节</td>
+</tr>
+<tr>
+<td><code>StorageConfig</code> / <code>LockConfig</code></td>
+<td>存储/锁工厂内部契约</td>
+<td>由 TaskPoolConfig 翻译而来，一般不需直用</td>
+</tr>
+<tr>
+<td><code>ExecutorConfig</code></td>
+<td>执行器（async/thread/process）</td>
+<td>type 是 <strong>str</strong>（与 TaskPoolConfig 的枚举字段不同）</td>
+</tr>
+<tr>
+<td><code>HeartbeatConfig</code> / <code>QueueConfig</code> / <code>WorkerConfig</code></td>
+<td>分布式心跳 / 队列 / Worker 子模块</td>
+<td>TaskPool 装配时多采用硬编码值（见 3.2）</td>
+</tr>
+<tr>
+<td><code>WebUIConfig</code></td>
+<td>Web UI（需自行启动 WebUIServer）</td>
+<td>默认 disable；enable(port, auto_open)</td>
+</tr>
+<tr>
+<td><code>TaskConfig</code></td>
+<td>旧版统一配置（兼容）</td>
+<td>七件套组合 + <code>with_webui</code></td>
+</tr>
+<tr>
+<td><code>DistributedConfig</code></td>
+<td>分布式（备用）</td>
+<td>TaskPool 装配不消费</td>
+</tr>
+<tr>
+<td>常量 <code>DEFAULT_TASK_POOL_CONFIG</code> 等</td>
+<td>全局默认实例</td>
+<td>模块加载时生成</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>一、TaskPoolConfig：真实字段总表</h2>
+<p>🔧 <code>models/config.py:161</code>。所有默认值与源码逐字段一致：</p>
+<h3>存储域</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>类型</th>
+<th>默认</th>
+<th>生效情况</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>storage_type</code></td>
+<td>str</td>
+<td><code>&quot;memory&quot;</code></td>
+<td>✅</td>
+<td>memory/sqlite/redis，三档</td>
+</tr>
+<tr>
+<td><code>sqlite_path</code></td>
+<td>str</td>
+<td><code>&quot;neotask.db&quot;</code></td>
+<td>✅</td>
+<td>sqlite 档数据库路径</td>
+</tr>
+<tr>
+<td><code>redis_url</code></td>
+<td>str?</td>
+<td><code>None</code></td>
+<td>✅</td>
+<td>redis 档必填（redis 模式校验）</td>
+</tr>
+</tbody>
+</table>
+<h3>执行器域（任务的&quot;执行载体&quot;）</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>类型</th>
+<th>默认</th>
+<th>生效情况</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>executor_type</code></td>
+<td><strong>ExecutorType 枚举</strong></td>
+<td><code>ExecutorType.ASYNC</code></td>
+<td>✅</td>
+<td>见下方枚举说明</td>
+</tr>
+<tr>
+<td><code>max_workers</code></td>
+<td>int</td>
+<td><code>10</code></td>
+<td>✅</td>
+<td>thread/process 执行器的池大小</td>
+</tr>
+</tbody>
+</table>
+<p>🔧 <code>executor/factory.py:19</code> 的枚举共 5 值：<code>ASYNC(&quot;async&quot;) / THREAD(&quot;thread&quot;) / PROCESS(&quot;process&quot;) / CLASS(&quot;class&quot;) / AUTO(&quot;auto&quot;)</code>。传参建议用 <code>ExecutorType.ASYNC</code> 枚举；若传裸字符串 <code>&quot;async&quot;</code>，dataclass 不校验类型会照单全收，但工厂侧比较逻辑以枚举为主，<strong>跨版本有兼容风险</strong>。</p>
+<p><strong>为什么有两套&quot;并发数&quot;</strong>（新手最常混淆）：<code>executor</code> 是任务函数怎么跑（async=事件循环里直接 await / thread=线程池 / process=进程池），<code>worker_concurrency</code> 是<strong>多少个队列消费协程</strong>在拉任务。AsyncExecutor 模式下 worker 数与&quot;同时执行的任务数&quot;强相关（每个 worker 同一时刻执行一个任务）；thread/process 模式下实际并行度由 <code>max_workers</code> 决定，worker 只是投递者。</p>
+<h3>Worker 域</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>类型</th>
+<th>默认</th>
+<th>生效情况</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>worker_concurrency</code></td>
+<td>int</td>
+<td><code>10</code></td>
+<td>✅</td>
+<td>队列消费协程数</td>
+</tr>
+<tr>
+<td><code>prefetch_size</code></td>
+<td>int</td>
+<td><code>20</code></td>
+<td>✅</td>
+<td>预取批量（内部放大为 ×5 本地队列等，见 <a href="prefetch.html">预取机制</a>）</td>
+</tr>
+<tr>
+<td><code>task_timeout</code></td>
+<td>float?</td>
+<td><code>None</code></td>
+<td>✅</td>
+<td>单任务执行超时（asyncio.wait_for），None=不限</td>
+</tr>
+<tr>
+<td><code>enable_prefetch</code></td>
+<td>bool</td>
+<td><code>True</code></td>
+<td>✅</td>
+<td>预取器总开关</td>
+</tr>
+<tr>
+<td><code>prefetch_min_threshold</code></td>
+<td>int</td>
+<td><code>5</code></td>
+<td>❌ <strong>死参数</strong></td>
+<td>预取低水位由 prefetch_size÷4 计算，此字段全库零读取</td>
+</tr>
+</tbody>
+</table>
+<h3>队列与锁域</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>类型</th>
+<th>默认</th>
+<th>生效情况</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>queue_max_size</code></td>
+<td>int</td>
+<td><code>10000</code></td>
+<td>✅</td>
+<td>队列容量上限；满时 <code>TaskDispatcher.dispatch</code> 抛 <code>QueueFullError</code>（见 <a href="priority-queue.html">优先级任务</a>）</td>
+</tr>
+<tr>
+<td><code>priority_levels</code></td>
+<td>int</td>
+<td><code>4</code></td>
+<td>⚠️</td>
+<td>仅 QueueConfig 子层使用；TaskPool 装配不消费</td>
+</tr>
+<tr>
+<td><code>lock_type</code></td>
+<td>str</td>
+<td><code>&quot;memory&quot;</code></td>
+<td>✅</td>
+<td>memory/redis；<strong>与存储档位独立</strong>，分布式必须 redis</td>
+</tr>
+<tr>
+<td><code>lock_timeout</code></td>
+<td>int</td>
+<td><code>30</code></td>
+<td>✅</td>
+<td>redis 锁 TTL（经 LockConfig.redis 传入）</td>
+</tr>
+</tbody>
+</table>
+<h3>重试域</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>类型</th>
+<th>默认</th>
+<th>生效情况</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>max_retries</code></td>
+<td>int</td>
+<td><code>3</code></td>
+<td>✅</td>
+<td>执行异常/超时的最大重试次数</td>
+</tr>
+<tr>
+<td><code>retry_delay</code></td>
+<td>float</td>
+<td><code>1.0</code></td>
+<td>✅</td>
+<td>重试延迟基数（实际延迟 = retry_delay × 新重试次数，递增退避）</td>
+</tr>
+</tbody>
+</table>
+<h3>监控域</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>类型</th>
+<th>默认</th>
+<th>生效情况</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enable_metrics</code></td>
+<td>bool</td>
+<td><code>True</code></td>
+<td>✅</td>
+<td>MetricsCollector 创建并在池启动时 start、关闭时 stop；全局订阅 created/started/completed/failed/cancelled/retry 六类事件，系统采样循环自启，见 <a href="monitoring.html">节点监控</a></td>
+</tr>
+<tr>
+<td><code>enable_health_check</code></td>
+<td>bool</td>
+<td><code>True</code></td>
+<td>✅</td>
+<td>SystemHealthChecker 创建；<code>get_health_status()</code> 按 5s TTL 惰性执行检查（单项超时 5s），未装 psutil 时 system 项记 healthy/available=False；关闭后不再输出 checks</td>
+</tr>
+<tr>
+<td><code>enable_reporter</code></td>
+<td>bool</td>
+<td><code>False</code></td>
+<td>✅</td>
+<td>True 时启动 60s 周期 ConsoleReporter（挂 get_stats）</td>
+</tr>
+</tbody>
+</table>
+<h3>回收 / 心跳 / 死信域（仅 Redis 模式有对象）</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>类型</th>
+<th>默认</th>
+<th>生效情况</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enable_reclaimer</code></td>
+<td>bool</td>
+<td><code>True</code></td>
+<td>❌ <strong>死参数</strong></td>
+<td>reclaimer 在 Redis 模式<strong>无条件装配</strong>，此开关不被读取</td>
+</tr>
+<tr>
+<td><code>reclaimer_interval</code></td>
+<td>float</td>
+<td><code>30.0</code></td>
+<td>❌ <strong>死参数</strong></td>
+<td>装配硬编码 interval=30</td>
+</tr>
+<tr>
+<td><code>enable_heartbeat</code></td>
+<td>bool</td>
+<td><code>True</code></td>
+<td>❌ <strong>死参数</strong></td>
+<td>心跳随 NodeManager/HeartbeatManager 无条件启动</td>
+</tr>
+<tr>
+<td><code>heartbeat_interval</code></td>
+<td>int</td>
+<td><code>5</code></td>
+<td>❌ <strong>死参数</strong></td>
+<td>装配硬编码 HeartbeatConfig(interval=5)</td>
+</tr>
+<tr>
+<td><code>heartbeat_timeout</code></td>
+<td>int</td>
+<td><code>20</code></td>
+<td>❌ <strong>死参数</strong></td>
+<td>装配硬编码 timeout=20</td>
+</tr>
+<tr>
+<td><code>enable_dead_letter</code></td>
+<td>bool</td>
+<td><code>True</code></td>
+<td>✅</td>
+<td>Redis 模式下创建 DeadLetterQueue 并注入 WorkerPool；重试耗尽与回收器的最终失败任务都会写入死信</td>
+</tr>
+<tr>
+<td><code>dead_letter_max_size</code></td>
+<td>int</td>
+<td><code>10000</code></td>
+<td>✅</td>
+<td>死信队列容量，创建 DeadLetterQueue 时传入</td>
+</tr>
+<tr>
+<td><code>dead_letter_ttl</code></td>
+<td>int</td>
+<td><code>604800</code></td>
+<td>✅</td>
+<td>死信保留 7 天（与任务清理无关）</td>
+</tr>
+</tbody>
+</table>
+<h3>节点标识</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>类型</th>
+<th>默认</th>
+<th>生效情况</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>node_id</code></td>
+<td>str</td>
+<td><code>socket.gethostname()</code></td>
+<td>✅</td>
+<td><code>__post_init__</code> 自动填充；多节点部署务必显式指定</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>二、死参数：为什么&quot;写了没反应&quot;</h2>
+<p>上一节清单暴露了一个反直觉事实：<strong>配置类里躺着一批字段，装配代码从不读取</strong>（🔧 <code>config.enable_reclaimer</code> / <code>config.heartbeat_interval</code> / <code>config.prefetch_min_threshold</code> 等）。它们不是 bug——dataclass 字段当然&quot;存在&quot;，只是没有被消费：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 api/task_pool.py:148 分布式装配：值全部硬编码，不读 TaskPoolConfig</span>
+heartbeat_config = HeartbeatConfig(interval=<span class="hljs-number">5</span>, timeout=<span class="hljs-number">20</span>, cleanup_interval=<span class="hljs-number">30</span>)
+reclaimer_config = ReclaimerConfig(interval=<span class="hljs-number">30</span>, task_timeout=<span class="hljs-variable language_">self</span>._config.task_timeout <span class="hljs-keyword">or</span> <span class="hljs-number">300</span>, ...)
+coordinator_config = CoordinatorConfig(load_balance_strategy=<span class="hljs-string">&quot;round_robin&quot;</span>, distribution_mode=<span class="hljs-string">&quot;shared&quot;</span>)
+</code></pre>
+<p>与这些零消费字段不同，监控与死信类开关都已接线：<code>enable_metrics</code> / <code>enable_health_check</code> / <code>enable_dead_letter</code> 均被读取并装配出真实组件，其中 DeadLetterQueue 由 WorkerPool（重试耗尽）与回收器共同写入（🔧 <code>task_pool.py:182</code>、<code>worker/pool.py:192</code>）。</p>
+<h4>为什么这么设计（探讨）</h4>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>配置类由各模块的 dataclass 汇总而来，字段是&quot;设计意图的存档&quot;；装配层图省事直接写默认值，导致意图与实现分叉——<strong>声明式参数被命令式硬编码架空</strong>。</p>
+</li>
+<li class="lvl-2">
+<p>好处：装配代码自包含、可读；坏处：使用者按文档调 <code>heartbeat_interval=2</code> 期望更快心跳时，<strong>行为零变化</strong>（还会觉得是自己没调对）。</p>
+</li>
+<li class="lvl-2">
+<p>实操建议：调任何参数前先确认&quot;消费点&quot;——本文档已标注 ✅/⚠️/❌，生产上以 2 分钟看一次实际日志（心跳 5s 一条、回收 30s 一次）验证参数是否生效。</p>
+</li>
+</ul>
+<hr>
+<h2>三、类方法档位：官方推荐的创建姿势</h2>
+<p>🔧 <code>TaskPoolConfig</code> 提供三个语义化工厂（<code>config.py:217</code>），等价于手写字段但更省心：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码</span>
+<span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskPool, TaskPoolConfig
 
-    <div class="docs-container">
-        <aside class="docs-sidebar">
-            <h4>文档导航</h4>
-            <ul>
-                <li><a href="quickstart.html">快速上手</a></li>
-                <li><a href="api-reference.html">API 参考</a></li>
-                <li><a href="configuration.html" class="active">配置说明</a></li>
-                <li><a href="architecture.html">架构设计</a></li>
-            </ul>
-            <div class="toc">
-                <h4>本页目录</h4>
-                <ul>
-                    <li><a href="#overview">配置概览</a></li>
-                    <li><a href="#taskpool-config">TaskPoolConfig</a></li>
-                    <li><a href="#scheduler-config">SchedulerConfig</a></li>
-                    <li><a href="#storage">存储配置详解</a></li>
-                    <li><a href="#env">环境变量配置</a></li>
-                    <li><a href="#examples">生产环境配置示例</a></li>
-                    <li><a href="#tuning">配置调优建议</a></li>
-                </ul>
-            </div>
-        </aside>
+<span class="hljs-comment"># 开发测试（等价于默认 TaskPoolConfig()）</span>
+cfg = TaskPoolConfig.memory()
 
-        <main class="docs-content">
-            <h1>配置说明</h1>
-            <p>完整的 NeoTask 配置参数详解。</p>
+<span class="hljs-comment"># 单机生产</span>
+cfg = TaskPoolConfig.sqlite(path=<span class="hljs-string">&quot;/data/neotask.db&quot;</span>, node_id=<span class="hljs-string">&quot;app-1&quot;</span>)
 
-            <h2 id="overview">配置概览</h2>
-            <p>NeoTask 提供灵活的配置方式，支持代码配置、环境变量和默认值三级优先级。</p>
-            <pre><code>from neotask import TaskPool, TaskPoolConfig
-
-config = TaskPoolConfig(
-    storage_type="redis",
-    redis_url="redis://localhost:6379",
-    worker_concurrency=20,
-    max_retries=3,
-    enable_metrics=True
+<span class="hljs-comment"># 分布式生产（可追加预取参数）</span>
+cfg = TaskPoolConfig.redis(
+    url=<span class="hljs-string">&quot;redis://:password@redis-host:6379/0&quot;</span>,
+    node_id=<span class="hljs-string">&quot;worker-1&quot;</span>,
+    enable_prefetch=<span class="hljs-literal">True</span>,
+    prefetch_size=<span class="hljs-number">30</span>,
 )
 
-pool = TaskPool(executor=my_task, config=config)</code></pre>
+pool = TaskPool(executor=my_task, config=cfg)
+</code></pre>
+<blockquote>
+<p>⚠️ 记住：<strong>storage_type 与 lock_type 是两套独立开关</strong>。<code>TaskPoolConfig.redis(...)</code> 只切存储，锁默认仍是 memory——分布式场景要显式 <code>lock_type=&quot;redis&quot;</code>，否则节点间执行锁互不可见（详见 <a href="distributed-lock.html">分布式锁</a> 与 <a href="persistence.html">持久化</a> 的组合表）。</p>
+</blockquote>
+<hr>
+<h2>四、SchedulerConfig：定时调度器配置</h2>
+<p>🔧 <code>models/config.py:248</code>，TaskScheduler 专用。字段与 TaskPoolConfig 的存储/Worker/重试域同构（TaskScheduler 初始化时把 6 个字段翻译给底层 TaskPool，🔧 <code>task_scheduler.py:68</code>），差异在调度专属域：</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>默认</th>
+<th>生效情况</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enable_persistence</code></td>
+<td><code>False</code></td>
+<td>❌ <strong>不生效</strong></td>
+<td>周期任务持久化开关；底层 <code>_load_tasks</code>/<code>_save_task</code> 全是 TODO 空实现（🔧 <code>scheduler/periodic.py:709</code>）——<strong>周期定义任何时候都只活在内存</strong>，重启即失</td>
+</tr>
+<tr>
+<td><code>scan_interval</code></td>
+<td><code>1.0</code></td>
+<td>✅</td>
+<td>调度循环扫描间隔（秒）；注意不是 0.05</td>
+</tr>
+<tr>
+<td><code>enable_periodic_manager</code></td>
+<td><code>True</code></td>
+<td>✅</td>
+<td>周期任务管理器（interval/cron 的调度者）</td>
+</tr>
+<tr>
+<td><code>enable_time_wheel</code></td>
+<td><code>False</code></td>
+<td>✅</td>
+<td>时间轮开关。开启后 <code>submit_delayed</code> 走时间轮：任务先以 PENDING 落库，再 <code>TimeWheel.add_task</code>；超出量程自动退回延时队列（详见 <a href="delayed-tasks.html">延时任务</a>）</td>
+</tr>
+<tr>
+<td><code>time_wheel_slots</code></td>
+<td><code>60</code></td>
+<td>✅</td>
+<td>时间轮槽位数，与 tick、max_rounds(100) 共同决定量程</td>
+</tr>
+<tr>
+<td><code>time_wheel_tick</code></td>
+<td><code>1.0</code></td>
+<td>✅</td>
+<td>滴答间隔；TaskScheduler 用本值，量程 = 60 × 100 × 1.0 = 6000s（注意 TimeWheel 类默认 0.1 → 600s）</td>
+</tr>
+<tr>
+<td><code>default_max_runs</code></td>
+<td><code>None</code></td>
+<td>✅</td>
+<td>周期任务默认最大执行次数</td>
+</tr>
+<tr>
+<td><code>default_missed_policy</code></td>
+<td><code>&quot;skip&quot;</code></td>
+<td>✅</td>
+<td>错过执行策略：skip 与 ignore 等价（丢弃错过的槽位，只推进 next_run）、run_once 只补跑一次、catch_up 补跑且单轮上限 5 次</td>
+</tr>
+</tbody>
+</table>
+<p>另有语义化类方法：<code>memory()</code> / <code>sqlite(path)</code> / <code>redis(url)</code> / <code>high_performance()</code>（启用时间轮 360 槽 + 0.5s 扫描）/ <code>lightweight()</code>（关周期管理器与时间轮 + 2s 扫描）。</p>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码</span>
+<span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskScheduler, SchedulerConfig
 
-            <h2 id="taskpool-config">TaskPoolConfig</h2>
-            <p>任务池配置类。</p>
-            
-            <h3>存储配置</h3>
-            <table>
-                <thead><tr><th>参数</th><th>类型</th><th>默认值</th><th>说明</th></tr></thead>
-                <tbody>
-                    <tr><td><code>storage_type</code></td><td>str</td><td>"memory"</td><td>存储类型：memory/sqlite/redis</td></tr>
-                    <tr><td><code>sqlite_path</code></td><td>str</td><td>"neotask.db"</td><td>SQLite 数据库文件路径</td></tr>
-                    <tr><td><code>redis_url</code></td><td>str</td><td>None</td><td>Redis 连接 URL</td></tr>
-                </tbody>
-            </table>
+scheduler = TaskScheduler(
+    executor=send_report,
+    config=SchedulerConfig.redis(url=<span class="hljs-string">&quot;redis://localhost:6379&quot;</span>),
+)
+</code></pre>
+<hr>
+<h2>五、配套配置类速览（大多不用直碰）</h2>
+<table>
+<thead>
+<tr>
+<th>类</th>
+<th>真实字段与默认</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>StorageConfig</code></td>
+<td>type=<code>&quot;memory&quot;</code>、redis_url、sqlite_path（类方法 sqlite 默认 <strong>“tasks.db”</strong>，注意与 TaskPoolConfig 的 “neotask.db” 不同）</td>
+<td>存储工厂的内部契约，由 <code>TaskPool._init_storage</code> 从 TaskPoolConfig 翻译（🔧 <code>task_pool.py:234</code>）</td>
+</tr>
+<tr>
+<td><code>LockConfig</code></td>
+<td>type=<code>&quot;memory&quot;</code>、redis_url、lock_timeout=30、heartbeat_interval=10、watch_dog_enabled=True</td>
+<td>锁工厂契约；watchdog 自动续期由 lock 层自行消费</td>
+</tr>
+<tr>
+<td><code>ExecutorConfig</code></td>
+<td>type=<code>&quot;async&quot;</code>（<strong>str</strong>！注释含 async/thread/process/class/auto）、max_workers=None</td>
+<td>ExecutorFactory 直接用；类方法 async_executor/thread_executor(max_workers=10)/process_executor</td>
+</tr>
+<tr>
+<td><code>HeartbeatConfig</code></td>
+<td>interval=5.0、timeout=20.0、cleanup_interval=30.0、max_reclaim_per_cycle=100</td>
+<td>分布式心跳参数（TaskPool 装配硬编码 interval=5/timeout=20，见第二节）</td>
+</tr>
+<tr>
+<td><code>QueueConfig</code></td>
+<td>max_size=1000、priority_levels=4、delayed_queue_check_interval=0.1</td>
+<td>子模块级队列配置</td>
+</tr>
+<tr>
+<td><code>WebUIConfig</code></td>
+<td>enabled=False、host=“127.0.0.1”、port=8080、auto_open=False、enable_websocket=True</td>
+<td>Web UI 配置；TaskPool 不会自动启动它，需自行实例化 WebUIServer</td>
+</tr>
+<tr>
+<td><code>TaskConfig</code></td>
+<td>node_id + storage/lock/worker/queue/executor/webui 七件套（“兼容旧版 API”），类方法 memory/redis(url)/sqlite(path)/with_webui(port)</td>
+<td>旧版聚合配置；<code>DEFAULT_TASK_CONFIG</code> 常量模块级预置</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>六、部署档位配置示例</h2>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码（参数标注已按 1.0.2 真实生效情况修正）</span>
 
-            <h3>Worker 配置</h3>
-            <table>
-                <thead><tr><th>参数</th><th>类型</th><th>默认值</th><th>说明</th></tr></thead>
-                <tbody>
-                    <tr><td><code>worker_concurrency</code></td><td>int</td><td>10</td><td>并发 Worker 数量</td></tr>
-                    <tr><td><code>prefetch_size</code></td><td>int</td><td>20</td><td>预取任务数量</td></tr>
-                    <tr><td><code>task_timeout</code></td><td>float</td><td>None</td><td>任务超时时间（秒）</td></tr>
-                </tbody>
-            </table>
+<span class="hljs-comment"># ── 开发环境：全默认，只调并发 ──</span>
+cfg = TaskPoolConfig.memory()
+cfg.worker_concurrency = <span class="hljs-number">2</span>          <span class="hljs-comment"># 想省资源就调低</span>
 
-            <h3>队列配置</h3>
-            <table>
-                <thead><tr><th>参数</th><th>类型</th><th>默认值</th><th>说明</th></tr></thead>
-                <tbody>
-                    <tr><td><code>queue_max_size</code></td><td>int</td><td>10000</td><td>队列最大长度</td></tr>
-                    <tr><td><code>priority_levels</code></td><td>int</td><td>4</td><td>优先级级别数</td></tr>
-                </tbody>
-            </table>
+<span class="hljs-comment"># ── 单机生产：SQLite + 显式节点名 ──</span>
+cfg = TaskPoolConfig.sqlite(path=<span class="hljs-string">&quot;/data/neotask.db&quot;</span>, node_id=<span class="hljs-string">&quot;prod-1&quot;</span>)
+cfg.lock_type = <span class="hljs-string">&quot;memory&quot;</span>            <span class="hljs-comment"># 单进程默认即可，勿开多进程共享该文件</span>
+cfg.task_timeout = <span class="hljs-number">300</span>              <span class="hljs-comment"># 5 分钟执行超时（走重试链路）</span>
+cfg.max_retries = <span class="hljs-number">3</span>
 
-            <h3>重试配置</h3>
-            <table>
-                <thead><tr><th>参数</th><th>类型</th><th>默认值</th><th>说明</th></tr></thead>
-                <tbody>
-                    <tr><td><code>max_retries</code></td><td>int</td><td>3</td><td>最大重试次数</td></tr>
-                    <tr><td><code>retry_delay</code></td><td>float</td><td>1.0</td><td>重试延迟（秒）</td></tr>
-                </tbody>
-            </table>
+<span class="hljs-comment"># ── 分布式生产：Redis 双开关都要到位 ──</span>
+cfg = TaskPoolConfig.redis(url=<span class="hljs-string">&quot;redis://redis-cluster:6379/0&quot;</span>, node_id=<span class="hljs-string">&quot;worker-01&quot;</span>)
+cfg.lock_type = <span class="hljs-string">&quot;redis&quot;</span>             <span class="hljs-comment"># 关键！存储≠锁</span>
+cfg.lock_timeout = <span class="hljs-number">30</span>
+cfg.worker_concurrency = <span class="hljs-number">20</span>
+cfg.prefetch_size = <span class="hljs-number">50</span>
+cfg.enable_reporter = <span class="hljs-literal">True</span>          <span class="hljs-comment"># 60s 控制台指标（推 Pushgateway 需自行 add_reporter）</span>
 
-            <h3>锁配置</h3>
-            <table>
-                <thead><tr><th>参数</th><th>类型</th><th>默认值</th><th>说明</th></tr></thead>
-                <tbody>
-                    <tr><td><code>lock_type</code></td><td>str</td><td>"memory"</td><td>锁类型：memory/redis</td></tr>
-                    <tr><td><code>lock_timeout</code></td><td>int</td><td>30</td><td>锁超时时间（秒）</td></tr>
-                </tbody>
-            </table>
+pool = TaskPool(executor=my_task, config=cfg)
+pool.start()
+</code></pre>
+<p>调优参考（📝 经验值，非源码承诺）：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>建议</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>worker_concurrency</td>
+<td>IO 密集 = CPU 核 ×2~4；CPU 密集 = 核数</td>
+<td>async 执行器下为协程并发</td>
+</tr>
+<tr>
+<td>max_workers</td>
+<td>thread/process 执行器专用</td>
+<td>async 执行器忽略</td>
+</tr>
+<tr>
+<td>prefetch_size</td>
+<td>低延迟 1~5；高吞吐 20~50</td>
+<td>内部还有 ×5/÷4/×3 的水位换算</td>
+</tr>
+<tr>
+<td>task_timeout</td>
+<td>平均耗时 ×3，别卡太死</td>
+<td>超时走&quot;重试→失败&quot;，见快速上手 FAQ</td>
+</tr>
+<tr>
+<td>lock_timeout</td>
+<td>单任务最长耗时 ×2 以上</td>
+<td>依赖 watchdog 续期时给足余量</td>
+</tr>
+<tr>
+<td>queue_max_size</td>
+<td>内存档注意 1KB/任务量级</td>
+<td>满队列 <code>submit</code> 抛 <code>QueueFullError</code>，务必留余量</td>
+</tr>
+<tr>
+<td>max_retries / retry_delay</td>
+<td>3~5 次 / 1~5 秒</td>
+<td>递增延迟 retry_delay×N</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>七、故障排查：配置相关的真实坑</h2>
+<table>
+<thead>
+<tr>
+<th>现象</th>
+<th>真实原因</th>
+<th>处置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>改了 <code>heartbeat_interval</code>/<code>enable_reclaimer</code> 等毫无反应</td>
+<td>死参数（见第二节清单），装配硬编码</td>
+<td>接受默认或改源码/等官方参数化</td>
+</tr>
+<tr>
+<td>开了 <code>enable_persistence</code>，重启后周期任务没了</td>
+<td>periodic 持久化族是 TODO 空实现</td>
+<td>周期定义只能自己持久化重建（脚本启动时重新 submit）</td>
+</tr>
+<tr>
+<td>测试环境 <code>sqlite_path=&quot;:memory:&quot;</code> 任务不执行</td>
+<td><strong>实体与队列各持一条连接，各自独立内存库</strong>——出队后按 task_id 查实体查不到</td>
+<td>测试改用临时文件路径或 memory 存储</td>
+</tr>
+<tr>
+<td>队列满时 submit 直接抛 <code>QueueFullError</code></td>
+<td><code>TaskDispatcher.dispatch</code> 校验队列容量并抛出（queue_max_size 上限）</td>
+<td>捕获该异常或给队列留余量</td>
+</tr>
+<tr>
+<td>调了 task_timeout 没生效</td>
+<td>可能是给 TaskPool 传了默认 config？task_timeout 默认 None 需显式传</td>
+<td><code>TaskPoolConfig(task_timeout=...)</code> 或类方法后赋值</td>
+</tr>
+<tr>
+<td>executor_type 传字符串后行为怪异</td>
+<td>该字段类型是 ExecutorType 枚举</td>
+<td>统一用 <code>ExecutorType.ASYNC</code> 等枚举</td>
+</tr>
+<tr>
+<td>SQLite 多进程各自消费同一 db</td>
+<td>出队非原子 + 进程内锁互不可见</td>
+<td>回到单进程，或升 Redis 档（详见持久化一文）</td>
+</tr>
+<tr>
+<td>健康检查结果 5 秒内不刷新</td>
+<td><code>get_health_status</code> 有 <code>HEALTH_CHECK_TTL=5.0</code> 缓存，连续调用复用上次结果</td>
+<td>属预期；需即时结果可看 <code>last_check</code> 时间戳</td>
+</tr>
+<tr>
+<td><code>print(pool._config)</code> 调试</td>
+<td>可用（私有属性，版本间可能变动）</td>
+<td>生产建议包一层 get_config()</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>版本与验证说明</h2>
+<p>本文属于项目文档而不是永久不变的 API 契约。以下情况发生时，应重新核对源码或发布说明：</p>
+<ol>
+<li class="lvl-3">
+<p>项目版本升级，尤其是公开 API、配置模型、存储实现和工作流发生变化；</p>
+</li>
+<li class="lvl-3">
+<p>本文中的默认值、性能数据或示例依赖外部服务版本；</p>
+</li>
+<li class="lvl-3">
+<p>运行环境与本文案例不同，例如 Python 版本、Redis/数据库版本、模型供应商或操作系统不同。</p>
+</li>
+</ol>
+<p>如果你要把本文内容用于生产环境，请优先使用仓库当前版本的 README、源码、测试和 Release 记录进行最终确认。</p>
+<h2>总结</h2>
+<p>NeoTask 的配置体系用一句话概括：<strong>dataclass 字段齐全得像完整产品，装配代码却只消费了其中一部分</strong>。要点回顾：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>主配置 <code>TaskPoolConfig</code> 31 个字段中仍有 <strong>6 个死参数</strong>（全库零读取），其余参数（含监控 / 死信 / 时间轮开关）均真实生效——调参前对照第一节的 ✅/❌ 标注；</p>
+</li>
+<li class="lvl-2">
+<p>配置来源只有&quot;代码 config &gt; 默认值&quot;两层，环境变量与 WorkflowConfig 不存在，别按旧资料配置；</p>
+</li>
+<li class="lvl-2">
+<p>存储三档 + 锁两档是<strong>独立开关</strong>，分布式 = storage redis + lock redis 双开；</p>
+</li>
+<li class="lvl-2">
+<p>SchedulerConfig 的 <code>enable_persistence</code> 尚未实现（周期定义只活在内存），周期任务可靠重建才是正解。</p>
+</li>
+</ul>
+<p>下一篇可深入 <a href="best-practices.html">最佳实践</a> 看生产组合拳，或回 <a href="quickstart.html">快速上手</a> 跑通最小链路。</p>
+<hr>
+<h2>相关链接</h2>
+<p><a href="index.html">返回首页</a></p>
+<p><strong>入门与参考</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="quickstart.html">快速上手</a> - 5 分钟入门</p>
+</li>
+<li class="lvl-2">
+<p><a href="api-reference.html">API 参考</a> - 完整 API 文档</p>
+</li>
+<li class="lvl-2">
+<p><a href="configuration.html">配置说明</a> - 配置参数详解</p>
+</li>
+<li class="lvl-2">
+<p><a href="best-practices.html">最佳实践</a> - 生产环境建议</p>
+</li>
+</ul>
+<p><strong>架构与设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="architecture.html">架构设计</a> - 整体架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="core-features.html">核心实现</a> - 功能设计</p>
+</li>
+<li class="lvl-2">
+<p><a href="evolution.html">版本演进</a> - 演进历程</p>
+</li>
+</ul>
+<p><strong>分布式核心</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="decentralization.html">去中心化</a> - 对等架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="failure-recovery.html">故障恢复</a> - 高可用保障</p>
+</li>
+<li class="lvl-2">
+<p><a href="prefetch.html">预取机制</a> - 高吞吐性能</p>
+</li>
+<li class="lvl-2">
+<p><a href="distributed-lock.html">分布式锁</a> - 并发控制</p>
+</li>
+</ul>
+<p><strong>存储与监控</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="persistence.html">持久化</a> - 多存储后端</p>
+</li>
+<li class="lvl-2">
+<p><a href="priority-queue.html">优先级</a> - 优先级队列</p>
+</li>
+<li class="lvl-2">
+<p><a href="delayed-tasks.html">延时任务</a> - 时间轮 + Redis 持久化</p>
+</li>
+<li class="lvl-2">
+<p><a href="monitoring.html">节点监控</a> - 可观测性</p>
+</li>
+</ul>
+<p><strong>资源</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/neotask">GitHub</a> - 源代码仓库</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://task.helpenx.com">NeoTask 官网</a> - 官方网站</p>
+</li>
+</ul>
 
-            <h3>监控配置</h3>
-            <table>
-                <thead><tr><th>参数</th><th>类型</th><th>默认值</th><th>说明</th></tr></thead>
-                <tbody>
-                    <tr><td><code>enable_metrics</code></td><td>bool</td><td>True</td><td>启用指标收集</td></tr>
-                    <tr><td><code>enable_health_check</code></td><td>bool</td><td>True</td><td>启用健康检查</td></tr>
-                    <tr><td><code>enable_reporter</code></td><td>bool</td><td>False</td><td>启用上报器</td></tr>
-                </tbody>
-            </table>
-
-            <h2 id="scheduler-config">SchedulerConfig</h2>
-            <p>调度器配置类。</p>
-            <table>
-                <thead><tr><th>参数</th><th>类型</th><th>默认值</th><th>说明</th></tr></thead>
-                <tbody>
-                    <tr><td><code>storage_type</code></td><td>str</td><td>"memory"</td><td>存储类型</td></tr>
-                    <tr><td><code>sqlite_path</code></td><td>str</td><td>"neotask.db"</td><td>SQLite 路径</td></tr>
-                    <tr><td><code>redis_url</code></td><td>str</td><td>None</td><td>Redis URL</td></tr>
-                    <tr><td><code>worker_concurrency</code></td><td>int</td><td>10</td><td>并发 Worker 数</td></tr>
-                    <tr><td><code>max_retries</code></td><td>int</td><td>3</td><td>最大重试次数</td></tr>
-                    <tr><td><code>retry_delay</code></td><td>float</td><td>1.0</td><td>重试延迟（秒）</td></tr>
-                    <tr><td><code>enable_persistence</code></td><td>bool</td><td>False</td><td>启用周期任务持久化</td></tr>
-                    <tr><td><code>scan_interval</code></td><td>float</td><td>0.05</td><td>调度循环扫描间隔（秒）</td></tr>
-                </tbody>
-            </table>
-
-            <h2 id="storage">存储配置详解</h2>
-
-            <h3>内存存储（开发测试）</h3>
-            <pre><code>config = TaskPoolConfig(storage_type="memory")</code></pre>
-            <p><strong>特点：</strong> 速度快，无 I/O 开销；进程重启后任务丢失。<br>
-            <strong>适用场景：</strong> 本地开发调试、单元测试、临时任务。</p>
-
-            <h3>SQLite 存储（单机生产）</h3>
-            <pre><code>config = TaskPoolConfig(
-    storage_type="sqlite",
-    sqlite_path="/data/neotask.db"
-)</code></pre>
-            <p><strong>特点：</strong> 持久化存储，重启不丢失；无需额外服务；不支持多节点共享。<br>
-            <strong>适用场景：</strong> 单机生产部署、需要任务持久化、中小规模任务（&lt; 10万/天）。</p>
-
-            <h3>Redis 存储（分布式）</h3>
-            <pre><code>config = TaskPoolConfig(
-    storage_type="redis",
-    redis_url="redis://localhost:6379/0",
-    lock_type="redis",
-    lock_timeout=30
-)</code></pre>
-            <p><strong>Redis URL 格式：</strong></p>
-            <pre><code># 基础格式
-redis://localhost:6379/0
-
-# 带密码
-redis://:password@localhost:6379/0
-
-# SSL 连接
-rediss://localhost:6379/0</code></pre>
-            <p><strong>特点：</strong> 多节点共享任务；支持分布式部署；高性能。<br>
-            <strong>适用场景：</strong> 多节点分布式部署、高并发任务处理。</p>
-
-            <h2 id="env">环境变量配置</h2>
-            <p>支持通过环境变量配置，优先级低于代码配置。</p>
-            <table>
-                <thead><tr><th>环境变量</th><th>对应配置</th><th>默认值</th></tr></thead>
-                <tbody>
-                    <tr><td><code>NEOTASK_STORAGE_TYPE</code></td><td>storage_type</td><td>memory</td></tr>
-                    <tr><td><code>NEOTASK_SQLITE_PATH</code></td><td>sqlite_path</td><td>neotask.db</td></tr>
-                    <tr><td><code>NEOTASK_REDIS_URL</code></td><td>redis_url</td><td>None</td></tr>
-                    <tr><td><code>NEOTASK_WORKER_CONCURRENCY</code></td><td>worker_concurrency</td><td>10</td></tr>
-                    <tr><td><code>NEOTASK_MAX_RETRIES</code></td><td>max_retries</td><td>3</td></tr>
-                    <tr><td><code>NEOTASK_QUEUE_MAX_SIZE</code></td><td>queue_max_size</td><td>10000</td></tr>
-                </tbody>
-            </table>
-            <pre><code># 设置环境变量
-export NEOTASK_STORAGE_TYPE=redis
-export NEOTASK_REDIS_URL=redis://localhost:6379
-
-# 代码中自动读取
-pool = TaskPool(executor=my_task)</code></pre>
-
-            <h2 id="examples">生产环境配置示例</h2>
-
-            <h3>单机生产环境</h3>
-            <pre><code>config = TaskPoolConfig(
-    storage_type="sqlite",
-    sqlite_path="/data/neotask.db",
-    worker_concurrency=20,
-    prefetch_size=30,
-    task_timeout=300,
-    queue_max_size=50000,
-    max_retries=3,
-    retry_delay=1.0,
-    enable_metrics=True,
-)</code></pre>
-
-            <h3>分布式生产环境</h3>
-            <pre><code>config = TaskPoolConfig(
-    storage_type="redis",
-    redis_url="redis://redis-cluster:6379/0",
-    lock_type="redis",
-    lock_timeout=30,
-    worker_concurrency=20,
-    prefetch_size=50,
-    queue_max_size=100000,
-    max_retries=3,
-    enable_metrics=True,
-)</code></pre>
-
-            <h3>高性能配置</h3>
-            <pre><code>config = TaskPoolConfig(
-    storage_type="redis",
-    redis_url="redis://localhost:6379",
-    worker_concurrency=50,
-    prefetch_size=100,
-    queue_max_size=200000,
-    max_retries=3,
-    enable_metrics=False,  # 减少监控开销
-)</code></pre>
-
-            <h2 id="tuning">配置调优建议</h2>
-
-            <h3>Worker 并发数</h3>
-            <table>
-                <thead><tr><th>任务类型</th><th>推荐值</th><th>说明</th></tr></thead>
-                <tbody>
-                    <tr><td>CPU 密集型</td><td>CPU 核心数</td><td>避免上下文切换</td></tr>
-                    <tr><td>IO 密集型</td><td>CPU 核心数 × 2-4</td><td>提高并发</td></tr>
-                    <tr><td>混合型</td><td>CPU 核心数 × 2</td><td>平衡性能</td></tr>
-                </tbody>
-            </table>
-
-            <h3>预取大小</h3>
-            <table>
-                <thead><tr><th>场景</th><th>推荐值</th><th>说明</th></tr></thead>
-                <tbody>
-                    <tr><td>低延迟要求</td><td>1-5</td><td>任务快速响应</td></tr>
-                    <tr><td>高吞吐要求</td><td>20-50</td><td>减少网络往返</td></tr>
-                    <tr><td>任务耗时较长</td><td>10-20</td><td>平衡内存和吞吐</td></tr>
-                </tbody>
-            </table>
-
-            <h3>队列大小</h3>
-            <table>
-                <thead><tr><th>场景</th><th>推荐值</th><th>说明</th></tr></thead>
-                <tbody>
-                    <tr><td>内存有限</td><td>1000-5000</td><td>控制内存使用</td></tr>
-                    <tr><td>标准配置</td><td>10000-50000</td><td>平衡性能</td></tr>
-                    <tr><td>高吞吐</td><td>100000+</td><td>大量任务堆积</td></tr>
-                </tbody>
-            </table>
-
-            <h3>超时设置</h3>
-            <table>
-                <thead><tr><th>参数</th><th>推荐值</th><th>说明</th></tr></thead>
-                <tbody>
-                    <tr><td><code>task_timeout</code></td><td>平均耗时 × 3</td><td>避免误判超时</td></tr>
-                    <tr><td><code>lock_timeout</code></td><td>任务耗时 × 2</td><td>避免锁提前释放</td></tr>
-                    <tr><td><code>wait_timeout</code></td><td>任务耗时 × 2</td><td>等待结果超时</td></tr>
-                </tbody>
-            </table>
-
-            <h3>配置验证</h3>
-            <pre><code>def validate_config(config: TaskPoolConfig) -> bool:
-    if config.storage_type not in ["memory", "sqlite", "redis"]:
-        raise ValueError(f"Invalid storage_type: {config.storage_type}")
-    if config.worker_concurrency < 1:
-        raise ValueError("worker_concurrency must be >= 1")
-    if config.max_retries < 0:
-        raise ValueError("max_retries must be >= 0")
-    if config.queue_max_size < 1:
-        raise ValueError("queue_max_size must be >= 1")
-    return True</code></pre>
-        </main>
-    </div>
-
-    <footer class="footer">
-        <div class="footer-container">
-            <div class="footer-column">
-                <div class="footer-logo">
-                    <div class="logo-icon"><i class="fas fa-tasks"></i></div>
-                    <span>NeoTask</span>
-                </div>
-                <p>下一代分布式任务调度框架</p>
-            </div>
-            <div class="footer-column">
-                <h4>文档</h4>
-                <a href="quickstart.html">快速上手</a>
-                <a href="api-reference.html">API 参考</a>
-                <a href="configuration.html">配置说明</a>
-                <a href="architecture.html">架构设计</a>
-            </div>
-            <div class="footer-column">
-                <h4>社区</h4>
-                <a href="https://github.com/neopen/neotask">GitHub</a>
-                <a href="https://github.com/neopen/neotask/issues">Issues</a>
-                <a href="https://github.com/neopen/neotask/discussions">Discussions</a>
-            </div>
-            <div class="footer-column">
-                <h4>资源</h4>
-                <a href="https://pypi.org/project/neotask/">PyPI</a>
-                <a href="https://github.com/neopen/neotask/blob/main/LICENSE">License</a>
-                <a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5">详细文档</a>
-            </div>
-        </div>
-        <div class="footer-bottom">
-            <p>&copy; 2026 NeoTask. 基于 MIT 协议开源.</p>
-        </div>
-    </footer>
-
-    <script src="../assets/js/main.js"></script>
+      </article>
+    </main>
+  </div>
+  <footer>
+    <a href="https://task.helpenx.com" target="_blank" rel="noopener">NeoTask 官网</a>·
+    <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>·
+    <a href="index.html">文档中心</a>
+    <div style="margin-top:6px">© 2026 helpenx.com · 文档基线以文中标注版本对应的源码为准</div>
+  </footer>
 </body>
 </html>

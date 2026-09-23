@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务 · NeoTask 文档</title>
+  <meta name="description" content="NeoTask 故障恢复的真实机制：三类回收（超时/孤儿/僵尸锁）的判定逻辑与默认参数、超时的 ttl 口径、孤儿回收的节点跳过与失效节点判定、死信队列接线、真实恢复时间线，以及回收器与执行者竞态的实战推演与改进建议。">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://task.helpenx.com/docs/failure-recovery.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:title" content="NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务">
+  <meta property="og:description" content="NeoTask 故障恢复的真实机制：三类回收（超时/孤儿/僵尸锁）的判定逻辑与默认参数、超时的 ttl 口径、孤儿回收的节点跳过与失效节点判定、死信队列接线、真实恢复时间线，以及回收器与执行者竞态的实战推演与改进建议。">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://task.helpenx.com/docs/failure-recovery.html">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>⏱️</text></svg>">
+  <style>
+:root{--brand:#0d9488;--brand-dark:#0f766e;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:var(--ink);background:#fff;line-height:1.75;font-size:16px}
+a{color:var(--brand);text-decoration:none}a:hover{color:var(--brand-dark);text-decoration:underline}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
+.topbar .brand .doc-badge{font-size:12px;font-weight:600;color:#fff;background:var(--brand);border-radius:6px;padding:2px 8px}
+.topbar nav{display:flex;gap:20px;font-size:14.5px}
+.topbar nav a{color:var(--muted);font-weight:500}
+.topbar nav a:hover{color:var(--brand)}
+.wrap{display:flex;max-width:1280px;margin:0 auto;padding:0 16px}
+.sidebar{width:264px;flex-shrink:0;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 40px 0;border-right:1px solid var(--line)}
+.sidebar .side-home{display:block;font-weight:600;color:var(--ink);margin-bottom:16px;font-size:15px}
+.sidebar .side-home:hover{color:var(--brand);text-decoration:none}
+.sidebar h4{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px;font-weight:600}
+.sidebar a{display:block;padding:5px 10px;border-radius:6px;font-size:14px;color:#334155;line-height:1.5}
+.sidebar a:hover{background:var(--bg);color:var(--brand);text-decoration:none}
+.sidebar a.active{background:var(--brand);color:#fff}
+.content{flex:1;min-width:0;padding:32px 20px 60px 36px;max-width:860px}
+.toc-mobile{display:none;margin-bottom:20px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.toc-mobile summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.toc-mobile a{display:block;padding:3px 0;font-size:14px}
+.article h1{font-size:1.9em;line-height:1.35;margin:.4em 0 .8em}
+.article h2{font-size:1.45em;margin:1.8em 0 .7em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
+.article h3{font-size:1.22em;margin:1.5em 0 .6em}
+.article h4{font-size:1.08em;margin:1.3em 0 .5em}
+.article p{margin:.85em 0}
+.article ul,.article ol{padding-left:1.6em;margin:.7em 0}
+.article li{margin:.35em 0}
+.article img{max-width:100%;height:auto;border-radius:8px}
+.article table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:.94em;display:block;overflow-x:auto}
+.article th,.article td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+.article th{background:var(--bg);font-weight:600}
+.article tr:nth-child(even) td{background:#fbfdff}
+.article blockquote{margin:1.1em 0;padding:.7em 1.1em;border-left:4px solid var(--brand);background:var(--bg);border-radius:0 8px 8px 0;color:#334155}
+.article blockquote p{margin:.3em 0}
+.article code:not(pre code){background:#eef2f7;color:#c7254e;padding:.15em .4em;border-radius:4px;font-size:.88em;word-break:break-word}
+.article pre.hljs{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0;line-height:1.6}
+.article pre.hljs code{background:none;padding:0;color:var(--ink);font-size:.9em;font-family:ui-monospace,SFMono-Regular,'Cascadia Code',Consolas,Menlo,monospace}
+.article pre.mermaid{text-align:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0}
+.article hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+.article .success,.article .tips,.article .warning,.article .danger{border-radius:8px;padding:.9em 1.1em;margin:1.1em 0;border:1px solid}
+.article .success{border-color:#a7f3d0;background:#ecfdf5}.article .success p:first-of-type::before{content:'✅ '}
+.article .tips{border-color:#bfdbfe;background:#eff6ff}.article .tips p:first-of-type::before{content:'💡 '}
+.article .warning{border-color:#fde68a;background:#fffbeb}.article .warning p:first-of-type::before{content:'⚠️ '}
+.article .danger{border-color:#fecaca;background:#fef2f2}.article .danger p:first-of-type::before{content:'🚫 '}
+.article .success>p:first-child,.article .tips>p:first-child,.article .warning>p:first-child,.article .danger>p:first-child{margin-top:0}
+.article .success>p:last-child,.article .tips>p:last-child,.article .warning>p:last-child,.article .danger>p:last-child{margin-bottom:0}
+.doc-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--muted)}
+.doc-meta .tag{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+.doc-nav{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
+.doc-nav a{font-weight:600}
+footer{border-top:1px solid var(--line);padding:22px 24px;text-align:center;color:var(--muted);font-size:13.5px}
+footer a{color:var(--muted);margin:0 10px}
+footer a:hover{color:var(--brand)}
+@media (max-width:960px){
+  .sidebar{display:none}
+  .toc-mobile{display:block}
+  .content{padding:20px 6px 50px}
+  .topbar nav{gap:12px}
+}
+</style>
+  <style>
+.hljs{color:#24292e;background:#f6f8fa}
+.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.constant_{color:#d73a49}
+.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}
+.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}
+.hljs-string,.hljs-meta .hljs-string,.hljs-regexp{color:#032f62}
+.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-tag,.hljs-subst,.hljs-symbol{color:#e36209}
+.hljs-built_in,.hljs-class .hljs-title{color:#e36209}
+.hljs-comment,.hljs-meta,.hljs-quote{color:#6a737d}
+.hljs-section{color:#005cc5;font-weight:700}
+.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">⏱️ NeoTask <span class="doc-badge">文档</span></a>
+    <nav>
+      <a href="https://task.helpenx.com" target="_blank" rel="noopener">产品官网</a>
+      <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+  <div class="wrap">
+    <aside class="sidebar">
+      <a class="side-home" href="index.html">⏱️ 分布式任务调度系统 · 文档中心</a>
+      <h4>技术分析</h4><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a>
+<h4>API 与配置参考</h4><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a>
+<h4>实现与源码分析</h4><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html" class="active">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a>
+<h4>设计与方案</h4><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a>
+<h4>项目概览</h4><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a>
+<h4>入门与使用</h4><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a>
+<h4>性能与评测</h4><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a>
+<h4>实践与运维</h4><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a>
+<h4>架构与核心设计</h4><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a>
+<h4>版本与演进</h4><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a>
+    </aside>
+    <main class="content">
+      <details class="toc-mobile"><summary>📑 文档目录</summary><div><strong style="font-size:13px;color:var(--muted)">技术分析</strong><a href="why-not-celery.html">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a></div><div><strong style="font-size:13px;color:var(--muted)">API 与配置参考</strong><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a></div><div><strong style="font-size:13px;color:var(--muted)">实现与源码分析</strong><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a></div><div><strong style="font-size:13px;color:var(--muted)">设计与方案</strong><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a></div><div><strong style="font-size:13px;color:var(--muted)">项目概览</strong><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a><a href="ha-task-pool.html">如何从零构建高可用任务调度池：分层的教程式构建指南</a></div><div><strong style="font-size:13px;color:var(--muted)">入门与使用</strong><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a></div><div><strong style="font-size:13px;color:var(--muted)">性能与评测</strong><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a></div><div><strong style="font-size:13px;color:var(--muted)">实践与运维</strong><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a></div><div><strong style="font-size:13px;color:var(--muted)">架构与核心设计</strong><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a></div><div><strong style="font-size:13px;color:var(--muted)">版本与演进</strong><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a></div></details>
+      <article class="article">
+        <div class="doc-meta"><span class="tag">NeoTask</span><span class="tag">更新 2026-05-06</span><a href="https://task.helpenx.com" target="_blank" rel="noopener">task.helpenx.com ↗</a></div>
+        <h1>NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</h1>
+<p>📚 <a href="index.html">返回首页</a> | 📖 <a href="quickstart.html">快速上手</a> | 📘 <a href="api-reference.html">API 参考</a> | ⚙️ <a href="configuration.html">配置说明</a> | 🐙 <a href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a href="https://task.helpenx.com">NeoTask 官网</a></p>
+<blockquote>
+<p><strong>文档定位</strong>：这是一篇实现细节文档。重点放在源码路径、状态变化、数据结构和异常边界，方便开发者从“能用”进一步理解“为什么这样实现”。<br>
+<strong>事实边界</strong>：实现文档：功能、接口和代码行为以文中标注版本对应的源码为准；仓库后续版本可能发生变化。<br>
+<strong>权威来源</strong>：<a href="https://github.com/neopen/neotask">NeoTask 源码仓库</a>；涉及版本历史时，以仓库 Release / CHANGELOG 为准。<br>
+<strong>代码标记</strong>：如果正文出现“源码/实现”字样，表示对应代码路径可在仓库中核对；示例代码仅用于演示调用方式，不应理解为项目源码原样。<br>
+<strong>版本基线</strong>：本文对照 NeoTask <strong>v1.0.2</strong>（PyPI 发布版）。<br>
+<strong>代码标注约定</strong>：🔧 表示<strong>真实源码</strong>（仓库原样摘录，附文件路径，可自行对照）；📝 表示<strong>示例代码</strong>（用法演示、改进建议或教学代码，不代表仓库实现）。<br>
+<strong>阅读提示</strong>：本文描述当前行为——回收器如何判定、哪些任务会被回收、失败最终去哪里。Coordinator 的选节点/再平衡、进程内周期任务持久化等尚未接入的能力会在正文中明确标注。</p>
+</blockquote>
+<hr>
+<h2>目录</h2>
+<ol>
+<li class="lvl-3">
+<p><a href="#%E4%B8%80%E6%95%85%E9%9A%9C%E6%81%A2%E5%A4%8D%E7%9A%84%E7%AC%AC%E4%B8%80%E6%80%A7%E5%8E%9F%E7%90%86">故障恢复的第一性原理</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%BA%8C%E7%9C%9F%E5%AE%9E%E6%81%A2%E5%A4%8D%E6%9E%B6%E6%9E%84%E4%B8%89%E4%B8%AA%E7%BB%84%E4%BB%B6%E4%B8%89%E7%A7%8D%E6%89%AB%E6%8F%8F">真实恢复架构：三个组件、三种扫描</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%B8%89%E5%9B%9E%E6%94%B6%E5%99%A8%E6%BA%90%E7%A0%81%E8%A7%A3%E5%89%96taskreclaimer">回收器源码解剖：TaskReclaimer</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E5%9B%9B%E8%B6%85%E6%97%B6%E5%9B%9E%E6%94%B6%E5%88%A4%E5%AE%9A%E5%8F%A3%E5%BE%84%E6%98%AF%E4%BB%BB%E5%8A%A1-ttl">超时回收：判定口径是任务 TTL</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%BA%94%E5%AD%A4%E5%84%BF%E5%9B%9E%E6%94%B6%E8%8A%82%E7%82%B9%E8%B7%B3%E8%BF%87%E4%B8%8E%E5%A4%B1%E6%95%88%E8%8A%82%E7%82%B9%E5%88%A4%E5%AE%9A">孤儿回收：节点跳过与失效节点判定</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E5%85%AD%E5%83%B5%E5%B0%B8%E9%94%81%E5%9B%9E%E6%94%B6lockscanner-%E4%B8%8E%E9%98%88%E5%80%BC%E8%AE%BE%E8%AE%A1">僵尸锁回收：LockScanner 与阈值设计</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%B8%83%E6%97%B6%E9%97%B4%E7%BA%BF%E6%8E%A8%E6%BC%94%E4%B8%80%E4%B8%AA%E8%8A%82%E7%82%B9%E5%B4%A9%E6%BA%83%E5%90%8E%E7%A9%B6%E7%AB%9F%E5%8F%91%E7%94%9F%E4%BB%80%E4%B9%88">时间线推演：一个节点崩溃后究竟发生什么</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E5%85%AB%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%99%E4%B9%88%E8%AE%BE%E8%AE%A1%E5%9B%9B%E4%B8%AA%E5%93%B2%E5%AD%A6%E9%97%AE%E9%A2%98">为什么这么设计：四个哲学问题</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#%E4%B9%9D%E6%AD%BB%E4%BF%A1%E9%98%9F%E5%88%97%E5%B7%B2%E6%8E%A5%E7%BA%BFworker-%E4%B8%8E%E5%9B%9E%E6%94%B6%E5%99%A8%E8%87%AA%E5%8A%A8%E6%8A%95%E9%80%92">死信队列：已接线，自动投递</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#%E5%8D%81%E5%B9%82%E7%AD%89%E6%80%A7%E6%81%A2%E5%A4%8D%E5%8A%A8%E4%BD%9C%E7%9A%84%E5%AE%89%E5%85%A8%E5%B8%A6">幂等性：恢复动作的安全带</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#%E5%8D%81%E4%B8%80%E9%85%8D%E7%BD%AE%E5%8F%82%E6%95%B0%E7%9C%9F%E5%AE%9E%E5%AD%97%E6%AE%B5%E5%AF%B9%E7%85%A7%E8%A1%A8">配置参数：真实字段对照表</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#%E5%8D%81%E4%BA%8C%E6%95%85%E9%9A%9C%E5%9C%BA%E6%99%AF%E5%AE%9E%E6%88%98">故障场景实战</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#%E5%8D%81%E4%B8%89%E6%80%BB%E7%BB%93">总结</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5">相关链接</a></p>
+</li>
+</ol>
+<hr>
+<h2>一、故障恢复的第一性原理</h2>
+<p>节点会崩，网络会断，进程会被 kill -9。故障恢复要回答的唯一问题是：<strong>“正在执行、但执行者已经消失的任务，如何被再次执行，且不重复、不丢失？”</strong></p>
+<p>主流的答案有两个流派：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">流派</th>
+<th style="text-align:left">思路</th>
+<th style="text-align:left">代表系统</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">主动检测派</td>
+<td style="text-align:left">心跳监控发现节点死亡 → 立刻接管其任务</td>
+<td style="text-align:left">多数分布式调度器</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>被动租约派</strong></td>
+<td style="text-align:left">执行者持有<strong>租约（锁 + TTL）</strong>，租约过期即视为可接管，不关心执行者死活</td>
+<td style="text-align:left"><strong>NeoTask（v1.0.2）</strong></td>
+</tr>
+</tbody>
+</table>
+<p>NeoTask 以被动租约为主、心跳判死为辅。超时回收完全<strong>不需要判断&quot;谁死了&quot;</strong>——只需要两样东西：</p>
+<ol>
+<li class="lvl-3">
+<p>每项执行都有<strong>租约</strong>（分布式锁 TTL 30s + 看门狗续期）；</p>
+</li>
+<li class="lvl-3">
+<p>有个<strong>回收器</strong>定期检查&quot;看起来没人管的执行&quot;，把它们重新入队。</p>
+</li>
+</ol>
+<p><strong>为什么以租约为主：判活是概率性的，租约是确定性的。</strong> 心跳可能误报（网络抖动）、判死可能误杀（GC 停顿）；但锁的 TTL 是 Redis 上的硬事实——过期就是过期，与&quot;节点是否真的死了&quot;无关。把恢复建立在&quot;租约过期&quot;而不是&quot;节点判死&quot;上，系统就摆脱了对故障检测精度的依赖：<strong>检测可以慢、可以错，恢复依然正确</strong>（详见 <a href="decentralization.html">去中心化</a> 一文的&quot;两态哲学&quot;）。</p>
+<p>在此之上，<strong>孤儿回收</strong>补上了&quot;节点级&quot;的快速通道：它借助 NodeManager 的活跃节点集合，判定&quot;任务的执行节点是否已失联&quot;，从而比 ttl 超时更早地接管崩溃节点的任务。它的判定有两条硬约束——<strong>没有节点管理器就不动作（返回 <code>None</code> 跳过）</strong>、<strong>绝不回收本节点自己正在执行的任务</strong>——这正是&quot;判活不可靠&quot;哲学在节点级回收上的落地方式（详见第五节）。</p>
+<p>于是故障恢复的主角仍是<strong>回收器（TaskReclaimer）</strong>：超时/僵尸锁回收只依赖锁与 ttl，孤儿回收才需要知道节点集合在哪。</p>
+<hr>
+<h2>二、真实恢复架构：三个组件、三种扫描</h2>
+<pre class="mermaid">graph TB
+    subgraph Protect[&quot;防线一：预防（执行期）&quot;]
+        WDT[WatchDog&lt;br/&gt;每 10s 续期锁 TTL=30s] --&gt;|执行者还活着→锁一直有效| RUN[任务正常运行]
+    end
+
+    subgraph Detect[&quot;防线二：检测（无人执行时）&quot;]
+        SC1[LockScanner&lt;br/&gt;每 60s 扫一次&lt;br/&gt;清理 TTL 异常/无主僵尸锁]
+        SC2[TaskReclaimer 超时回收&lt;br/&gt;每 30s 检查 RUNNING 任务&lt;br/&gt;elapsed &gt; task.ttl → 回收]
+        SC3[TaskReclaimer 孤儿回收&lt;br/&gt;每 30s 检查 RUNNING 任务&lt;br/&gt;非本节点且不在活跃集 → 回收]
+    end
+
+    subgraph Action[&quot;防线三：善后&quot;]
+        REQ[重新入队&lt;br/&gt;delay = retry_delay × 重试次数]
+        FAIL[超过 max_retries=3&lt;br/&gt;→ FAILED]
+    end
+
+    WDT -.-&gt;|看门狗停止续期| SC1
+    SC1 --&gt; REQ
+    SC2 --&gt; REQ
+    SC3 --&gt; REQ
+    REQ --&gt; FAIL
+</pre>
+<p>三个扫描的判定对象各不相同：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">扫描</th>
+<th style="text-align:left">周期</th>
+<th style="text-align:left">判定对象</th>
+<th style="text-align:left">判定条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">僵尸锁扫描（LockScanner）</td>
+<td style="text-align:left">60s</td>
+<td style="text-align:left">锁本身</td>
+<td style="text-align:left">锁存在时间 &gt; 300s 阈值 或 owner 无主</td>
+</tr>
+<tr>
+<td style="text-align:left">超时回收</td>
+<td style="text-align:left">30s</td>
+<td style="text-align:left">RUNNING 任务</td>
+<td style="text-align:left"><code>now - started_at &gt; task.ttl</code>（默认 3600s）</td>
+</tr>
+<tr>
+<td style="text-align:left">孤儿回收</td>
+<td style="text-align:left">30s</td>
+<td style="text-align:left">RUNNING 任务（跳过本节点）</td>
+<td style="text-align:left"><code>node_id 非空 且 不在活跃节点集合</code>；无节点管理器时整段跳过</td>
+</tr>
+</tbody>
+</table>
+<p>三者都只读不杀——真正&quot;处置&quot;动作统一收敛在 <code>_reclaim_single_task</code>（见下节）。这让回收逻辑只有一处需要严格正确，其余全是扫描。</p>
+<hr>
+<h2>三、回收器源码解剖：TaskReclaimer</h2>
+<h3>3.1 回收原因枚举与默认配置</h3>
+<p>🔧 v1.0.2 <code>worker/reclaimer.py</code>：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 worker/reclaimer.py —— 真实源码摘录</span>
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">ReclaimReason</span>(<span class="hljs-title class_ inherited__">Enum</span>):
+    TIMEOUT = <span class="hljs-string">&quot;timeout&quot;</span>              <span class="hljs-comment"># 执行超时</span>
+    ORPHAN = <span class="hljs-string">&quot;orphan&quot;</span>                <span class="hljs-comment"># 孤儿任务（节点宕机）</span>
+    STALE_LOCK = <span class="hljs-string">&quot;stale_lock&quot;</span>        <span class="hljs-comment"># 僵尸锁</span>
+    MAX_RETRIES = <span class="hljs-string">&quot;max_retries&quot;</span>      <span class="hljs-comment"># 超过重试次数</span>
+    CANCELLED = <span class="hljs-string">&quot;cancelled&quot;</span>          <span class="hljs-comment"># 已取消</span>
+
+<span class="hljs-meta">@dataclass</span>
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">ReclaimerConfig</span>:
+    interval: <span class="hljs-built_in">float</span> = <span class="hljs-number">30.0</span>            <span class="hljs-comment"># 回收检查间隔（秒）</span>
+    max_reclaim_per_cycle: <span class="hljs-built_in">int</span> = <span class="hljs-number">100</span>  <span class="hljs-comment"># 每周期最大回收数量</span>
+    task_timeout: <span class="hljs-built_in">int</span> = <span class="hljs-number">300</span>           <span class="hljs-comment"># 任务超时兜底（秒）★注意：仅兜底</span>
+    enable_timeout_reclaim: <span class="hljs-built_in">bool</span> = <span class="hljs-literal">True</span>
+    enable_orphan_reclaim: <span class="hljs-built_in">bool</span> = <span class="hljs-literal">True</span>
+    enable_stale_lock_reclaim: <span class="hljs-built_in">bool</span> = <span class="hljs-literal">True</span>
+    enable_auto_requeue: <span class="hljs-built_in">bool</span> = <span class="hljs-literal">True</span>
+    lock_scan_interval: <span class="hljs-built_in">float</span> = <span class="hljs-number">60.0</span>  <span class="hljs-comment"># 锁扫描间隔（秒）</span>
+    stale_lock_ttl_threshold: <span class="hljs-built_in">int</span> = <span class="hljs-number">300</span>  <span class="hljs-comment"># 僵尸锁 TTL 阈值（秒）</span>
+    max_retries: <span class="hljs-built_in">int</span> = <span class="hljs-number">3</span>
+    retry_delay: <span class="hljs-built_in">float</span> = <span class="hljs-number">1.0</span>
+</code></pre>
+<h3>3.2 主循环：一次回收周期做什么</h3>
+<p>🔧 <code>worker/reclaimer.py</code> 的 <code>_execute_reclaim</code>：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 worker/reclaimer.py —— 真实源码摘录</span>
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">_execute_reclaim</span>(<span class="hljs-params">self</span>) -&gt; <span class="hljs-type">List</span>[ReclaimResult]:
+    <span class="hljs-comment"># 1. 回收超时任务（RUNNING 且超过任务 TTL）</span>
+    <span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._config.enable_timeout_reclaim:
+        timeout_results = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._reclaim_timeout_tasks()
+        results.extend(timeout_results)
+
+    <span class="hljs-comment"># 2. 回收孤儿任务（RUNNING 且执行节点不在活跃集）</span>
+    <span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._config.enable_orphan_reclaim:
+        orphan_results = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._reclaim_orphan_tasks()
+        results.extend(orphan_results)
+
+    <span class="hljs-comment"># 3. 僵尸锁由 LockScanner 自己的 60s 循环处理，此处不重复执行</span>
+    <span class="hljs-keyword">return</span> results
+</code></pre>
+<p>注意回收器<strong>每 30s 扫的是 <code>status:running</code> 状态索引</strong>（<code>list_by_status(RUNNING)</code>），而不是扫全量任务——Redis 的 SET 索引让扫描成本与任务总量无关，只与 RUNNING 数量有关（代价是每次 get 一个任务一次 RTT，100 上限内可控）。</p>
+<h3>3.3 处置动作：重新入队 or 标记失败</h3>
+<p>🔧 <code>_reclaim_single_task</code> 是唯一处置入口（节选）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 worker/reclaimer.py —— 真实源码摘录（节选）</span>
+retry_count = <span class="hljs-built_in">getattr</span>(task, <span class="hljs-string">&#x27;retry_count&#x27;</span>, <span class="hljs-number">0</span>)
+
+<span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._config.enable_auto_requeue <span class="hljs-keyword">and</span> retry_count &lt; <span class="hljs-variable language_">self</span>._config.max_retries:
+    <span class="hljs-comment"># 重试路径：置回 PENDING + 计数 +1 + 清空执行节点 + 延迟重新入队</span>
+    task.status = TaskStatus.PENDING
+    task.retry_count = new_retry_count          <span class="hljs-comment"># = retry_count + 1</span>
+    task.error = <span class="hljs-string">f&quot;Reclaimed due to <span class="hljs-subst">{reason.value}</span>&quot;</span>
+    task.node_id = <span class="hljs-string">&quot;&quot;</span>
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._task_repo.save(task)
+
+    delay = <span class="hljs-variable language_">self</span>._config.retry_delay * new_retry_count   <span class="hljs-comment"># 1s、2s、3s 递增</span>
+    requeued = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._queue.push(task.task_id, task.priority.value, delay=delay)
+
+    <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> requeued:
+        <span class="hljs-comment"># 队列拒绝（满/禁用）：标记 FAILED + 投递死信，避免任务卡在 PENDING</span>
+        task.status = TaskStatus.FAILED
+        task.error = <span class="hljs-string">f&quot;Reclaim requeue failed (queue full/disabled) after <span class="hljs-subst">{reason.value}</span>&quot;</span>
+        <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._task_repo.save(task)
+        <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._send_to_dead_letter(task, reason)
+        ...
+    <span class="hljs-comment"># 尝试释放锁（owner 不匹配时删除失败，锁安然不动——见 3.4）</span>
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lock.release(lock_key)
+<span class="hljs-keyword">else</span>:
+    <span class="hljs-comment"># 超限路径：标记 FAILED + 投递死信</span>
+    task.status = TaskStatus.FAILED
+    task.error = <span class="hljs-string">f&quot;Task failed after <span class="hljs-subst">{retry_count}</span> retries: reclaimed due to <span class="hljs-subst">{reason.value}</span>&quot;</span>
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._task_repo.save(task)
+    <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._send_to_dead_letter(task, reason)
+</code></pre>
+<p><strong>为什么这么设计：处置动作统一收敛 + 递增延迟重试。</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>所有回收原因（超时/孤儿/僵尸锁）走同一个处置函数，行为一致、可审计（<code>ReclaimResult</code> 记录 reason）；</p>
+</li>
+<li class="lvl-2">
+<p>重试延迟 <code>1s、2s、3s</code> 递增——线性退避。为什么不是指数退避？回收是低频事件（30s 周期），重试对象彼此独立，冲突概率低；线性退避让&quot;节点刚恢复就绪&quot;时任务尽快回流，同时给下游短暂喘息；</p>
+</li>
+<li class="lvl-2">
+<p><strong>超过 max_retries（默认 3）的任务被标记 FAILED 而不是无限重试</strong>——防止&quot;永远在回收-失败-回收&quot;的震荡，把选择权交还给观测端；</p>
+</li>
+<li class="lvl-2">
+<p><strong>重新入队被拒时不会留下卡死的 PENDING</strong>：队列满/禁用导致 <code>push</code> 返回 False 时，任务直接标记 FAILED 并投递死信；超限失败同样投递死信（详见第九节）。</p>
+</li>
+</ul>
+<h3>3.4 回收动作里的锁语义：为什么可能&quot;删不掉&quot;</h3>
+<p>回收器对锁执行 <code>release(lock_key)</code>——但 <a href="distributed-lock.html">分布式锁</a> 一文讲过，RedisLock 的释放是 <strong>Lua GET + owner 比对 + DEL</strong>。回收器并不知道执行者的 owner 值，因此：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>若原执行者还活着（锁在续期）→ <strong>release 失败，锁安然无恙</strong>——正在执行的任务不会被打断；</p>
+</li>
+<li class="lvl-2">
+<p>若原执行者已死（锁已过期/无人续期）→ 锁本身已消失，release 幂等无害。</p>
+</li>
+</ul>
+<p><strong>这是整个回收体系最重要的安全属性：回收者无权删除活锁。</strong> 它的&quot;回收&quot;只改状态与队列，真正决定&quot;任务是否继续被执行&quot;的，永远是锁。</p>
+<hr>
+<h2>四、超时回收：判定口径是任务 TTL</h2>
+<h3>4.1 超时口径：以任务自身的 ttl 为准</h3>
+<p>&quot;卡死 5 分钟（300s）自动回收&quot;是一个常见误解。对照 v1.0.2 源码，<strong>默认判定值不是 300s，而是任务对象自身的 <code>ttl</code></strong>。真实判定逻辑：</p>
+<p>🔧 <code>worker/reclaimer.py</code> 的 <code>_reclaim_timeout_tasks</code>：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 worker/reclaimer.py —— 真实源码摘录</span>
+<span class="hljs-keyword">for</span> task <span class="hljs-keyword">in</span> running_tasks:
+    <span class="hljs-keyword">if</span> task.started_at:
+        elapsed = now - task.started_at.timestamp()
+        timeout = <span class="hljs-built_in">getattr</span>(task, <span class="hljs-string">&#x27;ttl&#x27;</span>, <span class="hljs-variable language_">self</span>._config.task_timeout)  <span class="hljs-comment"># ★关键行</span>
+        <span class="hljs-keyword">if</span> elapsed &gt; timeout:
+            result = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._reclaim_single_task(task, ReclaimReason.TIMEOUT)
+</code></pre>
+<p>任务对象的 <strong><code>ttl</code> 字段默认是 3600（1 小时）</strong>（🔧 <code>models/task.py</code>：<code>ttl: int = 3600</code>），提交 API 的默认值同样是 3600（🔧 <code>core/dispatcher.py</code> 的 <code>ttl: int = 3600</code>）。所以：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">场景</th>
+<th style="text-align:left">实际超时判定值</th>
+<th style="text-align:left">回收时间</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">未显式指定 ttl 的任务（默认）</td>
+<td style="text-align:left"><code>task.ttl = 3600</code></td>
+<td style="text-align:left">启动后 <strong>1 小时</strong> 才回收</td>
+</tr>
+<tr>
+<td style="text-align:left">提交时指定 <code>ttl=300</code></td>
+<td style="text-align:left"><code>task.ttl = 300</code></td>
+<td style="text-align:left">5 分钟回收</td>
+</tr>
+<tr>
+<td style="text-align:left">任务对象没有 ttl 属性（理论兜底）</td>
+<td style="text-align:left"><code>ReclaimerConfig.task_timeout = 300</code></td>
+<td style="text-align:left">5 分钟回收</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>也就是说：<strong>&quot;5 分钟内恢复&quot;对应的不是默认行为，而是显式设置了任务 TTL 或依赖兜底分支的行为。</strong> 默认配置下，&quot;卡死任务&quot;的兜底回收是 1 小时量级。设计者有意为之：任务的 TTL 应该由提交方按业务预期显式声明（“我这个任务最多跑多久”），系统尊重这个声明；只有连声明都没有的旧数据才落到 300s 兜底。</p>
+</blockquote>
+<p><strong>实践建议</strong>：所有可能长时间运行或可能卡死的任务，<strong>提交时显式传 ttl</strong>（如视频转码任务 <code>ttl=600</code>），不要依赖默认值——否则&quot;看起来卡死&quot;的任务会白白占着 RUNNING 状态索引一小时。</p>
+<hr>
+<h2>五、孤儿回收：节点跳过与失效节点判定</h2>
+<h3>5.1 判定前提：必须有节点管理器</h3>
+<p>孤儿回收的设计意图是&quot;回收那些执行节点已死亡的任务&quot;。判定条件是：任务带 <code>node_id</code>，且该节点<strong>不在活跃节点集合中</strong>。活跃节点从哪来？来自节点管理器。</p>
+<p>🔧 <code>worker/reclaimer.py</code> 的 <code>_get_active_nodes</code>：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 worker/reclaimer.py —— 真实源码摘录</span>
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">_get_active_nodes</span>(<span class="hljs-params">self</span>) -&gt; <span class="hljs-type">Optional</span>[<span class="hljs-type">Set</span>[<span class="hljs-built_in">str</span>]]:
+    <span class="hljs-string">&quot;&quot;&quot;获取活跃节点列表
+
+    Returns:
+        活跃节点ID集合；未配置节点管理器时返回 None（表示无法判定）
+    &quot;&quot;&quot;</span>
+    <span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._node_manager <span class="hljs-keyword">is</span> <span class="hljs-literal">None</span>:
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">None</span>
+
+    <span class="hljs-keyword">try</span>:
+        nodes = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._node_manager.get_active_nodes()
+    <span class="hljs-keyword">except</span> Exception <span class="hljs-keyword">as</span> e:
+        warning(<span class="hljs-string">f&quot;Failed to get active nodes: <span class="hljs-subst">{e}</span>&quot;</span>)
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">None</span>
+
+    <span class="hljs-keyword">return</span> {n.node_id <span class="hljs-keyword">for</span> n <span class="hljs-keyword">in</span> nodes}
+</code></pre>
+<p>这里的关键语义是**&quot;无法判定&quot;用 <code>None</code> 表示，而不是空集合**：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>未配置节点管理器（内存/SQLite 形态，或人为不注入 NodeManager）→ 返回 <code>None</code>，<code>_reclaim_orphan_tasks</code> <strong>直接跳过整轮孤儿回收</strong>，并只在首次打印一条警告：<code>Orphan reclaim skipped: no node manager configured, cannot determine active nodes</code>。<strong>空集合会被误读为&quot;所有节点都死了&quot;</strong>，所以绝不返回空集；</p>
+</li>
+<li class="lvl-2">
+<p>查询活跃节点抛异常 → 同样返回 <code>None</code> 并打印警告，本轮跳过（宁可晚回收，不可错回收）；</p>
+</li>
+<li class="lvl-2">
+<p>配置了节点管理器 → 返回当前仍存活（<code>status=active</code> 且心跳未超时）的节点 id 集合（<code>NodeManager.get_active_nodes</code> 按心跳与状态过滤）。</p>
+</li>
+</ul>
+<h3>5.2 本节点跳过：一个节点绝不回收自己正在跑的任务</h3>
+<p>即便拿到了活跃节点集合，<code>_reclaim_orphan_tasks</code> 还有一道<strong>本节点跳过</strong>：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 worker/reclaimer.py —— 真实源码摘录（节选）</span>
+local_node_id = <span class="hljs-variable language_">self</span>._get_local_node_id()
+
+<span class="hljs-keyword">for</span> task <span class="hljs-keyword">in</span> running_tasks:
+    <span class="hljs-comment"># 本节点正在执行的任务不参与孤儿回收</span>
+    <span class="hljs-keyword">if</span> local_node_id <span class="hljs-keyword">and</span> task.node_id == local_node_id:
+        <span class="hljs-keyword">continue</span>
+    <span class="hljs-comment"># 检查节点是否存活</span>
+    <span class="hljs-keyword">if</span> task.node_id <span class="hljs-keyword">and</span> task.node_id <span class="hljs-keyword">not</span> <span class="hljs-keyword">in</span> active_nodes:
+        <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._reclaim_single_task(task, ReclaimReason.ORPHAN)
+</code></pre>
+<p><code>_get_local_node_id()</code> 取自节点管理器的 <code>node_id</code>。于是孤儿回收的真实语义是：</p>
+<blockquote>
+<p>只有&quot;<strong>本节点之外、且其执行节点已不在活跃节点集合中</strong>&quot;的 RUNNING 任务，才会被判为孤儿。</p>
+</blockquote>
+<p>正在本节点正常执行的任务，无论跑多久，都不会被自己回收；存活节点上执行的任务，也不会被其他节点回收——只有&quot;执行节点已经失联/退出&quot;的任务才进入回收。</p>
+<h3>5.3 一套 node_id，四处同源</h3>
+<p>一个容易产生误解的点是&quot;任务上的 node_id 与节点注册的 node_id 是否同一套体系&quot;。当前实现中它们是<strong>同一套</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">写入点</th>
+<th style="text-align:left">来源</th>
+<th style="text-align:left">值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code>TaskDispatcher</code> 创建任务</td>
+<td style="text-align:left"><code>TaskPoolConfig.node_id</code></td>
+<td style="text-align:left">配置值（默认 <code>socket.gethostname()</code>）</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>WorkerPool.start_task</code> 标记 RUNNING</td>
+<td style="text-align:left"><code>WorkerPool._node_id</code>（同 <code>TaskPoolConfig.node_id</code>）</td>
+<td style="text-align:left">同上</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>NodeManager</code> 注册节点</td>
+<td style="text-align:left">TaskPool 显式传入 <code>node_id</code></td>
+<td style="text-align:left">同上</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>TaskReclaimer</code> 本节点跳过</td>
+<td style="text-align:left"><code>node_manager.node_id</code></td>
+<td style="text-align:left">同上</td>
+</tr>
+</tbody>
+</table>
+<p>也就是说，任务打标、执行者标记、节点注册、回收跳过共用同一个 <code>TaskPoolConfig.node_id</code>（未显式配置时默认主机名）。只要同一个 TaskPool 实例装配的组件共享配置，四者必然一致，不会出现&quot;任务写 A、节点集合存 B&quot;的错位。</p>
+<blockquote>
+<p>只有绕过 TaskPool、单独构造 <code>NodeManager</code> 且不传 <code>node_id</code> 时，才会走 <code>{hostname}_{pid}_{uuid8}</code> 的自动生成路径——这属于自定义装配场景，需要自行保证与任务侧的 node_id 一致。</p>
+</blockquote>
+<h3>5.4 这对使用者意味着什么</h3>
+<ol>
+<li class="lvl-3">
+<p><strong>孤儿回收是节点崩溃后的快速恢复通道</strong>：Redis 形态默认装配节点管理器；只要目标任务不属于本节点、且其执行节点已失联，回收会在 30s 扫描周期内触发，恢复时间约 30~90s，远快于 TTL 超时回收的 1 小时；</p>
+</li>
+<li class="lvl-3">
+<p><strong>长任务不再被误回收</strong>：本节点执行的长任务被显式跳过；存活节点上的任务因其 node_id 仍在活跃集合中而不会被回收——判定基于真实的节点存活状态，而不是&quot;node_id 非空&quot;；</p>
+</li>
+<li class="lvl-3">
+<p><strong>没有节点管理器时该功能自动静默退化</strong>：不会误回收，只会等待超时回收（<code>task.ttl</code>，默认 3600s）兜底；日志里能看到那条一次性警告。</p>
+</li>
+</ol>
+<hr>
+<h2>六、僵尸锁回收：LockScanner 与阈值设计</h2>
+<h3>6.1 为什么要单独扫锁</h3>
+<p>有些锁<strong>从诞生起就没有对应任务</strong>（任务已被删除/已完成但锁未释放、手动操作残留），或锁的 owner 已消失但 TTL 被反复续期到异常。任务状态扫描看不到这些&quot;无主之锁&quot;，需要直接对锁本身体检。</p>
+<p>🔧 v1.0.2 的组合结构：<code>TaskReclaimer</code> 内部持有 <code>LockScanner</code>（Composite 模式），独立 60s 循环：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 worker/reclaimer.py —— 真实源码摘录</span>
+<span class="hljs-variable language_">self</span>._lock_scanner = LockScanner(lock, LockScannerConfig(
+    scan_interval=<span class="hljs-variable language_">self</span>._config.lock_scan_interval,        <span class="hljs-comment"># 60s</span>
+    stale_ttl_threshold=<span class="hljs-variable language_">self</span>._config.stale_lock_ttl_threshold,  <span class="hljs-comment"># 300s</span>
+    max_scan_per_cycle=<span class="hljs-variable language_">self</span>._config.max_reclaim_per_cycle
+))
+</code></pre>
+<h3>6.2 阈值 300s 的含义与&quot;为什么这么设计&quot;</h3>
+<p>僵尸锁阈值 300s 比锁 TTL（30s）大一个数量级。为什么不是&quot;锁存在超过 30s 就清理&quot;？</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>锁 TTL 30s 是&quot;单次最长持有&quot;</strong>，但有看门狗的任务锁会<strong>无限续期</strong>（只要任务在跑）。正常长任务的锁完全可以合法存活几十分钟；</p>
+</li>
+<li class="lvl-2">
+<p>真正&quot;僵尸&quot;的锁是<strong>没有看门狗、owner 已死</strong>的锁——它最多 30s 就会自然过期，根本轮不到扫描器；</p>
+</li>
+<li class="lvl-2">
+<p>那 300s 阈值抓的是什么？<strong>异常场景下的残留</strong>：看门狗协程泄漏（stop 失败）导致锁被空续期、代码路径绕过正常释放（如进程被 SIGKILL 前最后一刻续期成功）、Redis 主从切换后 TTL 丢失又重建的锁。</p>
+</li>
+</ul>
+<p>所以 300s 阈值 = “给一切合法持有留足余量（10 倍 TTL），只清理明显异常的顽固锁”。扫描器也会结合 <code>get_lock_info</code>（owner/expire 时间）二次确认，避免误删活跃任务锁——与回收器的&quot;无权删活锁&quot;原则一致。</p>
+<h3>6.3 与任务关联的僵尸锁还有一路</h3>
+<p>🔧 <code>_reclaim_stale_locks</code>（Reclaimer 内，任务视角）：按 <code>lock:task:*</code> 模式扫锁，对<strong>任务已不存在</strong>或<strong>任务状态非 RUNNING</strong> 的锁执行释放。典型场景：任务被取消/失败后，异常路径没走到 finally 释放锁，任务状态已经不是 RUNNING，锁却还在——这路扫描负责收尾。</p>
+<hr>
+<h2>七、时间线推演：一个节点崩溃后究竟发生什么</h2>
+<p>设：节点 B 正在执行任务 T（已 acquire 锁、看门狗续期中），进程突然被 kill -9。默认配置下的真实时间线：</p>
+<pre class="mermaid">gantt
+    title 节点崩溃后的真实恢复时间线（默认配置 v1.0.2）
+    dateFormat HH:mm:ss
+    axisFormat %M:%S
+
+    section 执行阶段
+    B 执行任务 T :done, exec, 00:00:00, 10s
+    B 崩溃（kill -9） :milestone, crash, 00:00:10, 0s
+    锁失去续期，TTL=30s 倒数 :active, lockttl, 00:00:10, 30s
+
+    section 检测阶段
+    回收器 30s 周期扫描 :done, scan, 00:00:00, 30s
+    发现孤儿（节点已失联） :crit, found, 00:00:30, 1s
+    锁已过期，release 幂等 :done, rel, 00:00:31, 0s
+    任务置 PENDING 重新入队（延迟 1s） :active, requeue, 00:00:31, 1s
+
+    section 接管阶段
+    其他节点出队 :done, pop, 00:00:32, 0s
+    acquire 锁成功，重新执行 :milestone, redo, 00:00:32, 0s
+</pre>
+<p>真实恢复时间 ≈ <strong>30~60s</strong>（等一个扫描周期 + 重试延迟），关键前提是任务处于 RUNNING、带 node_id，且执行节点确实已从活跃节点集合中消失（由其他存活节点触发回收；本节点永远不会回收自己的任务）。若孤儿回收被关闭、未装配节点管理器或判定不命中，恢复时间退化为 <strong>TTL 超时回收（默认 1 小时）</strong>。</p>
+<p><strong>为什么这么设计：宁可晚恢复，不可错恢复。</strong> 30s 的扫描周期意味着崩溃恢复最坏要等约 60s——对大部分任务调度场景完全可接受（任务本身没有&quot;必须秒级恢复&quot;的 SLA 承诺），却换来了扫描开销可忽略（每 30s 一次，每次最多 100 个任务）。要更快恢复？调小 <code>interval</code> 与锁 TTL，代价是误回收窗口变小但扫描频率上升，量力而行。</p>
+<hr>
+<p>任务状态机是故障恢复的核心模型。每个任务在其生命周期中经历多个状态，状态转换由节点操作和故障检测共同驱动。</p>
+<p>任务创建后进入创建状态。如果任务有延迟要求，进入调度状态等待执行时间到达。执行时间到达后进入排队状态，等待被节点抢占。节点抢占成功后进入已分配状态，此时任务已被锁定但尚未开始执行。任务开始执行后进入运行中状态。</p>
+<p>正常完成的任务进入成功状态，执行失败的任务进入失败状态。成功和失败都是终态，但失败状态可能触发重试。重试时任务重新进入排队状态。</p>
+<p>当节点在任务执行过程中崩溃时，其 RUNNING 任务会被其他节点判为孤儿。恢复机制把孤儿任务<strong>改回 PENDING（排队）重新入队</strong>，或在重试超限时改判 FAILED（同时投递死信队列）。</p>
+<blockquote>
+<p>说明：<strong>&quot;孤儿&quot;与&quot;死信&quot;是恢复过程中的判定/归宿，不是持久化的任务状态</strong>。真实的 <code>TaskStatus</code> 只有 6 个值：<code>pending</code> / <code>running</code> / <code>success</code> / <code>failed</code> / <code>cancelled</code> / <code>scheduled</code>。下面的状态图用于说明流转关系，其中&quot;孤儿/死信&quot;应理解为恢复动作的分支，最终落到的是 PENDING 或 FAILED。</p>
+</blockquote>
+<pre class="mermaid">stateDiagram-v2
+    [*] --&gt; 创建: 提交任务
+    
+    创建 --&gt; 调度: 有延迟
+    创建 --&gt; 排队: 立即执行
+    
+    调度 --&gt; 排队: 到达执行时间
+    
+    排队 --&gt; 已分配: 节点抢占成功
+    已分配 --&gt; 运行中: 开始执行
+    
+    运行中 --&gt; 成功: 执行成功
+    运行中 --&gt; 失败: 执行失败
+    运行中 --&gt; 超时: 执行超时
+    
+    失败 --&gt; 排队: 未超重试次数
+    失败 --&gt; 死信: 超过重试次数
+    
+    已分配 --&gt; 孤儿: 节点崩溃+锁过期
+    运行中 --&gt; 孤儿: 节点崩溃+锁过期
+    
+    孤儿 --&gt; 排队: 可重试
+    孤儿 --&gt; 死信: 不可重试
+    
+    成功 --&gt; [*]
+    死信 --&gt; [*]
+</pre>
+<hr>
+<h2>八、为什么这么设计：四个哲学问题</h2>
+<h3>问题一：为什么不主动&quot;杀掉&quot;故障节点的任务？</h3>
+<p>&quot;检测到节点死了 → 立即 kill 它的任务 → 重新调度&quot;是直觉方案。NeoTask 不这么做的原因在 <a href="decentralization.html">去中心化</a> 已述：<strong>判活不可靠</strong>。杀掉一个&quot;假死&quot;节点（GC 停顿、网络抖动）正在执行的任务，等于亲手制造重复副作用（任务可能已写到一半）。被动等锁过期 = 把&quot;任务是否该被接管&quot;的裁决权交给 Redis 的硬时钟，不信任任何节点的软状态。</p>
+<h3>问题二：回收器自己崩溃了怎么办？</h3>
+<p>回收器是<strong>无状态、可重入</strong>的：它不持有跨周期业务状态（只有一个 <code>_orphan_reclaim_warned</code> 标记，用于避免&quot;无节点管理器&quot;的警告刷屏），崩溃后重启，下一轮 30s 照扫不误。任务恢复不依赖&quot;回收器恰好活着&quot;——这与任务执行不依赖&quot;提交节点活着&quot;是同一哲学：<strong>所有关键路径都不依赖单点进程</strong>。</p>
+<h3>问题三：为什么回收重试要&quot;先改状态再入队&quot;？</h3>
+<p>顺序是：置 PENDING → 清 node_id → save → push(延时)。若反着来（先入队后改状态），入队到改状态之间，其他节点可能出队并读到旧状态（RUNNING）而放弃执行。<strong>先改状态再入队，保证任务一旦出现在队列里，就处于可被领取的 PENDING 态</strong>。同理，<code>start_task</code>（置 RUNNING）发生在锁获取成功之后（见 <a href="distributed-lock.html">分布式锁</a>）——锁在前、状态在后，避免出现&quot;状态 RUNNING 但无锁保护&quot;的裸奔窗口。</p>
+<h3>问题四：为什么&quot;超过重试次数&quot;的归宿是 FAILED + 死信队列？</h3>
+<p>直觉上失败 3 次应该进死信——<strong>现在确实是</strong>：重试超限（Worker 失败处理与回收器超限两条路径）都会先 <code>fail_task</code> 把状态置为 FAILED，再投递死信队列（下节）。<strong>为什么保留 FAILED 状态</strong>：FAILED 是任务状态机的一等公民（可查询 <code>status:failed</code> 索引、可手动重发），对&quot;只需要知道失败了&quot;的场景已经足够；死信队列则额外保留完整上下文与原因分类，供人工工作流消费。两者并存：状态回答&quot;它失败了吗&quot;，死信回答&quot;失败细节是什么、要不要人工介入&quot;。</p>
+<hr>
+<h2>九、死信队列：已接线，Worker 与回收器自动投递</h2>
+<p>🔧 <code>queue/dead_letter.py</code> 提供完整的 <code>DeadLetterQueue</code>，并已接入主链路。Redis 模式下 <code>TaskPoolConfig.enable_dead_letter=True</code>（默认）时，TaskPool 构造 <code>DeadLetterQueue</code> 并注入 Worker 池（<code>worker_pool.set_dead_letter_queue(...)</code>）与回收器：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 api/task_pool.py —— 装配与注入</span>
+<span class="hljs-keyword">if</span> <span class="hljs-variable language_">self</span>._config.enable_dead_letter:
+    <span class="hljs-variable language_">self</span>._dead_letter = DeadLetterQueue(
+        redis_url=<span class="hljs-variable language_">self</span>._config.redis_url,
+        max_size=<span class="hljs-variable language_">self</span>._config.dead_letter_max_size,   <span class="hljs-comment"># 默认 10000</span>
+        ttl=<span class="hljs-variable language_">self</span>._config.dead_letter_ttl              <span class="hljs-comment"># 默认 604800（7 天）</span>
+    )
+    <span class="hljs-variable language_">self</span>._worker_pool.set_dead_letter_queue(<span class="hljs-variable language_">self</span>._dead_letter)
+<span class="hljs-comment"># ... 回收器也拿到同一实例：</span>
+<span class="hljs-variable language_">self</span>._reclaimer = TaskReclaimer(..., dead_letter=<span class="hljs-variable language_">self</span>._dead_letter)
+</code></pre>
+<p>两条自动投递路径：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">投递方</th>
+<th style="text-align:left">触发时机</th>
+<th style="text-align:left">原因值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code>WorkerPool._handle_task_failure</code></td>
+<td style="text-align:left">执行失败且重试次数已耗尽，或重试重新入队被队列拒绝</td>
+<td style="text-align:left"><code>DeadLetterReason.MAX_RETRIES</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>TaskReclaimer._reclaim_single_task</code></td>
+<td style="text-align:left">回收后重试入队被拒，或回收重试超限（timout/orphan 等）</td>
+<td style="text-align:left">按回收原因映射：TIMEOUT→<code>TIMEOUT</code>、ORPHAN→<code>ORPHANED</code>、MAX_RETRIES→<code>MAX_RETRIES</code>、CANCELLED→<code>CANCELLED</code>，未知→<code>BUSINESS_ERROR</code></td>
+</tr>
+</tbody>
+</table>
+<p>死信能力：<code>send/get/list/replay/remove/count/clear</code> 与 <code>set_alert_callback</code>；<code>replay(task_id)</code> 可把死信任务重新投递执行。未注入死信实例（内存/SQLite 形态或 <code>enable_dead_letter=False</code>）时，投递方法静默跳过，不报错。</p>
+<p>现实路径：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">你的诉求</th>
+<th style="text-align:left">现状</th>
+<th style="text-align:left">建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">失败任务可查询</td>
+<td style="text-align:left">✅ FAILED + <code>status:failed</code> 索引 + 事件 <code>task.reclaimed</code>/<code>task.retry</code></td>
+<td style="text-align:left">直接查 API</td>
+</tr>
+<tr>
+<td style="text-align:left">失败任务进死信留档</td>
+<td style="text-align:left">✅ 重试超限/回收失败自动投递（Redis 模式）</td>
+<td style="text-align:left">直接 <code>dlq.list()</code> 查询</td>
+</tr>
+<tr>
+<td style="text-align:left">死信人工重放</td>
+<td style="text-align:left">✅ <code>dlq.replay(task_id)</code></td>
+<td style="text-align:left">接入自有工作流或告警回调</td>
+</tr>
+<tr>
+<td style="text-align:left">死信自动重试策略</td>
+<td style="text-align:left">⚠️ 无内置编排</td>
+<td style="text-align:left">订阅告警回调，自行决定重放时机</td>
+</tr>
+</tbody>
+</table>
+<p>📝 示例：监听死信告警，转人工工单：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 示例代码：死信产生时触发外部告警/工单</span>
+<span class="hljs-keyword">from</span> neotask.queue.dead_letter <span class="hljs-keyword">import</span> DeadLetterQueue
+
+dlq = DeadLetterQueue(redis_url)          <span class="hljs-comment"># 与 TaskPool 同一 Redis</span>
+dlq.set_alert_callback(<span class="hljs-keyword">lambda</span> item: notify_oncall(item))
+<span class="hljs-comment"># 人工处理完成后重放</span>
+<span class="hljs-keyword">await</span> dlq.replay(task_id)
+</code></pre>
+<hr>
+<h2>十、幂等性：恢复动作的安全带</h2>
+<p>恢复机制天然引入重复：同一任务可能被原执行者执行、又被接管者执行（若原执行者其实是假死）。NeoTask 的多层防护：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">层</th>
+<th style="text-align:left">机制</th>
+<th style="text-align:left">保护什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">状态闸门</td>
+<td style="text-align:left">执行前检查 PENDING</td>
+<td style="text-align:left">已被接管的任务不再被第二人执行</td>
+</tr>
+<tr>
+<td style="text-align:left">分布式锁</td>
+<td style="text-align:left">acquire（NX EX 30s）失败即放弃</td>
+<td style="text-align:left">同一时刻只有一个执行者</td>
+</tr>
+<tr>
+<td style="text-align:left">看门狗</td>
+<td style="text-align:left">锁在任务存续期持续有效</td>
+<td style="text-align:left">长任务不被误接管</td>
+</tr>
+<tr>
+<td style="text-align:left">回收器的锁语义</td>
+<td style="text-align:left">无权删活锁（owner 校验）</td>
+<td style="text-align:left">回收动作不打断活任务</td>
+</tr>
+<tr>
+<td style="text-align:left">状态机终态</td>
+<td style="text-align:left">SUCCESS/FAILED 后不再入队</td>
+<td style="text-align:left">已终态任务不被回收</td>
+</tr>
+</tbody>
+</table>
+<p><strong>框架只能保证&quot;调度层面的幂等&quot;（任务不双跑），保证不了&quot;业务层面的幂等&quot;（任务跑两次副作用相同）。</strong> 例如&quot;发短信&quot;任务被回收重跑一次 = 两条短信。业务侧需要自备幂等键（订单号、request_id），把&quot;调度至多一次&quot;升级为&quot;业务恰好一次&quot;。这一条在任何任务系统里都是铁律——框架文档会反复强调，因为它不在框架能力边界内。</p>
+<hr>
+<h2>十一、配置参数：真实字段对照表</h2>
+<p>🔧 对应 v1.0.2 真实配置类（<code>TaskPoolConfig</code> 与 <code>ReclaimerConfig</code>）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 🔧 真实配置字段（models/config.py 与 worker/reclaimer.py）</span>
+pool = TaskPool(
+    executor=handler,
+    config=TaskPoolConfig(
+        storage_type=<span class="hljs-string">&quot;redis&quot;</span>,
+        redis_url=<span class="hljs-string">&quot;redis://localhost:6379/0&quot;</span>,
+
+        <span class="hljs-comment"># —— 锁与看门狗 ——</span>
+        lock_type=<span class="hljs-string">&quot;redis&quot;</span>,          <span class="hljs-comment"># memory/redis</span>
+        lock_timeout=<span class="hljs-number">30</span>,            <span class="hljs-comment"># 锁 TTL（秒）</span>
+        <span class="hljs-comment"># 看门狗在 pool 内部以 interval_ratio=0.3 续期（≈每 10s）</span>
+
+        <span class="hljs-comment"># —— 重试（执行失败路径）——</span>
+        max_retries=<span class="hljs-number">3</span>,              <span class="hljs-comment"># 执行失败最大重试次数</span>
+        retry_delay=<span class="hljs-number">1.0</span>,            <span class="hljs-comment"># 重试基础延迟（递增：1s/2s/3s）</span>
+
+        <span class="hljs-comment"># —— 回收器 ——</span>
+        enable_reclaimer=<span class="hljs-literal">True</span>,
+        reclaimer_interval=<span class="hljs-number">30.0</span>,    <span class="hljs-comment"># 回收扫描间隔</span>
+        task_timeout=<span class="hljs-literal">None</span>,          <span class="hljs-comment"># ★超时回收兜底；任务 ttl 字段优先（默认 3600）</span>
+        enable_dead_letter=<span class="hljs-literal">True</span>,    <span class="hljs-comment"># 创建 DLQ 并注入 Worker/回收器（Redis 模式）</span>
+        dead_letter_ttl=<span class="hljs-number">604800</span>,     <span class="hljs-comment"># 死信保留 7 天</span>
+    ),
+)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">参数</th>
+<th style="text-align:left">默认</th>
+<th style="text-align:left">调优指引</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code>lock_timeout</code></td>
+<td style="text-align:left">30s</td>
+<td style="text-align:left">缩小→崩溃恢复更快；缩小到任务单次处理时间以下会误回收</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>max_retries</code></td>
+<td style="text-align:left">3</td>
+<td style="text-align:left">对&quot;必然失败&quot;的任务减小，避免无效重试放大下游压力</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>retry_delay</code></td>
+<td style="text-align:left">1.0s</td>
+<td style="text-align:left">递增步长；下游脆弱时调大</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>reclaimer_interval</code></td>
+<td style="text-align:left">30s</td>
+<td style="text-align:left">崩溃恢复时延 = 扫描周期量级；调小提高恢复速度、增加扫描开销</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>task_timeout</code>/任务 <code>ttl</code></td>
+<td style="text-align:left">None/3600s</td>
+<td style="text-align:left"><strong>显式给长任务设 ttl</strong>，别依赖兜底</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>enable_orphan_reclaim</code></td>
+<td style="text-align:left">True</td>
+<td style="text-align:left">崩溃快速恢复通道，不建议关；无节点管理器时自动跳过</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>enable_dead_letter</code></td>
+<td style="text-align:left">True</td>
+<td style="text-align:left">重试超限/回收失败自动投递死信（Redis 模式）</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>max_reclaim_per_cycle</code></td>
+<td style="text-align:left">100</td>
+<td style="text-align:left">海量 RUNNING 时控制单轮扫描开销</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>十二、故障场景实战</h2>
+<h3>场景一：节点崩溃后任务 1 小时没恢复</h3>
+<p><strong>现象</strong>：节点宕机，其他节点正常，但某任务迟迟不恢复（远超 30~60s 预期）；查 <code>status:running</code> 索引发现任务一直在 RUNNING。</p>
+<p><strong>根因排查路径</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p>查任务 <code>node_id</code> 是否为空——<strong>孤儿回收只认&quot;带 node_id 的 RUNNING 任务&quot;</strong>；若任务 node_id 为空（创建后清过字段等），孤儿判定不命中；</p>
+</li>
+<li class="lvl-3">
+<p>查是否装配了节点管理器——内存/SQLite 形态没有 NodeManager，回收器会打印 <code>Orphan reclaim skipped: no node manager configured...</code> 并整轮跳过；此时只能靠 ttl 超时回收；</p>
+</li>
+<li class="lvl-3">
+<p>查节点是否&quot;真的被判死&quot;——任务所属节点的 node_id 必须<strong>不在活跃节点集合</strong>里才会被回收。若崩溃节点的心跳键未过期（<code>timeout×2</code>），它会短暂仍算活跃，回收要等它过期；另外<strong>本节点永远不会回收自己的任务</strong>，所以&quot;回收器所在节点 = 任务执行节点&quot;时不会触发；</p>
+</li>
+<li class="lvl-3">
+<p>查 <code>enable_orphan_reclaim</code> 是否被关；</p>
+</li>
+<li class="lvl-3">
+<p>若都正常，任务应在一两个扫描周期内被捞回——还不恢复则检查回收器是否存活（<code>pool.get_stats()[&quot;reclaimer&quot;][&quot;is_running&quot;]</code>）、Redis 连接是否健康。</p>
+</li>
+</ol>
+<p><strong>处置</strong>：手动干预最快——通过 API 取消任务重新提交，或调用 <code>reclaimer.reclaim_now()</code> 手动触发一轮回收。</p>
+<h3>场景二：任务反复被回收，最终进入死信</h3>
+<p><strong>现象</strong>：一个执行节点不稳定（反复重启/被回收）的长任务，<code>error</code> 字段不断出现 <code>Reclaimed due to ...</code>、<code>retry_count</code> 逐次累加，达到 <code>max_retries</code> 后被标记 FAILED，并出现在死信队列里。</p>
+<p><strong>根因</strong>：回收路径每次命中都会 <code>retry_count + 1</code> 并以 <code>retry_delay × 次数</code> 线性延迟重新入队；这是<strong>设计行为</strong>——回收本质是&quot;重试&quot;。当执行节点持续不可用（任务反复落到不稳定节点、或每次都在完成前失联），重试次数会被耗尽。耗尽后回收器直接置 FAILED 并投递死信（原因映射为 <code>TIMEOUT</code>/<code>ORPHANED</code>/<code>MAX_RETRIES</code> 等）。</p>
+<p><strong>处置</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p>确认业务执行器<strong>幂等</strong>（最优先）；</p>
+</li>
+<li class="lvl-3">
+<p>排查执行节点为何反复失联（内存/CPU/网络/Redis 抖动），这通常才是根因；</p>
+</li>
+<li class="lvl-3">
+<p>视业务容忍度调大 <code>max_retries</code>；对&quot;必须完成&quot;的任务，消费死信队列并在节点恢复后 <code>dlq.replay(task_id)</code> 重放。</p>
+</li>
+</ol>
+<h3>场景三：回收器与执行者竞态——任务在跑却被置回 PENDING</h3>
+<p><strong>现象</strong>：A 节点正在执行任务 T（已 acquire 锁）；回收器判定孤儿，把 T 置 PENDING 重新入队；B 节点出队后 acquire 失败放弃；A 节点继续执行完成 → 状态 SUCCESS。看起来一切正常，但若 A 恰好在&quot;回收器 save(PENDING) 之后、完成之前&quot;崩溃——<strong>任务已出队两次且副本都 acquire 失败，任务从队列消失、状态停在 PENDING/RUNNING 之间，无人再执行</strong>。</p>
+<p><strong>根因</strong>：回收的&quot;改状态&quot;与&quot;锁&quot;之间没有原子校验——真实代码先改状态后尝试 release 锁；如果先做&quot;acquire 锁成功才允许回收&quot;，就能杜绝这个窗口。</p>
+<p><strong>处置与改进建议</strong>（📝 供上游参考/自补丁）：</p>
+<pre class="hljs"><code><span class="hljs-comment"># 📝 改进思路：回收前先校验锁是否真的&quot;无人持有&quot;</span>
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">_safe_reclaim</span>(<span class="hljs-params">self, task</span>):
+    lock_key = <span class="hljs-string">f&quot;task:<span class="hljs-subst">{task.task_id}</span>&quot;</span>
+    info = <span class="hljs-keyword">await</span> <span class="hljs-variable language_">self</span>._lock.get_lock_info(lock_key)
+    <span class="hljs-keyword">if</span> info <span class="hljs-keyword">and</span> info.get(<span class="hljs-string">&quot;owner&quot;</span>):          <span class="hljs-comment"># 锁有人持有 = 任务可能还在跑</span>
+        elapsed = ...                        <span class="hljs-comment"># 结合看门狗判定：活跃锁不回收</span>
+        <span class="hljs-keyword">if</span> 锁在正常续期: <span class="hljs-keyword">return</span>             <span class="hljs-comment"># 跳过本轮</span>
+    ... 原回收逻辑 ...
+</code></pre>
+<p><strong>启示</strong>：任何&quot;接管&quot;动作都应该<strong>先证明原执行者已放弃</strong>（锁已过期/owner 失效），再动状态——&quot;无权删活锁&quot;不仅要体现在 release 语义上，还应体现在回收判定上。</p>
+<h3>场景四：Redis 主从切换导致锁大面积&quot;丢失&quot;后任务双执行</h3>
+<p><strong>现象</strong>：Redis failover 后，一批 RUNNING 任务对应的锁消失（主库未同步的锁数据丢失），恢复后多节点同时 acquire 成功，同一任务双执行；业务侧出现重复扣款/重复通知。</p>
+<p><strong>根因</strong>：锁存在 Redis 主节点内存中，异步复制下 failover 丢失锁 = 租约失效但执行者还活着。这是分布式锁在 Redis 架构下的经典缺陷（详见 <a href="distributed-lock.html">分布式锁</a> 故障场景四）。</p>
+<p><strong>处置</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p>业务侧幂等（唯一解法，再次强调）；</p>
+</li>
+<li class="lvl-3">
+<p>关键任务用 <code>wait_for_result</code> 感知双执行（第二个执行者会因状态闸门失败而快速返回）；</p>
+</li>
+<li class="lvl-3">
+<p>对 Redis 复制延迟做监控（<code>INFO replication</code> 的 lag），failover 演练要常态化——<strong>恢复机制本身也要故障演练</strong>。</p>
+</li>
+</ol>
+<hr>
+<h2>十三、总结</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">主题</th>
+<th style="text-align:left">结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">第一性原理</td>
+<td style="text-align:left">被动租约派：恢复基于&quot;锁过期&quot;而非&quot;节点判死&quot;，容忍检测误差</td>
+</tr>
+<tr>
+<td style="text-align:left">真实主角</td>
+<td style="text-align:left">TaskReclaimer：超时回收 + 孤儿回收（30s 周期）+ 组合 LockScanner（60s 周期）</td>
+</tr>
+<tr>
+<td style="text-align:left">超时语义</td>
+<td style="text-align:left">以任务 <code>ttl</code> 为准（默认 <strong>3600s</strong>），<code>task_timeout=300</code> 只是兜底——&quot;5 分钟回收&quot;是误解</td>
+</tr>
+<tr>
+<td style="text-align:left">孤儿回收判定</td>
+<td style="text-align:left">活跃节点来自 NodeManager；无节点管理器→跳过整轮（<code>None</code>，非空集）；本节点任务被显式跳过——不再误回收正常任务</td>
+</tr>
+<tr>
+<td style="text-align:left">node_id 体系</td>
+<td style="text-align:left">任务打标 / Worker 标记 / NodeManager 注册 / 回收跳过共用 <code>TaskPoolConfig.node_id</code>，四处同源</td>
+</tr>
+<tr>
+<td style="text-align:left">安全底线</td>
+<td style="text-align:left">回收器无权删活锁（owner 校验）；处置统一收敛在 <code>_reclaim_single_task</code></td>
+</tr>
+<tr>
+<td style="text-align:left">死信队列</td>
+<td style="text-align:left"><code>DeadLetterQueue</code> 已接线：Worker 重试超限与回收失败/超限自动投递；<code>replay()</code> 支持人工重放</td>
+</tr>
+<tr>
+<td style="text-align:left">幂等边界</td>
+<td style="text-align:left">框架保证&quot;不双跑&quot;，业务保证&quot;双跑无副作用&quot;</td>
+</tr>
+<tr>
+<td style="text-align:left">时间线</td>
+<td style="text-align:left">崩溃恢复 ≈ 30~60s（孤儿通道）；未装配节点管理器或关闭孤儿回收后退化 ≈ ttl 超时（默认 1h）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>一句结语</strong>：故障恢复的优雅不在&quot;方案多高级&quot;，而在<strong>边界是否诚实</strong>——锁是硬租约、扫描是软检测、回收是补偿动作，三者各守边界，系统就能在&quot;检测不可靠&quot;的前提下依然可靠。孤儿回收必须&quot;无法判定就不动作&quot;（无节点管理器则跳过、本节点任务不回收），宁可能力静默退化，也不误伤正在执行的任务；失败任务的最终归宿是 FAILED 状态 + 死信队列，二者共同承担&quot;可查询&quot;与&quot;可人工介入&quot;。</p>
+<hr>
+<h2>版本与验证说明</h2>
+<p>本文属于项目文档而不是永久不变的 API 契约。以下情况发生时，应重新核对源码或发布说明：</p>
+<ol>
+<li class="lvl-3">
+<p>项目版本升级，尤其是公开 API、配置模型、存储实现和工作流发生变化；</p>
+</li>
+<li class="lvl-3">
+<p>本文中的默认值、性能数据或示例依赖外部服务版本；</p>
+</li>
+<li class="lvl-3">
+<p>运行环境与本文案例不同，例如 Python 版本、Redis/数据库版本、模型供应商或操作系统不同。</p>
+</li>
+</ol>
+<p>如果你要把本文内容用于生产环境，请优先使用仓库当前版本的 README、源码、测试和 Release 记录进行最终确认。</p>
+<h2>相关链接</h2>
+<p><a href="index.html">返回首页</a></p>
+<p><strong>入门与参考</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="quickstart.html">快速上手</a> - 5 分钟入门</p>
+</li>
+<li class="lvl-2">
+<p><a href="api-reference.html">API 参考</a> - 完整 API 文档</p>
+</li>
+<li class="lvl-2">
+<p><a href="configuration.html">配置说明</a> - 配置参数详解</p>
+</li>
+<li class="lvl-2">
+<p><a href="best-practices.html">最佳实践</a> - 生产环境建议</p>
+</li>
+</ul>
+<p><strong>架构与设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="architecture.html">架构设计</a> - 整体架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="core-features.html">核心实现</a> - 功能设计</p>
+</li>
+<li class="lvl-2">
+<p><a href="evolution.html">版本演进</a> - 演进历程</p>
+</li>
+</ul>
+<p><strong>分布式核心</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="decentralization.html">去中心化</a> - 对等架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="failure-recovery.html">故障恢复</a> - 高可用保障</p>
+</li>
+<li class="lvl-2">
+<p><a href="prefetch.html">预取机制</a> - 高吞吐性能</p>
+</li>
+<li class="lvl-2">
+<p><a href="distributed-lock.html">分布式锁</a> - 并发控制</p>
+</li>
+</ul>
+<p><strong>存储与监控</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="persistence.html">持久化</a> - 多存储后端</p>
+</li>
+<li class="lvl-2">
+<p><a href="priority-queue.html">优先级</a> - 优先级队列</p>
+</li>
+<li class="lvl-2">
+<p><a href="delayed-tasks.html">延时任务</a> - 时间轮 + Redis 持久化</p>
+</li>
+<li class="lvl-2">
+<p><a href="monitoring.html">节点监控</a> - 可观测性</p>
+</li>
+</ul>
+<p><strong>资源</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/neotask">GitHub</a> - 源代码仓库</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://task.helpenx.com">NeoTask 官网</a> - 官方网站</p>
+</li>
+</ul>
+
+      </article>
+    </main>
+  </div>
+  <footer>
+    <a href="https://task.helpenx.com" target="_blank" rel="noopener">NeoTask 官网</a>·
+    <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>·
+    <a href="index.html">文档中心</a>
+    <div style="margin-top:6px">© 2026 helpenx.com · 文档基线以文中标注版本对应的源码为准</div>
+  </footer>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</body>
+</html>

@@ -15,7 +15,7 @@
   <p align="center">
     <a href="./README.md">English</a> •
     <a href="https://task.helpenx.com">官网演示</a> •
-    <a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5/">官方文档</a> •
+    <a href="https://task.helpenx.com/docs/">官方文档</a> •
     <a href="https://pypi.org/project/neotask/">PyPI</a> 
   </p>
 </p>
@@ -161,7 +161,7 @@ timeline
 
 ## 快速上手
 
-详细使用方式 请参阅 [文档](https://pengline.cn/2026/04/118be805273f47408bc580c4bd1203d8/)
+详细使用方式 请参阅 [文档](https://task.helpenx.com/docs/quickstart.html)
 
 ### 安装
 
@@ -267,7 +267,7 @@ result = pool.wait_for_result(task_id)
 | `scheduler.submit_interval(data, interval)`  | 周期任务          |
 | `scheduler.submit_cron(data, cron)`          | Cron 任务         |
 
-详细 API 请参阅 [文档](https://pengline.cn/2026/04/650ac5bb41c74e26bc4effcec88bf26c/)
+详细 API 请参阅 [文档](https://task.helpenx.com/docs/api-reference.html)
 
 
 
@@ -285,7 +285,7 @@ config = TaskPoolConfig(
 pool = TaskPool(executor=process, config=config)
 ```
 
-详细使用示例请参阅 [文档](https://pengline.cn/2026/04/fa51edd849b24f48b4d7fa8e27efef77/)
+详细使用示例请参阅 [文档](https://task.helpenx.com/docs/configuration.html)
 
 
 
@@ -397,4 +397,5 @@ MIT License © 2026 NeoPen
 - 项目主页：https://github.com/neopen/neotask
 - 作者：NeoPen
 - 邮箱：helpenx@gmail.com
-- 文档：https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5
+- 文档：https://task.helpenx.com/docs/
+- 博客: https://pengline.cn/

@@ -15,7 +15,7 @@
   <p align="center">
     <a href="./README_zh.md">中文</a> •
     <a href="https://task.helpenx.com">Website</a> •
-    <a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5">Documentation</a> •
+    <a href="https://task.helpenx.com/docs/">Documentation</a> •
     <a href="https://pypi.org/project/neotask/">PyPI</a>
   </p>
 </p>
@@ -274,7 +274,7 @@ result = pool.wait_for_result(task_id)
 | `scheduler.submit_interval(data, interval)` | Periodic task |
 | `scheduler.submit_cron(data, cron)` | Cron task |
 
-Detailed API documentation can be found [here](https://pengline.cn/2026/04/650ac5bb41c74e26bc4effcec88bf26c/)
+Detailed API documentation can be found [here](https://task.helpenx.com/docs/api-reference.html)
 
 
 
@@ -292,7 +292,7 @@ config = TaskPoolConfig(
 pool = TaskPool(executor=process, config=config)
 ```
 
-Detailed usage examples can be found [here](https://pengline.cn/2026/04/fa51edd849b24f48b4d7fa8e27efef77/)
+Detailed usage examples can be found [here](https://task.helpenx.com/docs/configuration.html)
 
 
 
@@ -362,3 +362,12 @@ MIT License © 2026 NeoPen
 ## Acknowledgments
 
 Thanks to all contributors and the open source community for their support.
+
+------
+
+## Contact
+
+- GitHub：https://github.com/neopen/neotask
+- Email：helpenx@gmail.com
+- Docs：https://task.helpenx.com/docs/
+- Blog: https://pengline.cn/

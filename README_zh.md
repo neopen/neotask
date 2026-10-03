@@ -271,6 +271,27 @@ result = pool.wait_for_result(task_id)
 
 
 
+## 使用须知
+
+以下几处行为容易被误解，特此说明：
+
+- **`get_result` 与 `wait_for_result` 的区别**：`wait_for_result(task_id)` 直接返回
+  executor 的原始结果；`get_result(task_id)` 返回元数据包装字典
+  `{task_id, status, result, error, created_at, completed_at}`，真实结果在 `result` 字段。
+- **事件类型串**：生命周期事件名是带命名空间的 `task.created` / `task.started` /
+  `task.completed` / `task.failed` / `task.cancelled` / `task.retry`（而非裸 `created`），
+  建议直接使用 `pool.on_completed(...)` 等便捷方法。
+- **优雅关闭的范围**：`shutdown(graceful=True)` 只会把已入队的任务（pending + running）
+  排空后返回。未到期的延时任务、周期/Cron 调度在关闭期间**不会**被触发——请先
+  `cancel_periodic` 取消周期调度，或用 `graceful=False` 立即返回。
+- **崩溃/重启恢复**：自动恢复只针对已**入队**的任务（其 id 存在于持久化队列中）。
+  仅通过 `create_pending_task()` 落库、从未调用 `enqueue_task()` 入队的记录不属于队列，
+  重启后**不会**自动执行——需显式入队。
+- **周期任务最小间隔**：周期任务由扫描循环驱动，粒度取决于 `SchedulerConfig.scan_interval`
+  （默认 `1.0s`）。`submit_interval` 的间隔小于 `scan_interval` 时可能漏跑；如需更高精度，
+  请调小 `scan_interval` 或启用时间轮（`enable_time_wheel=True`）。
+
+
 ## 配置示例
 
 ```python

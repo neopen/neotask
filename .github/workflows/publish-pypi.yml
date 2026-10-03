@@ -1,70 +1,81 @@
-# This workflow will upload a Python Package to PyPI when a release is created
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python#publishing-to-package-registries
-
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
-name: Upload Python Package
+name: Upload Python Package  # 工作流名称：打包并发布 Python 包至 PyPI
 
 on:
   release:
-    types: [published]
+    types: [published]  # 仅当在 GitHub 上发布新的 Release 时触发
 
 permissions:
   contents: read
 
 jobs:
+  # 构建 Job：将源码编译为 sdist (.tar.gz) 和 wheel (.whl) 文件
   release-build:
+    name: Build release distributions
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      # 1. 检出 Release 对应的代码
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      # 2. 配置 Python 环境
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
+          python-version: "3.10"
+          cache: 'pip'
 
-      - name: Build release distributions
+      # 安装官方推荐的打包工具 build 与元数据校验工具 twine
+      - name: Install build tools & twine
         run: |
-          # NOTE: put your own distribution build steps here.
-          python -m pip install build
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      # 执行打包命令
+      - name: Build source and wheel distributions
+        run: |
           python -m build
 
-      - name: Upload distributions
+      # 检查打包产物中的 README 及描述信息是否符合 PyPI 格式规范
+      - name: Check package metadata with twine
+        run: |
+          twine check dist/*
+
+      # 暂存打包出来的文件，供下个发布 Job 下载使用
+      - name: Upload distributions artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-dists
           path: dist/
+          retention-days: 7
 
+  # 发布 Job：将打包产物无缝上传至 PyPI
   pypi-publish:
-    runs-on: ubuntu-latest
+    name: Publish package to PyPI
     needs:
-      - release-build
-    permissions:
-      # IMPORTANT: this permission is mandatory for trusted publishing
-      id-token: write
+      - release-build  # 必须等 release-build 成功完成后才能运行
+    runs-on: ubuntu-latest
 
-    # Dedicated environments with protections for publishing are strongly recommended.
-    # For more information, see: https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#deployment-protection-rules
+    # 必须显式声明 id-token: write 权限，以启用基于 OIDC 的 Trusted Publishing 认证机制
+    permissions:
+      id-token: write
+      contents: read
+
     environment:
       name: pypi
-      # OPTIONAL: uncomment and update to include your PyPI project URL in the deployment status:
-      # url: https://pypi.org/p/YOURPROJECT
-      #
-      # ALTERNATIVE: if your GitHub Release name is the PyPI project version string
-      # ALTERNATIVE: exactly, uncomment the following line instead:
-      # url: https://pypi.org/project/YOURPROJECT/${{ github.event.release.name }}
+      url: https://pypi.org/p/neotask  # 发布成功后会在 GitHub 上展示对应环境链接
 
     steps:
-      - name: Retrieve release distributions
+      # 下载上一步产生的构建包
+      - name: Download release distributions
         uses: actions/download-artifact@v4
         with:
           name: release-dists
           path: dist/
 
-      - name: Publish release distributions to PyPI
+      # 自动推送至真实 PyPI 平台
+      - name: Publish package to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+          verbose: false

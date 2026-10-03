@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Run Release Please
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@v5
         with:
           # 自定义 Release Please 配置文件
           config-file: .github/release-please-config.json

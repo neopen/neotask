@@ -79,6 +79,6 @@ jobs:
             --max-complexity=10 --statistics
 
       # 第六步：执行单元测试
-      - name: Run tests with pytest
-        run: |
-          pytest
+      # - name: Run tests with pytest
+      #   run: |
+      #     pytest

@@ -117,6 +117,13 @@ class PeriodicTaskManager:
         if graceful:
             await self._save_tasks()
 
+        # 释放周期任务专属存储连接（由 TaskScheduler 在 enable_persistence 时注入）
+        if self._storage is not None and hasattr(self._storage, "close"):
+            try:
+                await self._storage.close()
+            except Exception as e:
+                debug(f"Failed to close periodic store: {e}")
+
     # ========== 任务创建 API ==========
 
     async def create_interval(
@@ -760,23 +767,54 @@ class PeriodicTaskManager:
             limit: 返回数量限制
 
         Returns:
-            执行历史列表
+            执行历史列表（按时间倒序）；未启用持久化时返回空列表
         """
-        # TODO: 从存储获取执行历史
-        return []
+        if not self._storage:
+            return []
+        try:
+            return await self._storage.load_executions(task_id, limit)
+        except Exception as e:
+            debug(f"Failed to load execution history for periodic task {task_id}: {e}")
+            return []
 
     # ========== 持久化方法 ==========
 
     async def _load_tasks(self) -> None:
-        """从存储加载周期任务"""
+        """从存储加载周期任务（启动时恢复）
+
+        仅恢复处于 ACTIVE/PAUSED 的任务；COMPLETED/STOPPED 视为已结束不再重建。
+        恢复后保留存储中的 ``next_run``，错过槽位交由调度循环按 ``missed_policy``
+        处理，从而复用既有的补跑/跳过逻辑。
+        """
         if not self._storage:
             return
 
         try:
-            # TODO: 实现从存储加载
-            pass
-        except Exception:
-            pass
+            payloads = await self._storage.load_all_tasks()
+        except Exception as e:
+            debug(f"Failed to load periodic tasks from storage: {e}")
+            return
+
+        loaded = 0
+        async with self._lock:
+            for payload in payloads:
+                instance = self._deserialize_instance(payload)
+                if not instance:
+                    continue
+                if instance.status in (
+                        PeriodicTaskStatus.COMPLETED,
+                        PeriodicTaskStatus.STOPPED
+                ):
+                    continue
+                # next_run 缺失时按定义重算，避免任务永不触发
+                if instance.next_run is None:
+                    instance.next_run = self._calculate_next_run(instance.definition)
+                self._tasks[instance.task_id] = instance
+                loaded += 1
+            self._update_stats()
+
+        if loaded:
+            debug(f"Restored {loaded} periodic task(s) from storage")
 
     async def _save_tasks(self) -> None:
         """保存所有周期任务到存储"""
@@ -788,38 +826,169 @@ class PeriodicTaskManager:
                 await self._save_task(instance)
 
     async def _save_task(self, instance: PeriodicTaskInstance) -> None:
-        """保存单个周期任务"""
+        """保存单个周期任务到存储"""
         if not self._storage:
             return
 
         try:
-            key = f"periodic_task:{instance.task_id}"
-            data = self._instance_to_dict(instance)
-            # TODO: 实现保存到存储
-        except Exception:
-            pass
+            await self._storage.save_task(instance.task_id, self._serialize_instance(instance))
+        except Exception as e:
+            debug(f"Failed to persist periodic task {instance.task_id}: {e}")
 
     async def _delete_task(self, task_id: str) -> None:
-        """删除周期任务存储"""
+        """从存储删除周期任务"""
         if not self._storage:
             return
 
         try:
-            key = f"periodic_task:{task_id}"
-            # TODO: 实现从存储删除
-        except Exception:
-            pass
+            await self._storage.delete_task(task_id)
+        except Exception as e:
+            debug(f"Failed to delete periodic task {task_id} from storage: {e}")
 
     async def _save_execution_record(self, record: PeriodicExecutionRecord) -> None:
-        """保存执行记录"""
+        """保存执行记录到存储"""
         if not self._storage:
             return
 
         try:
-            key = f"periodic_execution:{record.execution_id}"
-            # TODO: 实现保存执行记录
-        except Exception:
-            pass
+            await self._storage.save_execution(record.execution_id, self._serialize_record(record))
+        except Exception as e:
+            debug(f"Failed to persist periodic execution record {record.execution_id}: {e}")
+
+    # ========== 序列化 / 反序列化 ==========
+
+    @staticmethod
+    def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+        """ISO 字符串转 datetime，空值返回 None"""
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value)
+        except (ValueError, TypeError):
+            return None
+
+    def _serialize_instance(self, instance: PeriodicTaskInstance) -> Dict[str, Any]:
+        """把周期任务实例完整序列化为可 JSON 化的字典（用于持久化）
+
+        与面向 API 输出的 :meth:`_instance_to_dict` 不同，本方法额外保留
+        ``task_data``/``cron_expr``/``missed_policy`` 等重放调度所必需的字段，
+        并完整记录运行态，供重启后精确恢复。
+        """
+        def _dt(x: Optional[datetime]) -> Optional[str]:
+            return x.isoformat() if x else None
+
+        d = instance.definition
+        return {
+            "task_id": instance.task_id,
+            "status": instance.status.value,
+            # 定义
+            "name": d.name,
+            "description": d.description,
+            "interval_seconds": d.interval_seconds,
+            "cron_expr": d.cron_expr,
+            "priority": d.priority,
+            "task_data": d.task_data,
+            "ttl": d.ttl,
+            "max_runs": d.max_runs,
+            "start_at": _dt(d.start_at),
+            "end_at": _dt(d.end_at),
+            "retry_count": d.retry_count,
+            "retry_delay": d.retry_delay,
+            "timeout": d.timeout,
+            "missed_policy": d.missed_policy.value,
+            "timezone": d.timezone,
+            "created_at": _dt(d.created_at),
+            "created_by": d.created_by,
+            "tags": list(d.tags),
+            "metadata": dict(d.metadata),
+            # 运行态
+            "run_count": instance.run_count,
+            "success_count": instance.success_count,
+            "failed_count": instance.failed_count,
+            "last_run": _dt(instance.last_run),
+            "last_success": _dt(instance.last_success),
+            "last_error": instance.last_error,
+            "next_run": _dt(instance.next_run),
+            "updated_at": _dt(instance.updated_at),
+            "paused_at": _dt(instance.paused_at),
+            "stopped_at": _dt(instance.stopped_at),
+            "version": instance.version,
+        }
+
+    def _deserialize_instance(self, payload: Dict[str, Any]) -> Optional[PeriodicTaskInstance]:
+        """把持久化字典还原为周期任务实例，失败返回 None"""
+        try:
+            cron_expr = payload.get("cron_expr")
+            cron_obj = CronParser.parse(cron_expr) if cron_expr else None
+
+            definition = PeriodicTaskDefinition(
+                task_id=payload["task_id"],
+                name=payload.get("name", ""),
+                description=payload.get("description", ""),
+                interval_seconds=payload.get("interval_seconds"),
+                cron_expr=cron_expr,
+                cron_obj=cron_obj,
+                priority=payload.get("priority", 2),
+                task_data=payload.get("task_data") or {},
+                ttl=payload.get("ttl", 3600),
+                max_runs=payload.get("max_runs"),
+                start_at=self._parse_dt(payload.get("start_at")),
+                end_at=self._parse_dt(payload.get("end_at")),
+                retry_count=payload.get("retry_count", 3),
+                retry_delay=payload.get("retry_delay", 1.0),
+                timeout=payload.get("timeout"),
+                missed_policy=self._coerce_policy(payload.get("missed_policy")),
+                timezone=payload.get("timezone", "UTC"),
+                created_at=self._parse_dt(payload.get("created_at")) or datetime.now(),
+                created_by=payload.get("created_by", ""),
+                tags=payload.get("tags") or [],
+                metadata=payload.get("metadata") or {},
+            )
+
+            try:
+                status = PeriodicTaskStatus(payload.get("status", PeriodicTaskStatus.ACTIVE.value))
+            except ValueError:
+                status = PeriodicTaskStatus.ACTIVE
+
+            return PeriodicTaskInstance(
+                task_id=definition.task_id,
+                definition=definition,
+                status=status,
+                run_count=payload.get("run_count", 0),
+                success_count=payload.get("success_count", 0),
+                failed_count=payload.get("failed_count", 0),
+                last_run=self._parse_dt(payload.get("last_run")),
+                last_success=self._parse_dt(payload.get("last_success")),
+                last_error=payload.get("last_error"),
+                next_run=self._parse_dt(payload.get("next_run")),
+                created_at=self._parse_dt(payload.get("created_at")) or datetime.now(),
+                updated_at=self._parse_dt(payload.get("updated_at")) or datetime.now(),
+                paused_at=self._parse_dt(payload.get("paused_at")),
+                stopped_at=self._parse_dt(payload.get("stopped_at")),
+                version=payload.get("version", 1),
+            )
+        except Exception as e:
+            debug(f"Failed to deserialize periodic task payload: {e}")
+            return None
+
+    @staticmethod
+    def _serialize_record(record: PeriodicExecutionRecord) -> Dict[str, Any]:
+        """把执行记录序列化为可 JSON 化的字典"""
+        def _dt(x: Optional[datetime]) -> Optional[str]:
+            return x.isoformat() if x else None
+
+        return {
+            "execution_id": record.execution_id,
+            "task_id": record.task_id,
+            "task_instance_id": record.task_instance_id,
+            "scheduled_time": _dt(record.scheduled_time),
+            "start_time": _dt(record.start_time),
+            "end_time": _dt(record.end_time),
+            "status": record.status,
+            "result": record.result,
+            "error": record.error,
+            "retry_count": record.retry_count,
+        }
 
 
 # 便捷函数

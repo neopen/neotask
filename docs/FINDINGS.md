@@ -144,8 +144,12 @@
 - Windows 下 `aiosqlite` 连接在进程内释放有延迟，测试脚本删库需重试/容错（已在用例中处理）。
 - Redis 分布式后端已部署本地 Redis 后验证（见 `test_10_distributed.py`）：多节点共享队列
   抢占消费（无丢失/无重复）、节点注册/心跳、跨节点分布式锁互斥均**已测通过**。
-- **仍未纳入验证的分布式链路**：孤儿/超时任务跨节点回收（reclaim）因间隔硬编码 30s（见 2.3），
-  秒级集成测试不便验证；Web UI 未测。
+- **孤儿任务跨节点回收（reclaim）也已确定性验证**（`test_10::test_orphan_task_reclaim_by_alive_node`）：
+  向共享 Redis 注入一条 `status=RUNNING, node_id=幽灵节点` 的任务，存活节点显式调
+  `reclaim_now()` 返回 `reason=orphan` 的 `ReclaimResult(success=True)`，任务被重排并由存活节点
+  重跑至 `success`。（注：因回收间隔硬编码 30s（见 2.3），靠真实崩溃+心跳超时来验证时序不稳，
+  故采用“注入孤儿 + 显式驱动 reclaim_now”的确定性方式，这本身也印证了 2.3 间隔不可配的不便。）
+- **仍未纳入验证的分布式链路**：Web UI 未测。
 
 ---
 

@@ -298,6 +298,11 @@ A few behaviors are easy to trip over, so they are documented explicitly:
   **enqueued** (their ids live in the persisted queue). A record created only via
   `create_pending_task()` and never pushed through `enqueue_task()` is not part
   of the queue, so it will **not** auto-run after a restart — enqueue it explicitly.
+- **Periodic task persistence**: set `SchedulerConfig(enable_persistence=True,
+  storage_type="sqlite"|"redis")` to persist interval / cron periodic tasks and
+  auto-restore them after a restart; slots missed while down are handled by each
+  task's `missed_policy`. With `storage_type="memory"` the store is in-process
+  only and cannot survive a restart.
 - **Minimum interval granularity**: periodic tasks are driven by a scan loop with
   `SchedulerConfig.scan_interval` (default `1.0s`). `submit_interval` with an
   interval smaller than `scan_interval` may skip fires; lower `scan_interval` or

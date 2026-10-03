@@ -10,6 +10,8 @@ import time
 import json
 from typing import TYPE_CHECKING, List, Optional, Any, Tuple
 
+from neotask.utils import redis_compat
+
 if TYPE_CHECKING:
     import redis.asyncio as redis
     from redis.asyncio import ConnectionPool
@@ -42,7 +44,7 @@ class RedisTaskRepository(TaskRepository):
         if not HAS_REDIS:
             raise RuntimeError("redis not installed. Run: pip install neotask[redis]")
         if self._client is None:
-            self._pool = ConnectionPool.from_url(
+            self._pool = redis_compat.from_url(
                 self.redis_url,
                 max_connections=self.max_connections,
                 decode_responses=True
@@ -253,7 +255,7 @@ class RedisQueueRepository(QueueRepository):
         if not HAS_REDIS:
             raise RuntimeError("redis not installed. Run: pip install neotask[redis]")
         if self._client is None:
-            self._pool = ConnectionPool.from_url(
+            self._pool = redis_compat.from_url(
                 self.redis_url,
                 max_connections=self.max_connections,
                 decode_responses=True

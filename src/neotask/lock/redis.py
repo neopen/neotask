@@ -10,6 +10,8 @@ import time
 import uuid
 from typing import TYPE_CHECKING, Optional, List, Dict, Any
 
+from neotask.utils import redis_compat
+
 if TYPE_CHECKING:
     import redis.asyncio as redis
     from redis.asyncio import ConnectionPool
@@ -96,7 +98,7 @@ class RedisLock(TaskLock):
         if not HAS_REDIS:
             raise RuntimeError("redis not installed. Run: pip install neotask[redis]")
         if self._client is None:
-            self._pool = ConnectionPool.from_url(
+            self._pool = redis_compat.from_url(
                 self._redis_url,
                 decode_responses=True
             )

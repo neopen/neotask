@@ -165,9 +165,9 @@ class TaskPool:
 
             # 2. 心跳管理器 - 直接传递 Redis URL
             heartbeat_config = HeartbeatConfig(
-                interval=5,
-                timeout=20,
-                cleanup_interval=30
+                interval=self._config.heartbeat_interval,
+                timeout=self._config.heartbeat_timeout,
+                cleanup_interval=self._config.reclaimer_interval
             )
             self._heartbeat_manager = HeartbeatManager(
                 node_id=self._config.node_id,
@@ -189,7 +189,7 @@ class TaskPool:
 
             # 4. 任务回收器
             reclaimer_config = ReclaimerConfig(
-                interval=30,
+                interval=self._config.reclaimer_interval,
                 task_timeout=self._config.task_timeout or 300,
                 max_retries=self._config.max_retries,
                 enable_timeout_reclaim=True,

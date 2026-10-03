@@ -117,16 +117,21 @@ class QueueScheduler:
         return results
 
     async def pop(self, count: int = 1) -> List[str]:
-        """弹出任务"""
+        """弹出任务
+
+        注意：``disable()`` 只表示停止接收新任务（禁止入队），优雅关闭时仍需
+        把已排队的 pending 任务出队执行完，因此出队只受 ``pause`` 约束，不受
+        ``disable`` 约束。
+        """
         debug(f"[QUEUE_SCHEDULER] pop called, paused={self._paused}, disabled={self._disabled}")  # 调试
-        if self._paused or self._disabled:
+        if self._paused:
             return []
 
         return await self._priority_queue.pop(count)
 
     async def pop_with_priority(self, count: int = 1) -> List[tuple]:
-        """弹出任务并返回优先级"""
-        if self._paused or self._disabled:
+        """弹出任务并返回优先级（同 pop，不受 disable 约束）"""
+        if self._paused:
             return []
 
         return await self._priority_queue.pop_with_priority(count)

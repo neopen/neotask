@@ -78,8 +78,8 @@ class DeadLetterQueue:
         """获取 Redis 客户端"""
         if self._client is None:
             import redis.asyncio as redis
-            from redis.asyncio import ConnectionPool
-            pool = ConnectionPool.from_url(self._redis_url, decode_responses=True)
+            from neotask.utils import redis_compat
+            pool = redis_compat.from_url(self._redis_url, decode_responses=True)
             self._client = redis.Redis(connection_pool=pool)
         return self._client
 

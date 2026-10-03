@@ -147,6 +147,16 @@ class WorkerPool:
                     if not task.done():
                         task.cancel()
 
+        elif self._running_tasks:
+            # 强制关闭：取消在途执行任务并回收其异常。否则这些 task 会在
+            # stop() 返回后继续运行，与随后的存储连接关闭竞争写库，抛出
+            # sqlite3.ProgrammingError 且因无人 await 而出现
+            # "Task exception was never retrieved"（见 FINDINGS 2.1）。
+            for task in self._running_tasks.values():
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*self._running_tasks.values(), return_exceptions=True)
+
         # 取消所有worker
         for worker_id, worker_task in self._workers.items():
             if not worker_task.done():
@@ -340,8 +350,14 @@ class WorkerPool:
                 else:
                     result = await self._executor.execute(task.data)
 
-                # 标记完成
-                await self._lifecycle.complete_task(task_id, result)
+                # 标记完成（强制关闭时存储连接可能已断开，降级为告警而非未捕获异常）
+                try:
+                    await self._lifecycle.complete_task(task_id, result)
+                except Exception as save_err:
+                    warning(
+                        f"Failed to persist completion for task {task_id} "
+                        f"(storage closing?): {save_err}"
+                    )
 
                 # 更新统计
                 self._worker_stats[worker_id].completed_tasks += 1

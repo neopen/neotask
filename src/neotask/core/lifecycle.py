@@ -85,7 +85,11 @@ class TaskLifecycleManager:
         return task
 
     async def get_task(self, task_id: str) -> Optional[Task]:
-        """获取任务"""
+        """获取任务
+
+        同一实例内的所有状态写入（start/complete/fail/cancel/update_status）都会
+        同步刷新缓存，故缓存对本实例始终权威。
+        """
         # 从缓存获取
         if self._cache_enabled:
             async with self._lock:

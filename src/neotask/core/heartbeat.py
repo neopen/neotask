@@ -10,6 +10,8 @@ import asyncio
 import time
 from typing import TYPE_CHECKING, Optional, Set, Dict, Any, List
 
+from neotask.utils import redis_compat
+
 if TYPE_CHECKING:
     import redis.asyncio as redis
     from redis.asyncio import ConnectionPool
@@ -80,7 +82,7 @@ class HeartbeatManager:
         if not HAS_REDIS:
             raise RuntimeError("redis not installed. Run: pip install neotask[redis]")
         if self._client is None:
-            pool = ConnectionPool.from_url(self._redis_url, decode_responses=True)
+            pool = redis_compat.from_url(self._redis_url, decode_responses=True)
             self._client = redis.Redis(connection_pool=pool)
         return self._client
 

@@ -79,6 +79,7 @@ jobs:
             --max-complexity=10 --statistics
 
       # 第六步：执行单元测试
+      # 如果项目暂时没有测试，可以保持注释
       # - name: Run tests with pytest
       #   run: |
       #     pytest

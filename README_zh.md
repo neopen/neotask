@@ -287,6 +287,9 @@ result = pool.wait_for_result(task_id)
 - **崩溃/重启恢复**：自动恢复只针对已**入队**的任务（其 id 存在于持久化队列中）。
   仅通过 `create_pending_task()` 落库、从未调用 `enqueue_task()` 入队的记录不属于队列，
   重启后**不会**自动执行——需显式入队。
+- **周期任务持久化**：设置 `SchedulerConfig(enable_persistence=True, storage_type="sqlite"/"redis")`
+  后，interval / cron 周期任务会持久化并在重启后自动恢复，停机期间错过的槽位按各任务的
+  `missed_policy` 处理。`storage_type="memory"` 时存储仅进程内有效，无法跨重启。
 - **周期任务最小间隔**：周期任务由扫描循环驱动，粒度取决于 `SchedulerConfig.scan_interval`
   （默认 `1.0s`）。`submit_interval` 的间隔小于 `scan_interval` 时可能漏跑；如需更高精度，
   请调小 `scan_interval` 或启用时间轮（`enable_time_wheel=True`）。

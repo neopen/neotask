@@ -4,6 +4,14 @@ on:
   release:
     types: [published]  # 仅当在 GitHub 上发布新的 Release 时触发
 
+    # 允许手动发布指定版本
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish, e.g. v1.0.2"
+        required: true
+        type: string
+
 permissions:
   contents: read
 
@@ -24,7 +32,6 @@ jobs:
         with:
           python-version: "3.10"
           cache: 'pip'
-
       # 安装官方推荐的打包工具 build 与元数据校验工具 twine
       - name: Install build tools & twine
         run: |

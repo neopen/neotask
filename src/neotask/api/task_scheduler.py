@@ -22,6 +22,7 @@ from neotask.models.task import TaskPriority
 from neotask.scheduler.cron_parser import CronParser
 from neotask.scheduler.periodic import PeriodicTaskManager
 from neotask.scheduler.time_wheel import TimeWheel
+from neotask.storage.periodic import create_periodic_store
 
 
 class TaskScheduler:
@@ -130,9 +131,18 @@ class TaskScheduler:
 
         # 异步初始化组件（使用 TaskPool 的事件循环）
         if self._config.enable_periodic_manager:
+            # enable_persistence=True 时按存储类型创建周期任务专属存储，
+            # 使 interval/cron/at 周期任务可跨重启恢复（见 FINDINGS 3.4）。
+            periodic_store = None
+            if self._config.enable_persistence:
+                periodic_store = create_periodic_store(
+                    storage_type=self._config.storage_type,
+                    sqlite_path=self._config.sqlite_path,
+                    redis_url=self._config.redis_url,
+                )
             self._periodic_manager = PeriodicTaskManager(
                 task_pool=self._pool,
-                storage=None
+                storage=periodic_store
             )
             # 使用 call_soon_threadsafe + Future 的方式
             future = asyncio.run_coroutine_threadsafe(

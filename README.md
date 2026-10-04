@@ -277,6 +277,36 @@ result = pool.wait_for_result(task_id)
 Detailed API documentation can be found [here](https://task.helpenx.com/docs/api-reference.html)
 
 
+## Usage Notes
+
+A few behaviors are easy to trip over, so they are documented explicitly:
+
+- **`get_result` vs `wait_for_result`**: `wait_for_result(task_id)` returns the
+  executor's raw value, while `get_result(task_id)` returns a metadata wrapper
+  dict `{task_id, status, result, error, created_at, completed_at}` — the real
+  payload is under `result`.
+- **Event keys**: lifecycle event types are namespaced as `task.created` /
+  `task.started` / `task.completed` / `task.failed` / `task.cancelled` / `task.retry`
+  (not bare `created`). Prefer the `pool.on_completed(...)` helpers.
+- **Graceful shutdown scope**: `shutdown(graceful=True)` drains tasks that are
+  already enqueued (pending + running) before returning. Unexpired delayed
+  tasks and periodic/cron schedules are **not** fired during shutdown — cancel
+  periodic schedules first (`cancel_periodic`) or use `graceful=False` for an
+  immediate return.
+- **Crash / restart recovery**: auto-recovery re-runs tasks that were already
+  **enqueued** (their ids live in the persisted queue). A record created only via
+  `create_pending_task()` and never pushed through `enqueue_task()` is not part
+  of the queue, so it will **not** auto-run after a restart — enqueue it explicitly.
+- **Periodic task persistence**: set `SchedulerConfig(enable_persistence=True,
+  storage_type="sqlite"|"redis")` to persist interval / cron periodic tasks and
+  auto-restore them after a restart; slots missed while down are handled by each
+  task's `missed_policy`. With `storage_type="memory"` the store is in-process
+  only and cannot survive a restart.
+- **Minimum interval granularity**: periodic tasks are driven by a scan loop with
+  `SchedulerConfig.scan_interval` (default `1.0s`). `submit_interval` with an
+  interval smaller than `scan_interval` may skip fires; lower `scan_interval` or
+  enable the time wheel (`enable_time_wheel=True`) for finer granularity.
+
 
 ## Usage Notes
 

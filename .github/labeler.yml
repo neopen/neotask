@@ -27,12 +27,8 @@ ci-cd:
   - changed-files:
       - any-glob-to-any-file:
           - '.github/**/*'
-          - '.flake8'
           - 'pytest.ini'
-          - '.dockerignore'
           - '.gitignore'
-          - 'docker-compose.yml'
-          - 'Dockerfile'
           - '.env.example'
           - 'pyproject.toml'
 

@@ -5,6 +5,13 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.4](https://github.com/neopen/neotask/compare/v1.0.3...v1.0.4) (2026-10-04)
+
+
+### 💄 Styles (代码样式)
+
+* Dev ([#26](https://github.com/neopen/neotask/issues/26)) ([cd2cd8a](https://github.com/neopen/neotask/commit/cd2cd8aeaa9b01a5c17e2db445f3673e80674dbb))
+
 ## [1.0.3](https://github.com/neopen/neotask/compare/v1.0.2...v1.0.3) (2026-10-03)
 
 

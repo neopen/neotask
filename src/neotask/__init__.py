@@ -6,7 +6,7 @@
 @Time: 2026/4/8 00:00
 """
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 __author__ = "neopen"
 
 # API 入口

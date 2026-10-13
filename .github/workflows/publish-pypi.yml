@@ -24,7 +24,7 @@ jobs:
     steps:
       # 1. 检出 Release 对应的代码
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # 2. 配置 Python 环境
       - name: Set up Python

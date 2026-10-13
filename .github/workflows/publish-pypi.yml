@@ -75,7 +75,7 @@ jobs:
     steps:
       # 下载上一步产生的构建包
       - name: Download release distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-dists
           path: dist/

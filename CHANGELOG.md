@@ -5,6 +5,23 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.3](https://github.com/neopen/neotask/compare/v1.0.2...v1.0.3) (2026-10-03)
+
+
+### 🐛 Bug Fixes (问题修复)
+
+* 合并Dev ([#18](https://github.com/neopen/neotask/issues/18)) ([74996d5](https://github.com/neopen/neotask/commit/74996d5a067b3e0275a54992b14efe969ab30fde))
+
+
+### 📝 Documentation (文档更新)
+
+* 修复文档 ([#17](https://github.com/neopen/neotask/issues/17)) ([f36be26](https://github.com/neopen/neotask/commit/f36be26e86f9314dabdde5e794ea3f559c3fc172))
+
+
+### 💄 Styles (代码样式)
+
+* 合并 ([#24](https://github.com/neopen/neotask/issues/24)) ([fa6654a](https://github.com/neopen/neotask/commit/fa6654ab4a5509a2c1c2c4362d130d3e000c1356))
+
 ## [Unreleased]
 
 ### 计划中 (v1.5 / v2.0)

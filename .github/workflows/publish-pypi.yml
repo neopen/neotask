@@ -50,7 +50,7 @@ jobs:
 
       # 暂存打包出来的文件，供下个发布 Job 下载使用
       - name: Upload distributions artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-dists
           path: dist/

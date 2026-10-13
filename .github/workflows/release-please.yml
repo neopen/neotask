@@ -20,6 +20,6 @@ jobs:
         with:
           # 自定义 Release Please 配置文件
           config-file: .github/release-please-config.json
-
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           # 版本清单文件
           manifest-file: .github/.release-please-manifest.json

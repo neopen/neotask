@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "neotask"
 version = "1.0.3"
-description = "NeoTask - 轻量级 Python 异步任务队列，支持即时/延时/周期任务，内置优先级队列、自动重试 | Lightweight Python Async Task Queue Manager"
+description = "NeoTask - 轻量级 Python 异步分布式任务队列，支持即时/延时/周期任务，内置优先级队列、自动重试 | Lightweight Python Async Task Queue Manager"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -21,7 +21,7 @@ keywords = [
     "scheduled-tasks", "distributed-tasks", "worker-pool",
     # 中文关键词
     "任务队列", "异步任务", "定时任务", "任务调度", "后台任务", "异常恢复", "错误重试",
-    "优先级队列", "周期任务", "分布式任务", "工作池", "嵌入式任务池"
+    "优先级队列", "周期任务", "分布式任务", "工作池", "嵌入式任务池", "分布式任务"
 ]
 classifiers = [
     # 开发状态

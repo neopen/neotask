@@ -7,6 +7,7 @@
 """
 
 import json
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 import aiosqlite
@@ -19,7 +20,11 @@ class SQLiteTaskRepository(TaskRepository):
     """SQLite-based task repository."""
 
     def __init__(self, db_path: Optional[str] = None):
-        self.db_path = db_path or "data/tasks.db"
+        self.db_path = Path(db_path or "/data/tasks.db")
+        # 自动创建所有缺失的父目录（如 data 文件夹）
+        # parents=True 表示如果父目录不存在一并创建
+        # exist_ok=True 表示如果文件夹已存在则不报错
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = None
 
     async def _ensure_init(self) -> None:

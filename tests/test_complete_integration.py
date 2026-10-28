@@ -29,6 +29,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, Any, List
 
+import pytest
+
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -118,6 +120,10 @@ def check_redis_available() -> bool:
     except Exception:
         return False
 
+@pytest.fixture
+def reporter():
+    """Pytest 兼容的 reporter fixture"""
+    return TestReporter()
 
 # ============================================================
 # 测试执行器（同步函数）
@@ -171,7 +177,7 @@ def test_v01_basic_task_pool(reporter: TestReporter):
 
     # 2. SQLite 模式测试
     print("\n📌 测试 1.2: SQLite模式 - 任务持久化")
-    config_sql = TaskPoolConfig.sqlite(path="test_neotask.db", node_id="test-sql")
+    config_sql = TaskPoolConfig.sqlite(path="/data/test_neotask.db", node_id="test-sql")
     pool = TaskPool(executor=simple_executor_sync, config=config_sql)
     pool.start()
     time.sleep(0.5)

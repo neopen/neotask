@@ -1,0 +1,91 @@
+{
+    "timestamp": "2026-10-28 17:36:51",
+    "total_tests": 12,
+    "passed_tests": 12,
+    "results": [
+        {
+            "suite": "基础吞吐量测试",
+            "test": "test_task_pool_throughput",
+            "duration": 5.662,
+            "success": true,
+            "error": ""
+        },
+        {
+            "suite": "基础吞吐量测试",
+            "test": "test_task_pool_latency_distribution",
+            "duration": 50.913,
+            "success": true,
+            "error": ""
+        },
+        {
+            "suite": "队列性能测试",
+            "test": "test_priority_queue_throughput",
+            "duration": 0.07,
+            "success": true,
+            "error": ""
+        },
+        {
+            "suite": "队列性能测试",
+            "test": "test_prefetcher_performance",
+            "duration": 0.094,
+            "success": true,
+            "error": ""
+        },
+        {
+            "suite": "队列性能测试",
+            "test": "test_batch_pop_performance",
+            "duration": 0.144,
+            "success": true,
+            "error": ""
+        },
+        {
+            "suite": "并发性能测试",
+            "test": "test_worker_scalability_light_task",
+            "duration": 39.223,
+            "success": true,
+            "error": ""
+        },
+        {
+            "suite": "并发性能测试",
+            "test": "test_worker_scalability_heavy_task",
+            "duration": 2.677,
+            "success": true,
+            "error": ""
+        },
+        {
+            "suite": "并发性能测试",
+            "test": "test_high_concurrency_submit",
+            "duration": 3.119,
+            "success": true,
+            "error": ""
+        },
+        {
+            "suite": "任务类型性能测试",
+            "test": "test_light_task_performance",
+            "duration": 32.819,
+            "success": true,
+            "error": ""
+        },
+        {
+            "suite": "任务类型性能测试",
+            "test": "test_io_task_performance",
+            "duration": 1.633,
+            "success": true,
+            "error": ""
+        },
+        {
+            "suite": "压力测试",
+            "test": "test_sustained_load",
+            "duration": 3.54,
+            "success": true,
+            "error": ""
+        },
+        {
+            "suite": "压力测试",
+            "test": "test_burst_load",
+            "duration": 2.27,
+            "success": true,
+            "error": ""
+        }
+    ]
+}

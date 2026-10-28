@@ -8,6 +8,7 @@
 
 import asyncio
 import random
+import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List, Union
 
@@ -138,6 +139,46 @@ class TaskLifecycleManager:
 
         return True
 
+    async def update_progress(
+            self,
+            task_id: str,
+            progress: float,
+            message: str = ""
+    ) -> bool:
+        """更新任务进度并发布 ``task.progress`` 事件
+
+        仅对未结束的任务生效；进度值会被收敛到 0.0 - 1.0。存储或事件发布失败
+        由调用方（Worker）降级为 debug 日志，不影响任务执行。
+
+        Returns:
+            是否成功更新（任务不存在或已处于终态时返回 False）
+        """
+        task = await self.get_task(task_id)
+        if not task or task.status.is_terminal():
+            return False
+
+        task.update_progress(progress, message)
+        await self._task_repo.update_progress(
+            task_id,
+            task.progress,
+            task.progress_message
+        )
+
+        if self._cache_enabled:
+            async with self._lock:
+                self._cache[task_id] = task
+
+        await self._emit_event(
+            "task.progress",
+            task_id,
+            {
+                "progress": task.progress,
+                "message": task.progress_message,
+                "timestamp": time.time(),
+            }
+        )
+        return True
+
     async def start_task(self, task_id: str, node_id: str) -> bool:
         """开始执行任务"""
         task = await self.get_task(task_id)
@@ -176,6 +217,8 @@ class TaskLifecycleManager:
             return False
 
         task.complete(result)
+        # 成功完成即视为 100%，避免 UI 停留在最后一次业务上报的进度上。
+        task.progress = 1.0
         await self._task_repo.save(task)
 
         if self._cache_enabled:

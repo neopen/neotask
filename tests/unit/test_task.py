@@ -105,6 +105,25 @@ class TestTask:
         assert restored.priority == original.priority
         assert restored.status == original.status
 
+    def test_progress_roundtrip(self):
+        """进度与进度消息应能随 to_dict / from_dict 往返保留"""
+        task = Task(task_id="test-009", data={})
+        task.update_progress(0.6, "halfway")
+
+        restored = Task.from_dict(task.to_dict())
+
+        assert restored.progress == 0.6
+        assert restored.progress_message == "halfway"
+
+    def test_progress_is_clamped(self):
+        """进度值应被收敛到 0.0 - 1.0"""
+        task = Task(task_id="test-010", data={})
+        task.update_progress(1.5, "over")
+        assert task.progress == 1.0
+
+        task.update_progress(-0.5, "under")
+        assert task.progress == 0.0
+
 
 class TestTaskStatus:
     """Test TaskStatus enum."""

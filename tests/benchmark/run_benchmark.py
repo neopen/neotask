@@ -13,6 +13,8 @@ import time
 import argparse
 from typing import Dict, Any, List
 
+import psutil
+
 sys.path.insert(0, 'src')
 
 if sys.platform == "win32":
@@ -163,8 +165,31 @@ async def run_all_benchmarks(args):
     reporter.print_summary()
 
 
+def print_environment_specs():
+    print("=" * 70)
+    print("🖥️ NeoTask 性能基准测试 - 运行环境口径")
+    print("=" * 70)
+
+    # 系统与 Python
+    import platform
+    print(f" - 系统平台: {platform.system()} {platform.release()} ({platform.machine()})")
+    print(f" - Python 版本: {sys.version.split()[0]}")
+
+    # 硬件信息 (如果安装了 psutil)
+    if psutil:
+        mem_gb = round(psutil.virtual_memory().total / (1024 ** 3), 2)
+        print(f" - CPU 逻辑核心: {psutil.cpu_count(logical=True)} 核")
+        print(f" - 物理内存: {mem_gb} GB")
+    else:
+        print(f" - 硬件提示: 安装 'psutil' 库可自动获取详细 CPU/内存配置 (pip install psutil)")
+
+    print(f" - NeoTask 版本: v1.0.2")
+    print("=" * 70 + "\n")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="NeoTask 性能基准测试运行器")
+    print_environment_specs()
     parser.add_argument(
         "--suite",
         type=str,

@@ -262,7 +262,9 @@ class SchedulerConfig:
     retry_delay: float = 1.0
 
     # 持久化配置
-    enable_persistence: bool = False
+    # 默认开启：sqlite/redis 下周期任务会跨重启恢复；memory 模式下仍只存在内存中，
+    # 注册周期任务时会输出一次明确的降级警告。
+    enable_persistence: bool = True
 
     # 调度配置
     scan_interval: float = 1.0  # 调度循环扫描间隔（秒）

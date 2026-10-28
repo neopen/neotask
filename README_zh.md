@@ -253,6 +253,33 @@ task_id = pool.submit({"test": "event"})
 result = pool.wait_for_result(task_id)
 ```
 
+### 任务进度上报
+
+在异步 executor 中调用 `report_progress()`（线程 executor 中用 `report_progress_sync()`）
+即可发布进度；通过 `pool.on_progress()` 订阅：
+
+```python
+from neotask import TaskPool, report_progress
+
+async def transcode(data):
+    await report_progress(0.2, "探测中")
+    # ... 执行具体工作 ...
+    await report_progress(0.8, "转码中")
+    return {"ok": True}
+
+async def on_progress(event):
+    print(f"{event.task_id}: {event.data['progress']:.0%} {event.data['message']}")
+
+pool = TaskPool(executor=transcode)
+pool.on_progress(on_progress)
+pool.start()
+task_id = pool.submit({})
+pool.wait_for_result(task_id)
+```
+
+进度会同时写回任务记录（`get_task(task_id)["progress"]`），任务成功时自动收敛为
+`1.0`。在任务执行上下文之外调用是安全的空操作（返回 `False`）。
+
 
 
 ## API 参考
@@ -287,9 +314,11 @@ result = pool.wait_for_result(task_id)
 - **崩溃/重启恢复**：自动恢复只针对已**入队**的任务（其 id 存在于持久化队列中）。
   仅通过 `create_pending_task()` 落库、从未调用 `enqueue_task()` 入队的记录不属于队列，
   重启后**不会**自动执行——需显式入队。
-- **周期任务持久化**：设置 `SchedulerConfig(enable_persistence=True, storage_type="sqlite"/"redis")`
-  后，interval / cron 周期任务会持久化并在重启后自动恢复，停机期间错过的槽位按各任务的
-  `missed_policy` 处理。`storage_type="memory"` 时存储仅进程内有效，无法跨重启。
+- **周期任务持久化**：`enable_persistence` **默认开启**。`storage_type="sqlite"` 或
+  `"redis"` 时，interval / cron 周期任务会持久化并在重启后自动恢复，停机期间错过的槽位按
+  各任务的 `missed_policy` 处理。`storage_type="memory"` 或显式
+  `enable_persistence=False` 时无法跨重启；在这种情况下注册周期任务会输出一次明确的
+  降级告警，而不是重启后静默丢失。
 - **周期任务最小间隔**：周期任务由扫描循环驱动，粒度取决于 `SchedulerConfig.scan_interval`
   （默认 `1.0s`）。`submit_interval` 的间隔小于 `scan_interval` 时可能漏跑；如需更高精度，
   请调小 `scan_interval` 或启用时间轮（`enable_time_wheel=True`）。

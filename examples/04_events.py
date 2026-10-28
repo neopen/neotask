@@ -7,13 +7,17 @@
 """
 
 import asyncio
-from neotask import TaskPool, TaskPoolConfig
+
+from neotask import TaskPool, TaskPoolConfig, report_progress
 
 
 async def event_task(data: dict) -> dict:
     """示例任务"""
     print(f"  执行任务 {data['id']}...")
-    await asyncio.sleep(0.3)
+    await report_progress(0.3, "准备中")
+    await asyncio.sleep(0.15)
+    await report_progress(0.7, "处理中")
+    await asyncio.sleep(0.15)
     return {"status": "done", "id": data["id"]}
 
 
@@ -24,6 +28,10 @@ async def on_created(event):
 
 async def on_started(event):
     print(f"  任务开始: {event.task_id}")
+
+
+async def on_progress(event):
+    print(f"  任务进度: {event.task_id} {event.data['progress']:.0%} {event.data['message']}")
 
 
 async def on_completed(event):
@@ -48,6 +56,7 @@ async def main():
         # 注册事件处理器
         pool.on_created(on_created)
         pool.on_started(on_started)
+        pool.on_progress(on_progress)
         pool.on_completed(on_completed)
         pool.on_failed(on_failed)
         pool.on_cancelled(on_cancelled)

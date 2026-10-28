@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Any, Dict, List, Callable, Union
 
 from neotask.api.task_pool import TaskPool, TaskPoolConfig
-from neotask.common.logger import debug
+from neotask.common.logger import debug, warning
 from neotask.models.config import SchedulerConfig
 from neotask.models.schedule import PeriodicTask
 from neotask.models.task import TaskPriority
@@ -85,6 +85,9 @@ class TaskScheduler:
 
         # 周期任务存储（当不使用PeriodicTaskManager时的后备存储）
         self._periodic_tasks: Dict[str, PeriodicTask] = {}
+
+        # 降级警告只输出一次，避免每个周期任务都刷屏
+        self._persistence_warning_emitted = False
 
         self._running = False
         self._stop_event = threading.Event()
@@ -336,6 +339,39 @@ class TaskScheduler:
         if not self._running:
             self.start()
 
+    def _warn_if_periodic_not_durable(self) -> None:
+        """注册周期任务时提示「重启后会丢失」的降级配置
+
+        静默丢失周期调度是基础设施库最不应该出现的行为，因此这里在首次注册
+        周期任务时输出一次明确的告警，而不是让用户重启后才发现任务消失。
+        """
+        if self._persistence_warning_emitted:
+            return
+
+        if not self._config.enable_periodic_manager:
+            message = (
+                "Periodic task registered in fallback mode "
+                "(enable_periodic_manager=False); it is stored in memory only "
+                "and will be LOST after restart."
+            )
+        elif not self._config.enable_persistence:
+            message = (
+                "Periodic task registered with enable_persistence=False; it will be "
+                "LOST after restart. Set SchedulerConfig(enable_persistence=True) and "
+                "storage_type='sqlite' or 'redis' to persist it."
+            )
+        elif self._config.storage_type == "memory":
+            message = (
+                "Periodic task registered with storage_type='memory'; it will be "
+                "LOST after restart (in-memory store cannot be recovered). Use "
+                "storage_type='sqlite' or 'redis' for periodic task persistence."
+            )
+        else:
+            return
+
+        warning(message)
+        self._persistence_warning_emitted = True
+
     # ========== 延时任务 API ==========
 
     def submit_delayed(
@@ -515,6 +551,7 @@ class TaskScheduler:
         设计模式: Factory Pattern - 创建周期任务
         """
         self._ensure_running()
+        self._warn_if_periodic_not_durable()
 
         task_id = task_id or self._generate_task_id()
         priority_value = priority.value if isinstance(priority, TaskPriority) else priority
@@ -583,6 +620,7 @@ class TaskScheduler:
         设计模式: Factory Pattern - 创建Cron任务
         """
         self._ensure_running()
+        self._warn_if_periodic_not_durable()
 
         if not CronParser.is_valid(cron_expr):
             raise ValueError(f"Invalid cron expression: {cron_expr}")
@@ -977,3 +1015,11 @@ class TaskScheduler:
     def on_cancelled(self, handler: Callable) -> None:
         """注册任务取消回调"""
         self._pool.on_cancelled(handler)
+
+    def on_progress(self, handler: Callable) -> None:
+        """注册任务进度回调
+
+        业务代码在 executor 中调用 ``report_progress()`` /
+        ``report_progress_sync()`` 后，这里注册的处理器会收到 ``task.progress`` 事件。
+        """
+        self._pool.on_progress(handler)

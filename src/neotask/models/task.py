@@ -112,6 +112,8 @@ class Task:
             data=parse_json(data.get("data")) or {},
             status=TaskStatus(data.get("status", "pending")),
             priority=TaskPriority(int(data.get("priority", 2))),
+            progress=float(data.get("progress") or 0.0),
+            progress_message=data.get("progress_message") or "",
             node_id=data.get("node_id", ""),
             retry_count=int(data.get("retry_count", 0)),
             ttl=int(data.get("ttl", 3600)),

@@ -39,6 +39,22 @@ class TaskRepository(ABC):
         """Update task status."""
         pass
 
+    async def update_progress(self, task_id: str, progress: float, message: str = "") -> bool:
+        """Update task progress.
+
+        默认实现基于 get + save，适用于所有后端；需要高频更新的实现可以覆盖为
+        单条 UPDATE/SET，避免每次重写整条任务记录。
+
+        Returns:
+            True if the task exists and was updated, False otherwise.
+        """
+        task = await self.get(task_id)
+        if not task:
+            return False
+        task.update_progress(progress, message)
+        await self.save(task)
+        return True
+
     @abstractmethod
     async def update_status_batch(
             self,

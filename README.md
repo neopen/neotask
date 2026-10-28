@@ -260,6 +260,34 @@ task_id = pool.submit({"test": "event"})
 result = pool.wait_for_result(task_id)
 ```
 
+### Reporting Task Progress
+
+Call `report_progress()` inside an async executor (or `report_progress_sync()` in a
+thread executor) to publish progress updates; subscribe with `pool.on_progress()`:
+
+```python
+from neotask import TaskPool, report_progress
+
+async def transcode(data):
+    await report_progress(0.2, "probing")
+    # ... do the work ...
+    await report_progress(0.8, "encoding")
+    return {"ok": True}
+
+async def on_progress(event):
+    print(f"{event.task_id}: {event.data['progress']:.0%} {event.data['message']}")
+
+pool = TaskPool(executor=transcode)
+pool.on_progress(on_progress)
+pool.start()
+task_id = pool.submit({})
+pool.wait_for_result(task_id)
+```
+
+Progress is also persisted on the task record (`get_task(task_id)["progress"]`) and
+set to `1.0` when the task succeeds. Reporting outside a task execution context is
+a safe no-op (returns `False`).
+
 
 
 ## API Reference
@@ -297,11 +325,13 @@ A few behaviors are easy to trip over, so they are documented explicitly:
   **enqueued** (their ids live in the persisted queue). A record created only via
   `create_pending_task()` and never pushed through `enqueue_task()` is not part
   of the queue, so it will **not** auto-run after a restart — enqueue it explicitly.
-- **Periodic task persistence**: set `SchedulerConfig(enable_persistence=True,
-  storage_type="sqlite"|"redis")` to persist interval / cron periodic tasks and
-  auto-restore them after a restart; slots missed while down are handled by each
-  task's `missed_policy`. With `storage_type="memory"` the store is in-process
-  only and cannot survive a restart.
+- **Periodic task persistence**: `enable_persistence` is **on by default**. With
+  `storage_type="sqlite"` or `"redis"`, interval / cron periodic tasks are persisted
+  and auto-restored after a restart; slots missed while down are handled by each
+  task's `missed_policy`. With `storage_type="memory"` or
+  `enable_persistence=False` the schedule cannot survive a restart — NeoTask emits
+  a one-time warning when a periodic task is registered in such a configuration
+  instead of losing it silently.
 - **Minimum interval granularity**: periodic tasks are driven by a scan loop with
   `SchedulerConfig.scan_interval` (default `1.0s`). `submit_interval` with an
   interval smaller than `scan_interval` may skip fires; lower `scan_interval` or

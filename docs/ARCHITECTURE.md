@@ -524,7 +524,7 @@ config = SchedulerConfig(
     worker_concurrency=10,      # 并发 Worker 数
     max_retries=3,              # 最大重试次数
     retry_delay=1.0,            # 重试延迟（秒）
-    enable_persistence=False,   # 启用周期任务持久化
+    enable_persistence=True,    # 启用周期任务持久化（默认开启；memory 存储会告警）
     scan_interval=0.05,         # 调度循环扫描间隔（秒）
 )
 ```

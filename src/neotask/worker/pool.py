@@ -7,13 +7,17 @@
 """
 
 import asyncio
-import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Dict
+from typing import Any, Dict, Optional
 
 from neotask.common.logger import debug, warning, error
 from neotask.core.lifecycle import TaskLifecycleManager
+from neotask.core.progress import (
+    ProgressReporter,
+    reset_progress_reporter,
+    set_progress_reporter,
+)
 from neotask.event.bus import EventBus, TaskEvent
 from neotask.executor.base import TaskExecutor
 from neotask.models.task import TaskPriority, TaskStatus
@@ -341,14 +345,7 @@ class WorkerPool:
             current_retry = task.retry_count
 
             try:
-                # 执行任务（带超时）
-                if self._task_timeout:
-                    result = await asyncio.wait_for(
-                        self._executor.execute(task.data),
-                        timeout=self._task_timeout
-                    )
-                else:
-                    result = await self._executor.execute(task.data)
+                result = await self._execute_with_progress(task)
 
                 # 标记完成（强制关闭时存储连接可能已断开，降级为告警而非未捕获异常）
                 try:
@@ -394,8 +391,36 @@ class WorkerPool:
                     self._worker_stats[worker_id].is_busy = self._worker_stats[worker_id].active_tasks > 0
                     self._worker_stats[worker_id].last_active = datetime.now()
 
+    async def _execute_with_progress(self, task) -> Any:
+        """执行任务，并向业务代码暴露进度上报钩子
+
+        通过 ContextVar 绑定 :class:`ProgressReporter`，业务代码可在 executor 中
+        调用 ``report_progress()`` / ``report_progress_sync()``；同时把回调传给
+        ``execute_with_progress()``，自定义 executor 也可以直接使用该回调。
+        """
+        task_id = task.task_id
+
+        async def progress_callback(progress: float, message: str = "") -> None:
+            await self._update_task_progress(task_id, progress, message)
+
+        reporter = ProgressReporter(progress_callback)
+        token = set_progress_reporter(reporter)
+        try:
+            execution = self._executor.execute_with_progress(
+                task.data,
+                progress_callback
+            )
+            if self._task_timeout:
+                return await asyncio.wait_for(execution, timeout=self._task_timeout)
+            return await execution
+        finally:
+            reset_progress_reporter(token)
+
     async def _update_task_progress(self, task_id: str, progress: float, message: str = "") -> None:
-        """更新任务进度
+        """更新任务进度并发布 ``task.progress`` 事件
+
+        进度更新是尽力而为的：任务不存在、已结束或存储暂时不可写时只记录 debug，
+        不影响任务本身的执行结果。
 
         Args:
             task_id: 任务ID
@@ -403,18 +428,9 @@ class WorkerPool:
             message: 进度消息
         """
         try:
-            # 更新存储中的任务进度
-            if hasattr(self._task_repo, 'update_progress'):
-                await self._task_repo.update_progress(task_id, progress, message)
-
-            # 发送进度事件
-            await self._event_bus.emit(TaskEvent(
-                "task.progress",
-                task_id,
-                {"progress": progress, "message": message, "timestamp": time.time()}
-            ))
-
-            debug(f"Task {task_id} progress: {progress * 100:.1f}% - {message}")
+            updated = await self._lifecycle.update_progress(task_id, progress, message)
+            if updated:
+                debug(f"Task {task_id} progress: {progress * 100:.1f}% - {message}")
         except Exception as e:
             debug(f"Failed to update progress for task {task_id}: {e}")
 

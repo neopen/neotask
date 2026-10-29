@@ -5,6 +5,42 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+> 待发布版本：**1.0.5**（GitHub Release 与版本号由 release-please 在 Release PR 中生成）
+
+### 修复（2026-10-29）
+
+- **跨事件循环 asyncio 原语**：Redis/SQLite 访问统一经 `utils/dedicated_loop.py` 的专用事件循环执行，新增 `LoopBoundRedisClient` / `LoopBoundSQLiteConnection` 代理；连接池仍然复用，专用 loop 重建时自动丢弃旧客户端并重新建池
+- **跨节点等待**：`LifecycleManager.wait_for_task` 改为“Future 通知 + 0.2s 时间片仓储回查”，不再等满 `timeout`，并同步刷新本地缓存
+- **执行器类型**：`ExecutorFactory.create` 与 `TaskPoolConfig.executor_type` 兼容 `"async" / "thread" / "process" / "class" / "auto"` 字符串，未知值抛 `ValueError`
+- **分片语义**：`ConsistentHashSharder` 支持 md5 / sha1 / sha256 / sha3_256；`ModuloSharder` 改用稳定 md5 哈希（不再受 `PYTHONHASHSEED` 影响）；`RangeSharder` 明确“尾部溢出归末分片、其余返回 -1”
+- **测试与回归**：修复过期测试资产、时序敏感断言与共享 Redis 队列污染，全量 `pytest tests` 恢复为 625 passed / 6 skipped / 0 failed
+
+### 文档（2026-10-29）
+
+- `docs/ARCHITECTURE.md` 对齐 1.0.5：更新当前能力、路线图、配置默认值、项目结构，并新增“事件循环隔离与存储客户端”“分布式与高可用”章节
+- 修正 README/README_zh 中 `submit_delayed/interval/cron` 的参数名、覆盖率命令与重复段落
+- 补齐 1.0.4 发布记录（release-please 生成的条目）
+
+### 计划中 (v1.5 / v2.0)
+- **任务编排（v1.5）**
+  - DAG 工作流引擎（`WorkflowEngine`）
+  - 条件分支执行
+  - 并行任务编排
+- **企业级功能（v2.0）**
+  - 独立 Web UI 监控面板（多进程形态）
+  - Prometheus 指标拉取端点
+  - 多租户隔离支持
+
+> v0.4/v0.5/v1.0 的能力（Redis 共享队列、分布式锁、预取、看门狗续期、超时检测、故障自动恢复）均已发布，记录见下。
+
+## [1.0.4](https://github.com/neopen/neotask/compare/v1.0.3...v1.0.4) (2026-10-04)
+
+### 💄 Styles (代码样式)
+
+* Dev ([#26](https://github.com/neopen/neotask/issues/26)) ([cd2cd8a](https://github.com/neopen/neotask/commit/cd2cd8aeaa9b01a5c17e2db445f3673e80674dbb))
+
 ## [1.0.3](https://github.com/neopen/neotask/compare/v1.0.2...v1.0.3) (2026-10-03)
 
 
@@ -21,32 +57,6 @@
 ### 💄 Styles (代码样式)
 
 * 合并 ([#24](https://github.com/neopen/neotask/issues/24)) ([fa6654a](https://github.com/neopen/neotask/commit/fa6654ab4a5509a2c1c2c4362d130d3e000c1356))
-
-## [Unreleased]
-
-### 修复（2026-10-29）
-
-- **跨事件循环 asyncio 原语**：Redis/SQLite 访问统一经 `utils/dedicated_loop.py` 的专用事件循环执行，新增 `LoopBoundRedisClient` / `LoopBoundSQLiteConnection` 代理；连接池仍然复用，专用 loop 重建时自动丢弃旧客户端并重新建池
-- **跨节点等待**：`LifecycleManager.wait_for_task` 改为“Future 通知 + 0.2s 时间片仓储回查”，不再等满 `timeout`，并同步刷新本地缓存
-- **执行器类型**：`ExecutorFactory.create` 与 `TaskPoolConfig.executor_type` 兼容 `"async" / "thread" / "process" / "class" / "auto"` 字符串，未知值抛 `ValueError`
-- **分片语义**：`ConsistentHashSharder` 支持 md5 / sha1 / sha256 / sha3_256；`ModuloSharder` 改用稳定 md5 哈希（不再受 `PYTHONHASHSEED` 影响）；`RangeSharder` 明确“尾部溢出归末分片、其余返回 -1”
-
-### 文档（2026-10-29）
-
-- `docs/ARCHITECTURE.md` 对齐 1.0.3：更新当前能力、路线图、配置默认值、项目结构，并新增“事件循环隔离与存储客户端”“分布式与高可用”章节
-- 修正 README/README_zh 中 `submit_delayed/interval/cron` 的参数名、覆盖率命令与重复段落
-
-### 计划中 (v1.5 / v2.0)
-- **任务编排（v1.5）**
-  - DAG 工作流引擎（`WorkflowEngine`）
-  - 条件分支执行
-  - 并行任务编排
-- **企业级功能（v2.0）**
-  - 独立 Web UI 监控面板（多进程形态）
-  - Prometheus 指标拉取端点
-  - 多租户隔离支持
-
-> v0.4/v0.5/v1.0 的能力（Redis 共享队列、分布式锁、预取、看门狗续期、超时检测、故障自动恢复）均已发布，记录见下。
 
 ---
 

@@ -498,7 +498,7 @@ if __name__ == "__main__":
 ## 环境
 - Python: 3.11
 - OS: Ubuntu 22.04
-- NeoTask: 0.3.0
+- NeoTask: 1.0.4
 
 ## 复现步骤
 1. 
@@ -516,6 +516,7 @@ traceback here
 
 ## 复现代码
 # minimal code to reproduce
+~~~
 
 ### 功能请求
 
@@ -569,7 +570,7 @@ Fixes #123
 [ ] 已自我审查代码
 [ ] 已添加注释
 [ ] 文档已更新
-~~~
+```
 
 
 
@@ -592,7 +593,20 @@ Fixes #123
 - **MINOR**: 向下兼容的新功能
 - **PATCH**: 向下兼容的 Bug 修复
 
-### 发布步骤（仅维护者）
+### 自动发布（推荐，仅维护者）
+
+`main` 分支启用了 [release-please](https://github.com/googleapis/release-please)，版本号与 Release 均由机器人生成：
+
+1. 向 `main` 合并符合 [Conventional Commits](https://www.conventionalcommits.org/) 的提交（`fix:` → PATCH，`feat:` → MINOR，`feat!:` / `BREAKING CHANGE` → MAJOR；默认按 PATCH）
+2. `.github/workflows/release-please.yml` 创建或更新 Release PR，自动修改 `pyproject.toml`、`src/neotask/__init__.py`、`CHANGELOG.md` 与 `.github/.release-please-manifest.json`
+3. 合并 Release PR 后自动创建 `vX.Y.Z` 标签和 GitHub Release
+4. Release 发布后 `.github/workflows/publish-pypi.yml` 自动构建并发布到 PyPI（也可通过 `workflow_dispatch` 指定 tag 手动发布）
+
+> 开发分支无需手动改版本号，保持与 `main` 已发布版本一致即可，由 Release PR 统一提升。
+
+### 手动发布（兜底）
+
+仅在 release-please 不可用时使用：
 
 ```bash
 # 1. 更新版本号
@@ -602,19 +616,17 @@ Fixes #123
 # 记录所有变更
 
 # 3. 提交变更
-git commit -am "chore: bump version to 1.0.3"
+git commit -am "chore: bump version to 1.0.5"
 
 # 4. 创建标签
-git tag -a v1.0.3 -m "Release v1.0.3"
+git tag -a v1.0.5 -m "Release v1.0.5"
 
 # 5. 推送
 git push origin main
-git push origin v1.0.3
+git push origin v1.0.5
 
-# 6. 构建分发包
+# 6. 手工创建 GitHub Release（触发 publish-pypi 工作流），或本地构建后上传
 python -m build
-
-# 7. 发布到 PyPI
 twine upload dist/*
 ```
 

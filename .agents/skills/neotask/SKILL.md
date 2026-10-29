@@ -9,7 +9,7 @@ description: 轻量级 Python 异步任务队列管理器 — 帮助用户编写
 
 NeoTask 是一个纯 Python 实现的轻量级异步任务队列调度系统。无需部署 Redis/PostgreSQL 等外部服务（基础依赖仅 aiosqlite、croniter），最低支持 Python 3.8。适用于 AI 生成任务、文件处理、定时报表、延迟通知等场景。
 
-**版本**: 1.0.3 | **作者**: neopen | **许可证**: MIT
+**版本**: 1.0.5 | **作者**: neopen | **许可证**: MIT
 
 ## 核心入口
 

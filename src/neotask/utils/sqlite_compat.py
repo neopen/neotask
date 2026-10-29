@@ -123,6 +123,11 @@ class LoopBoundSQLiteConnection:
     async def _run(self, factory: Callable[[aiosqlite.Connection], Awaitable[Any]]) -> Any:
         """把 ``factory(conn)`` 投递到专用 loop 执行。"""
         loop = get_shared_loop()
+
+        # 专用 loop 被重建时，旧连接绑定在已关闭的 loop 上，不能继续复用；
+        # 丢弃后在新的 loop 中重新建连（与 Redis 代理保持一致的防御逻辑）。
+        if self._conn is not None and self._bound_loop is not loop:
+            self._conn = None
         self._bound_loop = loop
 
         async def _runner() -> Any:
@@ -132,8 +137,11 @@ class LoopBoundSQLiteConnection:
         return await run_on_loop(_runner, loop=loop)
 
     async def _dispatch(self, fn: Callable[[], Awaitable[Any]]) -> Any:
-        """在连接所属的专用 loop 中执行一个零参协程工厂（供 Cursor 代理复用）。"""
-        loop = self._bound_loop or get_shared_loop()
+        """在连接所属的专用 loop 中执行一个零参协程工厂（供 Cursor 代理复用）"""
+        loop = self._bound_loop
+        if loop is None or loop.is_closed() or not loop.is_running():
+            # 原 loop 已不可用（被重建/关闭），回退到当前共享 loop
+            loop = get_shared_loop()
         return await run_on_loop(fn, loop=loop)
 
     async def execute(self, sql: str, parameters: Optional[Iterable[Any]] = None) -> LoopBoundCursor:

@@ -197,6 +197,12 @@ class LoopBoundRedisClient:
     async def _execute(self, factory: _ClientFactory) -> Any:
         """把 ``factory(client)`` 投递到专用 loop 执行，并等待结果。"""
         loop = get_shared_loop()
+
+        # 专用 loop 曾被重建（守护线程异常退出）时，旧客户端及其连接池内部持有的
+        # asyncio 原语仍绑定在已关闭的 loop 上，继续复用会报跨 loop 错误。
+        # 这里直接丢弃旧客户端，交由 ``_ensure_client`` 在新 loop 中重新建池。
+        if self._client is not None and self._bound_loop is not loop:
+            self._client = None
         self._bound_loop = loop
 
         async def _runner() -> Any:

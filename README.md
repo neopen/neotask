@@ -13,7 +13,7 @@
     <a href="https://github.com/neopen/neotask"><img src="https://img.shields.io/github/stars/neopen/neotask?style=flat-square&logo=github" alt="GitHub Stars"></a>
   </p>
   <p align="center">
-    <a href="./README_zh.md">中文</a> •
+    <a href="https://github.com/neopen/neotask/blob/main/README_zh.md">中文</a> •
     <a href="https://task.helpenx.com">Website</a> •
     <a href="https://task.helpenx.com/docs/">Documentation</a> •
     <a href="https://pypi.org/project/neotask/">PyPI</a>
@@ -21,7 +21,7 @@
 </p>
 
 > 🚀 **Lightweight & Async**: Pure Python task queue manager designed for time-consuming jobs (AI generation, video processing, data scraping, etc.)  
-> 📦 **No External Services**: No extra deployment required (no Redis/PostgreSQL needed). Ships with two base dependencies  
+> 📦 **No External Services**: No extra deployment required (no Redis/PostgreSQL needed). and distributed multi-node environment requires Redis support  
 > ⏰ **Flexible Scheduling**: Native support for scheduled, periodic (cron-like), and delayed tasks  
 > ⚡ **Quick Integration**: `pip install neotask` + few lines of configuration
 

@@ -13,7 +13,7 @@
     <a href="https://github.com/neopen/neotask"><img src="https://img.shields.io/github/stars/neopen/neotask?style=flat-square&logo=github" alt="GitHub Stars"></a>
   </p>
   <p align="center">
-    <a href="./README.md">English</a> •
+    <a href="https://github.com/neopen/neotask/blob/main/README.md">English</a> •
     <a href="https://task.helpenx.com">官网演示</a> •
     <a href="https://task.helpenx.com/docs/">官方文档</a> •
     <a href="https://pypi.org/project/neotask/">PyPI</a> 
@@ -23,7 +23,7 @@
 
 
 > 🚀 **轻量异步**：纯 Python 实现的异步任务队列，专为 AI 生成、视频处理、数据爬取等高耗时任务设计  
-> 📦 **无外部服务依赖**：单节点无需配置 Redis、PostgreSQL 等外部服务（基础包仅需 aiosqlite、croniter 两个依赖），分布式多节点环境需要 Redis 支持  
+> 📦 **无外部服务依赖**：单节点无需配置 Redis、PostgreSQL 等外部服务，分布式多节点环境需要 Redis 支持  
 > ⏰ **全场景调度**：原生支持定时任务、周期任务（Cron-like）与延迟任务，开箱即用、自动重试与异常恢复  
 > ⚡ 5 分钟上手：`pip install neotask`  3行代码集成，即可使用内部接口
 

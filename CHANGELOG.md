@@ -24,6 +24,18 @@
 
 ## [Unreleased]
 
+### 修复（2026-10-29）
+
+- **跨事件循环 asyncio 原语**：Redis/SQLite 访问统一经 `utils/dedicated_loop.py` 的专用事件循环执行，新增 `LoopBoundRedisClient` / `LoopBoundSQLiteConnection` 代理；连接池仍然复用，专用 loop 重建时自动丢弃旧客户端并重新建池
+- **跨节点等待**：`LifecycleManager.wait_for_task` 改为“Future 通知 + 0.2s 时间片仓储回查”，不再等满 `timeout`，并同步刷新本地缓存
+- **执行器类型**：`ExecutorFactory.create` 与 `TaskPoolConfig.executor_type` 兼容 `"async" / "thread" / "process" / "class" / "auto"` 字符串，未知值抛 `ValueError`
+- **分片语义**：`ConsistentHashSharder` 支持 md5 / sha1 / sha256 / sha3_256；`ModuloSharder` 改用稳定 md5 哈希（不再受 `PYTHONHASHSEED` 影响）；`RangeSharder` 明确“尾部溢出归末分片、其余返回 -1”
+
+### 文档（2026-10-29）
+
+- `docs/ARCHITECTURE.md` 对齐 1.0.3：更新当前能力、路线图、配置默认值、项目结构，并新增“事件循环隔离与存储客户端”“分布式与高可用”章节
+- 修正 README/README_zh 中 `submit_delayed/interval/cron` 的参数名、覆盖率命令与重复段落
+
 ### 计划中 (v1.5 / v2.0)
 - **任务编排（v1.5）**
   - DAG 工作流引擎（`WorkflowEngine`）

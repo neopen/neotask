@@ -51,6 +51,7 @@
 - **Persistence** - Multiple storage backends: Memory/SQLite/Redis
 - **Distributed Support** - Redis shared queue, distributed lock, node heartbeat, and failed-task reclaim
 - **Event Callbacks** - Supports task lifecycle event listeners
+- **Progress Reporting** - Executors can publish progress updates; subscribers receive `task.progress` events
 
 ------
 
@@ -295,12 +296,14 @@ a safe no-op (returns `False`).
 | Method | Description |
 | :------------------------------------------- | :-------- |
 | `pool.submit(data, priority=2, delay=0)` | Submit task |
+| `pool.submit_batch(tasks, priority=2)` | Submit a batch of tasks |
 | `pool.wait_for_result(task_id, timeout=300)` | Wait for result |
 | `pool.get_status(task_id)` | Get status |
 | `pool.cancel(task_id)` | Cancel task |
-| `scheduler.submit_delayed(data, delay)` | Delayed task |
-| `scheduler.submit_interval(data, interval)` | Periodic task |
-| `scheduler.submit_cron(data, cron)` | Cron task |
+| `pool.on_progress(handler)` | Subscribe to progress events |
+| `scheduler.submit_delayed(data, delay_seconds)` | Delayed task |
+| `scheduler.submit_interval(data, interval_seconds)` | Periodic task |
+| `scheduler.submit_cron(data, cron_expr)` | Cron task |
 
 Detailed API documentation can be found [here](https://task.helpenx.com/docs/api-reference.html)
 
@@ -336,32 +339,10 @@ A few behaviors are easy to trip over, so they are documented explicitly:
   `SchedulerConfig.scan_interval` (default `1.0s`). `submit_interval` with an
   interval smaller than `scan_interval` may skip fires; lower `scan_interval` or
   enable the time wheel (`enable_time_wheel=True`) for finer granularity.
-
-
-## Usage Notes
-
-A few behaviors are easy to trip over, so they are documented explicitly:
-
-- **`get_result` vs `wait_for_result`**: `wait_for_result(task_id)` returns the
-  executor's raw value, while `get_result(task_id)` returns a metadata wrapper
-  dict `{task_id, status, result, error, created_at, completed_at}` — the real
-  payload is under `result`.
-- **Event keys**: lifecycle event types are namespaced as `task.created` /
-  `task.started` / `task.completed` / `task.failed` / `task.cancelled` / `task.retry`
-  (not bare `created`). Prefer the `pool.on_completed(...)` helpers.
-- **Graceful shutdown scope**: `shutdown(graceful=True)` drains tasks that are
-  already enqueued (pending + running) before returning. Unexpired delayed
-  tasks and periodic/cron schedules are **not** fired during shutdown — cancel
-  periodic schedules first (`cancel_periodic`) or use `graceful=False` for an
-  immediate return.
-- **Crash / restart recovery**: auto-recovery re-runs tasks that were already
-  **enqueued** (their ids live in the persisted queue). A record created only via
-  `create_pending_task()` and never pushed through `enqueue_task()` is not part
-  of the queue, so it will **not** auto-run after a restart — enqueue it explicitly.
-- **Minimum interval granularity**: periodic tasks are driven by a scan loop with
-  `SchedulerConfig.scan_interval` (default `1.0s`). `submit_interval` with an
-  interval smaller than `scan_interval` may skip fires; lower `scan_interval` or
-  enable the time wheel (`enable_time_wheel=True`) for finer granularity.
+- **Cross-node waiting**: `wait_for_result` / `wait_for_result_async` work for
+  tasks executed on another node — the wait uses future notification plus a
+  low-frequency repository check, so a result persisted by a remote worker is
+  picked up without waiting for the full timeout.
 
 
 ## Configuration Example
@@ -402,7 +383,7 @@ pip install -e ".[dev]"
 pytest tests/
 
 # View test coverage
-pytest --cov=neotask tests/
+pytest --cov=src/neotask tests/
 
 # Run specific module tests
 pytest tests/test_task_pool.py -v

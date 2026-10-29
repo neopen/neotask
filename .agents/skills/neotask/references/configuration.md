@@ -12,13 +12,13 @@ TaskPoolConfig(
     redis_url=None,
 
     # Executor
-    executor_type="auto",     # auto | async | thread | process
+    executor_type="async",    # async (default) | thread | process | class | auto
     max_workers=10,
 
     # Worker Pool
     worker_concurrency=10,
     prefetch_size=20,
-    task_timeout=300,
+    task_timeout=None,        # seconds; None means no timeout
 
     # Queue
     queue_max_size=10000,
@@ -28,8 +28,8 @@ TaskPoolConfig(
     lock_timeout=30,
 
     # Retry
-    max_retries=0,
-    retry_delay=5,
+    max_retries=3,
+    retry_delay=1.0,
 
     # Monitoring
     enable_metrics=True,
@@ -37,7 +37,7 @@ TaskPoolConfig(
     enable_reporter=False,
 
     # Identity
-    node_id="default",
+    node_id="",               # defaults to the hostname
 )
 ```
 
@@ -47,23 +47,23 @@ TaskPoolConfig(
 from neotask import SchedulerConfig
 
 SchedulerConfig(
-    # Inherits TaskPoolConfig fields
+    # Storage (standalone config class, not a TaskPoolConfig subclass)
     storage_type="memory",
     sqlite_path="neotask.db",
     redis_url=None,
     worker_concurrency=10,
     max_retries=3,
-    retry_delay=5,
-    task_timeout=300,
+    retry_delay=1.0,
 
     # Scheduler-specific
     scan_interval=1.0,              # Seconds between schedule scans
+    enable_persistence=True,        # Persist periodic tasks (sqlite/redis)
     enable_periodic_manager=True,   # Use PeriodicTaskManager
     enable_time_wheel=True,         # Use TimeWheel for delays
     time_wheel_slots=60,            # TimeWheel slot count
     time_wheel_tick=1.0,            # Tick interval in seconds
     default_max_runs=None,          # Default max runs for periodic tasks
-    default_missed_policy="ignore", # ignore | run_once | catch_up | skip
+    default_missed_policy="skip",   # ignore | run_once | catch_up | skip
 )
 
 # Presets

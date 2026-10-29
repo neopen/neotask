@@ -42,6 +42,7 @@
 - **高性能** - 预取机制、批量操作
 - **高可用** - 看门狗、超时检测、任务回收、死信队列
 - **事件回调** - 支持任务生命周期事件监听
+- **进度上报** - executor 内可发布进度，订阅者收到 `task.progress` 事件
 
 ------
 
@@ -287,12 +288,14 @@ pool.wait_for_result(task_id)
 | 方法                                         | 说明              |
 | :------------------------------------------- | :---------------- |
 | `pool.submit(data, priority=2, delay=0)`     | 提交任务          |
+| `pool.submit_batch(tasks, priority=2)`       | 批量提交任务      |
 | `pool.wait_for_result(task_id, timeout=300)` | 等待结果          |
 | `pool.get_status(task_id)`                   | 获取状态          |
 | `pool.cancel(task_id)`                       | 取消任务          |
-| `scheduler.submit_delayed(data, delay)`      | 延时任务          |
-| `scheduler.submit_interval(data, interval)`  | 周期任务          |
-| `scheduler.submit_cron(data, cron)`          | Cron 任务         |
+| `pool.on_progress(handler)`                  | 订阅进度事件      |
+| `scheduler.submit_delayed(data, delay_seconds)`    | 延时任务          |
+| `scheduler.submit_interval(data, interval_seconds)` | 周期任务          |
+| `scheduler.submit_cron(data, cron_expr)`     | Cron 任务         |
 
 详细 API 请参阅 [文档](https://task.helpenx.com/docs/api-reference.html)
 
@@ -362,7 +365,7 @@ pip install -e ".[dev]"
 pytest tests/
 
 # 查看测试覆盖率
-pytest --cov=neotask tests/
+pytest --cov=src/neotask tests/
 
 # 运行特定模块测试
 pytest tests/test_task_pool.py -v
@@ -385,6 +388,7 @@ neotask/
 ├── monitor/       # 指标、健康检查、上报
 ├── distributed/   # 节点管理、协调器、分片
 ├── web/           # 可选 Web UI
+├── utils/         # 专用事件循环、Redis/SQLite 代理
 ├── models/        # 任务与配置模型
 └── common/        # 日志、异常
 ```

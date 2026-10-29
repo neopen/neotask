@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-NeoTask is a pure-Python async task queue (v1.0.2, requires Python >= 3.8). Two mandatory dependencies: `aiosqlite` and `croniter`; `redis`, `psutil`, and the FastAPI Web UI are optional extras (`neotask[redis]`, `neotask[monitor]`, `neotask[ui]`). Storage backends: memory, SQLite, Redis.
+NeoTask is a pure-Python async task queue (v1.0.3, requires Python >= 3.8). Two mandatory dependencies: `aiosqlite` and `croniter`; `redis`, `psutil`, and the FastAPI Web UI are optional extras (`neotask[redis]`, `neotask[monitor]`, `neotask[ui]`). Storage backends: memory, SQLite, Redis.
 
 **Package layout**: `src/neotask/` (install with `pip install -e .`).
 
@@ -74,3 +74,4 @@ User code → TaskPool / TaskScheduler  (public API, Facade over internals)
 - **Context manager**: `with TaskPool(...) as pool:` auto-calls `start()` and `shutdown()`.
 - **Task ID format**: `TSK{YYMMDDHHmmssffff}{random6}` for TaskPool, `PRD_{timestamp}_{random6}` for periodic tasks.
 - **Config factories**: Config classes use `@classmethod` factories — e.g. `StorageConfig.sqlite(path)`, `SchedulerConfig.high_performance()`.
+- **Loop-bound storage clients**: Redis and SQLite access goes through `utils/redis_compat.py` / `utils/sqlite_compat.py`, which run every command on the process-wide dedicated loop (`utils/dedicated_loop.py`). Connection pools are reused, not recreated per command; on dedicated-loop rebuild the cached client is discarded and rebuilt.

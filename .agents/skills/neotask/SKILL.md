@@ -9,7 +9,7 @@ description: 轻量级 Python 异步任务队列管理器 — 帮助用户编写
 
 NeoTask 是一个纯 Python 实现的轻量级异步任务队列调度系统。无需部署 Redis/PostgreSQL 等外部服务（基础依赖仅 aiosqlite、croniter），最低支持 Python 3.8。适用于 AI 生成任务、文件处理、定时报表、延迟通知等场景。
 
-**版本**: 1.0.2 | **作者**: neopen | **许可证**: MIT
+**版本**: 1.0.3 | **作者**: neopen | **许可证**: MIT
 
 ## 核心入口
 
@@ -76,15 +76,15 @@ pool = TaskPool(executor=process, config=config)
 | 参数 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
 | `storage_type` | str | `"memory"` | 存储后端：`memory` / `sqlite` / `redis` |
-| `sqlite_path` | str | `"neotask.db"` | SQLite 数据库路径 |
+| `sqlite_path` | str | `"/data/neotask.db"` | SQLite 数据库路径 |
 | `redis_url` | str | `None` | Redis 连接 URL |
 | `worker_concurrency` | int | `10` | 并发 Worker 数量 |
-| `max_retries` | int | `0` | 失败重试次数 |
-| `retry_delay` | float | `5` | 重试延迟（秒） |
-| `task_timeout` | int | `300` | 任务超时（秒） |
+| `max_retries` | int | `3` | 失败重试次数 |
+| `retry_delay` | float | `1.0` | 重试延迟（秒） |
+| `task_timeout` | float | `None` | 任务超时（秒），`None` 表示不超时 |
 | `prefetch_size` | int | `20` | 预取任务数 |
 | `queue_max_size` | int | `10000` | 队列最大容量 |
-| `executor_type` | str | `"auto"` | 执行器类型 |
+| `executor_type` | str | `"async"` | 执行器类型：`async` / `thread` / `process` / `class` / `auto` |
 | `lock_type` | str | `"memory"` | 锁类型 |
 | `enable_metrics` | bool | `True` | 启用指标收集 |
 | `enable_health_check` | bool | `True` | 启用健康检查 |
@@ -102,17 +102,17 @@ task_ids = pool.submit_batch([{"id": 1}, {"id": 2}, {"id": 3}])
 # 异步提交
 task_id = await pool.submit_async(data, priority=2)
 
-# 优先级：1 (最高) → 5 (最低)
+# 优先级：0 (CRITICAL，最高) → 3 (LOW，最低)，默认 2 (NORMAL)
 ```
 
 ### 获取结果
 
 ```python
-# 阻塞等待
+# 阻塞等待（跨节点任务同样适用）
 result = pool.wait_for_result(task_id, timeout=300)
 
 # 查询状态
-status = pool.get_status(task_id)  # 'pending' / 'running' / 'completed' / 'failed'
+status = pool.get_status(task_id)  # 'pending' / 'running' / 'success' / 'failed' / 'cancelled'
 
 # 查询结果
 info = pool.get_result(task_id)    # {task_id, status, result, error, ...}
@@ -131,7 +131,26 @@ pool.on_created(on_created)
 pool.on_completed(on_completed)
 ```
 
-支持的回调：`on_created`, `on_started`, `on_completed`, `on_failed`, `on_cancelled`
+支持的回调：`on_created`, `on_started`, `on_completed`, `on_failed`, `on_cancelled`, `on_progress`
+
+### 进度上报
+
+```python
+from neotask import report_progress
+
+async def transcode(data):
+    await report_progress(0.2, "探测中")
+    await report_progress(0.8, "转码中")
+    return {"ok": True}
+
+async def on_progress(event):
+    print(f"{event.task_id}: {event.data['progress']:.0%} {event.data['message']}")
+
+pool.on_progress(on_progress)
+```
+
+线程执行器中用 `report_progress_sync()`；任务上下文之外调用是安全空操作（返回 `False`）。
+进度同时写回任务记录（`get_task(task_id)["progress"]`），任务成功时收敛为 `1.0`。
 
 ### 任务管理
 
@@ -418,6 +437,7 @@ ExecutorFactory.create(func=my_obj, executor_type=ExecutorType.CLASS)     # 有 
 config = TaskPoolConfig(executor_type="thread", max_workers=10)
 pool = TaskPool(executor=my_sync_func, config=config)
 ```
+`executor_type` 同时接受 `ExecutorType` 枚举与字符串（`"async"` / `"thread"` / `"process"` / `"class"` / `"auto"`），内部统一转换为枚举；未知值抛 `ValueError`。
 
 ## 分布式锁管理
 
@@ -527,6 +547,10 @@ shard = sharder.get_shard("task_key_123")  # 一致性哈希路由，返回节�
 # 另有 ModuloSharder / RangeSharder，需从子模块导入
 from neotask.distributed.sharding import ModuloSharder, RangeSharder
 ```
+
+- `ConsistentHashSharder`：`hash_fn` 支持 `md5` / `sha1` / `sha256`（默认）/ `sha3_256`。
+- `ModuloSharder`：稳定 md5 取模，同一 key 跨进程/节点结果一致。
+- `RangeSharder`：命中闭区间返回索引；高于末尾上界按“尾部溢出”归入最后一个分片；低于首区间或落在空洞返回 `-1`。
 
 ## Web UI 监控面板
 

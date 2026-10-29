@@ -9,6 +9,10 @@
 
 > 待发布版本：**1.0.5**（GitHub Release 与版本号由 release-please 在 Release PR 中生成）
 
+### 新增（2026-10-29）
+
+- **轻量基准入口**：新增 `neotask.benchmark`，可用 `python -m neotask.benchmark`（或统一 CLI `neotask --benchmark` / `python -m neotask --benchmark`）跑一轮简化基准；支持 `--executor 模块:函数` / `--executor 文件.py:函数`（兼容 Windows 绝对路径）、`--tasks`、`--concurrency`、`--warmup`、`--payload`、`--json`，并关闭健康检查/指标/Reporter，测量端到端延迟（avg/p50/p95/p99）与吞吐；报告与 JSON 输出包含任务数、并发度、预热、超时、预取、存储、执行器方式与数据模板等基本参数；同步执行器自动走线程池（`executor_mode="thread"`）避免阻塞事件循环；代码中可调用 `run_benchmark` / `run_benchmark_async` 返回 `BenchmarkResult`
+
 ### 修复（2026-10-29）
 
 - **跨事件循环 asyncio 原语**：Redis/SQLite 访问统一经 `utils/dedicated_loop.py` 的专用事件循环执行，新增 `LoopBoundRedisClient` / `LoopBoundSQLiteConnection` 代理；连接池仍然复用，专用 loop 重建时自动丢弃旧客户端并重新建池
@@ -24,8 +28,9 @@
 
 ### 文档（2026-10-29）
 
-- `docs/ARCHITECTURE.md` 对齐 1.0.5：更新当前能力、路线图、配置默认值、项目结构，并新增“事件循环隔离与存储客户端”“分布式与高可用”章节
+- `docs/ARCHITECTURE.md` 对齐 1.0.5：更新当前能力、路线图、配置默认值、项目结构（新增 `benchmark.py`），并新增“事件循环隔离与存储客户端”“分布式与高可用”章节
 - 修正 README/README_zh 中 `submit_delayed/interval/cron` 的参数名、覆盖率命令与重复段落
+- README/README_zh 新增“轻量性能自测”小节，说明 `python -m neotask.benchmark`、自定义执行器、`--json`、`--warmup` 与指标口径
 - 补齐 1.0.4 发布记录（release-please 生成的条目）
 - 重写 `examples/` 示例并逐个实际运行验证：修正优先级演示的确定性（pause/resume）、批量任务改用 `submit_batch`、延时/Cron/周期/超时的输出与口径，新增 `11_sqlite_persistence.py`、`12_timeout.py`，同步更新 `examples/readme.txt`
 

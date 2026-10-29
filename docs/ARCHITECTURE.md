@@ -693,6 +693,7 @@ pytest tests/test_task_scheduler.py -v
 neotask/
 ├── __init__.py            # 包入口，导出公共 API
 ├── api/                   # TaskPool / TaskScheduler
+├── benchmark.py           # 轻量性能自测入口（python -m neotask.benchmark）
 ├── cli/                   # 命令行入口
 ├── common/                # 日志、异常、常量
 ├── config/                # 配置加载

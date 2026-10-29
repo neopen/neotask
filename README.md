@@ -289,6 +289,52 @@ Progress is also persisted on the task record (`get_task(task_id)["progress"]`) 
 set to `1.0` when the task succeeds. Reporting outside a task execution context is
 a safe no-op (returns `False`).
 
+### Quick Performance Check
+
+Official benchmarks only describe one machine with one set of parameters. The fastest
+way to answer "will this perform well for my workload?" is to run your own executor
+locally:
+
+```bash
+# Sanity check with the built-in 5ms demo executor
+python -m neotask.benchmark --tasks 200 --concurrency 8 --warmup 10
+
+# Use a real executor: module:func or path.py:func (Windows absolute paths supported)
+python -m neotask.benchmark --executor my_tasks:handle --tasks 500 --concurrency 16
+
+# Machine-readable output for scripts / CI comparisons
+python -m neotask.benchmark --executor my_tasks:handle --json
+```
+
+You can also use the unified entry point `neotask --benchmark` (available after
+installation, same parameters) or `python -m neotask --benchmark`. The report lists
+the task count, concurrency, warmup, timeout, prefetch, storage, executor mode, and
+task data template used for this run.
+
+You can also call it from code (`run_benchmark_async` in async code, `run_benchmark`
+in plain scripts):
+
+```python
+from neotask.benchmark import run_benchmark_async
+
+result = await run_benchmark_async(my_executor, tasks=300, concurrency=8)
+print(result.format())        # result.to_dict() is JSON-serializable
+```
+
+How the numbers are measured:
+
+- Latency is end-to-end `created_at -> completed_at` (including queueing), computed
+  over successful tasks only; p50/p95/p99 show the tail.
+- Throughput = (succeeded + failed) / total duration; failures are counted
+  separately and `max_retries=0` avoids retry amplification.
+- The run always uses memory storage and disables health checks / metrics / reporter,
+  so only the task execution path is measured.
+- Synchronous executors are automatically run in a thread pool (reported as
+  `thread`), so they do not block the worker event loop.
+- Results reflect the current machine and parameters only. When comparing, keep
+  `--tasks` / `--concurrency` / `--payload` identical and add `--warmup` to skip the
+  initial idle backoff.
+
 
 
 ## API Reference

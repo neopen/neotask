@@ -281,6 +281,45 @@ pool.wait_for_result(task_id)
 进度会同时写回任务记录（`get_task(task_id)["progress"]`），任务成功时自动收敛为
 `1.0`。在任务执行上下文之外调用是安全的空操作（返回 `False`）。
 
+### 轻量性能自测
+
+官方基准只代表某台机器、某组参数。判断“性能是否符合我的场景”，最快的方法是用自己的
+executor 在本机跑一轮：
+
+```bash
+# 先确认环境：内置 5ms 演示执行器
+python -m neotask.benchmark --tasks 200 --concurrency 8 --warmup 10
+
+# 换成真实执行器：模块:函数 或 文件.py:函数（支持 Windows 绝对路径）
+python -m neotask.benchmark --executor my_tasks:handle --tasks 500 --concurrency 16
+
+# 机器可读输出，便于脚本/CI 横向对比
+python -m neotask.benchmark --executor my_tasks:handle --json
+```
+
+也可以用统一 CLI 入口 `neotask --benchmark`（安装后可用，参数与上面完全一致），
+或 `python -m neotask --benchmark`。报告中会列出本次使用的任务数、并发度、预热、
+超时、预取、存储、执行器方式与任务数据模板。
+
+代码中也可以直接调用（异步用 `run_benchmark_async`，同步脚本用 `run_benchmark`）：
+
+```python
+from neotask.benchmark import run_benchmark_async
+
+result = await run_benchmark_async(my_executor, tasks=300, concurrency=8)
+print(result.format())        # result.to_dict() 可直接 json.dumps
+```
+
+口径说明：
+
+- 延迟为 `created_at -> completed_at` 的端到端耗时（含排队），只统计成功任务，
+  p50/p95/p99 用于观察长尾。
+- 吞吐 =（成功 + 失败）/ 总耗时；失败单独计数，默认 `max_retries=0`，避免重试放大。
+- 固定使用 memory 存储，并关闭健康检查/指标/Reporter，只测任务执行主链路。
+- 同步执行器会自动放到线程池运行（报告中显示 `thread`），避免阻塞 Worker 事件循环。
+- 结果只反映当前机器与当前参数；横向对比请保持 `--tasks` / `--concurrency` /
+  `--payload` 一致，并加 `--warmup` 预热掉首次空闲退避。
+
 
 
 ## API 参考

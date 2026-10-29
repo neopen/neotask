@@ -1,5 +1,5 @@
 """
-@FileName: redis.py
+@FileName: test_redis.py
 @Description: Redis 相关 fixtures
 @Author: neopen
 @GitHub: https://github.com/neopen/neotask
@@ -12,8 +12,10 @@ import pytest
 import redis.asyncio as redis
 
 # Redis 配置
-REDIS_URL = "redis://localhost:6379/11"
-TEST_REDIS_URL = "redis://localhost:6379/12"
+# 使用 127.0.0.1 而非 localhost：Windows 上 localhost 可能先解析到 IPv6 ::1，
+# 而本地 Redis 只监听 IPv4，连接会先超时再回退。
+REDIS_URL = "redis://127.0.0.1:6379/11"
+TEST_REDIS_URL = "redis://127.0.0.1:6379/12"
 
 
 def skip_if_no_redis(func):
@@ -45,9 +47,9 @@ def skip_if_no_redis(func):
     return wrapper
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 async def redis_client():
-    """Redis 客户端 fixture (session scope)"""
+    """Redis 客户端 fixture（每个测试独立事件循环，避免跨 loop 复用连接）"""
     client = redis.from_url(TEST_REDIS_URL, decode_responses=True, max_connections=10,
                            socket_connect_timeout=5, socket_timeout=5)
     try:
@@ -72,4 +74,4 @@ async def clean_redis(redis_client, request):
 @pytest.fixture(scope="function")
 def distributed_redis_url():
     """分布式测试 Redis URL"""
-    return os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/12")
+    return os.environ.get("TEST_REDIS_URL", "redis://127.0.0.1:6379/12")

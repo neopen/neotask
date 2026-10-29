@@ -122,9 +122,10 @@ class SQLitePeriodicStore(PeriodicStore):
 
     async def _ensure_init(self) -> None:
         if self._conn is None:
-            import aiosqlite
+            from neotask.utils import sqlite_compat
 
-            self._conn = await aiosqlite.connect(self.db_path)
+            # loop 安全连接：所有 SQL 操作统一在专用事件循环执行
+            self._conn = sqlite_compat.create_connection(self.db_path)
             await self._init_db()
 
     async def _init_db(self) -> None:

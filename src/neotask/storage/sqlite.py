@@ -10,10 +10,9 @@ import json
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-import aiosqlite
-
 from neotask.models.task import Task, TaskStatus
 from neotask.storage.base import TaskRepository, QueueRepository
+from neotask.utils import sqlite_compat
 
 
 class SQLiteTaskRepository(TaskRepository):
@@ -30,7 +29,8 @@ class SQLiteTaskRepository(TaskRepository):
     async def _ensure_init(self) -> None:
         """Ensure database is initialized."""
         if self._conn is None:
-            self._conn = await aiosqlite.connect(self.db_path)
+            # loop 安全连接：所有 SQL 操作统一在专用事件循环执行
+            self._conn = sqlite_compat.create_connection(self.db_path)
             await self._init_db()
 
     async def _init_db(self) -> None:
@@ -278,7 +278,8 @@ class SQLiteQueueRepository(QueueRepository):
     async def _ensure_init(self) -> None:
         """Ensure database is initialized."""
         if self._conn is None:
-            self._conn = await aiosqlite.connect(self.db_path)
+            # loop 安全连接：所有 SQL 操作统一在专用事件循环执行
+            self._conn = sqlite_compat.create_connection(self.db_path)
             await self._init_db()
 
     async def _init_db(self) -> None:

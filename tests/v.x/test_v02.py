@@ -58,6 +58,8 @@ async def test_sqlite_storage():
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
 
+    repo = None
+    repo2 = None
     try:
         repo = SQLiteTaskRepository(db_path)
 
@@ -78,7 +80,22 @@ async def test_sqlite_storage():
 
         print("✅ SQLite 存储测试通过")
     finally:
-        os.unlink(db_path)
+        # 必须先关闭连接，否则 Windows 下 SQLite 文件仍被进程占用（WinError 32）
+        for r in (repo, repo2):
+            if r is not None:
+                await r.close()
+
+        # Windows 文件句柄释放可能有延迟，短暂重试后删除临时库文件
+        for attempt in range(10):
+            try:
+                os.unlink(db_path)
+                break
+            except FileNotFoundError:
+                break
+            except PermissionError:
+                if attempt == 9:
+                    raise
+                await asyncio.sleep(0.05)
 
 
 async def test_event_bus():

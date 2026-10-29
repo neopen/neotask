@@ -228,7 +228,8 @@ class TestEndToEndWithSQLite:
 
             # 等待完成
             result = await pool.wait_for_result_async(task_id, timeout=5)
-            assert result["result"]["data"] == "test"
+            # echo_executor 返回 {"result": "echo", "data": <入参>}，结果对象即该 dict
+            assert result["data"]["data"] == "test"
         finally:
             pool.shutdown()
             # 给一点时间让连接关闭
@@ -248,7 +249,7 @@ class TestEndToEndWithSQLite:
 
             # 等待完成
             result = await pool1.wait_for_result_async(task_id, timeout=5)
-            assert result["result"]["data"] == "persistent"
+            assert result["data"]["data"] == "persistent"
 
             # 获取任务信息
             task_info = await pool1.get_task_async(task_id)
@@ -357,7 +358,8 @@ class TestEndToEndWithRedis:
 
             # 等待完成
             result = await pool.wait_for_result_async(task_id, timeout=10)
-            assert result["result"]["data"] == "redis_test"
+            # echo_executor 返回 {"result": "echo", "data": <入参>}，结果对象即该 dict
+            assert result["data"]["data"] == "redis_test"
 
             # 验证任务状态
             status = await pool.get_status_async(task_id)

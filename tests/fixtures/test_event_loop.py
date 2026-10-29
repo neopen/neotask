@@ -1,5 +1,5 @@
 """
-@FileName: event_loop.py
+@FileName: test_event_loop.py
 @Description: 事件循环相关 fixtures
 @Author: neopen
 @GitHub: https://github.com/neopen/neotask
@@ -31,11 +31,18 @@ def event_loop():
     loop = policy.new_event_loop()
     asyncio.set_event_loop(loop)
     yield loop
-    # 清理待处理的任务
-    pending = asyncio.all_tasks(loop)
+    # 清理待处理的任务：先取消，再限时等待，避免个别不响应取消的协程把
+    # teardown 拖成永久挂起（Windows 上表现为进程结束不了）。
+    pending = [task for task in asyncio.all_tasks(loop) if not task.done()]
     for task in pending:
         task.cancel()
-    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+    if pending:
+        try:
+            loop.run_until_complete(
+                asyncio.wait(pending, timeout=5)
+            )
+        except Exception:
+            pass
     loop.close()
 
 
@@ -46,12 +53,15 @@ def event_loop2():
     loop = policy.new_event_loop()
     asyncio.set_event_loop(loop)
     yield loop
-    # 关闭前处理所有 pending 任务
+    # 关闭前处理所有 pending 任务（限时等待，避免 teardown 挂起）
     if not loop.is_closed():
-        pending = asyncio.all_tasks(loop)
+        pending = [task for task in asyncio.all_tasks(loop) if not task.done()]
         for task in pending:
             task.cancel()
         if pending:
-            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            try:
+                loop.run_until_complete(asyncio.wait(pending, timeout=5))
+            except Exception:
+                pass
         loop.run_until_complete(loop.shutdown_asyncgens())
         loop.close()

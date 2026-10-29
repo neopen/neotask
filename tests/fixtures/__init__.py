@@ -14,16 +14,16 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 # 使用相对导入
-from .event_loop import *
-from .redis import *
-from .storage import *
-from .queue import *
-from .task import *
-from .executor import *
-from .event import *
-from .monitor import *
-from .distributed import *
-from .helpers import *
+from .test_event_loop import *
+from .test_redis import *
+from .test_storage import *
+from .test_queue import *
+from .test_task import *
+from .test_executor import *
+from .test_event import *
+from .test_monitor import *
+from .test_distributed import *
+from .test_helpers import *
 
 __all__ = [
     # event_loop

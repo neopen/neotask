@@ -1,5 +1,5 @@
 """
-@FileName: event.py
+@FileName: test_event.py
 @Description: 事件总线相关 fixtures
 @Author: neopen
 @GitHub: https://github.com/neopen/neotask

@@ -16,6 +16,8 @@
 - **执行器类型**：`ExecutorFactory.create` 与 `TaskPoolConfig.executor_type` 兼容 `"async" / "thread" / "process" / "class" / "auto"` 字符串，未知值抛 `ValueError`
 - **分片语义**：`ConsistentHashSharder` 支持 md5 / sha1 / sha256 / sha3_256；`ModuloSharder` 改用稳定 md5 哈希（不再受 `PYTHONHASHSEED` 影响）；`RangeSharder` 明确“尾部溢出归末分片、其余返回 -1”
 - **测试与回归**：修复过期测试资产、时序敏感断言与共享 Redis 队列污染，全量 `pytest tests` 恢复为 625 passed / 6 skipped / 0 failed
+- **可选依赖守卫**：`common/logger.py` 中 PyYAML 改为可选导入，未安装时回退内置日志默认值，避免干净安装（wheel 未装 PyYAML）时 `import neotask` 直接失败
+- **手动重试**：`TaskPool.retry()` 先将 failed / cancelled 任务重置为 PENDING（`Task.reset_for_retry()` + `LifecycleManager.reset_for_retry()`）再重新入队，修复重试后 Worker 因状态不是 PENDING 而跳过执行的问题；已在队列中的 PENDING 任务不再重复入队
 
 ### 文档（2026-10-29）
 

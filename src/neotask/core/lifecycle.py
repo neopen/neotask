@@ -302,6 +302,38 @@ class TaskLifecycleManager:
 
         return True
 
+    async def reset_for_retry(self, task_id: str) -> bool:
+        """把已结束的任务重置为 PENDING，供手动重试
+
+        与 Worker 内部的自动重试不同，手动 ``retry()`` 面对的是已经进入终态的
+        任务，必须先恢复成 PENDING 才能再次执行。旧的 future 一并丢弃，
+        否则等待方会立刻拿到上一次的失败结果。
+
+        Returns:
+            是否重置成功（任务不存在或仍在运行 / 已完成时返回 False）
+        """
+        task = await self.get_task(task_id)
+        if not task or not task.status.is_terminal():
+            return False
+
+        task.reset_for_retry()
+        await self._task_repo.save(task)
+
+        if self._cache_enabled:
+            with self._lock:
+                self._cache[task_id] = task
+
+        await self._future_manager.remove(task_id)
+
+        await self._emit_event(
+            "task.retry",
+            task_id,
+            {"retry_count": task.retry_count, "manual": True}
+        )
+
+        debug(f"Task {task_id} reset to PENDING for manual retry")
+        return True
+
     async def delete_task(self, task_id: str) -> bool:
         """删除任务"""
         await self._task_repo.delete(task_id)

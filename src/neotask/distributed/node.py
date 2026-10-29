@@ -31,6 +31,8 @@ except ImportError:  # pragma: no cover
     ConnectionPool = None  # type: ignore[assignment]
     HAS_REDIS = False
 
+from neotask.common.constants import REDIS_KEY_PREFIX
+
 
 class NodeStatus(Enum):
     """节点状态"""
@@ -63,8 +65,8 @@ class NodeManager:
     设计模式：Singleton Pattern - 每个进程只有一个节点实例
     """
 
-    NODE_KEY_PREFIX = "neotask:node:"
-    NODES_SET_KEY = "neotask:nodes"
+    NODE_KEY_PREFIX = f"{REDIS_KEY_PREFIX}node:"
+    NODES_SET_KEY = f"{REDIS_KEY_PREFIX}nodes"
     HEARTBEAT_INTERVAL = 5.0
     HEARTBEAT_TIMEOUT = 20.0
 

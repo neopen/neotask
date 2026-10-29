@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover
     ConnectionPool = None  # type: ignore[assignment]
     HAS_REDIS = False
 
+from neotask.common.constants import redis_key
 from neotask.models.task import Task, TaskPriority, TaskStatus
 from neotask.storage.base import TaskRepository, QueueRepository
 
@@ -52,10 +53,20 @@ class RedisTaskRepository(TaskRepository):
             )
         return self._client
 
+    @staticmethod
+    def _task_key(task_id: str) -> str:
+        """任务数据键（统一根前缀 + task:<task_id>）"""
+        return redis_key(f"task:{task_id}")
+
+    @staticmethod
+    def _status_key(status: str) -> str:
+        """状态索引键（统一根前缀 + status:<status>）"""
+        return redis_key(f"status:{status}")
+
     async def save(self, task: Task) -> None:
         """保存任务 - 使用 JSON 序列化存储"""
         client = await self._get_client()
-        key = f"task:{task.task_id}"
+        key = self._task_key(task.task_id)
 
         # 同步状态索引：先移除旧状态的成员关系，否则任务会同时残留在多个 status:* 集合中
         old_data = await client.get(key)
@@ -65,19 +76,19 @@ class RedisTaskRepository(TaskRepository):
             except (ValueError, TypeError):
                 old_status = None
             if old_status and old_status != task.status.value:
-                await client.srem(f"status:{old_status}", task.task_id)
+                await client.srem(self._status_key(old_status), task.task_id)
 
         # 使用 JSON 字符串存储整个任务
         task_dict = task.to_dict()
         await client.set(key, json.dumps(task_dict, default=str))
 
         # 添加到状态索引
-        await client.sadd(f"status:{task.status.value}", task.task_id)
+        await client.sadd(self._status_key(task.status.value), task.task_id)
 
     async def get(self, task_id: str) -> Optional[Task]:
         """获取任务"""
         client = await self._get_client()
-        key = f"task:{task_id}"
+        key = self._task_key(task_id)
         data = await client.get(key)
 
         if not data:
@@ -91,8 +102,8 @@ class RedisTaskRepository(TaskRepository):
         client = await self._get_client()
         task = await self.get(task_id)
         if task:
-            await client.srem(f"status:{task.status.value}", task_id)
-        key = f"task:{task_id}"
+            await client.srem(self._status_key(task.status.value), task_id)
+        key = self._task_key(task_id)
         result = await client.delete(key)
         return result > 0
 
@@ -114,7 +125,7 @@ class RedisTaskRepository(TaskRepository):
         deleted_count = 0
 
         for task_id in task_ids:
-            key = f"task:{task_id}"
+            key = self._task_key(task_id)
             data = await client.get(key)
 
             if data:
@@ -122,7 +133,7 @@ class RedisTaskRepository(TaskRepository):
                 status = task_dict.get("status")
                 if status:
                     # 从状态索引中移除
-                    pipe.srem(f"status:{status}", task_id)
+                    pipe.srem(self._status_key(status), task_id)
                 # 删除任务
                 pipe.delete(key)
                 deleted_count += 1
@@ -136,7 +147,7 @@ class RedisTaskRepository(TaskRepository):
     async def list_by_status(self, status: TaskStatus, limit: int = 100, offset: int = 0) -> List[Task]:
         """按状态列出任务"""
         client = await self._get_client()
-        task_ids = await client.smembers(f"status:{status.value}")
+        task_ids = await client.smembers(self._status_key(status.value))
 
         tasks = []
         task_id_list = list(task_ids)
@@ -151,7 +162,7 @@ class RedisTaskRepository(TaskRepository):
     async def update_status(self, task_id: str, status: TaskStatus, **kwargs) -> bool:
         """更新任务状态"""
         client = await self._get_client()
-        key = f"task:{task_id}"
+        key = self._task_key(task_id)
 
         # 获取现有任务
         data = await client.get(key)
@@ -172,8 +183,8 @@ class RedisTaskRepository(TaskRepository):
 
         # 更新状态索引
         if old_status:
-            await client.srem(f"status:{old_status}", task_id)
-        await client.sadd(f"status:{status.value}", task_id)
+            await client.srem(self._status_key(old_status), task_id)
+        await client.sadd(self._status_key(status.value), task_id)
 
         return True
 
@@ -197,7 +208,7 @@ class RedisTaskRepository(TaskRepository):
         success_count = 0
 
         for task_id, status, kwargs in updates:
-            key = f"task:{task_id}"
+            key = self._task_key(task_id)
 
             # 获取现有任务
             data = await client.get(key)
@@ -214,8 +225,11 @@ class RedisTaskRepository(TaskRepository):
 
                 # 更新状态索引
                 if old_status:
-                    pipe.srem(f"status:{old_status}", task_id)
-                pipe.sadd(f"status:{status.value if hasattr(status, 'value') else status}", task_id)
+                    pipe.srem(self._status_key(old_status), task_id)
+                pipe.sadd(
+                    self._status_key(status.value if hasattr(status, "value") else status),
+                    task_id,
+                )
 
                 success_count += 1
 
@@ -225,7 +239,7 @@ class RedisTaskRepository(TaskRepository):
     async def exists(self, task_id: str) -> bool:
         """检查任务是否存在"""
         client = await self._get_client()
-        key = f"task:{task_id}"
+        key = self._task_key(task_id)
         return await client.exists(key) > 0
 
     async def close(self) -> None:
@@ -243,8 +257,8 @@ class RedisQueueRepository(QueueRepository):
         self.max_connections = max_connections
         # 同 RedisTaskRepository：使用 loop 安全客户端
         self._client: Optional[Any] = None
-        self._queue_key = "queue:priority"
-        self._delayed_key = "queue:delayed"
+        self._queue_key = redis_key("queue:priority")
+        self._delayed_key = redis_key("queue:delayed")
         self._pop_script: Optional[Any] = None
 
     async def _get_client(self) -> Any:

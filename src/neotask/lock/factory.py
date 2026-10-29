@@ -46,12 +46,12 @@ class LockFactory:
         return MemoryLock()
 
     @staticmethod
-    def create_redis(redis_url: str, key_prefix: str = None) -> RedisLock:
+    def create_redis(redis_url: str, key_prefix: Optional[str] = None) -> RedisLock:
         """创建 Redis 锁实例。
 
         Args:
             redis_url: Redis 连接 URL
-            key_prefix: 键前缀
+            key_prefix: 键前缀，默认 ``neotask:lock:``
 
         Returns:
             RedisLock 实例

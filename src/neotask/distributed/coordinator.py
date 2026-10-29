@@ -10,6 +10,7 @@ import random
 from dataclasses import dataclass
 from typing import Optional
 
+from neotask.common.constants import REDIS_KEY_PREFIX
 from neotask.distributed.node import NodeManager, NodeInfo
 from neotask.queue.queue_scheduler import QueueScheduler
 
@@ -104,7 +105,7 @@ class Coordinator:
             是否成功
         """
         # 存储节点关联信息
-        key = f"neotask:node_task:{task_id}"
+        key = f"{REDIS_KEY_PREFIX}node_task:{task_id}"
         client = await self._node_manager._get_client()
         await client.setex(key, 3600, target_node_id)
 
@@ -116,13 +117,13 @@ class Coordinator:
     async def get_task_node(self, task_id: str) -> Optional[str]:
         """获取任务关联的节点"""
         client = await self._node_manager._get_client()
-        key = f"neotask:node_task:{task_id}"
+        key = f"{REDIS_KEY_PREFIX}node_task:{task_id}"
         return await client.get(key)
 
     async def _store_affinity(self, task_id: str, affinity_key: str) -> None:
         """存储任务亲和性信息"""
         client = await self._node_manager._get_client()
-        key = f"neotask:affinity:{task_id}"
+        key = f"{REDIS_KEY_PREFIX}affinity:{task_id}"
         await client.setex(key, 3600, affinity_key)
 
     async def _select_node(self) -> Optional[NodeInfo]:

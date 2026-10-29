@@ -14,6 +14,7 @@ import json
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from neotask.common.constants import REDIS_KEY_PREFIX
 from neotask.common.logger import debug
 
 if TYPE_CHECKING:
@@ -218,7 +219,7 @@ class RedisPeriodicStore(PeriodicStore):
     - ``periodic_exec:<id>``  -> 该任务执行记录列表（LPUSH，天然时间倒序）
     """
 
-    def __init__(self, redis_url: str, key_prefix: str = "neotask:", max_connections: int = 10) -> None:
+    def __init__(self, redis_url: str, key_prefix: str = REDIS_KEY_PREFIX, max_connections: int = 10) -> None:
         self.redis_url = redis_url
         self.key_prefix = key_prefix
         self.max_connections = max_connections

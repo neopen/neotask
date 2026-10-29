@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, List, Dict, Any, Callable
 
+from neotask.common.constants import REDIS_KEY_PREFIX
 from neotask.models.task import Task
 
 
@@ -57,10 +58,10 @@ class DeadLetterQueue:
         >>> await dlq.replay(entry.task_id)
     """
 
-    # Redis 键名
-    DLQ_KEY = "neotask:dead_letter"  # 死信列表 (List)
-    DLQ_INDEX_KEY = "neotask:dead_letter:index"  # 死信索引 (Hash)
-    DLQ_CONFIG_KEY = "neotask:dead_letter:config"  # 配置
+    # Redis 键名（统一根前缀 + 死信命名空间）
+    DLQ_KEY = f"{REDIS_KEY_PREFIX}dead_letter"  # 死信列表 (List)
+    DLQ_INDEX_KEY = f"{REDIS_KEY_PREFIX}dead_letter:index"  # 死信索引 (Hash)
+    DLQ_CONFIG_KEY = f"{REDIS_KEY_PREFIX}dead_letter:config"  # 配置
 
     def __init__(
             self,

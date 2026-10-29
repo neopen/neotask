@@ -6,12 +6,14 @@
 @Time: 2026/10/3
 """
 
+
 import logging
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from neotask import SchedulerConfig, TaskScheduler
+
 from neotask.scheduler.periodic import PeriodicTaskManager
 from neotask.models.schedule import MissedExecutionPolicy
 from neotask.storage.periodic import (
@@ -181,6 +183,7 @@ class TestManagerRestoreAcrossInstances:
         await manager2.stop(graceful=False)
 
 
+
 def _identity_executor(task_data):
     """同步 executor：只回显数据，周期任务测试中不真正执行"""
     return {"result": task_data}
@@ -285,3 +288,4 @@ class TestSchedulerPersistenceDefaults:
             assert restored["interval_seconds"] == 3600
         finally:
             scheduler2.shutdown(graceful=False)
+

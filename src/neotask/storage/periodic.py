@@ -221,21 +221,20 @@ class RedisPeriodicStore(PeriodicStore):
         self.redis_url = redis_url
         self.key_prefix = key_prefix
         self.max_connections = max_connections
-        self._pool: Optional["ConnectionPool"] = None
-        self._client: Optional["redis.Redis"] = None
+        # loop 安全客户端：命令统一在专用事件循环执行，避免跨 loop 冲突
+        self._client: Optional[Any] = None
 
-    async def _get_client(self) -> "redis.Redis":
+    async def _get_client(self) -> Any:
         if not HAS_REDIS:
             raise RuntimeError("redis not installed. Run: pip install neotask[redis]")
         if self._client is None:
             from neotask.utils import redis_compat
 
-            self._pool = redis_compat.from_url(
+            self._client = redis_compat.create_client(
                 self.redis_url,
                 max_connections=self.max_connections,
                 decode_responses=True,
             )
-            self._client = redis.Redis(connection_pool=self._pool)
         return self._client
 
     def _task_key(self, task_id: str) -> str:
@@ -293,9 +292,6 @@ class RedisPeriodicStore(PeriodicStore):
         if self._client is not None:
             await self._client.close()
             self._client = None
-        if self._pool is not None:
-            await self._pool.disconnect()
-            self._pool = None
 
 
 def create_periodic_store(

@@ -71,19 +71,18 @@ class HeartbeatManager:
         self._running = False
         self._heartbeat_task: Optional[asyncio.Task] = None
         self._monitor_task: Optional[asyncio.Task] = None
-        self._client: Optional["redis.Redis"] = None
+        self._client: Optional[Any] = None
 
         # 统计
         self._reclaimed_nodes: Set[str] = set()
         self._total_reclaimed_tasks = 0
 
-    async def _get_client(self) -> "redis.Redis":
-        """获取 Redis 客户端"""
+    async def _get_client(self) -> Any:
+        """获取 Redis 客户端（loop 安全，命令在专用事件循环执行）"""
         if not HAS_REDIS:
             raise RuntimeError("redis not installed. Run: pip install neotask[redis]")
         if self._client is None:
-            pool = redis_compat.from_url(self._redis_url, decode_responses=True)
-            self._client = redis.Redis(connection_pool=pool)
+            self._client = redis_compat.create_client(self._redis_url, decode_responses=True)
         return self._client
 
     def _node_key(self, node_id: str) -> str:

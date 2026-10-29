@@ -75,12 +75,10 @@ class DeadLetterQueue:
         self._alert_callback: Optional[Callable] = None
 
     async def _get_client(self):
-        """获取 Redis 客户端"""
+        """获取 Redis 客户端（loop 安全，命令在专用事件循环执行）"""
         if self._client is None:
-            import redis.asyncio as redis
             from neotask.utils import redis_compat
-            pool = redis_compat.from_url(self._redis_url, decode_responses=True)
-            self._client = redis.Redis(connection_pool=pool)
+            self._client = redis_compat.create_client(self._redis_url, decode_responses=True)
         return self._client
 
     async def send(

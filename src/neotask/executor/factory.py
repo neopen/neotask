@@ -48,9 +48,12 @@ class ExecutorFactory:
         Returns:
             TaskExecutor 实例
         """
-        # 处理 Enum 类型输入
-        # if isinstance(executor_type, Enum):
-        #     executor_type = executor_type.value
+        # 兼容字符串输入（如 "thread"），统一转换为枚举
+        if isinstance(executor_type, str):
+            try:
+                executor_type = ExecutorType(executor_type.lower())
+            except ValueError as exc:
+                raise ValueError(f"Unknown executor type: {executor_type}") from exc
 
         if executor_type == ExecutorType.AUTO:
             # 自动选择执行器类型

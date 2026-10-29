@@ -46,11 +46,12 @@ class ConsistentHashSharder(Sharder):
         Args:
             nodes: 节点列表
             virtual_nodes: 每个物理节点的虚拟节点数
-            hash_fn: 哈希函数（sha256, sha3_256）
+            hash_fn: 哈希函数（md5, sha1, sha256, sha3_256）
         """
         self._nodes = nodes
         self._virtual_nodes = virtual_nodes
-        allowed_hash_fns = {"sha256", "sha3_256"}
+        # 只允许摘要算法的通用名称，避免 hashlib 构造出与预期不符的对象
+        allowed_hash_fns = {"md5", "sha1", "sha256", "sha3_256"}
         if hash_fn not in allowed_hash_fns:
             raise ValueError(f"Unsupported hash function: {hash_fn}. Use one of {allowed_hash_fns}.")
         self._hash_fn = hash_fn
@@ -69,10 +70,13 @@ class ConsistentHashSharder(Sharder):
 
     def _hash(self, key: str) -> int:
         """计算哈希值"""
-        if self._hash_fn == "sha3_256":
-            digest = hashlib.sha3_256(key.encode()).hexdigest()
-        else:
-            digest = hashlib.sha256(key.encode()).hexdigest()
+        try:
+            digest = hashlib.new(
+                self._hash_fn, key.encode(), usedforsecurity=False
+            ).hexdigest()
+        except TypeError:
+            # Python 3.8 的 hashlib.new 不支持 usedforsecurity 关键字
+            digest = hashlib.new(self._hash_fn, key.encode()).hexdigest()
         return int(digest[:8], 16)
 
     def get_shard(self, key: str) -> str:
@@ -115,8 +119,23 @@ class ModuloSharder(Sharder):
     def __init__(self, shard_count: int):
         self._shard_count = shard_count
 
+    @staticmethod
+    def _hash_key(key) -> int:
+        """稳定哈希
+
+        不能使用内置 ``hash()``：Python 对字符串启用了哈希随机化，
+        同一 key 在不同进程/节点上会得到不同分片，破坏分布式一致性。
+        """
+        data = str(key).encode()
+        try:
+            digest = hashlib.md5(data, usedforsecurity=False).hexdigest()
+        except TypeError:
+            # Python 3.8 的 hashlib.md5 不支持 usedforsecurity 关键字
+            digest = hashlib.md5(data).hexdigest()
+        return int(digest, 16)
+
     def get_shard(self, key: str) -> int:
-        return hash(key) % self._shard_count
+        return self._hash_key(key) % self._shard_count
 
     def get_shard_count(self) -> int:
         return self._shard_count
@@ -137,9 +156,24 @@ class RangeSharder(Sharder):
         self._ranges = ranges
 
     def get_shard(self, key: str) -> int:
+        """获取键所属分片
+
+        语义约定：
+        - 命中某个闭区间 → 返回该区间索引；
+        - 大于最后一个区间上界 → 归入最后一个分片（有序键的“尾部溢出”）；
+        - 小于第一个区间下界，或落在区间空洞中 → 返回 -1 表示未分片。
+        """
+        if not self._ranges:
+            return -1
+
         for i, (start, end) in enumerate(self._ranges):
             if start <= key <= end:
                 return i
+
+        # 高于末尾范围的键按“尾部溢出”处理，交给最后一个分片
+        if key > self._ranges[-1][1]:
+            return len(self._ranges) - 1
+
         return -1
 
     def get_shard_count(self) -> int:

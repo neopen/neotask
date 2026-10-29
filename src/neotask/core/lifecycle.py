@@ -321,7 +321,12 @@ class TaskLifecycleManager:
             task_id: str,
             timeout: float = 300
     ) -> Any:
-        """等待任务完成"""
+        """等待任务完成
+
+        等待策略：优先依赖 ``FutureManager`` 的即时通知（同节点执行时毫秒级返回）；
+        对于跨节点执行的任务，完成事件只发生在执行节点，本节点的 Future 不会被唤醒，
+        因此额外按固定时间片直接回查仓储的终态，避免必须等满整个 ``timeout``。
+        """
         # 先检查任务是否已完成
         task = await self.get_task(task_id)
         if not task:
@@ -338,26 +343,42 @@ class TaskLifecycleManager:
         # 获取或创建 future
         future = await self._future_manager.get(task_id)
 
-        try:
-            # 等待完成
-            result = await future.wait(timeout)
-            return result
-        except Exception as e:
-            # 等待失败后，重新检查任务状态（可能任务在等待期间完成了但 future 没收到通知）
-            task = await self.get_task(task_id)
+        from neotask.common.exceptions import TimeoutError
+
+        poll_interval = 0.2
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise TimeoutError(task_id, timeout)
+
+            try:
+                return await future.wait(min(poll_interval, remaining))
+            except Exception:
+                # future 的超时/失败/取消都交给下面的存储回查判定
+                pass
+
+            # 绕过生命周期缓存直接读取仓储：跨节点执行时本地缓存可能仍是 PENDING
+            task = await self._task_repo.get(task_id)
             if task:
                 if task.status == TaskStatus.SUCCESS:
+                    self._refresh_cache(task)
                     return task.result
                 elif task.status == TaskStatus.FAILED:
+                    self._refresh_cache(task)
                     raise Exception(task.error or "Task failed")
                 elif task.status == TaskStatus.CANCELLED:
+                    self._refresh_cache(task)
                     raise Exception("Task was cancelled")
-            # 如果是超时异常，重新抛出
-            from neotask.common.exceptions import TimeoutError
-            if isinstance(e, TimeoutError):
-                raise
-            # 其他异常
-            raise
+
+    def _refresh_cache(self, task: Task) -> None:
+        """用仓储中的终态刷新缓存（终态不会回退，覆盖是安全的）"""
+        if not self._cache_enabled:
+            return
+        with self._lock:
+            self._cache[task.task_id] = task
 
     async def get_task_stats(self) -> TaskStats:
         """获取任务统计

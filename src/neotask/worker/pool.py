@@ -130,12 +130,19 @@ class WorkerPool:
             graceful: 是否优雅停止（等待当前任务完成）
             timeout: 优雅停止超时时间
         """
+        # 1. 先停预取循环（不再把共享队列里的任务搬进本地队列），但保持 worker
+        #    运行，让它们把本地队列里已预取的任务消费掉。
+        #    如果先置 _running=False，worker 会立刻退出，本地残留任务只能等
+        #    超时后回灌，优雅停机就会白等一个 timeout（默认 30s）。
+        if self._prefetcher:
+            await self._prefetcher.stop(graceful=False)
+            if graceful and not await self._prefetcher.is_empty():
+                await self._prefetcher.wait_until_empty(timeout)
+
         self._running = False
 
-        # 停止预取器
+        # 2. 停机超时后本地队列可能仍有残留：放回共享队列，避免变成孤儿
         if self._prefetcher:
-            await self._prefetcher.stop(graceful, timeout)
-            # 停机超时后本地队列可能仍有残留：放回共享队列，避免变成孤儿
             drained = await self._prefetcher.drain_back(self._resolve_task_priority)
             if drained:
                 debug(f"Drained {drained} prefetched task(s) back to shared queue")

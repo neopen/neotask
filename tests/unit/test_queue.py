@@ -232,6 +232,28 @@ class TestQueueScheduler:
         await scheduler.stop()
 
     @pytest.mark.asyncio
+    async def test_re_enqueue_after_disable(self):
+        """队列被 disable 后，停机回灌仍可放回已出队的任务"""
+        scheduler = QueueScheduler()
+
+        await scheduler.start()
+
+        try:
+            await scheduler.push("task-1", 5)
+            popped = await scheduler.pop(1)
+            assert popped == ["task-1"]
+
+            await scheduler.disable()
+            # disable 只拦新任务，撤销出队必须放行
+            assert await scheduler.re_enqueue("task-1", 5) is True
+            assert await scheduler.size() == 1
+
+            # 但普通 push 仍然被拒绝
+            assert await scheduler.push("task-2", 5) is False
+        finally:
+            await scheduler.stop()
+
+    @pytest.mark.asyncio
     async def test_push_delayed(self):
         """测试延迟任务入队"""
         scheduler = QueueScheduler()

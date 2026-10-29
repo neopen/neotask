@@ -18,12 +18,16 @@
 - **测试与回归**：修复过期测试资产、时序敏感断言与共享 Redis 队列污染，全量 `pytest tests` 恢复为 625 passed / 6 skipped / 0 failed
 - **可选依赖守卫**：`common/logger.py` 中 PyYAML 改为可选导入，未安装时回退内置日志默认值，避免干净安装（wheel 未装 PyYAML）时 `import neotask` 直接失败
 - **手动重试**：`TaskPool.retry()` 先将 failed / cancelled 任务重置为 PENDING（`Task.reset_for_retry()` + `LifecycleManager.reset_for_retry()`）再重新入队，修复重试后 Worker 因状态不是 PENDING 而跳过执行的问题；已在队列中的 PENDING 任务不再重复入队
+- **Cron 别名**：`@hourly` / `@daily` / `@weekly` 等预定义别名统一在 `CronParser.parse` / `is_valid` / `describe` 中归一化为标准 5 字段表达式，修复“`is_valid` 返回 True 但 `submit_cron` 抛 `Invalid cron expression`”的口径不一致
+- **优雅停机**：`WorkerPool.stop()` 先停预取循环、让 Worker 消费完本地队列再退出，避免停机瞬间本地残留任务无人消费而白等满 `timeout`；`TaskPrefetcher.drain_back()` 改用新增的 `QueueScheduler.re_enqueue()` 绕过停机时的入队禁用，未执行任务不再变成孤儿
+- **队列日志**：`MemoryQueueRepository.remove` 在优先级队列未命中时降级为 `debug`，不再对“随后命中延迟队列”的正常流程输出误导性 WARNING
 
 ### 文档（2026-10-29）
 
 - `docs/ARCHITECTURE.md` 对齐 1.0.5：更新当前能力、路线图、配置默认值、项目结构，并新增“事件循环隔离与存储客户端”“分布式与高可用”章节
 - 修正 README/README_zh 中 `submit_delayed/interval/cron` 的参数名、覆盖率命令与重复段落
 - 补齐 1.0.4 发布记录（release-please 生成的条目）
+- 重写 `examples/` 示例并逐个实际运行验证：修正优先级演示的确定性（pause/resume）、批量任务改用 `submit_batch`、延时/Cron/周期/超时的输出与口径，新增 `11_sqlite_persistence.py`、`12_timeout.py`，同步更新 `examples/readme.txt`
 
 ### 计划中 (v1.5 / v2.0)
 - **任务编排（v1.5）**

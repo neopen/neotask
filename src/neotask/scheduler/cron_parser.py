@@ -18,19 +18,38 @@ except ImportError:
     warnings.warn("croniter not installed, using fallback parser. Install with: pip install croniter")
 
 
+# 预定义常用Cron表达式。croniter 能识别 @hourly 这类别名，但调度器内部
+# 统一按 5 字段解析，因此入口处先展开，避免 is_valid 通过而 parse 抛错。
+PREDEFINED_CRONS = {
+    "@yearly": "0 0 1 1 *",
+    "@annually": "0 0 1 1 *",
+    "@monthly": "0 0 1 * *",
+    "@weekly": "0 0 * * 0",
+    "@daily": "0 0 * * *",
+    "@midnight": "0 0 * * *",
+    "@hourly": "0 * * * *",
+}
+
+
+def normalize_cron(expression: str) -> str:
+    """把 @hourly / @daily 等别名展开为标准 5 字段表达式"""
+    expr = expression.strip()
+    return PREDEFINED_CRONS.get(expr.lower(), expr)
+
+
 class CronExpression:
     """Cron表达式
 
-    基于 croniter 库实现，支持标准 Cron 表达式。
+    基于 croniter 库实现，支持标准 Cron 表达式与 @hourly 等预定义别名。
     """
 
     def __init__(self, expression: str):
-        self.expression = expression.strip()
+        self.expression = normalize_cron(expression)
         self._validate()
         if HAS_CRONITER:
             self._croniter = None
         else:
-            self._fallback_parser = FallbackCronExpression(expression)
+            self._fallback_parser = FallbackCronExpression(self.expression)
 
     def _validate(self) -> None:
         """验证表达式格式"""
@@ -119,12 +138,15 @@ class CronParser:
 
     @staticmethod
     def is_valid(expression: str) -> bool:
-        """验证Cron表达式是否有效"""
+        """验证Cron表达式是否有效
+
+        与 ``parse`` 保持一致的判定口径：先去别名、再校验字段数，
+        有 croniter 时进一步校验字段取值范围。
+        """
         try:
+            CronExpression(expression)
             if HAS_CRONITER:
-                croniter(expression, datetime.now())
-            else:
-                CronExpression(expression)
+                croniter(normalize_cron(expression), datetime.now())
             return True
         except Exception:
             return False
@@ -132,7 +154,7 @@ class CronParser:
     @staticmethod
     def describe(expression: str) -> str:
         """生成Cron表达式的中文描述"""
-        parts = expression.split()
+        parts = normalize_cron(expression).split()
         if len(parts) != 5:
             return "无效的Cron表达式"
 
@@ -262,18 +284,6 @@ class FallbackCronParser:
         if len(parts) != 5:
             return "无效的Cron表达式"
         return f"Cron表达式: {expression}"
-
-
-# 预定义常用Cron表达式
-PREDEFINED_CRONS = {
-    "@yearly": "0 0 1 1 *",
-    "@annually": "0 0 1 1 *",
-    "@monthly": "0 0 1 * *",
-    "@weekly": "0 0 * * 0",
-    "@daily": "0 0 * * *",
-    "@midnight": "0 0 * * *",
-    "@hourly": "0 * * * *",
-}
 
 
 def parse_predefined(name: str) -> Optional[CronExpression]:

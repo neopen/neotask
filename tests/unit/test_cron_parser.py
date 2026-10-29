@@ -39,6 +39,20 @@ class TestCronParser:
         assert CronParser.is_valid("0 9 * *") is False
         assert CronParser.is_valid("invalid") is False
 
+    def test_predefined_alias_consistency(self):
+        """测试 @daily 等别名在 parse / is_valid / describe 中口径一致"""
+        cron = CronParser.parse("@daily")
+        assert cron.expression == "0 0 * * *"
+
+        assert CronParser.is_valid("@hourly") is True
+        assert CronParser.is_valid("@weekly") is True
+        assert CronParser.describe("@weekly").startswith("午夜")
+
+        # 未知别名不能被 is_valid 放行，也不能被 parse 接受
+        assert CronParser.is_valid("@every_5_minutes") is False
+        with pytest.raises(ValueError, match="Expected 5 fields"):
+            CronParser.parse("@every_5_minutes")
+
     # ========== 分钟字段测试 ==========
 
     def test_minute_star(self):

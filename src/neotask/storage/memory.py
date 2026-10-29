@@ -244,7 +244,9 @@ class MemoryQueueRepository(QueueRepository):
             if removed:
                 debug(f"Queue remove: task_id={task_id} removed")
             else:
-                warning(f"Queue remove: task_id={task_id} not found")
+                # QueueScheduler.remove 会先试优先级队列、再试延迟队列，
+                # 因此这里“未命中”属于正常流程，不应作为告警输出。
+                debug(f"Queue remove: task_id={task_id} not found")
             return removed
 
     async def size(self) -> int:

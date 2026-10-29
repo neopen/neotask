@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import threading
 import time
 from typing import Optional, List, Dict, Any, Set
 from dataclasses import dataclass, field
@@ -129,7 +130,7 @@ class TaskReclaimer:
         self._reclaim_history: List[ReclaimResult] = []
         self._max_history = 1000
 
-        self._stats_lock = asyncio.Lock()
+        self._stats_lock = threading.Lock()
 
     async def start(self) -> None:
         """启动回收器"""
@@ -513,7 +514,7 @@ class TaskReclaimer:
 
     async def _update_stats(self, results: List[ReclaimResult]) -> None:
         """更新统计信息"""
-        async with self._stats_lock:
+        with self._stats_lock:
             for result in results:
                 if result.success:
                     self._stats[result.reason] = self._stats.get(result.reason, 0) + 1

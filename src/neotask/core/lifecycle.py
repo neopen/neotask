@@ -8,6 +8,7 @@
 
 import asyncio
 import random
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List, Union
@@ -43,7 +44,8 @@ class TaskLifecycleManager:
         self._future_manager = FutureManager()
         self._cache: Dict[str, Task] = {}
         self._cache_enabled = cache_enabled
-        self._lock = asyncio.Lock()
+        # 缓存可能被 TaskPool 内部循环与调用方循环同时访问，使用线程锁保护
+        self._lock = threading.Lock()
 
     async def create_task(
             self,
@@ -78,7 +80,7 @@ class TaskLifecycleManager:
         await self._task_repo.save(task)
 
         if self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 self._cache[task_id] = task
 
         await self._emit_event("task.created", task_id, task.to_dict())
@@ -93,7 +95,7 @@ class TaskLifecycleManager:
         """
         # 从缓存获取
         if self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 if task_id in self._cache:
                     return self._cache[task_id]
 
@@ -101,7 +103,7 @@ class TaskLifecycleManager:
         task = await self._task_repo.get(task_id)
 
         if task and self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 self._cache[task_id] = task
 
         return task
@@ -128,7 +130,7 @@ class TaskLifecycleManager:
         await self._task_repo.save(task)
 
         if self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 self._cache[task_id] = task
 
         await self._emit_event(
@@ -165,7 +167,7 @@ class TaskLifecycleManager:
         )
 
         if self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 self._cache[task_id] = task
 
         await self._emit_event(
@@ -190,7 +192,7 @@ class TaskLifecycleManager:
         await self._task_repo.save(task)
 
         if self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 self._cache[task_id] = task
 
         await self._emit_event("task.started", task_id, {"node_id": node_id})
@@ -222,7 +224,7 @@ class TaskLifecycleManager:
         await self._task_repo.save(task)
 
         if self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 self._cache[task_id] = task
 
         # 通知等待者
@@ -265,7 +267,7 @@ class TaskLifecycleManager:
         await self._task_repo.save(task)
 
         if self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 self._cache[task_id] = task
 
         # 通知等待者 - 确保错误被传递
@@ -290,7 +292,7 @@ class TaskLifecycleManager:
         await self._task_repo.save(task)
 
         if self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 self._cache[task_id] = task
 
         # 通知等待者
@@ -305,7 +307,7 @@ class TaskLifecycleManager:
         await self._task_repo.delete(task_id)
 
         if self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 self._cache.pop(task_id, None)
 
         await self._future_manager.remove(task_id)
@@ -366,7 +368,7 @@ class TaskLifecycleManager:
 
         # 如果缓存启用且有数据，优先使用缓存
         if self._cache_enabled and self._cache:
-            async with self._lock:
+            with self._lock:
                 for task in self._cache.values():
                     stats.total += 1
                     if task.status == TaskStatus.PENDING:
@@ -452,7 +454,7 @@ class TaskLifecycleManager:
 
                     # 从缓存中移除
                     if self._cache_enabled:
-                        async with self._lock:
+                        with self._lock:
                             self._cache.pop(task.task_id, None)
 
                     # 清理 future
@@ -493,7 +495,7 @@ class TaskLifecycleManager:
                         await self._task_repo.delete(task.task_id)
 
                         if self._cache_enabled:
-                            async with self._lock:
+                            with self._lock:
                                 self._cache.pop(task.task_id, None)
 
                         await self._future_manager.remove(task.task_id)
@@ -544,5 +546,5 @@ class TaskLifecycleManager:
 
     async def _clear_cache_async(self):
         """异步清空缓存"""
-        async with self._lock:
+        with self._lock:
             self._cache.clear()

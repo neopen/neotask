@@ -6,9 +6,9 @@
 @Time: 2026/3/27 23:54
 """
 
-import asyncio
 import copy
 import heapq
+import threading
 from typing import Optional, Dict, List, Tuple
 
 from neotask.common.logger import debug, warning
@@ -25,7 +25,8 @@ class MemoryTaskRepository(TaskRepository):
 
     def __init__(self):
         self._tasks: Dict[str, Task] = {}
-        self._lock = asyncio.Lock()
+        # 仓储可能被 TaskPool 内部循环与调用方循环同时访问，使用线程锁
+        self._lock = threading.Lock()
 
     async def save(self, task: Task) -> None:
         """保存任务（深拷贝避免外部修改）
@@ -33,7 +34,7 @@ class MemoryTaskRepository(TaskRepository):
         Args:
             task: 要保存的任务对象
         """
-        async with self._lock:
+        with self._lock:
             self._tasks[task.task_id] = copy.deepcopy(task)
             debug(f"Task {task.task_id} saved to memory repository")
 
@@ -46,7 +47,7 @@ class MemoryTaskRepository(TaskRepository):
         Returns:
             任务对象的深拷贝，不存在则返回 None
         """
-        async with self._lock:
+        with self._lock:
             task = self._tasks.get(task_id)
             if task:
                 debug(f"Task {task_id} retrieved from memory repository")
@@ -63,7 +64,7 @@ class MemoryTaskRepository(TaskRepository):
         Returns:
             是否成功删除
         """
-        async with self._lock:
+        with self._lock:
             if task_id in self._tasks:
                 del self._tasks[task_id]
                 debug(f"Task {task_id} deleted from memory repository")
@@ -80,7 +81,7 @@ class MemoryTaskRepository(TaskRepository):
         Returns:
             是否存在
         """
-        async with self._lock:
+        with self._lock:
             return task_id in self._tasks
 
     async def list_by_status(
@@ -99,7 +100,7 @@ class MemoryTaskRepository(TaskRepository):
         Returns:
             任务列表
         """
-        async with self._lock:
+        with self._lock:
             tasks = [
                 copy.deepcopy(task) for task in self._tasks.values()
                 if task.status == status
@@ -124,7 +125,7 @@ class MemoryTaskRepository(TaskRepository):
         Returns:
             是否成功更新
         """
-        async with self._lock:
+        with self._lock:
             task = self._tasks.get(task_id)
             if not task:
                 warning(f"Task {task_id} not found for status update")
@@ -141,7 +142,7 @@ class MemoryTaskRepository(TaskRepository):
             updates: List[tuple]
     ) -> int:
         """批量更新任务状态"""
-        async with self._lock:
+        with self._lock:
             success_count = 0
             for update in updates:
                 task_id = update[0]
@@ -159,7 +160,7 @@ class MemoryTaskRepository(TaskRepository):
 
     async def delete_batch(self, task_ids: List[str]) -> int:
         """批量删除任务"""
-        async with self._lock:
+        with self._lock:
             deleted = 0
             for task_id in task_ids:
                 if task_id in self._tasks:
@@ -177,7 +178,8 @@ class MemoryQueueRepository(QueueRepository):
 
     def __init__(self):
         self._heap: List[Tuple[int, int, str]] = []  # (priority, sequence, task_id)
-        self._lock = asyncio.Lock()
+        # 队列可能被任务池内部循环与调用方循环同时访问，使用线程锁
+        self._lock = threading.Lock()
         self._sequence = 0
         self._paused = False
         self._disabled = False
@@ -191,7 +193,7 @@ class MemoryQueueRepository(QueueRepository):
             task_id: 任务ID
             priority: 优先级（数字越小优先级越高）
         """
-        async with self._lock:
+        with self._lock:
             self._sequence += 1
             heapq.heappush(self._heap, (priority, self._sequence, task_id))
             debug(f"Queue push: task_id={task_id}, priority={priority}, seq={self._sequence}")
@@ -207,7 +209,7 @@ class MemoryQueueRepository(QueueRepository):
         Returns:
             任务ID列表
         """
-        async with self._lock:
+        with self._lock:
             if self._paused:
                 debug("Queue pop skipped: queue is paused")
                 return []
@@ -234,7 +236,7 @@ class MemoryQueueRepository(QueueRepository):
         Returns:
             是否成功移除
         """
-        async with self._lock:
+        with self._lock:
             original_len = len(self._heap)
             self._heap = [item for item in self._heap if item[2] != task_id]
             heapq.heapify(self._heap)
@@ -251,7 +253,7 @@ class MemoryQueueRepository(QueueRepository):
         Returns:
             队列中的任务数量
         """
-        async with self._lock:
+        with self._lock:
             return len(self._heap)
 
     async def peek(self, count: int = 1) -> List[str]:
@@ -263,7 +265,7 @@ class MemoryQueueRepository(QueueRepository):
         Returns:
             任务ID列表
         """
-        async with self._lock:
+        with self._lock:
             if not self._heap:
                 return []
             sorted_heap = sorted(self._heap)
@@ -273,7 +275,7 @@ class MemoryQueueRepository(QueueRepository):
 
     async def clear(self) -> None:
         """清空队列"""
-        async with self._lock:
+        with self._lock:
             self._heap.clear()
             self._sequence = 0
             debug("Queue cleared")

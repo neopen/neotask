@@ -6,7 +6,7 @@
 @Time: 2026/4/15
 """
 
-import asyncio
+import threading
 import time
 import uuid
 from typing import Dict, Optional, List, Any
@@ -15,80 +15,77 @@ from neotask.lock.base import TaskLock
 
 
 class MemoryLock(TaskLock):
-    """内存锁 - 支持扫描和清理"""
+    """内存锁 - 支持扫描和清理
+
+    实现要点：以「所有者 + 过期时间」字典记录锁状态，acquire 为非阻塞的
+    原子写入，因此不存在跨事件循环等待。早期版本使用 ``asyncio.Lock``
+    队列等待，当 TTL 过期后仍会在原 loop 上阻塞，且跨 loop 使用会直接
+    报错；这里改用 ``threading.RLock`` 保护共享字典，保证同一进程内任意
+    线程/事件循环调用都安全。
+    """
 
     def __init__(self):
-        self._locks: Dict[str, asyncio.Lock] = {}
+        # 保护以下字典的线程锁；所有临界区都不含 await，不会阻塞事件循环
+        self._lock = threading.RLock()
         self._owners: Dict[str, str] = {}
         self._expire_times: Dict[str, float] = {}
         self._created_times: Dict[str, float] = {}
-        self._global_lock = asyncio.Lock()
-
-    def _get_lock(self, key: str) -> asyncio.Lock:
-        """获取或创建锁"""
-        if key not in self._locks:
-            self._locks[key] = asyncio.Lock()
-        return self._locks[key]
 
     async def acquire(self, key: str, ttl: int = 30) -> bool:
-        """获取锁"""
-        lock = self._get_lock(key)
+        """获取锁（非阻塞）
 
-        async with self._global_lock:
-            # 检查是否已被持有且未过期
-            if key in self._owners and self._owners[key] != "":
-                expire_time = self._expire_times.get(key, 0)
-                if time.time() < expire_time:
+        同一 key 已被持有且未过期时立即返回 False，而不是排队等待，
+        避免调用方在另一个事件循环上被长期挂起。
+        """
+        now = time.time()
+        with self._lock:
+            if key in self._owners:
+                if now < self._expire_times.get(key, 0):
                     return False
-
-            # 获取锁
-            await lock.acquire()
+                # 已过期：回收后重新持有
             self._owners[key] = str(uuid.uuid4())
-            self._expire_times[key] = time.time() + ttl
-            self._created_times[key] = time.time()
+            self._expire_times[key] = now + ttl
+            self._created_times[key] = now
             return True
 
     async def release(self, key: str) -> bool:
         """释放锁"""
-        async with self._global_lock:
-            if key not in self._locks:
+        with self._lock:
+            if key not in self._owners:
                 return False
-
-            lock = self._locks[key]
-            if lock.locked():
-                lock.release()
-                self._owners.pop(key, None)
-                self._expire_times.pop(key, None)
-                self._created_times.pop(key, None)
-                return True
-        return False
+            self._owners.pop(key, None)
+            self._expire_times.pop(key, None)
+            self._created_times.pop(key, None)
+            return True
 
     async def extend(self, key: str, ttl: int = 30) -> bool:
         """延长锁的生存时间"""
-        async with self._global_lock:
+        now = time.time()
+        with self._lock:
             if key not in self._owners:
                 return False
 
             expire_time = self._expire_times.get(key, 0)
-            if time.time() > expire_time:
+            if now > expire_time:
                 return False
 
-            self._expire_times[key] = time.time() + ttl
+            self._expire_times[key] = now + ttl
             return True
 
     async def is_locked(self, key: str) -> bool:
-        """检查锁是否被持有"""
-        async with self._global_lock:
-            if key not in self._locks:
+        """检查锁是否被持有（已过期的锁视为未持有）"""
+        now = time.time()
+        with self._lock:
+            if key not in self._owners:
                 return False
-            return self._locks[key].locked()
+            return now < self._expire_times.get(key, 0)
 
     async def get_owner(self, key: str) -> Optional[str]:
         """获取锁的持有者"""
-        async with self._global_lock:
+        with self._lock:
             return self._owners.get(key)
 
-    # ========== 新增：扫描和清理方法 ==========
+    # ========== 扫描和清理方法 ==========
 
     async def scan_locks(self, pattern: str = "lock:*", count: int = 100) -> List[str]:
         """扫描所有锁键
@@ -100,9 +97,8 @@ class MemoryLock(TaskLock):
         Returns:
             锁键列表
         """
-        async with self._global_lock:
-            # 内存锁返回所有锁的键名
-            keys = list(self._locks.keys())
+        with self._lock:
+            keys = list(self._owners.keys())
             return keys[:count]
 
     async def get_lock_info(self, key: str, ttl_threshold: Optional[int] = None) -> Optional[Dict[str, Any]]:
@@ -114,8 +110,8 @@ class MemoryLock(TaskLock):
         Returns:
             锁信息字典
         """
-        async with self._global_lock:
-            if key not in self._locks:
+        with self._lock:
+            if key not in self._owners:
                 return None
 
             now = time.time()
@@ -125,7 +121,7 @@ class MemoryLock(TaskLock):
             return {
                 "key": key,
                 "owner": self._owners.get(key),
-                "is_locked": self._locks[key].locked(),
+                "is_locked": expire_time > 0 and now < expire_time,
                 "created_at": created_time,
                 "expire_at": expire_time,
                 "ttl_remaining": max(0.0, expire_time - now) if expire_time > 0 else 0,
@@ -142,29 +138,21 @@ class MemoryLock(TaskLock):
             清理的锁数量
         """
         cleaned = 0
-        async with self._global_lock:
+        with self._lock:
             now = time.time()
             stale_keys = []
 
             for key, expire_time in self._expire_times.items():
-                is_stale = False
-
                 if ttl_threshold is not None:
                     # 基于创建时间判断
                     created_time = self._created_times.get(key, now)
                     if now - created_time > ttl_threshold:
-                        is_stale = True
-                else:
+                        stale_keys.append(key)
+                elif expire_time > 0 and now > expire_time:
                     # 基于过期时间判断
-                    if expire_time > 0 and now > expire_time:
-                        is_stale = True
-
-                if is_stale:
                     stale_keys.append(key)
 
             for key in stale_keys:
-                if key in self._locks and self._locks[key].locked():
-                    self._locks[key].release()
                 self._owners.pop(key, None)
                 self._expire_times.pop(key, None)
                 self._created_times.pop(key, None)

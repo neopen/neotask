@@ -324,7 +324,7 @@ class TestLifecycleCleanup:
 
         # 更新缓存
         if manager._cache_enabled:
-            async with manager._lock:
+            with manager._lock:
                 manager._cache[old_task.task_id] = old_task
 
         # 创建新任务

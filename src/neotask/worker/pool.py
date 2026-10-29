@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -82,7 +83,8 @@ class WorkerPool:
         self._worker_stats: Dict[int, WorkerStats] = {}
         self._semaphore = asyncio.Semaphore(concurrency)
         self._running = False
-        self._lock = asyncio.Lock()
+        # Worker 统计可能被调用方循环读取，使用线程锁
+        self._lock = threading.Lock()
 
         # 重试配置
         self._max_retries = 3
@@ -240,7 +242,7 @@ class WorkerPool:
                         exec_task = asyncio.create_task(
                             self._execute_task(worker_id, task_id)
                         )
-                        async with self._lock:
+                        with self._lock:
                             self._running_tasks[task_id] = exec_task
                             self._worker_stats[worker_id].active_tasks += 1
                             self._worker_stats[worker_id].is_busy = True
@@ -261,7 +263,7 @@ class WorkerPool:
                             exec_task = asyncio.create_task(
                                 self._execute_task(worker_id, task_id)
                             )
-                            async with self._lock:
+                            with self._lock:
                                 self._running_tasks[task_id] = exec_task
                                 self._worker_stats[worker_id].active_tasks += 1
                                 self._worker_stats[worker_id].is_busy = True
@@ -384,7 +386,7 @@ class WorkerPool:
                 # ========== 锁释放完成 ==========
 
                 # 更新worker统计
-                async with self._lock:
+                with self._lock:
                     self._worker_stats[worker_id].active_tasks = max(
                         0, self._worker_stats[worker_id].active_tasks - 1
                     )
@@ -458,7 +460,7 @@ class WorkerPool:
 
             # 更新缓存
             if self._lifecycle._cache_enabled:
-                async with self._lifecycle._lock:
+                with self._lifecycle._lock:
                     self._lifecycle._cache[task_id] = task
 
             # 重新入队（带延迟）
@@ -499,7 +501,7 @@ class WorkerPool:
 
     async def _cleanup_completed_tasks(self) -> None:
         """清理已完成的任务"""
-        async with self._lock:
+        with self._lock:
             completed = [
                 (tid, t) for tid, t in self._running_tasks.items()
                 if t.done()

@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -249,7 +250,7 @@ class MetricsCollector:
         self._start_time: float = time.time()
 
         # 并发控制
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
 
     async def start(self) -> None:
         """启动指标收集器（启动系统指标收集）"""
@@ -277,7 +278,7 @@ class MetricsCollector:
         """
         self._task_queue_times[task_id] = time.time()
 
-        async with self._lock:
+        with self._lock:
             self._metrics.total_submitted += 1
             self._metrics.pending += 1
             self._metrics.priority_counts[priority] = self._metrics.priority_counts.get(priority, 0) + 1
@@ -293,10 +294,10 @@ class MetricsCollector:
         # 计算排队时间
         if task_id in self._task_queue_times:
             queue_time = time.time() - self._task_queue_times[task_id]
-            async with self._lock:
+            with self._lock:
                 self._metrics.queue_times.append(queue_time)
 
-        async with self._lock:
+        with self._lock:
             self._metrics.pending = max(0, self._metrics.pending - 1)
             self._metrics.running += 1
 
@@ -309,16 +310,16 @@ class MetricsCollector:
         # 计算执行时间
         if task_id in self._task_start_times:
             execution_time = time.time() - self._task_start_times[task_id]
-            async with self._lock:
+            with self._lock:
                 self._metrics.execution_times.append(execution_time)
 
         # 记录重试次数
         if task_id in self._task_retry_counts:
             retry_count = self._task_retry_counts[task_id]
-            async with self._lock:
+            with self._lock:
                 self._metrics.retry_counts.append(retry_count)
 
-        async with self._lock:
+        with self._lock:
             self._metrics.total_completed += 1
             self._metrics.running = max(0, self._metrics.running - 1)
 
@@ -334,17 +335,17 @@ class MetricsCollector:
         # 计算执行时间
         if task_id in self._task_start_times:
             execution_time = time.time() - self._task_start_times[task_id]
-            async with self._lock:
+            with self._lock:
                 self._metrics.execution_times.append(execution_time)
 
         # 记录重试次数：最终失败的任务同样属于 avg_retry_count 的样本，
         # 只统计成功任务会让该指标系统性偏低（重试最多的恰恰是失败的）
         if task_id in self._task_retry_counts:
             retry_count = self._task_retry_counts[task_id]
-            async with self._lock:
+            with self._lock:
                 self._metrics.retry_counts.append(retry_count)
 
-        async with self._lock:
+        with self._lock:
             self._metrics.total_failed += 1
             self._metrics.running = max(0, self._metrics.running - 1)
 
@@ -357,7 +358,7 @@ class MetricsCollector:
         Args:
             task_id: 任务ID
         """
-        async with self._lock:
+        with self._lock:
             self._metrics.total_cancelled += 1
             self._metrics.running = max(0, self._metrics.running - 1)
 
@@ -373,7 +374,7 @@ class MetricsCollector:
         """
         self._task_retry_counts[task_id] = retry_count
 
-        async with self._lock:
+        with self._lock:
             self._metrics.total_retried += 1
 
     async def record_task_scheduled(self, task_id: str) -> None:
@@ -382,7 +383,7 @@ class MetricsCollector:
         Args:
             task_id: 任务ID
         """
-        async with self._lock:
+        with self._lock:
             self._metrics.scheduled += 1
 
     async def record_task_unscheduled(self, task_id: str) -> None:
@@ -391,7 +392,7 @@ class MetricsCollector:
         Args:
             task_id: 任务ID
         """
-        async with self._lock:
+        with self._lock:
             self._metrics.scheduled = max(0, self._metrics.scheduled - 1)
 
     async def update_pending_count(self, count: int) -> None:
@@ -400,7 +401,7 @@ class MetricsCollector:
         Args:
             count: 新的计数
         """
-        async with self._lock:
+        with self._lock:
             self._metrics.pending = count
 
     def _cleanup_task(self, task_id: str) -> None:
@@ -451,7 +452,7 @@ class MetricsCollector:
 
     async def get_metrics_async(self) -> TaskMetrics:
         """异步获取任务指标"""
-        async with self._lock:
+        with self._lock:
             return self._metrics
 
     def get_system_metrics(self) -> Optional[SystemMetrics]:
@@ -468,7 +469,7 @@ class MetricsCollector:
 
     async def get_summary_async(self) -> Dict[str, Any]:
         """异步获取指标摘要"""
-        async with self._lock:
+        with self._lock:
             return self._metrics.to_dict()
 
     def get_full_summary(self) -> Dict[str, Any]:
@@ -480,7 +481,7 @@ class MetricsCollector:
 
     async def get_full_summary_async(self) -> Dict[str, Any]:
         """异步获取完整摘要"""
-        async with self._lock:
+        with self._lock:
             result = self._metrics.to_dict()
         if self._system_metrics:
             result["system"] = self._system_metrics.to_dict()
@@ -490,7 +491,7 @@ class MetricsCollector:
 
     async def reset(self) -> None:
         """重置所有指标"""
-        async with self._lock:
+        with self._lock:
             self._metrics = TaskMetrics()
             self._metrics.execution_times = deque(maxlen=self._window_size)
             self._metrics.queue_times = deque(maxlen=self._window_size)

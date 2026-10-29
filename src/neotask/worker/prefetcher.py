@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import threading
 import time
 from typing import Optional, List, Dict, Any, Awaitable, Callable
 from dataclasses import dataclass, field
@@ -105,7 +106,7 @@ class TaskPrefetcher:
         self._prefetch_task: Optional[asyncio.Task] = None
         self._running = False
         self._last_activity = time.time()
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
 
         # 统计
         self._stats = PrefetchStats()
@@ -403,7 +404,7 @@ class TaskPrefetcher:
 
         latency = (time.time() - start_time) * 1000  # 毫秒
 
-        async with self._lock:
+        with self._lock:
             self._stats.total_prefetch += 1
             self._stats.total_fetched += fetched_count
             self._stats.last_prefetch_time = time.time()

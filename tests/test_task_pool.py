@@ -145,8 +145,9 @@ class TestTaskPoolSubmit:
             task_id = pool.submit({"test": "delayed"}, delay=1.0)
             elapsed = time.time() - start
 
-            # 提交应该是即时的
-            assert elapsed < 0.1
+            # 提交应该是即时的（首次提交包含队列/线程池初始化，放宽到 0.5s，
+            # 只要远小于 delay=1.0 即可证明未阻塞等待）
+            assert elapsed < 0.5
             assert task_id is not None
 
     @pytest.mark.asyncio

@@ -24,7 +24,10 @@ class TestTaskPrefetcher:
         repo = RedisQueueRepository(TEST_REDIS_URL)
         scheduler = QueueScheduler(repo)
         await scheduler.start()
+        # 共享 Redis 队列可能残留其它用例的任务，先清空保证“空队列”语义成立
+        await scheduler.clear()
         yield scheduler
+        await scheduler.clear()
         await scheduler.stop()
 
     @pytest.fixture

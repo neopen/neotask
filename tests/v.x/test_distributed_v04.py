@@ -44,7 +44,7 @@ from neotask.lock.redis import RedisLock
 @dataclass
 class TestConfig:
     """测试配置"""
-    redis_url: str = "redis://localhost:6379"
+    redis_url: str = "redis://127.0.0.1:6379"
     test_timeout: float = 60.0
 
 
@@ -414,8 +414,11 @@ class TestDistributedV04:
             "should_fail": True
         })
 
-        # 等待重试完成
-        await asyncio.sleep(5)
+        # 等待重试完成（失败任务会按 retry_delay 递增重试，5s 时可能仍在排队）
+        try:
+            await task_pool.wait_for_result_async(task_id, timeout=15)
+        except Exception:
+            pass
 
         # 检查最终状态（应该是 failed 或 success）
         status = await task_pool.get_status_async(task_id)

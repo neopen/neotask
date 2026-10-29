@@ -11,6 +11,7 @@ import os
 import time
 import pytest
 
+from neotask.api.task_pool import TaskPool, TaskPoolConfig
 from neotask.models.task import Task, TaskPriority
 
 
@@ -50,3 +51,31 @@ def sample_task_data():
 def test_node_id():
     """生成测试节点 ID"""
     return f"test_node_{socket.gethostname()}_{os.getpid()}_{int(time.time() * 1000)}"
+
+
+@pytest.fixture
+def memory_task_pool():
+    """内存后端 TaskPool（执行器固定返回 ``{"result": "success", "data": data}``）"""
+    async def executor(data):
+        return {"result": "success", "data": data}
+
+    pool = TaskPool(executor=executor, config=TaskPoolConfig.memory())
+    pool.start()
+    yield pool
+    pool.shutdown()
+
+
+@pytest.fixture
+def task_pool_with_fail_executor():
+    """失败执行器 TaskPool（用于验证失败状态与异常透传）"""
+    async def failing_executor(data):
+        raise ValueError("Task execution failed")
+
+    config = TaskPoolConfig.memory()
+    # 用例只验证最终失败，重试次数压到最低以缩短执行时间
+    config.max_retries = 1
+    config.retry_delay = 0.1
+    pool = TaskPool(executor=failing_executor, config=config)
+    pool.start()
+    yield pool
+    pool.shutdown()

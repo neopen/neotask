@@ -245,8 +245,10 @@ class TestTimeWheel:
         await wheel.add_task("task_second", 2, 0.06)
         await wheel.add_task("task_third", 3, 0.09)
 
-        # 等待足够时间让所有任务执行
-        await asyncio.sleep(0.15)
+        # 事件驱动等待：轮询已执行数量，避免固定 sleep 在负载下偶发不足
+        deadline = asyncio.get_running_loop().time() + 1.0
+        while len(executed) < 3 and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.01)
         await wheel.stop()
 
         assert len(executed) == 3, f"Expected 3 tasks, got {len(executed)}: {executed}"

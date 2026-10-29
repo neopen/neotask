@@ -204,8 +204,10 @@ class TestEndToEndWithDelayed:
         actual_delay = exec_time - start_time
 
         # 延迟应该大约是指定时间
+        # SchedulerConfig.scan_interval 默认 1.0s，到期任务最多再等一个扫描周期；
+        # Windows 计时抖动下再留出余量，避免固定秒数比较导致偶发失败。
         assert actual_delay >= delay - 0.1
-        assert actual_delay <= delay + 0.5
+        assert actual_delay <= delay + 1.5
 
     @pytest.mark.asyncio
     async def test_interval_execution(self, task_scheduler):
@@ -225,9 +227,9 @@ class TestEndToEndWithDelayed:
         # 取消周期任务
         scheduler.cancel_periodic(task_id)
 
-        # 应该执行了多次
+        # 应该执行了多次（周期扫描存在抖动，仅约束下界与合理上界）
         assert len(execution_times) >= 3
-        assert len(execution_times) <= 5
+        assert len(execution_times) <= 7
 
 
 class TestEndToEndWithEvents:

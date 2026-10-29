@@ -20,6 +20,7 @@ import argparse
 import asyncio
 import os
 import sys
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -150,7 +151,9 @@ def test_v01_basic_pool(runner: TestRunner):
 
     # 1.2 SQLite 模式
     print("\n📌 测试 1.2: SQLite 模式 持久化")
-    config_sql = TaskPoolConfig.sqlite(path="/data/test_neotask_v10.db", node_id="test-sql")
+    # 使用临时目录：硬编码 /data 在 Windows 下会被解析为盘符根目录，可能无写权限
+    db_path = os.path.join(tempfile.gettempdir(), f"neotask_v10_{uuid.uuid4().hex}.db")
+    config_sql = TaskPoolConfig.sqlite(path=db_path, node_id="test-sql")
     pool2 = TaskPool(executor=echo_executor, config=config_sql)
     pool2.start()
     time.sleep(0.3)
@@ -174,6 +177,12 @@ def test_v01_basic_pool(runner: TestRunner):
     finally:
         pool2.shutdown()
         time.sleep(0.3)
+        # 清理临时数据库及日志文件（Windows 下句柄未释放时忽略失败）
+        for suffix in ("", "-journal", "-wal", "-shm"):
+            try:
+                os.remove(db_path + suffix)
+            except OSError:
+                pass
 
     # 1.3 优先级测试
     print("\n📌 测试 1.3: 优先级队列")
@@ -393,7 +402,7 @@ def test_v04_distributed(runner: TestRunner):
         await asyncio.sleep(0.05)
         return {"result": "ok", "task_id": data.get("task_id")}
 
-    redis_url = "redis://localhost:6379"
+    redis_url = "redis://127.0.0.1:6379"
 
     # 4.1 Redis 存储
     print("\n📌 测试 4.1: Redis 存储")

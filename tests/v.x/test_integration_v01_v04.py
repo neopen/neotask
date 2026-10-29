@@ -19,6 +19,7 @@
 import asyncio
 import os
 import sys
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass
@@ -127,7 +128,9 @@ async def test_v01_basic_task_pool(reporter: TestReporter):
 
     # 2. SQLite 持久化模式
     print("\n📌 测试 1.2: SQLite持久化 任务持久化")
-    config_sql = TaskPoolConfig.sqlite(path="/data/test_neotask.db", node_id="test-sql")
+    # 使用临时目录：硬编码 /data 在 Windows 下会被解析为盘符根目录，可能无写权限
+    db_path = os.path.join(tempfile.gettempdir(), f"neotask_v01_{uuid.uuid4().hex}.db")
+    config_sql = TaskPoolConfig.sqlite(path=db_path, node_id="test-sql")
     pool_sql = TaskPool(executor=simple_executor, config=config_sql)
 
     try:
@@ -149,6 +152,13 @@ async def test_v01_basic_task_pool(reporter: TestReporter):
     except Exception as e:
         reporter.add_result(TestResult("SQLite模式 任务持久化", False, str(e)))
         pool_sql.shutdown()
+
+    # 清理临时数据库及日志文件（Windows 下句柄未释放时忽略失败）
+    for suffix in ("", "-journal", "-wal", "-shm"):
+        try:
+            os.remove(db_path + suffix)
+        except OSError:
+            pass
 
     # 3. 优先级测试
     print("\n📌 测试 1.3: 优先级队列")
@@ -364,7 +374,7 @@ async def test_v04_distributed(reporter: TestReporter):
 
     try:
         import redis.asyncio as redis
-        client = await redis.Redis.from_url("redis://localhost:6379")
+        client = await redis.Redis.from_url("redis://127.0.0.1:6379")
         await client.ping()
         await client.close()
     except Exception as e:
@@ -376,7 +386,7 @@ async def test_v04_distributed(reporter: TestReporter):
         reporter.end_suite()
         return
 
-    redis_url = "redis://localhost:6379"
+    redis_url = "redis://127.0.0.1:6379"
 
     async def dist_executor(data: Dict) -> Dict:
         await asyncio.sleep(data.get("duration", 0.05))

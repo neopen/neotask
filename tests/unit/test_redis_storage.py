@@ -25,7 +25,7 @@ async def simple_executor(data):
 
 def test_redis_single_task_sync():
     """测试单个 Redis 任务 - 使用同步 API"""
-    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
+    redis_url = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379")
     config = TaskPoolConfig(storage_type="redis", redis_url=redis_url)
 
     pool = TaskPool(executor=simple_executor, config=config)
@@ -45,7 +45,7 @@ def test_redis_single_task_sync():
 
 def test_redis_multiple_tasks_single_pool_sync():
     """测试单个池多个任务 - 使用同步 API"""
-    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/7")
+    redis_url = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/7")
     config = TaskPoolConfig(storage_type="redis", redis_url=redis_url)
 
     pool = TaskPool(executor=simple_executor, config=config)
@@ -75,7 +75,7 @@ def test_redis_multiple_tasks_single_pool_sync():
 
 def test_redis_two_pools_sequential_sync():
     """测试两个池顺序使用（非并发）- 使用同步 API"""
-    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
+    redis_url = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379")
     config = TaskPoolConfig(storage_type="redis", redis_url=redis_url)
 
     # 第一个池提交任务
@@ -131,7 +131,7 @@ def event_loop():
 @pytest.mark.asyncio
 async def test_redis_single_task_async():
     """测试单个 Redis 任务 - 异步 API"""
-    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/7")
+    redis_url = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/7")
     config = TaskPoolConfig(storage_type="redis", redis_url=redis_url)
 
     pool = TaskPool(executor=simple_executor, config=config)
@@ -235,7 +235,7 @@ if __name__ == "__main__":
     # 检查 Redis 是否可用
     try:
         import redis
-        r = redis.Redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379"))
+        r = redis.Redis.from_url(os.environ.get("REDIS_URL", "redis://127.0.0.1:6379"))
         r.ping()
         print("✅ Redis connection successful")
         r.close()

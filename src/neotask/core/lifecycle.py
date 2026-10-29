@@ -8,6 +8,8 @@
 
 import asyncio
 import random
+import threading
+import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List, Union
 
@@ -42,7 +44,8 @@ class TaskLifecycleManager:
         self._future_manager = FutureManager()
         self._cache: Dict[str, Task] = {}
         self._cache_enabled = cache_enabled
-        self._lock = asyncio.Lock()
+        # 缓存可能被 TaskPool 内部循环与调用方循环同时访问，使用线程锁保护
+        self._lock = threading.Lock()
 
     async def create_task(
             self,
@@ -77,7 +80,7 @@ class TaskLifecycleManager:
         await self._task_repo.save(task)
 
         if self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 self._cache[task_id] = task
 
         await self._emit_event("task.created", task_id, task.to_dict())
@@ -92,7 +95,7 @@ class TaskLifecycleManager:
         """
         # 从缓存获取
         if self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 if task_id in self._cache:
                     return self._cache[task_id]
 
@@ -100,7 +103,7 @@ class TaskLifecycleManager:
         task = await self._task_repo.get(task_id)
 
         if task and self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 self._cache[task_id] = task
 
         return task
@@ -127,7 +130,7 @@ class TaskLifecycleManager:
         await self._task_repo.save(task)
 
         if self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 self._cache[task_id] = task
 
         await self._emit_event(
@@ -136,6 +139,46 @@ class TaskLifecycleManager:
             {"old_status": old_status.value, "new_status": status.value}
         )
 
+        return True
+
+    async def update_progress(
+            self,
+            task_id: str,
+            progress: float,
+            message: str = ""
+    ) -> bool:
+        """更新任务进度并发布 ``task.progress`` 事件
+
+        仅对未结束的任务生效；进度值会被收敛到 0.0 - 1.0。存储或事件发布失败
+        由调用方（Worker）降级为 debug 日志，不影响任务执行。
+
+        Returns:
+            是否成功更新（任务不存在或已处于终态时返回 False）
+        """
+        task = await self.get_task(task_id)
+        if not task or task.status.is_terminal():
+            return False
+
+        task.update_progress(progress, message)
+        await self._task_repo.update_progress(
+            task_id,
+            task.progress,
+            task.progress_message
+        )
+
+        if self._cache_enabled:
+            with self._lock:
+                self._cache[task_id] = task
+
+        await self._emit_event(
+            "task.progress",
+            task_id,
+            {
+                "progress": task.progress,
+                "message": task.progress_message,
+                "timestamp": time.time(),
+            }
+        )
         return True
 
     async def start_task(self, task_id: str, node_id: str) -> bool:
@@ -149,7 +192,7 @@ class TaskLifecycleManager:
         await self._task_repo.save(task)
 
         if self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 self._cache[task_id] = task
 
         await self._emit_event("task.started", task_id, {"node_id": node_id})
@@ -176,10 +219,12 @@ class TaskLifecycleManager:
             return False
 
         task.complete(result)
+        # 成功完成即视为 100%，避免 UI 停留在最后一次业务上报的进度上。
+        task.progress = 1.0
         await self._task_repo.save(task)
 
         if self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 self._cache[task_id] = task
 
         # 通知等待者
@@ -222,7 +267,7 @@ class TaskLifecycleManager:
         await self._task_repo.save(task)
 
         if self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 self._cache[task_id] = task
 
         # 通知等待者 - 确保错误被传递
@@ -247,7 +292,7 @@ class TaskLifecycleManager:
         await self._task_repo.save(task)
 
         if self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 self._cache[task_id] = task
 
         # 通知等待者
@@ -257,12 +302,44 @@ class TaskLifecycleManager:
 
         return True
 
+    async def reset_for_retry(self, task_id: str) -> bool:
+        """把已结束的任务重置为 PENDING，供手动重试
+
+        与 Worker 内部的自动重试不同，手动 ``retry()`` 面对的是已经进入终态的
+        任务，必须先恢复成 PENDING 才能再次执行。旧的 future 一并丢弃，
+        否则等待方会立刻拿到上一次的失败结果。
+
+        Returns:
+            是否重置成功（任务不存在或仍在运行 / 已完成时返回 False）
+        """
+        task = await self.get_task(task_id)
+        if not task or not task.status.is_terminal():
+            return False
+
+        task.reset_for_retry()
+        await self._task_repo.save(task)
+
+        if self._cache_enabled:
+            with self._lock:
+                self._cache[task_id] = task
+
+        await self._future_manager.remove(task_id)
+
+        await self._emit_event(
+            "task.retry",
+            task_id,
+            {"retry_count": task.retry_count, "manual": True}
+        )
+
+        debug(f"Task {task_id} reset to PENDING for manual retry")
+        return True
+
     async def delete_task(self, task_id: str) -> bool:
         """删除任务"""
         await self._task_repo.delete(task_id)
 
         if self._cache_enabled:
-            async with self._lock:
+            with self._lock:
                 self._cache.pop(task_id, None)
 
         await self._future_manager.remove(task_id)
@@ -276,7 +353,12 @@ class TaskLifecycleManager:
             task_id: str,
             timeout: float = 300
     ) -> Any:
-        """等待任务完成"""
+        """等待任务完成
+
+        等待策略：优先依赖 ``FutureManager`` 的即时通知（同节点执行时毫秒级返回）；
+        对于跨节点执行的任务，完成事件只发生在执行节点，本节点的 Future 不会被唤醒，
+        因此额外按固定时间片直接回查仓储的终态，避免必须等满整个 ``timeout``。
+        """
         # 先检查任务是否已完成
         task = await self.get_task(task_id)
         if not task:
@@ -293,26 +375,42 @@ class TaskLifecycleManager:
         # 获取或创建 future
         future = await self._future_manager.get(task_id)
 
-        try:
-            # 等待完成
-            result = await future.wait(timeout)
-            return result
-        except Exception as e:
-            # 等待失败后，重新检查任务状态（可能任务在等待期间完成了但 future 没收到通知）
-            task = await self.get_task(task_id)
+        from neotask.common.exceptions import TimeoutError
+
+        poll_interval = 0.2
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise TimeoutError(task_id, timeout)
+
+            try:
+                return await future.wait(min(poll_interval, remaining))
+            except Exception:
+                # future 的超时/失败/取消都交给下面的存储回查判定
+                pass
+
+            # 绕过生命周期缓存直接读取仓储：跨节点执行时本地缓存可能仍是 PENDING
+            task = await self._task_repo.get(task_id)
             if task:
                 if task.status == TaskStatus.SUCCESS:
+                    self._refresh_cache(task)
                     return task.result
                 elif task.status == TaskStatus.FAILED:
+                    self._refresh_cache(task)
                     raise Exception(task.error or "Task failed")
                 elif task.status == TaskStatus.CANCELLED:
+                    self._refresh_cache(task)
                     raise Exception("Task was cancelled")
-            # 如果是超时异常，重新抛出
-            from neotask.common.exceptions import TimeoutError
-            if isinstance(e, TimeoutError):
-                raise
-            # 其他异常
-            raise
+
+    def _refresh_cache(self, task: Task) -> None:
+        """用仓储中的终态刷新缓存（终态不会回退，覆盖是安全的）"""
+        if not self._cache_enabled:
+            return
+        with self._lock:
+            self._cache[task.task_id] = task
 
     async def get_task_stats(self) -> TaskStats:
         """获取任务统计
@@ -323,7 +421,7 @@ class TaskLifecycleManager:
 
         # 如果缓存启用且有数据，优先使用缓存
         if self._cache_enabled and self._cache:
-            async with self._lock:
+            with self._lock:
                 for task in self._cache.values():
                     stats.total += 1
                     if task.status == TaskStatus.PENDING:
@@ -409,7 +507,7 @@ class TaskLifecycleManager:
 
                     # 从缓存中移除
                     if self._cache_enabled:
-                        async with self._lock:
+                        with self._lock:
                             self._cache.pop(task.task_id, None)
 
                     # 清理 future
@@ -450,7 +548,7 @@ class TaskLifecycleManager:
                         await self._task_repo.delete(task.task_id)
 
                         if self._cache_enabled:
-                            async with self._lock:
+                            with self._lock:
                                 self._cache.pop(task.task_id, None)
 
                         await self._future_manager.remove(task.task_id)
@@ -501,5 +599,5 @@ class TaskLifecycleManager:
 
     async def _clear_cache_async(self):
         """异步清空缓存"""
-        async with self._lock:
+        with self._lock:
             self._cache.clear()

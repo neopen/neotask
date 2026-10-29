@@ -370,7 +370,7 @@ class TestTaskLifecycleManager:
         await asyncio.sleep(0.05)
 
         # 验证缓存已被清空
-        async with lifecycle_manager._lock:
+        with lifecycle_manager._lock:
             assert task.task_id not in lifecycle_manager._cache
 
         # 再次获取（应从存储重新加载）

@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import contextvars
 import inspect
 from typing import Any, Dict, Optional
 from neotask.executor.base import TaskExecutor
@@ -70,18 +71,19 @@ class ClassExecutor(TaskExecutor):
                 else:
                     return await self._instance.execute(task_data)
             else:
-                # Sync execute - run in thread pool
-                import concurrent.futures
+                # Sync execute - run in thread pool.
+                # 复制 contextvars，保证 Worker 的进度上报器在线程内可见。
                 loop = asyncio.get_event_loop()
+                context = contextvars.copy_context()
 
                 if self._timeout is not None:
                     future = loop.run_in_executor(
-                        None, self._instance.execute, task_data
+                        None, context.run, self._instance.execute, task_data
                     )
                     return await asyncio.wait_for(future, timeout=self._timeout)
                 else:
                     return await loop.run_in_executor(
-                        None, self._instance.execute, task_data
+                        None, context.run, self._instance.execute, task_data
                     )
         except asyncio.TimeoutError:
             raise ExecutionTimeoutError(

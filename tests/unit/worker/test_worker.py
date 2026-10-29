@@ -141,7 +141,7 @@ class TestWorkerPool:
         assert pool.active_count() == 0
 
         # 模拟正在执行的任务
-        async with pool._lock:
+        with pool._lock:
             pool._running_tasks["task_1"] = asyncio.create_task(asyncio.sleep(0.1))
             pool._running_tasks["task_2"] = asyncio.create_task(asyncio.sleep(0.1))
 
@@ -171,7 +171,7 @@ class TestWorkerPool:
         async def long_task():
             await asyncio.sleep(1)
 
-        async with pool._lock:
+        with pool._lock:
             pool._running_tasks["task_to_cancel"] = asyncio.create_task(long_task())
 
         # 取消任务
@@ -291,7 +291,7 @@ class TestWorkerPool:
         async def slow_task():
             await asyncio.sleep(0.2)
 
-        async with pool._lock:
+        with pool._lock:
             pool._running_tasks["slow_task"] = asyncio.create_task(slow_task())
 
         # 优雅停止，等待任务完成
@@ -320,7 +320,7 @@ class TestWorkerPool:
         async def long_task():
             await asyncio.sleep(10)
 
-        async with pool._lock:
+        with pool._lock:
             pool._running_tasks["long_task"] = asyncio.create_task(long_task())
 
         # 强制停止，不等待任务完成

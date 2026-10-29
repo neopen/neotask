@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import threading
 import uuid
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any, Union
@@ -71,7 +72,9 @@ class PeriodicTaskManager:
         self._tasks: Dict[str, PeriodicTaskInstance] = {}
         self._scheduler_task: Optional[asyncio.Task] = None
         self._running = False
-        self._lock = asyncio.Lock()
+        # 周期任务表可能被调度循环所在线程与调用方线程同时访问，
+        # 使用线程锁保证跨事件循环安全；锁内不做 await。
+        self._lock = threading.Lock()
 
         # 扫描间隔（秒）
         self._scan_interval = 1.0
@@ -192,7 +195,7 @@ class PeriodicTaskManager:
             next_run=next_run
         )
 
-        async with self._lock:
+        with self._lock:
             self._tasks[task_id] = instance
             self._update_stats()
 
@@ -271,7 +274,7 @@ class PeriodicTaskManager:
             next_run=next_run
         )
 
-        async with self._lock:
+        with self._lock:
             self._tasks[task_id] = instance
             self._update_stats()
 
@@ -296,7 +299,7 @@ class PeriodicTaskManager:
         Returns:
             是否成功
         """
-        async with self._lock:
+        with self._lock:
             if task_id not in self._tasks:
                 return False
 
@@ -317,8 +320,8 @@ class PeriodicTaskManager:
             instance.updated_at = datetime.now()
             instance.version += 1
 
-            # 持久化
-            await self._save_task(instance)
+        # 持久化（IO 在锁外执行，避免阻塞其他线程/事件循环）
+        await self._save_task(instance)
 
         return True
 
@@ -331,7 +334,7 @@ class PeriodicTaskManager:
         Returns:
             是否成功
         """
-        async with self._lock:
+        with self._lock:
             if task_id not in self._tasks:
                 return False
 
@@ -354,20 +357,22 @@ class PeriodicTaskManager:
         Returns:
             是否成功
         """
-        async with self._lock:
+        with self._lock:
             if task_id not in self._tasks:
                 return False
 
             instance = self._tasks[task_id]
-            if instance.status == PeriodicTaskStatus.ACTIVE:
-                instance.status = PeriodicTaskStatus.PAUSED
-                instance.paused_at = datetime.now()
-                instance.updated_at = datetime.now()
-                await self._save_task(instance)
-                self._update_stats()
-                return True
+            if instance.status != PeriodicTaskStatus.ACTIVE:
+                return False
 
-        return False
+            instance.status = PeriodicTaskStatus.PAUSED
+            instance.paused_at = datetime.now()
+            instance.updated_at = datetime.now()
+            self._update_stats()
+
+        # 持久化在锁外执行
+        await self._save_task(instance)
+        return True
 
     async def resume(self, task_id: str) -> bool:
         """恢复周期任务
@@ -378,22 +383,24 @@ class PeriodicTaskManager:
         Returns:
             是否成功
         """
-        async with self._lock:
+        with self._lock:
             if task_id not in self._tasks:
                 return False
 
             instance = self._tasks[task_id]
-            if instance.status == PeriodicTaskStatus.PAUSED:
-                instance.status = PeriodicTaskStatus.ACTIVE
-                instance.paused_at = None
-                instance.updated_at = datetime.now()
-                # 重新计算下次执行时间
-                instance.next_run = self._calculate_next_run(instance.definition)
-                await self._save_task(instance)
-                self._update_stats()
-                return True
+            if instance.status != PeriodicTaskStatus.PAUSED:
+                return False
 
-        return False
+            instance.status = PeriodicTaskStatus.ACTIVE
+            instance.paused_at = None
+            instance.updated_at = datetime.now()
+            # 重新计算下次执行时间
+            instance.next_run = self._calculate_next_run(instance.definition)
+            self._update_stats()
+
+        # 持久化在锁外执行
+        await self._save_task(instance)
+        return True
 
     async def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """获取周期任务信息
@@ -404,7 +411,7 @@ class PeriodicTaskManager:
         Returns:
             任务信息字典
         """
-        async with self._lock:
+        with self._lock:
             instance = self._tasks.get(task_id)
             if not instance:
                 return None
@@ -419,7 +426,7 @@ class PeriodicTaskManager:
         Returns:
             周期任务实例，不存在则返回None
         """
-        async with self._lock:
+        with self._lock:
             return self._tasks.get(task_id)
 
     async def list_tasks(
@@ -440,7 +447,7 @@ class PeriodicTaskManager:
         Returns:
             任务信息列表
         """
-        async with self._lock:
+        with self._lock:
             tasks = list(self._tasks.values())
 
             # 状态过滤
@@ -468,7 +475,7 @@ class PeriodicTaskManager:
                 now = datetime.now()
                 tasks_to_execute = []
 
-                async with self._lock:
+                with self._lock:
                     for task_id, instance in self._tasks.items():
                         # 检查状态
                         if instance.status != PeriodicTaskStatus.ACTIVE:
@@ -752,7 +759,7 @@ class PeriodicTaskManager:
 
     async def get_stats(self) -> Dict[str, Any]:
         """获取统计信息"""
-        async with self._lock:
+        with self._lock:
             return self._stats.copy()
 
     async def get_execution_history(
@@ -796,7 +803,8 @@ class PeriodicTaskManager:
             return
 
         loaded = 0
-        async with self._lock:
+        
+        with self._lock:
             for payload in payloads:
                 instance = self._deserialize_instance(payload)
                 if not instance:
@@ -821,9 +829,12 @@ class PeriodicTaskManager:
         if not self._storage:
             return
 
-        async with self._lock:
-            for instance in self._tasks.values():
-                await self._save_task(instance)
+        with self._lock:
+            instances = list(self._tasks.values())
+
+        # IO 在锁外执行，避免持锁 await 阻塞其他线程/事件循环
+        for instance in instances:
+            await self._save_task(instance)
 
     async def _save_task(self, instance: PeriodicTaskInstance) -> None:
         """保存单个周期任务到存储"""

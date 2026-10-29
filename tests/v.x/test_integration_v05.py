@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, Any, List
 
+import pytest
+
 from neotask import TaskExecutor
 
 # 添加项目根目录到路径
@@ -105,6 +107,12 @@ class TestReporter:
                     print(f"   - {r.name}: {r.message}")
 
         print(f"\n{'=' * 80}")
+
+
+@pytest.fixture
+def reporter():
+    """Pytest 兼容的 reporter fixture"""
+    return TestReporter()
 
 
 # ============================================================

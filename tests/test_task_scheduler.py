@@ -424,6 +424,20 @@ class TestTaskSchedulerCron:
             # 这里只验证任务已注册
             assert task_id is not None
 
+    def test_submit_cron_predefined_alias(self):
+        """测试 @hourly 等预定义别名可被 submit_cron 正常注册
+
+        回归：is_valid 只走 croniter 会放行别名，而调度器内部 parse 只认 5 字段。
+        """
+        with TaskScheduler(executor=echo_executor) as scheduler:
+            task_id = scheduler.submit_cron({"test": "cron"}, cron_expr="@hourly")
+            detail = scheduler.get_periodic_task(task_id)
+
+            assert detail is not None
+            assert detail["cron_expr"] == "@hourly"
+            assert detail["next_run"] is not None
+            assert scheduler.cancel_periodic(task_id) is True
+
 
 class TestTaskSchedulerQuery:
     """测试任务查询"""

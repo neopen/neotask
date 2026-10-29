@@ -8,6 +8,7 @@
 
 import asyncio
 import heapq
+import threading
 import time
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Any, Callable
@@ -33,7 +34,8 @@ class DelayedQueue:
     def __init__(self, check_interval: float = 0.1):
         self._heap: List[Tuple[float, int, str]] = []  # (execute_time, priority, task_id)
         self._tasks: Dict[str, DelayedTask] = {}  # task_id -> DelayedTask
-        self._lock = asyncio.Lock()
+        # 队列可能被任务池内部循环与调用方循环同时访问，使用线程锁
+        self._lock = threading.Lock()
         self._scheduler_task: Optional[asyncio.Task] = None
         self._running = False
         self._callback: Optional[Callable] = None
@@ -89,7 +91,7 @@ class DelayedQueue:
             data=data
         )
 
-        async with self._lock:
+        with self._lock:
             heapq.heappush(self._heap, (execute_time, priority, task_id))
             self._tasks[task_id] = delayed_task
             self._stats["scheduled"] += 1
@@ -126,7 +128,7 @@ class DelayedQueue:
         Returns:
             是否成功取消
         """
-        async with self._lock:
+        with self._lock:
             if task_id not in self._tasks:
                 return False
 
@@ -139,7 +141,7 @@ class DelayedQueue:
 
     async def size(self) -> int:
         """获取延迟队列大小"""
-        async with self._lock:
+        with self._lock:
             return len(self._heap)
 
     async def is_empty(self) -> bool:
@@ -148,18 +150,18 @@ class DelayedQueue:
 
     async def clear(self) -> None:
         """清空延迟队列"""
-        async with self._lock:
+        with self._lock:
             self._heap.clear()
             self._tasks.clear()
 
     async def contains(self, task_id: str) -> bool:
         """检查任务是否在队列中"""
-        async with self._lock:
+        with self._lock:
             return task_id in self._tasks
 
     async def get_next_execution_time(self) -> Optional[float]:
         """获取下一个任务的执行时间"""
-        async with self._lock:
+        with self._lock:
             if not self._heap:
                 return None
             return self._heap[0][0]
@@ -184,7 +186,7 @@ class DelayedQueue:
                 now = time.time()
                 tasks_to_execute = []
 
-                async with self._lock:
+                with self._lock:
                     # 获取所有到期的任务
                     while self._heap and self._heap[0][0] <= now:
                         execute_time, priority, task_id = heapq.heappop(self._heap)

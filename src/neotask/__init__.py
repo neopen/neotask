@@ -17,6 +17,12 @@ from neotask.api.task_scheduler import TaskScheduler, SchedulerConfig
 from neotask.core.lifecycle import TaskLifecycleManager
 from neotask.core.dispatcher import TaskDispatcher
 from neotask.core.future import TaskFuture, FutureManager
+from neotask.core.progress import (
+    ProgressReporter,
+    get_progress_reporter,
+    report_progress,
+    report_progress_sync,
+)
 
 # 事件总线
 from neotask.event.bus import EventBus, TaskEvent
@@ -96,6 +102,10 @@ __all__ = [
     "TaskDispatcher",
     "TaskFuture",
     "FutureManager",
+    "ProgressReporter",
+    "report_progress",
+    "report_progress_sync",
+    "get_progress_reporter",
 
     # 事件
     "EventBus",

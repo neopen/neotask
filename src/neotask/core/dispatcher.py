@@ -9,9 +9,9 @@
 from typing import Dict, Any, Optional, Union, List
 from neotask.core.lifecycle import TaskLifecycleManager
 from neotask.queue.queue_scheduler import QueueScheduler
-from neotask.models.task import TaskPriority
+from neotask.models.task import TaskPriority, TaskStatus
 from neotask.common.exceptions import QueueFullError
-from neotask.common.logger import debug
+from neotask.common.logger import debug, warning
 
 
 class TaskDispatcher:
@@ -108,10 +108,29 @@ class TaskDispatcher:
         return task_ids
 
     async def redispatch(self, task_id: str, delay: float = 0) -> bool:
-        """重新分发任务（用于重试）"""
+        """重新分发任务（用于手动重试）
+
+        终态（failed / cancelled）任务需要先重置为 PENDING 才能再次入队，否则
+        Worker 出队时会因状态不是 PENDING 而直接跳过。已在队列中的 PENDING 任务
+        不会重复入队；RUNNING / SUCCESS 任务不允许重试，避免重复执行或覆盖结果。
+        """
         task = await self._lifecycle.get_task(task_id)
         if not task:
             return False
+
+        if task.status.is_terminal():
+            if not await self._lifecycle.reset_for_retry(task_id):
+                return False
+        elif task.status != TaskStatus.PENDING:
+            warning(
+                f"Cannot retry task {task_id}: status={task.status.value}, "
+                f"expected FAILED or CANCELLED"
+            )
+            return False
+        elif await self._queue.contains(task_id):
+            # 任务已在队列中排队，重复入队只会让它被执行多次
+            debug(f"Task {task_id} already queued, skip duplicate redispatch")
+            return True
 
         # 获取优先级整数值
         priority_value = task.priority.value

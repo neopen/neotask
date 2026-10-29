@@ -145,8 +145,9 @@ class TestTaskPoolSubmit:
             task_id = pool.submit({"test": "delayed"}, delay=1.0)
             elapsed = time.time() - start
 
-            # 提交应该是即时的
-            assert elapsed < 0.1
+            # 提交应该是即时的（首次提交包含队列/线程池初始化，放宽到 0.5s，
+            # 只要远小于 delay=1.0 即可证明未阻塞等待）
+            assert elapsed < 0.5
             assert task_id is not None
 
     @pytest.mark.asyncio
@@ -495,6 +496,34 @@ class TestTaskPoolManagement:
 
             assert result["success"] is True
             assert call_count == 2
+
+    def test_manual_retry_failed_task(self):
+        """测试手动重试已失败的任务：状态需先重置为 PENDING 才能再次执行"""
+        attempts = 0
+        should_fail = {"value": True}
+
+        def manual_retry_executor(data):
+            nonlocal attempts
+            attempts += 1
+            if should_fail["value"]:
+                raise ValueError("first attempt failed")
+            return {"success": True, "attempts": attempts}
+
+        with TaskPool(
+            executor=manual_retry_executor,
+            config=TaskPoolConfig(max_retries=0)
+        ) as pool:
+            task_id = pool.submit({"test": "manual_retry"})
+            with pytest.raises(Exception):
+                pool.wait_for_result(task_id, timeout=10)
+            assert pool.get_status(task_id) == "failed"
+
+            should_fail["value"] = False
+            assert pool.retry(task_id) is True
+
+            result = pool.wait_for_result(task_id, timeout=10)
+            assert result == {"success": True, "attempts": 2}
+            assert pool.get_status(task_id) == "success"
 
 
 class TestTaskPoolQueueControl:

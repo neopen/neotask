@@ -1,5 +1,5 @@
 """
-@FileName: distributed.py
+@FileName: test_distributed.py
 @Description: 分布式相关 fixtures
 @Author: neopen
 @GitHub: https://github.com/neopen/neotask

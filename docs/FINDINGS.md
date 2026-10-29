@@ -92,6 +92,13 @@
 
 ### 3.4 周期/定时任务持久化为**未实现存根**，`enable_persistence` 名不副实 【高】
 
+> **状态（当前源码已修复）**：`PeriodicTaskManager` 已接入 `PeriodicStore`
+> （memory / sqlite / redis），`TaskScheduler` 在 `enable_persistence=True` 时注入该存储，
+> interval / cron 任务可跨重启恢复；且 `enable_persistence` 现已默认开启。当配置
+> 无法持久化（`storage_type="memory"`、`enable_persistence=False` 或
+> `enable_periodic_manager=False`）时，首次注册周期任务会输出明确的降级告警。
+> 以下为 1.0.2 的历史记录，保留供追溯。
+
 - **现象**：`TaskScheduler` 注册的 interval/cron/at 周期任务，**不会跨重启恢复**。
   即便 `SchedulerConfig(enable_persistence=True, storage_type="sqlite")`，新调度器
   实例的 `get_periodic_tasks()` 仍为空，重启后不再触发。
@@ -156,8 +163,9 @@
 
 ## 七、优先级建议
 
-0. 【高】调度器周期任务持久化为未实现存根（3.4）：`enable_persistence` 开箱无效，
-   崩溃/重启后定时任务全丢——要么实现，要么从配置/文档下架。
+0. 【高】~~调度器周期任务持久化为未实现存根（3.4）：`enable_persistence` 开箱无效，
+   崩溃/重启后定时任务全丢——要么实现，要么从配置/文档下架。~~ **已修复**：
+   周期任务已接入持久化存储并默认开启，非持久化配置会输出降级告警。
 1. 【中】修复强制关闭写库未捕获异常（2.1）与 `get_status` 跨实例/跨节点陈旧（3.1）——影响可靠性与可用性判断。
 2. 【中】Redis 建连支持可配 `protocol`（或默认 RESP2），避免旧版 Redis（<6.0）+ 新版 redis-py 环开箱不可用（2.4）。
 3. 【中】明确并统一 graceful shutdown / 崩溃恢复语义（2.2、2.3、3.3），补充文档。

@@ -7,25 +7,30 @@
 """
 
 import json
+from pathlib import Path
 from typing import List, Optional, Tuple
-
-import aiosqlite
 
 from neotask.models.task import Task, TaskStatus
 from neotask.storage.base import TaskRepository, QueueRepository
+from neotask.utils import sqlite_compat
 
 
 class SQLiteTaskRepository(TaskRepository):
     """SQLite-based task repository."""
 
     def __init__(self, db_path: Optional[str] = None):
-        self.db_path = db_path or "data/tasks.db"
+        self.db_path = Path(db_path or "/data/tasks.db")
+        # 自动创建所有缺失的父目录（如 data 文件夹）
+        # parents=True 表示如果父目录不存在一并创建
+        # exist_ok=True 表示如果文件夹已存在则不报错
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = None
 
     async def _ensure_init(self) -> None:
         """Ensure database is initialized."""
         if self._conn is None:
-            self._conn = await aiosqlite.connect(self.db_path)
+            # loop 安全连接：所有 SQL 操作统一在专用事件循环执行
+            self._conn = sqlite_compat.create_connection(self.db_path)
             await self._init_db()
 
     async def _init_db(self) -> None:
@@ -273,7 +278,8 @@ class SQLiteQueueRepository(QueueRepository):
     async def _ensure_init(self) -> None:
         """Ensure database is initialized."""
         if self._conn is None:
-            self._conn = await aiosqlite.connect(self.db_path)
+            # loop 安全连接：所有 SQL 操作统一在专用事件循环执行
+            self._conn = sqlite_compat.create_connection(self.db_path)
             await self._init_db()
 
     async def _init_db(self) -> None:

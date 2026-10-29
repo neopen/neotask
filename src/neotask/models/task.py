@@ -112,6 +112,8 @@ class Task:
             data=parse_json(data.get("data")) or {},
             status=TaskStatus(data.get("status", "pending")),
             priority=TaskPriority(int(data.get("priority", 2))),
+            progress=float(data.get("progress") or 0.0),
+            progress_message=data.get("progress_message") or "",
             node_id=data.get("node_id", ""),
             retry_count=int(data.get("retry_count", 0)),
             ttl=int(data.get("ttl", 3600)),
@@ -144,6 +146,22 @@ class Task:
         """Mark task as cancelled."""
         self.status = TaskStatus.CANCELLED
         self.completed_at = datetime.now(timezone.utc)
+
+    def reset_for_retry(self) -> None:
+        """Reset a terminal task back to PENDING for manual retry.
+
+        手动重试面对的是已经结束（failed / cancelled）的任务，必须把状态恢复
+        成 PENDING，否则 Worker 出队时会因状态不是 PENDING 而直接跳过。
+        ``retry_count`` 保持不变，避免手动重试无限延长自动重试预算。
+        """
+        self.status = TaskStatus.PENDING
+        self.started_at = None
+        self.completed_at = None
+        self.result = None
+        self.error = None
+        self.node_id = ""
+        self.progress = 0.0
+        self.progress_message = ""
 
     def is_terminal(self) -> bool:
         """Check if task is in terminal state."""

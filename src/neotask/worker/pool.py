@@ -7,13 +7,18 @@
 """
 
 import asyncio
-import time
+import threading
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Dict
+from typing import Any, Dict, Optional
 
 from neotask.common.logger import debug, warning, error
 from neotask.core.lifecycle import TaskLifecycleManager
+from neotask.core.progress import (
+    ProgressReporter,
+    reset_progress_reporter,
+    set_progress_reporter,
+)
 from neotask.event.bus import EventBus, TaskEvent
 from neotask.executor.base import TaskExecutor
 from neotask.models.task import TaskPriority, TaskStatus
@@ -78,7 +83,8 @@ class WorkerPool:
         self._worker_stats: Dict[int, WorkerStats] = {}
         self._semaphore = asyncio.Semaphore(concurrency)
         self._running = False
-        self._lock = asyncio.Lock()
+        # Worker 统计可能被调用方循环读取，使用线程锁
+        self._lock = threading.Lock()
 
         # 重试配置
         self._max_retries = 3
@@ -124,12 +130,19 @@ class WorkerPool:
             graceful: 是否优雅停止（等待当前任务完成）
             timeout: 优雅停止超时时间
         """
+        # 1. 先停预取循环（不再把共享队列里的任务搬进本地队列），但保持 worker
+        #    运行，让它们把本地队列里已预取的任务消费掉。
+        #    如果先置 _running=False，worker 会立刻退出，本地残留任务只能等
+        #    超时后回灌，优雅停机就会白等一个 timeout（默认 30s）。
+        if self._prefetcher:
+            await self._prefetcher.stop(graceful=False)
+            if graceful and not await self._prefetcher.is_empty():
+                await self._prefetcher.wait_until_empty(timeout)
+
         self._running = False
 
-        # 停止预取器
+        # 2. 停机超时后本地队列可能仍有残留：放回共享队列，避免变成孤儿
         if self._prefetcher:
-            await self._prefetcher.stop(graceful, timeout)
-            # 停机超时后本地队列可能仍有残留：放回共享队列，避免变成孤儿
             drained = await self._prefetcher.drain_back(self._resolve_task_priority)
             if drained:
                 debug(f"Drained {drained} prefetched task(s) back to shared queue")
@@ -236,7 +249,7 @@ class WorkerPool:
                         exec_task = asyncio.create_task(
                             self._execute_task(worker_id, task_id)
                         )
-                        async with self._lock:
+                        with self._lock:
                             self._running_tasks[task_id] = exec_task
                             self._worker_stats[worker_id].active_tasks += 1
                             self._worker_stats[worker_id].is_busy = True
@@ -257,7 +270,7 @@ class WorkerPool:
                             exec_task = asyncio.create_task(
                                 self._execute_task(worker_id, task_id)
                             )
-                            async with self._lock:
+                            with self._lock:
                                 self._running_tasks[task_id] = exec_task
                                 self._worker_stats[worker_id].active_tasks += 1
                                 self._worker_stats[worker_id].is_busy = True
@@ -341,14 +354,7 @@ class WorkerPool:
             current_retry = task.retry_count
 
             try:
-                # 执行任务（带超时）
-                if self._task_timeout:
-                    result = await asyncio.wait_for(
-                        self._executor.execute(task.data),
-                        timeout=self._task_timeout
-                    )
-                else:
-                    result = await self._executor.execute(task.data)
+                result = await self._execute_with_progress(task)
 
                 # 标记完成（强制关闭时存储连接可能已断开，降级为告警而非未捕获异常）
                 try:
@@ -387,15 +393,43 @@ class WorkerPool:
                 # ========== 锁释放完成 ==========
 
                 # 更新worker统计
-                async with self._lock:
+                with self._lock:
                     self._worker_stats[worker_id].active_tasks = max(
                         0, self._worker_stats[worker_id].active_tasks - 1
                     )
                     self._worker_stats[worker_id].is_busy = self._worker_stats[worker_id].active_tasks > 0
                     self._worker_stats[worker_id].last_active = datetime.now()
 
+    async def _execute_with_progress(self, task) -> Any:
+        """执行任务，并向业务代码暴露进度上报钩子
+
+        通过 ContextVar 绑定 :class:`ProgressReporter`，业务代码可在 executor 中
+        调用 ``report_progress()`` / ``report_progress_sync()``；同时把回调传给
+        ``execute_with_progress()``，自定义 executor 也可以直接使用该回调。
+        """
+        task_id = task.task_id
+
+        async def progress_callback(progress: float, message: str = "") -> None:
+            await self._update_task_progress(task_id, progress, message)
+
+        reporter = ProgressReporter(progress_callback)
+        token = set_progress_reporter(reporter)
+        try:
+            execution = self._executor.execute_with_progress(
+                task.data,
+                progress_callback
+            )
+            if self._task_timeout:
+                return await asyncio.wait_for(execution, timeout=self._task_timeout)
+            return await execution
+        finally:
+            reset_progress_reporter(token)
+
     async def _update_task_progress(self, task_id: str, progress: float, message: str = "") -> None:
-        """更新任务进度
+        """更新任务进度并发布 ``task.progress`` 事件
+
+        进度更新是尽力而为的：任务不存在、已结束或存储暂时不可写时只记录 debug，
+        不影响任务本身的执行结果。
 
         Args:
             task_id: 任务ID
@@ -403,18 +437,9 @@ class WorkerPool:
             message: 进度消息
         """
         try:
-            # 更新存储中的任务进度
-            if hasattr(self._task_repo, 'update_progress'):
-                await self._task_repo.update_progress(task_id, progress, message)
-
-            # 发送进度事件
-            await self._event_bus.emit(TaskEvent(
-                "task.progress",
-                task_id,
-                {"progress": progress, "message": message, "timestamp": time.time()}
-            ))
-
-            debug(f"Task {task_id} progress: {progress * 100:.1f}% - {message}")
+            updated = await self._lifecycle.update_progress(task_id, progress, message)
+            if updated:
+                debug(f"Task {task_id} progress: {progress * 100:.1f}% - {message}")
         except Exception as e:
             debug(f"Failed to update progress for task {task_id}: {e}")
 
@@ -442,7 +467,7 @@ class WorkerPool:
 
             # 更新缓存
             if self._lifecycle._cache_enabled:
-                async with self._lifecycle._lock:
+                with self._lifecycle._lock:
                     self._lifecycle._cache[task_id] = task
 
             # 重新入队（带延迟）
@@ -483,7 +508,7 @@ class WorkerPool:
 
     async def _cleanup_completed_tasks(self) -> None:
         """清理已完成的任务"""
-        async with self._lock:
+        with self._lock:
             completed = [
                 (tid, t) for tid, t in self._running_tasks.items()
                 if t.done()

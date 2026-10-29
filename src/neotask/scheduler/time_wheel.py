@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import threading
 import time
 from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass
@@ -52,7 +53,8 @@ class TimeWheel:
         self._running = False
         self._ticker_task: Optional[asyncio.Task] = None
         self._callback: Optional[Callable] = None
-        self._lock = asyncio.Lock()
+        # 时间轮可能被任务池内部循环与调用方循环同时访问，使用线程锁
+        self._lock = threading.Lock()
         self._task_index: Dict[str, TimeWheelTask] = {}  # 快速查找
 
     async def start(self, callback: Callable) -> None:
@@ -117,7 +119,7 @@ class TimeWheel:
             execute_at=time.time() + delay
         )
 
-        async with self._lock:
+        with self._lock:
             self._slots[target_slot].append(task)
             self._task_index[task_id] = task
 
@@ -132,7 +134,7 @@ class TimeWheel:
         Returns:
             是否成功取消
         """
-        async with self._lock:
+        with self._lock:
             if task_id not in self._task_index:
                 return False
 
@@ -148,7 +150,7 @@ class TimeWheel:
 
     async def size(self) -> int:
         """获取任务总数"""
-        async with self._lock:
+        with self._lock:
             return len(self._task_index)
 
     async def drain(self) -> List[TimeWheelTask]:
@@ -160,7 +162,7 @@ class TimeWheel:
         Returns:
             尚未到期的任务列表
         """
-        async with self._lock:
+        with self._lock:
             drained: List[TimeWheelTask] = []
             for slot in self._slots:
                 drained.extend(slot)
@@ -187,7 +189,7 @@ class TimeWheel:
         """执行一次滴答"""
         tasks_to_execute = []
 
-        async with self._lock:
+        with self._lock:
             # 获取当前槽位的任务
             current_slot_tasks = self._slots[self._current_slot]
             remaining_tasks = deque()

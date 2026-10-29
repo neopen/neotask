@@ -1,5 +1,5 @@
 """
-@FileName: redis.py
+@FileName: test_redis.py
 @Description: Redis storage implementation with connection pooling.
 @Author: neopen
 @GitHub: https://github.com/neopen/neotask
@@ -36,20 +36,20 @@ class RedisTaskRepository(TaskRepository):
     def __init__(self, redis_url: str, max_connections: int = 10):
         self.redis_url = redis_url
         self.max_connections = max_connections
-        self._pool: Optional["ConnectionPool"] = None
-        self._client: Optional["redis.Redis"] = None
+        # 使用 loop 安全客户端：命令统一在专用事件循环执行，
+        # 避免 TaskPool 内部 loop 与调用方 loop 共用连接池时跨 loop 报错
+        self._client: Optional[Any] = None
 
-    async def _get_client(self) -> "redis.Redis":
+    async def _get_client(self) -> Any:
         """Get Redis client with connection pooling."""
         if not HAS_REDIS:
             raise RuntimeError("redis not installed. Run: pip install neotask[redis]")
         if self._client is None:
-            self._pool = redis_compat.from_url(
+            self._client = redis_compat.create_client(
                 self.redis_url,
                 max_connections=self.max_connections,
                 decode_responses=True
             )
-            self._client = redis.Redis(connection_pool=self._pool)
         return self._client
 
     async def save(self, task: Task) -> None:
@@ -233,9 +233,6 @@ class RedisTaskRepository(TaskRepository):
         if self._client:
             await self._client.close()
             self._client = None
-        if self._pool:
-            await self._pool.disconnect()
-            self._pool = None
 
 
 class RedisQueueRepository(QueueRepository):
@@ -244,23 +241,22 @@ class RedisQueueRepository(QueueRepository):
     def __init__(self, redis_url: str, max_connections: int = 10):
         self.redis_url = redis_url
         self.max_connections = max_connections
-        self._pool: Optional["ConnectionPool"] = None
-        self._client: Optional["redis.Redis"] = None
+        # 同 RedisTaskRepository：使用 loop 安全客户端
+        self._client: Optional[Any] = None
         self._queue_key = "queue:priority"
         self._delayed_key = "queue:delayed"
         self._pop_script: Optional[Any] = None
 
-    async def _get_client(self) -> "redis.Redis":
+    async def _get_client(self) -> Any:
         """Get Redis client with connection pooling."""
         if not HAS_REDIS:
             raise RuntimeError("redis not installed. Run: pip install neotask[redis]")
         if self._client is None:
-            self._pool = redis_compat.from_url(
+            self._client = redis_compat.create_client(
                 self.redis_url,
                 max_connections=self.max_connections,
                 decode_responses=True
             )
-            self._client = redis.Redis(connection_pool=self._pool)
         return self._client
 
     async def _get_pop_script(self):
@@ -402,6 +398,3 @@ class RedisQueueRepository(QueueRepository):
         if self._client:
             await self._client.close()
             self._client = None
-        if self._pool:
-            await self._pool.disconnect()
-            self._pool = None

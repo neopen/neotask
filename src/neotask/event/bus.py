@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import threading
 from dataclasses import dataclass
 from typing import Dict, List, Callable, Any, Optional
 
@@ -44,10 +45,13 @@ class EventBus:
     def __init__(self):
         self._handlers: Dict[str, List[Callable]] = {}
         self._global_handlers: List[Callable] = []
-        self._lock = asyncio.Lock()
+        # 订阅关系可能被不同线程修改，使用线程锁（临界区无 await）
+        self._lock = threading.Lock()
         self._running = False
         self._queue: asyncio.Queue = asyncio.Queue()
         self._worker_task: Optional[asyncio.Task] = None
+        # 消费队列的事件循环（由 start() 记录），用于跨循环投递
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
 
     def subscribe(self, event_type: str, handler: Optional[Callable] = None):
         """订阅特定类型事件
@@ -74,9 +78,10 @@ class EventBus:
 
             # 保存原始函数引用，用于 unsubscribe
             wrapper.__wrapped__ = func
-            if event_type not in self._handlers:
-                self._handlers[event_type] = []
-            self._handlers[event_type].append(wrapper)
+            with self._lock:
+                if event_type not in self._handlers:
+                    self._handlers[event_type] = []
+                self._handlers[event_type].append(wrapper)
             return func
 
         # 如果提供了 handler，直接注册
@@ -108,7 +113,8 @@ class EventBus:
                 else:
                     func(event)
 
-            self._global_handlers.append(wrapper)
+            with self._lock:
+                self._global_handlers.append(wrapper)
             return func
 
         # 如果提供了 handler，直接注册
@@ -129,12 +135,13 @@ class EventBus:
             是否成功取消订阅
         """
         if event_type in self._handlers:
-            original_count = len(self._handlers[event_type])
-            self._handlers[event_type] = [
-                h for h in self._handlers[event_type]
-                if h != handler and getattr(h, '__wrapped__', None) != handler
-            ]
-            return len(self._handlers[event_type]) < original_count
+            with self._lock:
+                original_count = len(self._handlers[event_type])
+                self._handlers[event_type] = [
+                    h for h in self._handlers[event_type]
+                    if h != handler and getattr(h, '__wrapped__', None) != handler
+                ]
+                return len(self._handlers[event_type]) < original_count
         return False
 
     def unsubscribe_global(self, handler: Callable) -> bool:
@@ -146,34 +153,56 @@ class EventBus:
         Returns:
             是否成功取消订阅
         """
-        original_count = len(self._global_handlers)
-        self._global_handlers = [h for h in self._global_handlers if h != handler]
-        return len(self._global_handlers) < original_count
+        with self._lock:
+            original_count = len(self._global_handlers)
+            self._global_handlers = [h for h in self._global_handlers if h != handler]
+            return len(self._global_handlers) < original_count
 
     async def emit(self, event: TaskEvent) -> None:
         """发送事件
 
-        Args:
-            event: 事件对象
+        事件总线启动后，消费队列的协程运行在 TaskPool 的内部事件循环上；
+        ``emit`` 可能由调用方线程/另一个事件循环触发。直接 ``await
+        self._queue.put(...)`` 会跨循环唤醒 getter，目标循环不会被唤醒
+        （最多拖延到一个轮询超时）。因此跨循环时必须用
+        ``call_soon_threadsafe`` 在目标循环中投递。
         """
         if not self._running:
             # 同步处理
             await self._process_event(event)
-        else:
-            # 异步队列处理
-            await self._queue.put(event)
+            return
+
+        loop = self._loop
+        try:
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+
+        if loop is None or loop.is_closed() or running_loop is loop:
+            # 同一事件循环（或尚未记录消费循环）：直接入队即可
+            self._queue.put_nowait(event)
+            return
+
+        try:
+            loop.call_soon_threadsafe(self._queue.put_nowait, event)
+        except RuntimeError:
+            # 目标循环已关闭：降级为在当前循环同步处理
+            await self._process_event(event)
 
     async def _process_event(self, event: TaskEvent) -> None:
         """处理事件"""
+        with self._lock:
+            global_handlers = list(self._global_handlers)
+            handlers = list(self._handlers.get(event.event_type, []))
+
         # 调用全局处理器
-        for handler in self._global_handlers:
+        for handler in global_handlers:
             try:
                 await handler(event)
             except Exception:
                 pass
 
         # 调用特定事件处理器
-        handlers = self._handlers.get(event.event_type, [])
         for handler in handlers:
             try:
                 await handler(event)
@@ -185,6 +214,8 @@ class EventBus:
         if self._running:
             return
         self._running = True
+        # 记录消费队列的事件循环，供 emit 判断是否需要跨循环投递
+        self._loop = asyncio.get_running_loop()
         self._worker_task = asyncio.create_task(self._worker_loop())
 
     async def stop(self) -> None:
@@ -196,6 +227,8 @@ class EventBus:
                 await self._worker_task
             except asyncio.CancelledError:
                 pass
+            self._worker_task = None
+        self._loop = None
 
     async def _worker_loop(self) -> None:
         """工作循环"""

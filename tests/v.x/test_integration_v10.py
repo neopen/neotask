@@ -1,28 +1,33 @@
 """
 @FileName: test_integration_v10_standalone.py
-@Description: NeoTask v1.0 独立集成测试 - 完全独立，避免事件循环冲突
+@Description: NeoTask v1.0 独立集成测试
+完全独立，避免事件循环冲突
 @Author: neopen
 @GitHub: https://github.com/neopen/neotask
 @Time: 2026/5/11
 
 运行方式：
-    python tests/v.x/test_integration_v10_standalone.py
+    python tests/test_integration_v10_standalone.py --quick
+    python tests/test_integration_v10_standalone.py --full
 
 设计原则：
-    - 不使用 async/await 在测试框架层面
-    - 每个测试独立运行，自己管理事件循环
-    - 不依赖外部 pytest fixtures
+- 不使用 async/await 在测试框架层面
+- 每个测试独立运行，自己管理事件循环
+- 不依赖外部 pytest fixtures
 """
 
+import argparse
 import asyncio
 import os
 import sys
-import threading
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, Any, List
+
+import pytest
 
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -34,7 +39,7 @@ from neotask.models.task import TaskPriority
 
 
 # ============================================================
-# 测试框架 - 完全同步，不混用事件循环
+# 测试框架（完全同步，不混用事件循环）
 # ============================================================
 
 class TestStatus(Enum):
@@ -53,7 +58,7 @@ class TestResult:
 
 
 class TestRunner:
-    """独立测试运行器 - 每个测试独立运行"""
+    """独立测试运行器，每个测试独立运行"""
 
     def __init__(self):
         self.results: List[TestResult] = []
@@ -76,9 +81,9 @@ class TestRunner:
                 print(f"      {key}: {value}")
 
     def print_summary(self):
-        print(f"\n{'=' * 80}")
+        print(f"\n" + "=" * 80)
         print("📊 测试总结")
-        print(f"{'=' * 80}")
+        print("=" * 80)
 
         passed = sum(1 for r in self.results if r.status == TestStatus.PASSED)
         failed = sum(1 for r in self.results if r.status == TestStatus.FAILED)
@@ -93,37 +98,14 @@ class TestRunner:
                 if r.status == TestStatus.FAILED:
                     print(f"   - {r.name}: {r.message}")
 
-        print(f"\n{'=' * 80}")
+        print(f"\n" + "=" * 80)
         return failed == 0
 
 
-# ============================================================
-# 测试执行器（同步版本）
-# ============================================================
-
-def run_task_pool_test(test_func):
-    """装饰器：在独立线程中运行 TaskPool 测试"""
-
-    def wrapper(*args, **kwargs):
-        result_container = []
-        exception_container = []
-
-        def target():
-            try:
-                result = test_func(*args, **kwargs)
-                result_container.append(result)
-            except Exception as e:
-                exception_container.append(e)
-
-        thread = threading.Thread(target=target, daemon=True)
-        thread.start()
-        thread.join(timeout=60)
-
-        if exception_container:
-            raise exception_container[0]
-        return result_container[0] if result_container else None
-
-    return wrapper
+@pytest.fixture
+def runner():
+    """为 pytest 提供兼容的 TestRunner fixture"""
+    return TestRunner()
 
 
 # ============================================================
@@ -131,38 +113,35 @@ def run_task_pool_test(test_func):
 # ============================================================
 
 def test_v01_basic_pool(runner: TestRunner):
-    """v0.1 基础任务池测试 - 完全同步执行"""
-    print(f"\n{'=' * 80}")
+    """v0.1 基础任务池测试，完全同步执行"""
+    print(f"\n" + "=" * 80)
     print("🧪 v0.1 基础任务池测试")
-    print(f"{'=' * 80}")
+    print("=" * 80)
 
-    # 定义异步执行器
     async def echo_executor(data):
         await asyncio.sleep(0.01)
         return {"result": "ok", "echo": data.get("msg", "none")}
 
     # 1.1 内存模式
-    print("\n📌 测试 1.1: 内存模式 - 任务提交与等待")
-
+    print("\n📌 测试 1.1: 内存模式 任务提交与等待")
     config = TaskPoolConfig.memory(node_id="test-mem")
     pool = TaskPool(executor=echo_executor, config=config)
     pool.start()
     time.sleep(0.3)
 
     try:
-        # 使用同步 API
         task_id = pool.submit({"msg": "hello", "duration": 0.05})
         result = pool.wait_for_result(task_id, timeout=5)
 
         passed = result is not None and result.get("result") == "ok"
         runner.add_result(TestResult(
-            name="内存模式 - 任务提交与等待",
+            name="内存模式 任务提交与等待",
             status=TestStatus.PASSED if passed else TestStatus.FAILED,
             message=f"task_id={task_id}, result={result.get('result') if result else 'None'}"
         ))
     except Exception as e:
         runner.add_result(TestResult(
-            name="内存模式 - 任务提交与等待",
+            name="内存模式 任务提交与等待",
             status=TestStatus.FAILED,
             message=str(e)
         ))
@@ -171,9 +150,10 @@ def test_v01_basic_pool(runner: TestRunner):
         time.sleep(0.3)
 
     # 1.2 SQLite 模式
-    print("\n📌 测试 1.2: SQLite 模式 - 持久化")
-
-    config_sql = TaskPoolConfig.sqlite(path="test_neotask_v10.db", node_id="test-sql")
+    print("\n📌 测试 1.2: SQLite 模式 持久化")
+    # 使用临时目录：硬编码 /data 在 Windows 下会被解析为盘符根目录，可能无写权限
+    db_path = os.path.join(tempfile.gettempdir(), f"neotask_v10_{uuid.uuid4().hex}.db")
+    config_sql = TaskPoolConfig.sqlite(path=db_path, node_id="test-sql")
     pool2 = TaskPool(executor=echo_executor, config=config_sql)
     pool2.start()
     time.sleep(0.3)
@@ -184,23 +164,28 @@ def test_v01_basic_pool(runner: TestRunner):
 
         passed = result is not None
         runner.add_result(TestResult(
-            name="SQLite模式 - 持久化",
+            name="SQLite模式 持久化",
             status=TestStatus.PASSED if passed else TestStatus.FAILED,
             message=f"task_id={task_id}, 持久化成功"
         ))
     except Exception as e:
         runner.add_result(TestResult(
-            name="SQLite模式 - 持久化",
+            name="SQLite模式 持久化",
             status=TestStatus.FAILED,
             message=str(e)
         ))
     finally:
         pool2.shutdown()
         time.sleep(0.3)
+        # 清理临时数据库及日志文件（Windows 下句柄未释放时忽略失败）
+        for suffix in ("", "-journal", "-wal", "-shm"):
+            try:
+                os.remove(db_path + suffix)
+            except OSError:
+                pass
 
     # 1.3 优先级测试
     print("\n📌 测试 1.3: 优先级队列")
-
     config_pri = TaskPoolConfig.memory(node_id="test-pri")
     pool3 = TaskPool(executor=echo_executor, config=config_pri)
     pool3.start()
@@ -208,21 +193,16 @@ def test_v01_basic_pool(runner: TestRunner):
 
     try:
         completion_order = []
-
-        # 提交低优先级
         low_id = pool3.submit({"msg": "low", "duration": 0.1}, priority=TaskPriority.LOW)
         time.sleep(0.05)
-        # 提交高优先级
         high_id = pool3.submit({"msg": "high", "duration": 0.1}, priority=TaskPriority.HIGH)
 
-        # 等待完成
         pool3.wait_for_result(high_id, timeout=10)
         completion_order.append("high")
         pool3.wait_for_result(low_id, timeout=10)
         completion_order.append("low")
 
         high_first = completion_order[0] == "high"
-
         runner.add_result(TestResult(
             name="优先级队列",
             status=TestStatus.PASSED if high_first else TestStatus.FAILED,
@@ -245,9 +225,9 @@ def test_v01_basic_pool(runner: TestRunner):
 
 def test_v02_observability(runner: TestRunner):
     """v0.2 可观测性测试"""
-    print(f"\n{'=' * 80}")
+    print(f"\n" + "=" * 80)
     print("🧪 v0.2 可观测性测试")
-    print(f"{'=' * 80}")
+    print("=" * 80)
 
     async def echo_executor(data):
         await asyncio.sleep(0.02)
@@ -255,7 +235,6 @@ def test_v02_observability(runner: TestRunner):
 
     # 2.1 指标收集
     print("\n📌 测试 2.1: 指标收集")
-
     config = TaskPoolConfig.memory(node_id="test-metrics")
     pool = TaskPool(executor=echo_executor, config=config)
     pool.start()
@@ -267,7 +246,6 @@ def test_v02_observability(runner: TestRunner):
 
         time.sleep(0.5)
         stats = pool.get_stats()
-
         has_stats = stats is not None and "queue_size" in stats
 
         runner.add_result(TestResult(
@@ -287,7 +265,6 @@ def test_v02_observability(runner: TestRunner):
 
     # 2.2 健康检查
     print("\n📌 测试 2.2: 健康检查")
-
     config2 = TaskPoolConfig.memory(node_id="test-health")
     pool2 = TaskPool(executor=echo_executor, config=config2)
     pool2.start()
@@ -295,7 +272,6 @@ def test_v02_observability(runner: TestRunner):
 
     try:
         health = pool2.get_health_status()
-
         runner.add_result(TestResult(
             name="健康检查",
             status=TestStatus.PASSED if health is not None else TestStatus.FAILED,
@@ -318,12 +294,9 @@ def test_v02_observability(runner: TestRunner):
 
 def test_v03_scheduled_tasks(runner: TestRunner):
     """v0.3 定时调度测试"""
-    print(f"\n{'=' * 80}")
+    print(f"\n" + "=" * 80)
     print("🧪 v0.3 定时调度测试")
-    print(f"{'=' * 80}")
-
-    # 3.1 延时执行
-    print("\n📌 测试 3.1: 延时执行")
+    print("=" * 80)
 
     execution_records = []
 
@@ -334,6 +307,8 @@ def test_v03_scheduled_tasks(runner: TestRunner):
     config = SchedulerConfig.memory()
     config.scan_interval = 0.1
 
+    # 3.1 延时执行
+    print("\n📌 测试 3.1: 延时执行")
     scheduler = TaskScheduler(executor=record_executor, config=config)
     scheduler.start()
     time.sleep(0.3)
@@ -341,8 +316,7 @@ def test_v03_scheduled_tasks(runner: TestRunner):
     try:
         delay_start = time.time()
         task_id = scheduler.submit_delayed({"action": "delayed"}, delay_seconds=1)
-
-        res = scheduler.wait_for_result(task_id, timeout=2)
+        scheduler.wait_for_result(task_id, timeout=2)
 
         delayed_executed = len(execution_records) > 0
         delay_duration = time.time() - delay_start
@@ -364,9 +338,7 @@ def test_v03_scheduled_tasks(runner: TestRunner):
 
     # 3.2 周期任务
     print("\n📌 测试 3.2: 周期任务")
-
     execution_records.clear()
-
     scheduler2 = TaskScheduler(executor=record_executor, config=config)
     scheduler2.start()
     time.sleep(0.3)
@@ -377,9 +349,7 @@ def test_v03_scheduled_tasks(runner: TestRunner):
             interval_seconds=1,
             run_immediately=True
         )
-
         time.sleep(3.5)
-
         periodic_count = len(execution_records)
         scheduler2.cancel_periodic(periodic_id)
 
@@ -405,15 +375,12 @@ def test_v03_scheduled_tasks(runner: TestRunner):
 
 def test_v04_distributed(runner: TestRunner):
     """v0.4 分布式基础测试"""
-    print(f"\n{'=' * 80}")
+    print(f"\n" + "=" * 80)
     print("🧪 v0.4 分布式基础测试")
-    print(f"{'=' * 80}")
+    print("=" * 80)
 
-    # 检查 Redis
     redis_available = False
     try:
-        import redis.asyncio as redis
-        # 使用同步方式测试 Redis
         import redis as sync_redis
         r = sync_redis.Redis(host='localhost', port=6379, decode_responses=True)
         r.ping()
@@ -435,11 +402,10 @@ def test_v04_distributed(runner: TestRunner):
         await asyncio.sleep(0.05)
         return {"result": "ok", "task_id": data.get("task_id")}
 
-    redis_url = "redis://localhost:6379"
+    redis_url = "redis://127.0.0.1:6379"
 
     # 4.1 Redis 存储
     print("\n📌 测试 4.1: Redis 存储")
-
     config = TaskPoolConfig.redis(url=redis_url, node_id="test-redis")
     pool = TaskPool(executor=dist_executor, config=config)
     pool.start()
@@ -464,25 +430,21 @@ def test_v04_distributed(runner: TestRunner):
         pool.shutdown()
         time.sleep(0.5)
 
-    # 4.2 分布式锁（使用同步 Redis 客户端）
+    # 4.2 分布式锁
     print("\n📌 测试 4.2: 分布式锁")
-
     try:
         import redis as sync_redis
         r = sync_redis.Redis(host='localhost', port=6379, decode_responses=True)
         lock_key = f"test-lock-{uuid.uuid4().hex[:8]}"
 
-        # 模拟锁获取
         acquired1 = r.set(lock_key, "owner-1", nx=True, ex=5)
         acquired2 = r.set(lock_key, "owner-2", nx=True, ex=5)
 
         if acquired1:
             r.delete(lock_key)
-
         r.close()
 
         lock_works = acquired1 and not acquired2
-
         runner.add_result(TestResult(
             name="分布式锁",
             status=TestStatus.PASSED if lock_works else TestStatus.FAILED,
@@ -502,9 +464,9 @@ def test_v04_distributed(runner: TestRunner):
 
 def test_v05_performance(runner: TestRunner):
     """v0.5 性能优化测试"""
-    print(f"\n{'=' * 80}")
+    print(f"\n" + "=" * 80)
     print("🧪 v0.5 性能优化测试")
-    print(f"{'=' * 80}")
+    print("=" * 80)
 
     async def echo_executor(data):
         await asyncio.sleep(0.01)
@@ -512,7 +474,6 @@ def test_v05_performance(runner: TestRunner):
 
     # 5.1 预取机制
     print("\n📌 测试 5.1: 预取机制")
-
     config = TaskPoolConfig.memory(node_id="test-prefetch")
     config.enable_prefetch = True
     config.prefetch_size = 10
@@ -526,8 +487,6 @@ def test_v05_performance(runner: TestRunner):
             pool.submit({"msg": f"prefetch-{i}"})
 
         time.sleep(1)
-
-        prefetch_stats = {}
         if pool._worker_pool._prefetcher:
             prefetch_stats = pool._worker_pool._prefetcher.get_stats()
             total_fetched = prefetch_stats.get("total_fetched", 0)
@@ -556,7 +515,6 @@ def test_v05_performance(runner: TestRunner):
 
     # 5.2 批量操作
     print("\n📌 测试 5.2: 批量操作")
-
     config2 = TaskPoolConfig.memory(node_id="test-batch")
     pool2 = TaskPool(executor=echo_executor, config=config2)
     pool2.start()
@@ -564,7 +522,6 @@ def test_v05_performance(runner: TestRunner):
 
     try:
         batch_tasks = [{"msg": f"batch-{i}"} for i in range(20)]
-
         start = time.time()
         task_ids = pool2.submit_batch(batch_tasks)
         elapsed = time.time() - start
@@ -591,11 +548,10 @@ def test_v05_performance(runner: TestRunner):
 
 def test_v10_high_availability(runner: TestRunner):
     """v1.0 高可用保障测试"""
-    print(f"\n{'=' * 80}")
+    print(f"\n" + "=" * 80)
     print("🧪 v1.0 高可用保障测试")
-    print(f"{'=' * 80}")
+    print("=" * 80)
 
-    # 检查 Redis
     redis_available = False
     try:
         import redis as sync_redis
@@ -606,22 +562,19 @@ def test_v10_high_availability(runner: TestRunner):
     except Exception:
         pass
 
-    # 1.1 超时检测（使用内存模式，不需要 Redis）
+    # 1.1 超时检测
     print("\n📌 测试 1.1: 超时检测")
 
     async def slow_executor(data):
         try:
-            # 长时间操作
             await asyncio.sleep(1)
             return {"result": "done"}
         except asyncio.CancelledError:
-            # 清理资源
-            print("Task was cancelled")
-            raise  # 重新抛出
+            raise
 
     config = TaskPoolConfig.memory(node_id="test-timeout")
-    config.task_timeout = 0.3  # 300ms 超时
-    config.max_retries = 0  # 不重试，直接失败
+    config.task_timeout = 0.3
+    config.max_retries = 0
     config.worker_concurrency = 1
 
     pool = TaskPool(executor=slow_executor, config=config)
@@ -631,11 +584,10 @@ def test_v10_high_availability(runner: TestRunner):
     try:
         start = time.time()
         task_id = pool.submit({})
-        ss = pool.wait_for_result(task_id)
+        pool.wait_for_result(task_id)
 
         status = pool.get_status(task_id)
         elapsed = time.time() - start
-
         timed_out = status in ["failed", "FAILED", "timeout", "TIMEOUT"]
 
         runner.add_result(TestResult(
@@ -644,8 +596,6 @@ def test_v10_high_availability(runner: TestRunner):
             message=f"任务状态: {status}, 耗时: {elapsed:.2f}s"
         ))
     except Exception as e:
-        error_msg = str(e)
-        print(f"  捕获异常: {error_msg[:50]}")
         runner.add_result(TestResult(
             name="超时检测",
             status=TestStatus.FAILED,
@@ -655,25 +605,19 @@ def test_v10_high_availability(runner: TestRunner):
         pool.shutdown()
         time.sleep(0.3)
 
-    # 1.2 看门狗（需要 Redis）
+    # 1.2 看门狗
     print("\n📌 测试 1.2: 看门狗机制")
-
     if redis_available:
         try:
             import redis as sync_redis
             r = sync_redis.Redis(host='localhost', port=6379, decode_responses=True)
             lock_key = f"test-watchdog-{uuid.uuid4().hex[:8]}"
 
-            # 获取锁
             acquired = r.set(lock_key, "test-owner", nx=True, ex=3)
-
             if acquired:
-                # 模拟看门狗续期（手动续期）
                 time.sleep(2)
-                # 续期
                 r.expire(lock_key, 3)
                 time.sleep(2)
-                # 检查锁是否仍然存在
                 still_locked = r.exists(lock_key) > 0
                 r.delete(lock_key)
                 r.close()
@@ -705,21 +649,18 @@ def test_v10_high_availability(runner: TestRunner):
 
 
 # ============================================================
-# 快速测试（单方法覆盖所有核心功能）
+# 快速测试
 # ============================================================
 
 def quick_test(runner: TestRunner) -> bool:
-    """快速测试 - 一个方法覆盖所有版本核心功能"""
-
+    """快速测试，一个方法覆盖所有版本核心功能"""
     print("\n" + "=" * 80)
     print("⚡ NeoTask v1.0 快速测试")
     print("=" * 80)
 
     results = []
 
-    # ========== v0.1 核心 ==========
-    print("\n📌 [v0.1] 任务提交与等待")
-
+    # v0.1
     async def quick_executor(data):
         await asyncio.sleep(0.02)
         return {"result": "ok"}
@@ -727,46 +668,33 @@ def quick_test(runner: TestRunner) -> bool:
     pool = TaskPool(executor=quick_executor)
     pool.start()
     time.sleep(0.3)
-
     try:
         task_id = pool.submit({"msg": "quick-test"})
         result = pool.wait_for_result(task_id, timeout=5)
-
         results.append(("v0.1 基础任务", result is not None))
-        print(f"  ✅ 任务 {task_id} 完成")
-    except Exception as e:
+    except Exception:
         results.append(("v0.1 基础任务", False))
-        print(f"  ❌ 失败: {e}")
     finally:
         pool.shutdown()
         time.sleep(0.3)
 
-    # ========== v0.2 核心 ==========
-    print("\n📌 [v0.2] 指标收集")
-
+    # v0.2
     pool2 = TaskPool(executor=quick_executor)
     pool2.start()
     time.sleep(0.3)
-
     try:
         for i in range(3):
             pool2.submit({"msg": f"metric-{i}"})
-
         time.sleep(0.5)
         stats = pool2.get_stats()
-
         results.append(("v0.2 指标收集", stats is not None and "queue_size" in stats))
-        print(f"  ✅ 统计信息: queue_size={stats.get('queue_size', 'N/A')}")
-    except Exception as e:
+    except Exception:
         results.append(("v0.2 指标收集", False))
-        print(f"  ❌ 失败: {e}")
     finally:
         pool2.shutdown()
         time.sleep(0.3)
 
-    # ========== v0.3 核心 ==========
-    print("\n📌 [v0.3] 延时任务")
-
+    # v0.3
     executed = False
 
     async def record_executor(data):
@@ -776,110 +704,70 @@ def quick_test(runner: TestRunner) -> bool:
 
     config = SchedulerConfig.memory()
     config.scan_interval = 0.1
-
     scheduler = TaskScheduler(executor=record_executor, config=config)
     scheduler.start()
     time.sleep(0.3)
-
     try:
         task_id = scheduler.submit_delayed({"action": "delayed"}, delay_seconds=1)
-        ss = scheduler.wait_for_result(task_id, 2)
-
+        scheduler.wait_for_result(task_id, 2)
         results.append(("v0.3 延时任务", executed))
-        print(f"  ✅ 延时任务已执行: {executed}")
-    except Exception as e:
+    except Exception:
         results.append(("v0.3 延时任务", False))
-        print(f"  ❌ 失败: {e}")
     finally:
         scheduler.shutdown()
         time.sleep(0.3)
 
-    # ========== v0.4 核心 ==========
-    print("\n📌 [v0.4] 分布式锁")
-
+    # v0.4
     try:
         import redis as sync_redis
         r = sync_redis.Redis(host='localhost', port=6379, decode_responses=True)
         r.ping()
-
         lock_key = f"quick-lock-{uuid.uuid4().hex[:8]}"
-
         acquired1 = r.set(lock_key, "owner-1", nx=True, ex=5)
         acquired2 = r.set(lock_key, "owner-2", nx=True, ex=5)
-
         if acquired1:
             r.delete(lock_key)
         r.close()
-
-        lock_works = acquired1 and not acquired2
-        results.append(("v0.4 分布式锁", lock_works))
-        print(f"  ✅ 分布式锁测试: 竞争成功={lock_works}")
-    except Exception as e:
+        results.append(("v0.4 分布式锁", acquired1 and not acquired2))
+    except Exception:
         results.append(("v0.4 分布式锁", False))
-        print(f"  ⚠️ Redis不可用: {e}")
 
-    # ========== v0.5 核心 ==========
-    print("\n📌 [v0.5] 批量操作")
-
+    # v0.5
     pool3 = TaskPool(executor=quick_executor)
     pool3.start()
     time.sleep(0.3)
-
     try:
         batch = [{"msg": f"batch-{i}"} for i in range(10)]
         task_ids = pool3.submit_batch(batch)
-
         results.append(("v0.5 批量操作", len(task_ids) == 10))
-        print(f"  ✅ 批量提交: {len(task_ids)} 个任务")
-    except Exception as e:
+    except Exception:
         results.append(("v0.5 批量操作", False))
-        print(f"  ❌ 失败: {e}")
     finally:
         pool3.shutdown()
         time.sleep(0.3)
 
-    # ========== v1.0 核心 ==========
-    print("\n📌 [v1.0] 超时检测")
-
+    # v1.0
     async def slow_executor(data):
-        print("  [executor] 开始执行...")
         await asyncio.sleep(0.5)
-        print("  [executor] 执行完成")
         return {"result": "done"}
 
     config_timeout = TaskPoolConfig.memory(node_id="test-timeout")
     config_timeout.task_timeout = 0.3
-    config_timeout.max_retries = 0  # 不重试，直接失败
+    config_timeout.max_retries = 0
 
-    print(f"  task_timeout={config_timeout.task_timeout}, max_retries={config_timeout.max_retries}")
-
-    pool = TaskPool(executor=slow_executor, config=config_timeout)
-    pool.start()
+    pool4 = TaskPool(executor=slow_executor, config=config_timeout)
+    pool4.start()
     time.sleep(0.5)
-
     try:
-        task_id = pool.submit({})
-        print(f"  submitted task_id={task_id}")
-
-        # 等待超时
+        task_id = pool4.submit({})
         time.sleep(1.0)
-
-        status = pool.get_status(task_id)
-        print(f"  final status: {status}")
-
-        # 也检查一下 worker 统计
-        worker_stats = pool.get_worker_stats()
-        print(f"  worker_stats: {worker_stats}")
-
+        status = pool4.get_status(task_id)
         timed_out = status in ["failed", "FAILED", "timeout", "TIMEOUT"]
         results.append(("v1.0 超时检测", timed_out))
-        print(f"  ✅ 超时检测: 任务状态={status}")
-
-    except Exception as e:
+    except Exception:
         results.append(("v1.0 超时检测", False))
-        print(f"  ❌ 失败: {e}")
     finally:
-        pool.shutdown()
+        pool4.shutdown()
         time.sleep(0.3)
 
     # 总结
@@ -892,7 +780,7 @@ def quick_test(runner: TestRunner) -> bool:
         status = "✅" if passed_flag else "❌"
         print(f"  {status} {name}")
 
-    print(f"\n总计: {passed}/{total} 通过")
+    print(f"\n总计: {passed}/{total} ผ่าน (通过)")
     print("=" * 80)
 
     return passed == total
@@ -908,13 +796,11 @@ def main():
     parser.add_argument("--full", action="store_true", help="运行完整测试")
 
     args = parser.parse_args()
-
     runner = TestRunner()
 
-    if args.quick:
+    if args.quick or (not args.full):
         success = quick_test(runner)
     else:
-        # 完整测试：按顺序运行
         test_v01_basic_pool(runner)
         test_v02_observability(runner)
         test_v03_scheduled_tasks(runner)
@@ -927,10 +813,4 @@ def main():
 
 
 if __name__ == "__main__":
-    import argparse
-
     main()
-
-# 快速测试：python tests/v.x/test_integration_v10.py --quick
-
-# 完整测试：python tests/v.x/test_integration_v10.py --full

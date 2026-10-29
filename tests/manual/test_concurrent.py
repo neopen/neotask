@@ -53,9 +53,9 @@ def test_concurrent_execution():
 
     executor = ConcurrentExecutor()
 
-    # Create scheduler with max_concurrent=3
+    # Create scheduler with worker_concurrency=3
     config = SchedulerConfig.memory()
-    config.worker.max_concurrent = 3
+    config.worker_concurrency = 3
 
     scheduler = TaskScheduler(
         executor=executor,
@@ -63,7 +63,7 @@ def test_concurrent_execution():
     )
 
     try:
-        print(f"Max concurrent: {config.worker.max_concurrent}")
+        print(f"Worker concurrency: {config.worker_concurrency}")
         print("-" * 40)
 
         # Submit 10 tasks

@@ -38,8 +38,8 @@ def test_event_callbacks():
     events = []
 
     def on_submitted(event):
-        events.append(("submitted", event.task_id))
-        print(f"  [EVENT] Task submitted: {event.task_id}")
+        events.append(("created", event.task_id))
+        print(f"  [EVENT] Task created: {event.task_id}")
 
     def on_started(event):
         events.append(("started", event.task_id))
@@ -60,10 +60,10 @@ def test_event_callbacks():
 
     try:
         # Register handlers
-        scheduler.on_task_submitted(on_submitted)
-        scheduler.on_task_started(on_started)
-        scheduler.on_task_completed(on_completed)
-        scheduler.on_task_failed(on_failed)
+        scheduler.on_created(on_submitted)
+        scheduler.on_started(on_started)
+        scheduler.on_completed(on_completed)
+        scheduler.on_failed(on_failed)
 
         # Submit tasks
         task_ids = []
@@ -78,7 +78,7 @@ def test_event_callbacks():
 
         # Verify events
         print(f"\nTotal events: {len(events)}")
-        assert len(events) >= 9  # 3 tasks * 3 events (submitted, started, completed)
+        assert len(events) >= 9  # 3 tasks * 3 events (created, started, completed)
         print("✓ Event test passed")
 
     finally:
@@ -101,8 +101,8 @@ def test_async_events():
     )
 
     try:
-        # Register async handler
-        scheduler._event_bus.subscribe("task.completed", async_handler, async_handler=True)
+        # Register async handler（回调层会自动识别协程函数）
+        scheduler.on_completed(async_handler)
 
         # Submit task
         task_id = scheduler.submit({"id": 99})

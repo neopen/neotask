@@ -47,7 +47,7 @@ pytestmark = pytest.mark.skipif(
 
 def get_redis_url():
     """获取 Redis URL - 支持环境变量覆盖"""
-    return os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/12")
+    return os.environ.get("TEST_REDIS_URL", "redis://127.0.0.1:6379/12")
 
 
 # ========== 测试辅助类 ==========

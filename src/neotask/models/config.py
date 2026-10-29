@@ -31,7 +31,7 @@ class StorageConfig:
         return cls(type="redis", redis_url=url)
 
     @classmethod
-    def sqlite(cls, path: str = "neotask.db") -> "StorageConfig":
+    def sqlite(cls, path: str = "/data/neotask.db") -> "StorageConfig":
         """创建SQLite存储配置"""
         return cls(type="sqlite", sqlite_path=path)
 
@@ -164,7 +164,7 @@ class TaskPoolConfig:
 
     # 存储配置
     storage_type: str = "memory"
-    sqlite_path: str = "neotask.db"
+    sqlite_path: str = "/data/neotask.db"
     redis_url: Optional[str] = None
 
     # 执行器配置
@@ -224,7 +224,7 @@ class TaskPoolConfig:
         return config
 
     @classmethod
-    def sqlite(cls, path: str = "neotask.db", node_id: Optional[str] = None) -> "TaskPoolConfig":
+    def sqlite(cls, path: str = "/data/neotask.db", node_id: Optional[str] = None) -> "TaskPoolConfig":
         """创建SQLite存储配置"""
         config = cls(storage_type="sqlite", sqlite_path=path)
         if node_id:
@@ -251,7 +251,7 @@ class SchedulerConfig:
 
     # 存储配置
     storage_type: str = "memory"
-    sqlite_path: str = "neotask.db"
+    sqlite_path: str = "/data/neotask.db"
     redis_url: Optional[str] = None
 
     # Worker配置
@@ -262,7 +262,9 @@ class SchedulerConfig:
     retry_delay: float = 1.0
 
     # 持久化配置
-    enable_persistence: bool = False
+    # 默认开启：sqlite/redis 下周期任务会跨重启恢复；memory 模式下仍只存在内存中，
+    # 注册周期任务时会输出一次明确的降级警告。
+    enable_persistence: bool = True
 
     # 调度配置
     scan_interval: float = 1.0  # 调度循环扫描间隔（秒）
@@ -281,7 +283,7 @@ class SchedulerConfig:
         return cls(storage_type="memory")
 
     @classmethod
-    def sqlite(cls, path: str = "neotask.db") -> "SchedulerConfig":
+    def sqlite(cls, path: str = "/data/neotask.db") -> "SchedulerConfig":
         """创建SQLite存储配置"""
         return cls(storage_type="sqlite", sqlite_path=path)
 
@@ -348,7 +350,7 @@ class TaskConfig:
         return config
 
     @classmethod
-    def sqlite(cls, path: str = "neotask.db", node_id: Optional[str] = None) -> "TaskConfig":
+    def sqlite(cls, path: str = "/data/neotask.db", node_id: Optional[str] = None) -> "TaskConfig":
         """创建SQLite存储配置"""
         config = cls(
             storage=StorageConfig.sqlite(path),

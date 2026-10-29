@@ -18,16 +18,16 @@ tests_dir = Path(__file__).parent
 sys.path.insert(0, str(tests_dir))
 
 # 使用相对导入
-from fixtures.event_loop import *
-from fixtures.redis import *
-from fixtures.storage import *
-from fixtures.queue import *
-from fixtures.task import *
-from fixtures.executor import *
-from fixtures.event import *
-from fixtures.monitor import *
-from fixtures.distributed import *
-from fixtures.helpers import *
+from fixtures.test_event_loop import *
+from fixtures.test_redis import *
+from fixtures.test_storage import *
+from fixtures.test_queue import *
+from fixtures.test_task import *
+from fixtures.test_executor import *
+from fixtures.test_event import *
+from fixtures.test_monitor import *
+from fixtures.test_distributed import *
+from fixtures.test_helpers import *
 
 # 可选：添加 pytest 配置钩子
 def pytest_configure(config):

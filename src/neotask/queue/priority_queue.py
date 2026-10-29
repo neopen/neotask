@@ -6,8 +6,8 @@
 @Time: 2026/4/8 00:00
 """
 
-import asyncio
 import heapq
+import threading
 from typing import List, Tuple, Optional, Dict, Any
 
 from neotask.common.logger import debug
@@ -26,7 +26,8 @@ class PriorityQueue(BaseQueue):
     def __init__(self, repository: Optional[QueueRepository] = None, max_size: int = 10000):
         self._repository = repository
         self._heap: List[Tuple[int, float, str]] = []  # (priority, sequence, task_id)
-        self._lock = asyncio.Lock()
+        # 队列可能被任务池内部循环与调用方循环同时访问，使用线程锁
+        self._lock = threading.Lock()
         self._use_repository = repository is not None
         self._max_size = max_size
         self._sequence = 0  # 用于稳定排序（相同优先级时FIFO）
@@ -45,7 +46,7 @@ class PriorityQueue(BaseQueue):
         if self._use_repository:
             await self._repository.push(task_id, priority)
         else:
-            async with self._lock:
+            with self._lock:
                 self._sequence += 1
                 item = (priority, self._sequence, task_id)
                 heapq.heappush(self._heap, item)
@@ -58,7 +59,7 @@ class PriorityQueue(BaseQueue):
         if self._use_repository:
             return await self._repository.pop(count)
 
-        async with self._lock:
+        with self._lock:
             result = []
             for _ in range(min(count, len(self._heap))):
                 priority, seq, task_id = heapq.heappop(self._heap)
@@ -73,7 +74,7 @@ class PriorityQueue(BaseQueue):
             # 从存储获取优先级（简化处理）
             return [(tid, 5) for tid in task_ids]
 
-        async with self._lock:
+        with self._lock:
             result = []
             for _ in range(min(count, len(self._heap))):
                 priority, seq, task_id = heapq.heappop(self._heap)
@@ -86,7 +87,7 @@ class PriorityQueue(BaseQueue):
         if self._use_repository:
             return await self._repository.remove(task_id)
 
-        async with self._lock:
+        with self._lock:
             if task_id not in self._task_index:
                 return False
 
@@ -101,7 +102,7 @@ class PriorityQueue(BaseQueue):
         if self._use_repository:
             return await self._repository.size()
 
-        async with self._lock:
+        with self._lock:
             return len(self._heap)
 
     async def peek(self, count: int = 1) -> List[str]:
@@ -109,7 +110,7 @@ class PriorityQueue(BaseQueue):
         if self._use_repository:
             return await self._repository.peek(count)
 
-        async with self._lock:
+        with self._lock:
             sorted_heap = sorted(self._heap)
             return [item[2] for item in sorted_heap[:count]]
 
@@ -119,7 +120,7 @@ class PriorityQueue(BaseQueue):
             task_ids = await self._repository.peek(count)
             return [(tid, 5) for tid in task_ids]
 
-        async with self._lock:
+        with self._lock:
             sorted_heap = sorted(self._heap)
             return [(item[2], item[0]) for item in sorted_heap[:count]]
 
@@ -128,7 +129,7 @@ class PriorityQueue(BaseQueue):
         if self._use_repository:
             await self._repository.clear()
 
-        async with self._lock:
+        with self._lock:
             self._heap.clear()
             self._task_index.clear()
             self._sequence = 0
@@ -139,7 +140,7 @@ class PriorityQueue(BaseQueue):
             # 存储层需要实现 contains 方法
             return False
 
-        async with self._lock:
+        with self._lock:
             return task_id in self._task_index
 
     async def get_stats(self) -> Dict[str, Any]:

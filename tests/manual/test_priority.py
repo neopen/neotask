@@ -55,7 +55,7 @@ def test_priority_order():
         for name, priority in tasks:
             task_id = scheduler.submit(
                 {"name": name, "priority": priority.name},
-                priority
+                priority=priority
             )
             print(f"Submitted: {name} (priority={priority.name})")
 
@@ -92,7 +92,7 @@ def test_multiple_priorities():
         for name, priority in tasks_data:
             task_id = scheduler.submit(
                 {"name": name, "priority": priority.name},
-                priority
+                priority=priority
             )
             print(f"Submitted: {name} (priority={priority.name})")
 

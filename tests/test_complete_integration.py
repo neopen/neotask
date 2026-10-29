@@ -23,11 +23,14 @@
 
 import os
 import sys
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, Any, List
+
+import pytest
 
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -118,6 +121,10 @@ def check_redis_available() -> bool:
     except Exception:
         return False
 
+@pytest.fixture
+def reporter():
+    """Pytest 兼容的 reporter fixture"""
+    return TestReporter()
 
 # ============================================================
 # 测试执行器（同步函数）
@@ -171,7 +178,9 @@ def test_v01_basic_task_pool(reporter: TestReporter):
 
     # 2. SQLite 模式测试
     print("\n📌 测试 1.2: SQLite模式 - 任务持久化")
-    config_sql = TaskPoolConfig.sqlite(path="test_neotask.db", node_id="test-sql")
+    # 使用临时目录：硬编码 /data 在 Windows 下会被解析为盘符根目录，可能无写权限
+    db_path = os.path.join(tempfile.gettempdir(), f"neotask_v01_{uuid.uuid4().hex}.db")
+    config_sql = TaskPoolConfig.sqlite(path=db_path, node_id="test-sql")
     pool = TaskPool(executor=simple_executor_sync, config=config_sql)
     pool.start()
     time.sleep(0.5)
@@ -188,6 +197,12 @@ def test_v01_basic_task_pool(reporter: TestReporter):
     finally:
         pool.shutdown()
         time.sleep(0.2)
+        # 清理临时数据库及日志文件（Windows 下句柄未释放时忽略失败）
+        for suffix in ("", "-journal", "-wal", "-shm"):
+            try:
+                os.remove(db_path + suffix)
+            except OSError:
+                pass
 
     # 3. 优先级测试
     print("\n📌 测试 1.3: 优先级队列")
@@ -391,7 +406,7 @@ def test_v04_distributed(reporter: TestReporter):
         reporter.end_suite()
         return
 
-    redis_url = "redis://localhost:6379"
+    redis_url = "redis://127.0.0.1:6379"
 
     def dist_executor(data: Dict) -> Dict:
         time.sleep(data.get("duration", 0.05))

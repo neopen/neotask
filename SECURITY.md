@@ -265,13 +265,13 @@ iptables -A INPUT -p tcp --dport 6379 -j DROP
 #### 4. 连接池限制
 
 ```python
-config = TaskPoolConfig(
-    storage_type="redis",
-    redis_url="redis://localhost:6379",
-    # 限制连接池大小
-    # 在 RedisTaskRepository 中配置 max_connections
-)
+from neotask.storage.redis import RedisTaskRepository
+
+# 直接构造仓储时限制连接池大小（默认 10）
+repo = RedisTaskRepository("redis://127.0.0.1:6379", max_connections=10)
 ```
+
+`TaskPoolConfig` 不暴露连接池大小参数，使用 `TaskPool(storage_type="redis")` 时各仓储按默认值创建独立连接池；需要更精细的控制时，请直接构造仓储或调整 `neotask.utils.redis_compat.create_client` 的 `max_connections`。
 
 
 

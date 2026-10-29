@@ -38,7 +38,7 @@ class TestRedisFailover:
         """测试 Redis 自动重连"""
         from neotask.storage.redis import RedisQueueRepository
 
-        repo = RedisQueueRepository("redis://localhost:6379")
+        repo = RedisQueueRepository("redis://127.0.0.1:6379")
 
         # 模拟第一次操作失败
         with patch.object(repo, '_get_client', side_effect=[
@@ -59,7 +59,7 @@ class TestRedisFailover:
         """测试 Redis 故障期间的锁行为"""
         from neotask.lock.redis import RedisLock
 
-        lock = RedisLock("redis://localhost:6379")
+        lock = RedisLock("redis://127.0.0.1:6379")
 
         # 正确模拟 Redis 客户端异常
         with patch.object(lock, '_get_client', new_callable=AsyncMock) as mock_get_client:
@@ -165,7 +165,7 @@ class TestDistributedLockFailures:
     @pytest.mark.asyncio
     async def test_lock_timeout(self):
         """测试锁超时"""
-        lock = RedisLock("redis://localhost:6379")
+        lock = RedisLock("redis://127.0.0.1:6379")
 
         # 获取锁
         acquired = await lock.acquire("test_lock", ttl=1)
@@ -183,7 +183,7 @@ class TestDistributedLockFailures:
     @pytest.mark.asyncio
     async def test_lock_extend(self):
         """测试锁续期"""
-        lock = RedisLock("redis://localhost:6379")
+        lock = RedisLock("redis://127.0.0.1:6379")
 
         await lock.acquire("test_lock", ttl=2)
 
@@ -196,8 +196,8 @@ class TestDistributedLockFailures:
     @pytest.mark.asyncio
     async def test_lock_release_by_wrong_owner(self):
         """测试错误持有者释放锁"""
-        lock1 = RedisLock("redis://localhost:6379")
-        lock2 = RedisLock("redis://localhost:6379")
+        lock1 = RedisLock("redis://127.0.0.1:6379")
+        lock2 = RedisLock("redis://127.0.0.1:6379")
 
         # 清空
         await lock1.release("test_lock")
@@ -215,7 +215,7 @@ class TestDistributedLockFailures:
     @pytest.mark.asyncio
     async def test_watchdog_renewal(self):
         """测试看门狗自动续期"""
-        lock = RedisLock("redis://localhost:6379")
+        lock = RedisLock("redis://127.0.0.1:6379")
         watchdog = WatchDog(lock, interval_ratio=0.3)
 
         # 清空
@@ -341,10 +341,10 @@ class TestRaceConditions:
 
     @pytest.mark.asyncio
     async def test_concurrent_lock_acquisition(self):
-        """测试并发锁获取 - 修复锁竞争问题"""
+        """测试并发锁获取 - 任意时刻只允许一个持有者"""
         from neotask.lock.redis import RedisLock
 
-        lock = RedisLock("redis://localhost:6379")
+        lock = RedisLock("redis://127.0.0.1:6379")
         test_key = "race_lock_test"
 
         # 清空测试锁
@@ -352,12 +352,14 @@ class TestRaceConditions:
 
         acquired_count = 0
         lock_acquire_times = []
+        max_concurrent_holders = 0
+        current_holders = 0
         acquisition_lock = asyncio.Lock()
 
         async def try_acquire(node_id: int):
-            nonlocal acquired_count
+            nonlocal acquired_count, current_holders, max_concurrent_holders
             # 使用独立的锁实例
-            node_lock = RedisLock("redis://localhost:6379")
+            node_lock = RedisLock("redis://127.0.0.1:6379")
 
             # 随机延迟，模拟真实竞争
             await asyncio.sleep(node_id * 0.0005)
@@ -370,8 +372,15 @@ class TestRaceConditions:
                         async with acquisition_lock:
                             acquired_count += 1
                             lock_acquire_times.append(node_id)
+                            current_holders += 1
+                            max_concurrent_holders = max(
+                                max_concurrent_holders, current_holders
+                            )
                         # 持有锁一段时间
                         await asyncio.sleep(0.05)
+                        # 先释放计数再释放锁，避免统计窗口内出现“两个持有者”
+                        async with acquisition_lock:
+                            current_holders -= 1
                         await node_lock.release(test_key)
                         break
                     else:
@@ -389,9 +398,12 @@ class TestRaceConditions:
 
         print(f"\nAcquired count: {acquired_count}, by nodes: {lock_acquire_times[:10]}")
 
-        # 由于锁的严格性，应该只有一个或较少节点成功
-        # 在某些情况下可能因为网络延迟导致多个，但应该很少
-        assert acquired_count <= 1, f"Too many lock acquisitions: {acquired_count}"
+        # 30 个协程顺序竞争同一把锁，成功总次数可以大于 1（前一个释放后下一个获取），
+        # 但任意时刻的持有者必须唯一，这才是分布式锁互斥性的正确断言。
+        assert acquired_count >= 1, "No node acquired the lock"
+        assert max_concurrent_holders == 1, (
+            f"Lock mutual exclusion violated: {max_concurrent_holders} concurrent holders"
+        )
 
         # 清理
         await lock.release(test_key)
@@ -447,7 +459,7 @@ class TestResourceLeak:
         """测试连接池复用"""
         from neotask.storage.redis import RedisTaskRepository
 
-        repo = RedisTaskRepository("redis://localhost:6379")
+        repo = RedisTaskRepository("redis://127.0.0.1:6379")
 
         # 修复：需要 await 获取客户端对象
         client1 = await repo._get_client()

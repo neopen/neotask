@@ -5,8 +5,44 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [1.0.4](https://github.com/neopen/neotask/compare/v1.0.3...v1.0.4) (2026-10-04)
 
+## [Unreleased]
+
+> 待发布版本：**1.0.5**（GitHub Release 与版本号由 release-please 在 Release PR 中生成）
+
+### 修复（2026-10-29）
+
+- **跨事件循环 asyncio 原语**：Redis/SQLite 访问统一经 `utils/dedicated_loop.py` 的专用事件循环执行，新增 `LoopBoundRedisClient` / `LoopBoundSQLiteConnection` 代理；连接池仍然复用，专用 loop 重建时自动丢弃旧客户端并重新建池
+- **跨节点等待**：`LifecycleManager.wait_for_task` 改为“Future 通知 + 0.2s 时间片仓储回查”，不再等满 `timeout`，并同步刷新本地缓存
+- **执行器类型**：`ExecutorFactory.create` 与 `TaskPoolConfig.executor_type` 兼容 `"async" / "thread" / "process" / "class" / "auto"` 字符串，未知值抛 `ValueError`
+- **分片语义**：`ConsistentHashSharder` 支持 md5 / sha1 / sha256 / sha3_256；`ModuloSharder` 改用稳定 md5 哈希（不再受 `PYTHONHASHSEED` 影响）；`RangeSharder` 明确“尾部溢出归末分片、其余返回 -1”
+- **测试与回归**：修复过期测试资产、时序敏感断言与共享 Redis 队列污染，全量 `pytest tests` 恢复为 625 passed / 6 skipped / 0 failed
+- **可选依赖守卫**：`common/logger.py` 中 PyYAML 改为可选导入，未安装时回退内置日志默认值，避免干净安装（wheel 未装 PyYAML）时 `import neotask` 直接失败
+- **手动重试**：`TaskPool.retry()` 先将 failed / cancelled 任务重置为 PENDING（`Task.reset_for_retry()` + `LifecycleManager.reset_for_retry()`）再重新入队，修复重试后 Worker 因状态不是 PENDING 而跳过执行的问题；已在队列中的 PENDING 任务不再重复入队
+- **Cron 别名**：`@hourly` / `@daily` / `@weekly` 等预定义别名统一在 `CronParser.parse` / `is_valid` / `describe` 中归一化为标准 5 字段表达式，修复“`is_valid` 返回 True 但 `submit_cron` 抛 `Invalid cron expression`”的口径不一致
+- **优雅停机**：`WorkerPool.stop()` 先停预取循环、让 Worker 消费完本地队列再退出，避免停机瞬间本地残留任务无人消费而白等满 `timeout`；`TaskPrefetcher.drain_back()` 改用新增的 `QueueScheduler.re_enqueue()` 绕过停机时的入队禁用，未执行任务不再变成孤儿
+- **队列日志**：`MemoryQueueRepository.remove` 在优先级队列未命中时降级为 `debug`，不再对“随后命中延迟队列”的正常流程输出误导性 WARNING
+
+### 文档（2026-10-29）
+
+- `docs/ARCHITECTURE.md` 对齐 1.0.5：更新当前能力、路线图、配置默认值、项目结构，并新增“事件循环隔离与存储客户端”“分布式与高可用”章节
+- 修正 README/README_zh 中 `submit_delayed/interval/cron` 的参数名、覆盖率命令与重复段落
+- 补齐 1.0.4 发布记录（release-please 生成的条目）
+- 重写 `examples/` 示例并逐个实际运行验证：修正优先级演示的确定性（pause/resume）、批量任务改用 `submit_batch`、延时/Cron/周期/超时的输出与口径，新增 `11_sqlite_persistence.py`、`12_timeout.py`，同步更新 `examples/readme.txt`
+
+### 计划中 (v1.5 / v2.0)
+- **任务编排（v1.5）**
+  - DAG 工作流引擎（`WorkflowEngine`）
+  - 条件分支执行
+  - 并行任务编排
+- **企业级功能（v2.0）**
+  - 独立 Web UI 监控面板（多进程形态）
+  - Prometheus 指标拉取端点
+  - 多租户隔离支持
+
+> v0.4/v0.5/v1.0 的能力（Redis 共享队列、分布式锁、预取、看门狗续期、超时检测、故障自动恢复）均已发布，记录见下。
+
+## [1.0.4](https://github.com/neopen/neotask/compare/v1.0.3...v1.0.4) (2026-10-04)
 
 ### 💄 Styles (代码样式)
 
@@ -28,20 +64,6 @@
 ### 💄 Styles (代码样式)
 
 * 合并 ([#24](https://github.com/neopen/neotask/issues/24)) ([fa6654a](https://github.com/neopen/neotask/commit/fa6654ab4a5509a2c1c2c4362d130d3e000c1356))
-
-## [Unreleased]
-
-### 计划中 (v1.5 / v2.0)
-- **任务编排（v1.5）**
-  - DAG 工作流引擎（`WorkflowEngine`）
-  - 条件分支执行
-  - 并行任务编排
-- **企业级功能（v2.0）**
-  - 独立 Web UI 监控面板（多进程形态）
-  - Prometheus 指标拉取端点
-  - 多租户隔离支持
-
-> v0.4/v0.5/v1.0 的能力（Redis 共享队列、分布式锁、预取、看门狗续期、超时检测、故障自动恢复）均已发布，记录见下。
 
 ---
 

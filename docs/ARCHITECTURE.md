@@ -22,6 +22,7 @@ NeoTask 是一个纯 Python 实现的异步任务调度系统，专为耗时任�
 | **持久化存储** | 内存/SQLite/Redis 多种存储后端 |
 | **任务等待** | 支持同步/异步等待任务完成并获取结果 |
 | **事件回调** | 支持任务创建、开始、完成、失败等事件回调 |
+| **进度上报** | executor 内可发布进度（`task.progress` 事件），并持久化到任务记录 |
 
 ---
 
@@ -215,6 +216,35 @@ graph LR
     WP --> LF
 ```
 
+### 事件循环隔离与存储客户端
+
+`TaskPool` 在守护线程中运行自己的事件循环，同步方法通过 `run_coroutine_threadsafe` 投递协程；而 `ConnectionPool` 等异步原语一旦在某个 loop 中首次使用，就无法再从其它 loop 访问。为避免跨事件循环错误，Redis 与 SQLite 访问统一经过 `src/neotask/utils` 下的代理层：
+
+| 组件 | 职责 |
+| :--- | :--- |
+| `DedicatedLoopRunner`（`utils/dedicated_loop.py`） | 进程内共享的专用事件循环线程（daemon，惰性启动，异常退出后自动重建）；Redis 与 SQLite 共用同一 loop |
+| `LoopBoundRedisClient`（`utils/redis_compat.py`） | 首次使用时创建 `ConnectionPool` 并缓存客户端，所有命令投递到专用 loop 执行；检测到共享 loop 变化时丢弃旧客户端并重新建池 |
+| `LoopBoundSQLiteConnection`（`utils/sqlite_compat.py`） | 同上，SQLite 连接与游标只在专用 loop 内使用 |
+
+要点：
+
+- 连接池仍然复用，不会每条命令新建连接；代价是每条命令一次跨线程投递（微秒级）。
+- 每个仓储 / 锁 / 节点管理器实例持有独立的客户端与连接池，`max_connections` 默认 10。
+- 专用 loop 线程异常退出并被重建时，代理会自动丢弃绑定在已关闭 loop 上的旧客户端，在新 loop 中重新建池。
+
+### 分布式与高可用
+
+| 组件 | 说明 |
+| :--- | :--- |
+| `NodeManager`（`distributed/node.py`） | 节点注册/注销、心跳上报、活跃节点查询 |
+| `Coordinator`（`distributed/coordinator.py`） | 去中心化对等调度，支持 `round_robin` / `random` / `least_loaded`；无 Leader 选举（`Elector` 已移除） |
+| 分片器（`distributed/sharding.py`） | `ConsistentHashSharder`（支持 md5 / sha1 / sha256 / sha3_256）、`ModuloSharder`（稳定 md5 取模）、`RangeSharder`（闭区间命中；高于末尾上界归末分片；其余返回 -1） |
+| `HeartbeatManager`（`core/heartbeat.py`） | 节点心跳与超时判定 |
+| `Reclaimer`（`worker/reclaimer.py`） | 回收离线节点的 RUNNING 任务并重新入队 |
+| `DeadLetterQueue`（`queue/dead_letter.py`） | Redis 模式下默认启用，保留 7 天，支持 `replay` |
+
+跨节点等待：`LifecycleManager.wait_for_task` 采用“Future 通知 + 0.2s 时间片仓储回查”，远端节点写入的终态会被及时拾取，不会等满 `timeout`。
+
 
 
 ## 快速上手
@@ -239,7 +269,7 @@ pip install neotask[full]
 ### 即时任务（TaskPool）
 
 ```python
-from neotask import TaskPool
+from neotask import TaskPool, TaskPoolConfig
 
 # 1. 定义任务处理函数（异步）
 async def my_executor(data: dict) -> dict:
@@ -339,28 +369,6 @@ scheduler.shutdown()
 
 
 
-### 使用事件回调
-
-```python
-async def my_executor(data: Dict[str, Any]) -> Dict[str, Any]:
-    """成功的执行器"""
-    return {"status": "success", "input": data, "timestamp": time.time()}
-
-pool = TaskPool(executor=my_executor)
-pool.start()
-
-# 注册事件回调
-async def on_task_completed(event):
-    print(f"任务完成: {event.task_id}, 结果: {event.data}")
-
-pool.on_completed(on_task_completed)
-
-# 提交任务
-task_id = pool.submit({"data": "value"})
-```
-
-
-
 ### 使用上下文管理器
 
 ```python
@@ -431,6 +439,7 @@ result = pool.wait_for_result(task_id)
 | `on_completed(handler)`                                     | 注册任务完成事件           |
 | `on_failed(handler)`                                        | 注册任务失败事件           |
 | `on_cancelled(handler)`                                     | 注册任务取消事件           |
+| `on_progress(handler)`                                      | 注册任务进度事件           |
 
 ### TaskScheduler（定时任务）
 
@@ -438,8 +447,8 @@ result = pool.wait_for_result(task_id)
 | :----------------------------------------------------------- | :------------------ |
 | `submit_delayed(data, delay_seconds, task_id=None, priority=2)` | 延时执行任务        |
 | `submit_at(data, execute_at, task_id=None, priority=2)`      | 指定时间点执行      |
-| `submit_interval(data, interval_seconds, task_id=None, priority=2, run_immediately=True)` | 固定间隔周期执行    |
-| `submit_cron(data, cron_expr, task_id=None, priority=2)`     | Cron 表达式周期执行 |
+| `submit_interval(data, interval_seconds, task_id=None, priority=2, run_immediately=True, max_runs=None, name="", missed_policy=None)` | 固定间隔周期执行    |
+| `submit_cron(data, cron_expr, task_id=None, priority=2, max_runs=None, name="", missed_policy=None)` | Cron 表达式周期执行 |
 | `cancel_periodic(task_id)`                                   | 取消周期任务        |
 | `pause_periodic(task_id)`                                    | 暂停周期任务        |
 | `resume_periodic(task_id)`                                   | 恢复周期任务        |
@@ -483,28 +492,40 @@ config = TaskPoolConfig(
     storage_type="memory",      # memory / sqlite / redis
     sqlite_path="neotask.db",   # SQLite 数据库路径
     redis_url=None,             # Redis 连接 URL
-    
-    # 执行器配置
-    executor_type="async",      # 执行器类型
+    node_id="",                 # 节点标识（默认取主机名）
+
+    # 执行器配置（也接受 "async"/"thread"/"process"/"class"/"auto" 字符串）
+    executor_type="async",      # ExecutorType.ASYNC（默认）
     max_workers=10,             # 最大工作线程数
-    
+
     # Worker 配置
     worker_concurrency=10,      # 并发 Worker 数
     prefetch_size=20,           # 预取任务数量
-    task_timeout=None,          # 任务超时时间（秒）
-    
+    enable_prefetch=True,       # 是否启用预取
+    task_timeout=None,          # 任务超时时间（秒），None 表示不超时
+
     # 队列配置
     queue_max_size=10000,       # 队列最大长度
     priority_levels=4,          # 优先级级别数
-    
+
     # 锁配置
     lock_type="memory",         # memory / redis
     lock_timeout=30,            # 锁超时时间
-    
+
     # 重试配置
     max_retries=3,              # 最大重试次数
     retry_delay=1.0,            # 重试延迟（秒）
-    
+
+    # 高可用配置
+    enable_reclaimer=True,      # 任务回收器
+    reclaimer_interval=30.0,    # 回收扫描间隔（秒）
+    enable_heartbeat=True,      # 节点心跳
+    heartbeat_interval=5,       # 心跳间隔（秒）
+    heartbeat_timeout=20,       # 心跳超时（秒）
+    enable_dead_letter=True,    # 死信队列
+    dead_letter_max_size=10000,
+    dead_letter_ttl=604800,     # 死信保留时间（秒，默认 7 天）
+
     # 监控配置
     enable_metrics=True,        # 启用指标收集
     enable_health_check=True,   # 启用健康检查
@@ -524,8 +545,13 @@ config = SchedulerConfig(
     worker_concurrency=10,      # 并发 Worker 数
     max_retries=3,              # 最大重试次数
     retry_delay=1.0,            # 重试延迟（秒）
-    enable_persistence=False,   # 启用周期任务持久化
-    scan_interval=0.05,         # 调度循环扫描间隔（秒）
+    enable_persistence=True,    # 启用周期任务持久化（默认开启；memory 存储会告警）
+    scan_interval=1.0,          # 调度循环扫描间隔（秒）
+    enable_time_wheel=False,    # 启用时间轮（高精度延时）
+    time_wheel_slots=60,        # 时间轮槽位数
+    time_wheel_tick=1.0,        # 时间轮滴答间隔（秒）
+    default_max_runs=None,      # 周期任务默认最大执行次数
+    default_missed_policy="skip",  # ignore / run_once / catch_up / skip
 )
 ```
 
@@ -533,75 +559,78 @@ config = SchedulerConfig(
 
 ## 版本与展望
 
-### 当前版本：v0.1 (MVP)
+### 当前版本：v1.0.5
 
-- ✅ 基础任务队列（优先级、并发控制）
-- ✅ 内存/SQLite 存储
-- ✅ 异步执行引擎
-- ✅ 同步/异步等待结果
-- ✅ 基础 Web UI
-- ✅ 回调函数支持
-- ✅ 任务取消功能
+- ✅ 即时任务队列（优先级、并发控制、批量提交）
+- ✅ 内存/SQLite/Redis 存储；周期任务持久化与跨重启恢复
+- ✅ 延时 / 固定间隔 / Cron 调度，可选时间轮加速
+- ✅ 同步/异步双 API，跨节点结果等待
+- ✅ 事件总线、指标收集、健康检查、进度上报
+- ✅ 分布式锁、节点心跳、故障任务回收、死信队列
+- ✅ 可选 Web UI（`pip install neotask[ui]`）
 
 ### 发展路线图
 
 ```mermaid
 timeline
     title NeoTask 发展路线图
-    
-    section v0.1 MVP
+
+    section v0.1 基础
         即时任务 : TaskPool入口
                  : 优先级队列
-                 : 异步执行
-                 : SQLite存储
-                 
-    section v0.2
+                 : 内存/SQLite存储
+
+    section v0.2 可观测性
         监控能力 : EventBus事件总线
                  : MetricsCollector
-                 : 历史统计
-                 
-    section v0.3
-        分布式核心 : Redis共享队列
-                   : 分布式锁
-                   : 任务预取
-                   
-    section v1.0
-        高可用保障 : 看门狗续期
-                   : 超时检测
-                   : 故障恢复
+                 : 健康检查
 
-    section v1.5
-        定时调度 : TaskScheduler入口
-                 : 延时执行
-                 : 周期任务
-                 : Cron表达式
-                 
-    section v2.0
-        企业级 : 多租户隔离
+    section v0.3 定时调度
+        调度能力 : TaskScheduler入口
+                 : 延时执行/时间轮
+                 : 周期任务与Cron表达式
+
+    section v0.4 分布式
+        分布式基础 : Redis共享队列
+                   : 分布式锁
+                   : 节点管理与分片
+
+    section v0.5 性能优化
+        吞吐提升 : 预取机制
+                 : 批量操作
+                 : 连接池复用
+
+    section v1.0 高可用
+        可靠性 : 看门狗续期
+               : 超时检测
+               : 故障任务回收/死信队列
+
+    section v1.5 任务编排
+        计划中 : DAG工作流
+               : 条件分支
+               : 并行执行
+
+    section v2.0 企业级
+        计划中 : 多租户隔离
                : Prometheus集成
                : 独立Web UI集群
 ```
 
-### 版本对比
+### 能力矩阵
 
-| 特性                       | v0.1 | v0.2 | v0.3 | v1.0 | v1.5 | v2.0 |
-| :------------------------- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **TaskPool 即时任务**      | ✅    | ✅    | ✅    | ✅    | ✅    | ✅    |
-| 优先级队列                 | ✅    | ✅    | ✅    | ✅    | ✅    | ✅    |
-| 内存/SQLite 存储           | ✅    | ✅    | ✅    | ✅    | ✅    | ✅    |
-| Web UI                     | ✅    | ✅    | ✅    | ✅    | ✅    | ✅    |
-| 事件总线                   | -    | ✅    | ✅    | ✅    | ✅    | ✅    |
-| 指标收集                   | -    | ✅    | ✅    | ✅    | ✅    | ✅    |
-| Redis 存储                 | -    | -    | ✅    | ✅    | ✅    | ✅    |
-| 分布式锁                   | -    | -    | ✅    | ✅    | ✅    | ✅    |
-| 看门狗机制                 | -    | -    | -    | ✅    | ✅    | ✅    |
-| 故障恢复                   | -    | -    | -    | ✅    | ✅    | ✅    |
-| **TaskScheduler 定时任务** | -    | -    | -    | -    | ✅    | ✅    |
-| 延时执行                   | -    | -    | -    | -    | ✅    | ✅    |
-| 周期任务                   | -    | -    | -    | -    | ✅    | ✅    |
-| Cron 表达式                | -    | -    | -    | -    | ✅    | ✅    |
-| 多租户                     | -    | -    | -    | -    | -    | ✅    |
-| Prometheus                 | -    | -    | -    | -    | -    | ✅    |
+| 能力 | 状态 | 所在模块 |
+| :--- | :--- | :--- |
+| TaskPool 即时任务 / 优先级 / 批量提交 | ✅ 已交付 | `api/task_pool.py` |
+| TaskScheduler 延时 / 周期 / Cron | ✅ 已交付 | `api/task_scheduler.py`、`scheduler/` |
+| 内存 / SQLite / Redis 存储 | ✅ 已交付 | `storage/` |
+| 周期任务持久化与跨重启恢复 | ✅ 已交付 | `scheduler/periodic.py`、`storage/periodic.py` |
+| 事件总线 / 指标 / 健康检查 / 进度上报 | ✅ 已交付 | `event/`、`monitor/` |
+| 预取、批量操作、连接池复用 | ✅ 已交付 | `worker/prefetcher.py`、`utils/redis_compat.py` |
+| 分布式锁 / 看门狗续期 | ✅ 已交付 | `lock/` |
+| 节点心跳 / 任务回收 / 死信队列 | ✅ 已交付 | `core/heartbeat.py`、`worker/reclaimer.py`、`queue/dead_letter.py` |
+| 分片路由（一致性哈希 / 取模 / 范围） | ✅ 已交付 | `distributed/sharding.py` |
+| Web UI 监控面板（可选 extra） | ✅ 已交付 | `web/` |
+| DAG 工作流 / 多租户 / Prometheus | 🚧 计划中（v1.5 / v2.0） | - |
 
 ------
 
@@ -627,7 +656,7 @@ timeline
 | 10 Workers，任务耗时 100ms | ~100 tasks/s | ~110ms   | 推荐配置   |
 | 50 Workers，任务耗时 100ms | ~500 tasks/s | ~120ms   | 高性能配置 |
 
-*注：实际性能受 CPU 核心数、任务复杂度、存储 I/O 影响*
+*注：实际性能受 CPU 核心数、任务复杂度、存储 I/O 影响；内存后端的空操作吞吐实测参见 [性能基准测试](性能基准测试.md)*
 
 ------
 
@@ -651,7 +680,7 @@ pip install -e ".[dev]"
 pytest tests/
 
 # 查看测试覆盖率
-pytest --cov=neotask tests/
+pytest --cov=src/neotask tests/
 
 # 运行特定模块测试
 pytest tests/test_task_pool.py -v
@@ -662,46 +691,25 @@ pytest tests/test_task_scheduler.py -v
 
 ```
 neotask/
-├── __init__.py
-├── api/
-│   ├── __init__.py
-│   ├── task_pool.py       # TaskPool 即时任务入口
-│   └── task_scheduler.py  # TaskScheduler 定时任务入口
-├── core/
-│   ├── __init__.py
-│   ├── dispatcher.py      # 任务分发器
-│   ├── future.py          # Future 管理器
-│   └── lifecycle.py       # 生命周期管理器
-├── queue/
-│   ├── __init__.py
-│   ├── scheduler.py       # 队列调度器
-│   ├── priority_queue.py  # 优先级队列
-│   └── delayed_queue.py   # 延迟队列
-├── worker/
-│   ├── __init__.py
-│   ├── pool.py            # Worker 池
-│   └── supervisor.py      # Worker 监督者
-├── storage/
-│   ├── __init__.py
-│   ├── base.py            # 存储抽象基类
-│   ├── memory.py          # 内存存储
-│   ├── sqlite.py          # SQLite 存储
-│   └── redis.py           # Redis 存储
-├── executor/
-│   ├── __init__.py
-│   ├── base.py            # 执行器基类
-│   └── factory.py         # 执行器工厂
-├── event/
-│   └── bus.py             # 事件总线
-├── lock/
-│   └── factory.py         # 分布式锁工厂
-├── models/
-│   ├── __init__.py
-│   ├── task.py            # 任务数据模型
-│   └── config.py          # 配置模型
-└── common/
-    ├── __init__.py
-    └── exceptions.py      # 异常定义
+├── __init__.py            # 包入口，导出公共 API
+├── api/                   # TaskPool / TaskScheduler
+├── cli/                   # 命令行入口
+├── common/                # 日志、异常、常量
+├── config/                # 配置加载
+├── contrib/               # 第三方集成
+├── core/                  # 生命周期、分发器、Future、心跳
+├── distributed/           # 节点管理、协调器、分片
+├── event/                 # 事件总线与内置处理器
+├── executor/              # 异步/线程/进程/类执行器与工厂
+├── lock/                  # 内存/Redis 锁、看门狗
+├── models/                # 任务、配置、周期任务模型
+├── monitor/               # 指标收集、健康检查、上报
+├── queue/                 # 优先级/延迟队列、队列调度器、死信队列
+├── scheduler/             # Cron 解析、周期任务管理器、时间轮
+├── storage/               # 内存/SQLite/Redis 仓储、周期任务存储
+├── utils/                 # 专用事件循环、Redis/SQLite 代理、日志工具
+├── web/                   # 可选 Web UI（neotask[ui]）
+└── worker/                # Worker 池、监督者、预取、任务回收
 ```
 
 
@@ -733,7 +741,7 @@ pytest tests/unit/test_task.py
 
 # 运行手动测试
 python examples/01_simple.py
-python examples/05_webui.py
+python examples/05_cron_tasks.py
 ```
 
 ## 问题反馈
@@ -747,9 +755,9 @@ python examples/05_webui.py
 
 ## 许可证
 
-MIT License - 详见 [LICENSE](https://license/) 文件
+MIT License - 详见 [LICENSE](../LICENSE) 文件
 
-Copyright (c) 2024 neopen
+Copyright (c) 2026 neopen
 
 ------
 

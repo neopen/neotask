@@ -26,7 +26,7 @@ print(f"storage_type: {config3.storage_type}")
 print(f"sqlite_path: {config3.sqlite_path}")
 
 # 测试 redis() 类方法
-config4 = SchedulerConfig.redis("redis://localhost:6379")
+config4 = SchedulerConfig.redis("redis://127.0.0.1:6379")
 print(f"\nRedis config: {config4}")
 print(f"storage_type: {config4.storage_type}")
 print(f"redis_url: {config4.redis_url}")

@@ -13,7 +13,7 @@
     <a href="https://github.com/neopen/neotask"><img src="https://img.shields.io/github/stars/neopen/neotask?style=flat-square&logo=github" alt="GitHub Stars"></a>
   </p>
   <p align="center">
-    <a href="./README_zh.md">中文</a> •
+    <a href="https://github.com/neopen/neotask/blob/main/README_zh.md">中文</a> •
     <a href="https://task.helpenx.com">Website</a> •
     <a href="https://task.helpenx.com/docs/">Documentation</a> •
     <a href="https://pypi.org/project/neotask/">PyPI</a>
@@ -21,7 +21,7 @@
 </p>
 
 > 🚀 **Lightweight & Async**: Pure Python task queue manager designed for time-consuming jobs (AI generation, video processing, data scraping, etc.)  
-> 📦 **No External Services**: No extra deployment required (no Redis/PostgreSQL needed). Ships with two base dependencies  
+> 📦 **No External Services**: No extra deployment required (no Redis/PostgreSQL needed). and distributed multi-node environment requires Redis support  
 > ⏰ **Flexible Scheduling**: Native support for scheduled, periodic (cron-like), and delayed tasks  
 > ⚡ **Quick Integration**: `pip install neotask` + few lines of configuration
 
@@ -51,6 +51,7 @@
 - **Persistence** - Multiple storage backends: Memory/SQLite/Redis
 - **Distributed Support** - Redis shared queue, distributed lock, node heartbeat, and failed-task reclaim
 - **Event Callbacks** - Supports task lifecycle event listeners
+- **Progress Reporting** - Executors can publish progress updates; subscribers receive `task.progress` events
 
 ------
 
@@ -260,6 +261,34 @@ task_id = pool.submit({"test": "event"})
 result = pool.wait_for_result(task_id)
 ```
 
+### Reporting Task Progress
+
+Call `report_progress()` inside an async executor (or `report_progress_sync()` in a
+thread executor) to publish progress updates; subscribe with `pool.on_progress()`:
+
+```python
+from neotask import TaskPool, report_progress
+
+async def transcode(data):
+    await report_progress(0.2, "probing")
+    # ... do the work ...
+    await report_progress(0.8, "encoding")
+    return {"ok": True}
+
+async def on_progress(event):
+    print(f"{event.task_id}: {event.data['progress']:.0%} {event.data['message']}")
+
+pool = TaskPool(executor=transcode)
+pool.on_progress(on_progress)
+pool.start()
+task_id = pool.submit({})
+pool.wait_for_result(task_id)
+```
+
+Progress is also persisted on the task record (`get_task(task_id)["progress"]`) and
+set to `1.0` when the task succeeds. Reporting outside a task execution context is
+a safe no-op (returns `False`).
+
 
 
 ## API Reference
@@ -267,46 +296,18 @@ result = pool.wait_for_result(task_id)
 | Method | Description |
 | :------------------------------------------- | :-------- |
 | `pool.submit(data, priority=2, delay=0)` | Submit task |
+| `pool.submit_batch(tasks, priority=2)` | Submit a batch of tasks |
 | `pool.wait_for_result(task_id, timeout=300)` | Wait for result |
 | `pool.get_status(task_id)` | Get status |
 | `pool.cancel(task_id)` | Cancel task |
-| `scheduler.submit_delayed(data, delay)` | Delayed task |
-| `scheduler.submit_interval(data, interval)` | Periodic task |
-| `scheduler.submit_cron(data, cron)` | Cron task |
+| `pool.on_progress(handler)` | Subscribe to progress events |
+| `scheduler.submit_delayed(data, delay_seconds)` | Delayed task |
+| `scheduler.submit_interval(data, interval_seconds)` | Periodic task |
+| `scheduler.submit_cron(data, cron_expr)` | Cron task |
 
 Detailed API documentation can be found [here](https://task.helpenx.com/docs/api-reference.html)
 
 
-## Usage Notes
-
-A few behaviors are easy to trip over, so they are documented explicitly:
-
-- **`get_result` vs `wait_for_result`**: `wait_for_result(task_id)` returns the
-  executor's raw value, while `get_result(task_id)` returns a metadata wrapper
-  dict `{task_id, status, result, error, created_at, completed_at}` — the real
-  payload is under `result`.
-- **Event keys**: lifecycle event types are namespaced as `task.created` /
-  `task.started` / `task.completed` / `task.failed` / `task.cancelled` / `task.retry`
-  (not bare `created`). Prefer the `pool.on_completed(...)` helpers.
-- **Graceful shutdown scope**: `shutdown(graceful=True)` drains tasks that are
-  already enqueued (pending + running) before returning. Unexpired delayed
-  tasks and periodic/cron schedules are **not** fired during shutdown — cancel
-  periodic schedules first (`cancel_periodic`) or use `graceful=False` for an
-  immediate return.
-- **Crash / restart recovery**: auto-recovery re-runs tasks that were already
-  **enqueued** (their ids live in the persisted queue). A record created only via
-  `create_pending_task()` and never pushed through `enqueue_task()` is not part
-  of the queue, so it will **not** auto-run after a restart — enqueue it explicitly.
-- **Periodic task persistence**: set `SchedulerConfig(enable_persistence=True,
-  storage_type="sqlite"|"redis")` to persist interval / cron periodic tasks and
-  auto-restore them after a restart; slots missed while down are handled by each
-  task's `missed_policy`. With `storage_type="memory"` the store is in-process
-  only and cannot survive a restart.
-- **Minimum interval granularity**: periodic tasks are driven by a scan loop with
-  `SchedulerConfig.scan_interval` (default `1.0s`). `submit_interval` with an
-  interval smaller than `scan_interval` may skip fires; lower `scan_interval` or
-  enable the time wheel (`enable_time_wheel=True`) for finer granularity.
-
 
 ## Usage Notes
 
@@ -328,10 +329,21 @@ A few behaviors are easy to trip over, so they are documented explicitly:
   **enqueued** (their ids live in the persisted queue). A record created only via
   `create_pending_task()` and never pushed through `enqueue_task()` is not part
   of the queue, so it will **not** auto-run after a restart — enqueue it explicitly.
+- **Periodic task persistence**: `enable_persistence` is **on by default**. With
+  `storage_type="sqlite"` or `"redis"`, interval / cron periodic tasks are persisted
+  and auto-restored after a restart; slots missed while down are handled by each
+  task's `missed_policy`. With `storage_type="memory"` or
+  `enable_persistence=False` the schedule cannot survive a restart — NeoTask emits
+  a one-time warning when a periodic task is registered in such a configuration
+  instead of losing it silently.
 - **Minimum interval granularity**: periodic tasks are driven by a scan loop with
   `SchedulerConfig.scan_interval` (default `1.0s`). `submit_interval` with an
   interval smaller than `scan_interval` may skip fires; lower `scan_interval` or
   enable the time wheel (`enable_time_wheel=True`) for finer granularity.
+- **Cross-node waiting**: `wait_for_result` / `wait_for_result_async` work for
+  tasks executed on another node — the wait uses future notification plus a
+  low-frequency repository check, so a result persisted by a remote worker is
+  picked up without waiting for the full timeout.
 
 
 ## Configuration Example
@@ -372,7 +384,7 @@ pip install -e ".[dev]"
 pytest tests/
 
 # View test coverage
-pytest --cov=neotask tests/
+pytest --cov=src/neotask tests/
 
 # Run specific module tests
 pytest tests/test_task_pool.py -v

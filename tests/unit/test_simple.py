@@ -1,112 +1,71 @@
 """
 @FileName: test_simple.py
-@Description: 
+@Description: 最简用法冒烟测试 - TaskPool 即时任务与 TaskScheduler 周期任务
 @Author: neopen
 @GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/9 22:25
 """
-from neotask import TaskScheduler, SchedulerConfig
-
-
-async def test_task(data):
-    print(f"执行: {data}")
-    return {"ok": True}
-
-
-def test_tt():
-    scheduler = TaskScheduler(executor=test_task, config=SchedulerConfig.memory())
-    print("1. 创建完成")
-    scheduler.start()
-    print("2. start() 完成")
-    time.sleep(1)
-    task_id = scheduler.submit_interval({"name": "test"}, interval_seconds=1, run_immediately=True)
-    print(f"3. 提交任务: {task_id}")
-    time.sleep(5)
-    print("4. 完成")
-    scheduler.shutdown()
-
-
-"""
- 快速 Redis 测试 - 使用同步 API
-"""
 
 import time
-import os
+
+import pytest
+
+from neotask import TaskScheduler, SchedulerConfig
 from neotask.api.task_pool import TaskPool, TaskPoolConfig
 
 
-def simple_executor(data):
-    """同步执行器（注意：这里是同步函数）"""
-    print(f"Executing: {data}")
-    return {"result": data}
+async def _executor(data):
+    """测试执行器（私有命名，避免被 pytest 当作用例收集）"""
+    return {"ok": True, "data": data}
 
 
-def main():
-    """主函数"""
-    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
-
-    print("=" * 60)
-    print("Quick Redis Test")
-    print("=" * 60)
-
-    # 创建配置
-    config = TaskPoolConfig(
-        storage_type="redis",
-        redis_url=redis_url,
-        worker_concurrency=2  # 并发 worker 数
-    )
-
-    print(f"Config: storage={config.storage_type}, redis={config.redis_url}")
-
-    # 创建任务池
-    pool = TaskPool(executor=simple_executor, config=config)
+@pytest.mark.asyncio
+async def test_task_pool_submit_and_wait():
+    """TaskPool 提交任务并等待结果"""
+    pool = TaskPool(executor=_executor, config=TaskPoolConfig.memory())
     pool.start()
 
     try:
-        # 提交单个任务
-        print("\n1. Submitting single task...")
-        task_id = pool.submit({"test": "hello"})
-        print(f"   Task ID: {task_id}")
+        task_id = await pool.submit_async({"name": "simple"})
+        assert task_id is not None
 
-        # 等待结果
-        result = pool.wait_for_result(task_id, timeout=10)
-        print(f"   Result: {result}")
-
-        # 批量提交任务
-        print("\n2. Submitting batch tasks...")
-        task_ids = []
-        for i in range(5):
-            task_id = pool.submit({"id": i, "message": f"task-{i}"})
-            task_ids.append(task_id)
-            print(f"   Submitted: {task_id}")
-
-        # 等待所有任务完成
-        print("\n3. Waiting for all tasks...")
-        for task_id in task_ids:
-            try:
-                result = pool.wait_for_result(task_id, timeout=10)
-                print(f"   Task {task_id} completed: {result}")
-            except Exception as e:
-                print(f"   Task {task_id} failed: {e}")
-
-        # 获取统计
-        print("\n4. Getting statistics...")
-        stats = pool.get_stats()
-        print(f"   Queue size: {stats.get('queue_size', 0)}")
-        print(f"   Total completed: {stats.get('completed', 0)}")
-        print(f"   Success rate: {stats.get('success_rate', 0)}")
-
-        print("\n✅ All tasks completed successfully!")
-
-    except Exception as e:
-        print(f"\n❌ Test failed: {e}")
-        import traceback
-        traceback.print_exc()
+        result = await pool.wait_for_result_async(task_id, timeout=10)
+        assert result["ok"] is True
+        assert result["data"] == {"name": "simple"}
     finally:
-        print("\n5. Shutting down...")
         pool.shutdown()
-        time.sleep(1)
+
+
+def test_task_scheduler_interval():
+    """TaskScheduler 周期任务应至少执行两次"""
+    scheduler = TaskScheduler(executor=_executor, config=SchedulerConfig.memory())
+    scheduler.start()
+    task_id = None
+
+    try:
+        task_id = scheduler.submit_interval(
+            {"name": "test"},
+            interval_seconds=0.2,
+            run_immediately=True
+        )
+        assert task_id is not None
+
+        # 事件驱动等待：轮询 run_count，避免固定 sleep 带来的时序抖动
+        deadline = time.time() + 5
+        run_count = 0
+        while time.time() < deadline:
+            task = scheduler.get_periodic_task(task_id)
+            run_count = task["run_count"] if task else 0
+            if run_count >= 2:
+                break
+            time.sleep(0.05)
+
+        assert run_count >= 2, f"periodic task only ran {run_count} times"
+    finally:
+        if task_id:
+            scheduler.cancel_periodic(task_id)
+        scheduler.shutdown()
 
 
 if __name__ == "__main__":
-    main()
+    pytest.main([__file__, "-v", "--asyncio-mode=auto"])

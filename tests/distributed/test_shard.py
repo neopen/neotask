@@ -282,12 +282,14 @@ class TestRangeSharder:
         ranges = [("a", "m"), ("n", "z")]
         sharder = RangeSharder(ranges)
 
-        # 超出范围的 key 应该返回 -1 或 None
-        for key in ["1", "{", "!", "@", "#"]:
+        # 低于首个范围下界、或落在区间空洞中的 key 返回 -1（未分片）
+        for key in ["1", "!", "@", "#"]:
             result = sharder.get_shard(key)
             print(f"   '{key}' -> shard {result}")
-            # 允许返回 -1 或 None
-            assert result in [-1, None]
+            assert result == -1
+
+        # 高于末尾范围上界的 key 按“尾部溢出”归入最后一个分片
+        assert sharder.get_shard("{") == 1
 
         print(f"\n超出范围处理正常")
 

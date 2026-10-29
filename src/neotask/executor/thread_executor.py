@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import contextvars
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Callable, Optional
 
@@ -61,10 +62,14 @@ class ThreadExecutor(TaskExecutor):
         if inspect.iscoroutinefunction(self._func):
             return await self._func(task_data)
 
-        # 同步函数在线程池中执行
+        # 同步函数在线程池中执行。
+        # run_in_executor 不会自动传递 contextvars，这里显式复制上下文，
+        # 使 Worker 绑定的进度上报器（report_progress_sync）在线程内可见。
         loop = asyncio.get_event_loop()
+        context = contextvars.copy_context()
         return await loop.run_in_executor(
             self._get_executor(),
+            context.run,
             self._func,
             task_data
         )

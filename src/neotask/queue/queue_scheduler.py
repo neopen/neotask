@@ -98,6 +98,24 @@ class QueueScheduler:
         else:
             return await self._priority_queue.push(task_id, priority)
 
+    async def re_enqueue(self, task_id: str, priority: int) -> bool:
+        """把已出队但尚未执行的任务放回优先队列（停机回滚用）
+
+        与 ``push`` 的区别：停机时队列已 ``disable()``（不再接收新任务），但
+        预取器本地队列里的任务是**已经出队**的，放回属于撤销出队而不是新任务，
+        必须放行；否则这些任务会变成孤儿，只能等 ttl 兜底重排。
+
+        Args:
+            task_id: 任务ID
+            priority: 任务原始优先级
+
+        Returns:
+            是否成功放回
+        """
+        if await self.size() >= self._max_size:
+            return False
+        return await self._priority_queue.push(task_id, priority)
+
     async def push_batch(
             self,
             tasks: List[tuple],  # (task_id, priority, delay)

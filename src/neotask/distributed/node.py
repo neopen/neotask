@@ -77,7 +77,7 @@ class NodeManager:
         """
         self._redis_url = redis_url
         self._node_id = node_id or self._generate_node_id()
-        self._client: Optional["redis.Redis"] = None
+        self._client: Optional[Any] = None
         self._heartbeat_task: Optional[asyncio.Task] = None
         self._health_check_task: Optional[asyncio.Task] = None
         self._running = False
@@ -87,13 +87,12 @@ class NodeManager:
             pid=os.getpid()
         )
 
-    async def _get_client(self) -> "redis.Redis":
-        """获取Redis客户端"""
+    async def _get_client(self) -> Any:
+        """获取Redis客户端（loop 安全，命令在专用事件循环执行）"""
         if not HAS_REDIS:
             raise RuntimeError("redis not installed. Run: pip install neotask[redis]")
         if self._client is None:
-            pool = redis_compat.from_url(self._redis_url, decode_responses=True)
-            self._client = redis.Redis(connection_pool=pool)
+            self._client = redis_compat.create_client(self._redis_url, decode_responses=True)
         return self._client
 
     def _generate_node_id(self) -> str:

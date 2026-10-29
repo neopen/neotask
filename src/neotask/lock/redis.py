@@ -1,5 +1,5 @@
 """
-@FileName: redis.py
+@FileName: test_redis.py
 @Description: Redis分布式锁实现 - 添加扫描和清理功能
 @Author: neopen
 @GitHub: https://github.com/neopen/neotask
@@ -87,22 +87,21 @@ class RedisLock(TaskLock):
         """
         self._redis_url = redis_url
         self._key_prefix = key_prefix
-        self._pool: Optional["ConnectionPool"] = None
-        self._client: Optional["redis.Redis"] = None
+        # loop 安全客户端：命令统一在专用事件循环执行，避免跨 loop 冲突
+        self._client: Optional[Any] = None
         # 一个锁实例可以同时持有多个锁，逐个记录各自的 owner token
         self._owners: Dict[str, str] = {}  # key -> owner 映射
 
 
-    async def _get_client(self) -> "redis.Redis":
-        """获取Redis客户端"""
+    async def _get_client(self) -> Any:
+        """获取Redis客户端（loop 安全，命令在专用事件循环执行）"""
         if not HAS_REDIS:
             raise RuntimeError("redis not installed. Run: pip install neotask[redis]")
         if self._client is None:
-            self._pool = redis_compat.from_url(
+            self._client = redis_compat.create_client(
                 self._redis_url,
                 decode_responses=True
             )
-            self._client = redis.Redis(connection_pool=self._pool)
         return self._client
 
     def _get_key(self, key: str) -> str:
@@ -351,8 +350,7 @@ class RedisLock(TaskLock):
         """关闭Redis连接"""
         if self._client:
             await self._client.close()
-        if self._pool:
-            await self._pool.disconnect()
+            self._client = None
 
     def __repr__(self) -> str:
         return f"RedisLock(url={self._redis_url})"

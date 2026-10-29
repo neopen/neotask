@@ -15,7 +15,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
-import yaml
+try:
+    import yaml  # PyYAML 为可选依赖，仅用于解析 logging.yaml
+except ImportError:  # 未安装 PyYAML 时日志配置回退为内置默认值
+    yaml = None
 
 # 导入自定义的控制台颜色处理模块
 from neotask.utils.console_colors import init_console_colors, IS_WINDOWS, HAS_COLORAMA, LevelOnlyColoredFormatter
@@ -101,6 +104,15 @@ class LoggingConfigManager:
 
         if not self.logging_config_file.exists():
             print(f"日志配置文件不存在: {self.logging_config_file}")
+            self._config_cache = {}
+            return self._config_cache
+
+        if yaml is None:
+            # 未安装 PyYAML：保持内置默认配置，不让可选依赖影响核心包导入
+            logging.debug(
+                "PyYAML not installed; %s ignored, falling back to built-in defaults",
+                self.logging_config_file,
+            )
             self._config_cache = {}
             return self._config_cache
 

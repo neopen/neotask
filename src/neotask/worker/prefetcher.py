@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import threading
 import time
 from typing import Optional, List, Dict, Any, Awaitable, Callable
 from dataclasses import dataclass, field
@@ -105,7 +106,7 @@ class TaskPrefetcher:
         self._prefetch_task: Optional[asyncio.Task] = None
         self._running = False
         self._last_activity = time.time()
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
 
         # 统计
         self._stats = PrefetchStats()
@@ -132,13 +133,7 @@ class TaskPrefetcher:
         self._running = False
 
         if graceful and not self._local_queue.empty():
-            try:
-                await asyncio.wait_for(
-                    self._wait_until_empty(),
-                    timeout=timeout
-                )
-            except asyncio.TimeoutError:
-                pass
+            await self.wait_until_empty(timeout)
 
         if self._prefetch_task:
             self._prefetch_task.cancel()
@@ -217,6 +212,21 @@ class TaskPrefetcher:
             except asyncio.QueueEmpty:
                 break
 
+    async def wait_until_empty(self, timeout: float = 5.0) -> bool:
+        """等待本地队列被 worker 消费完
+
+        Args:
+            timeout: 超时时间（秒）
+
+        Returns:
+            是否在超时前清空
+        """
+        try:
+            await asyncio.wait_for(self._wait_until_empty(), timeout=timeout)
+            return True
+        except asyncio.TimeoutError:
+            return False
+
     async def drain_back(
             self,
             priority_resolver: Optional[Callable[[str], Awaitable[int]]] = None
@@ -249,7 +259,9 @@ class TaskPrefetcher:
                 except Exception as e:
                     warning(f"Failed to resolve priority for {task_id}, using NORMAL: {e}")
 
-            if await self._queue.push(task_id, priority):
+            # 停机时共享队列已被 disable()，这里的放回是“撤销出队”而不是新任务，
+            # 必须用 re_enqueue 绕过入队开关，否则任务会变成孤儿。
+            if await self._queue.re_enqueue(task_id, priority):
                 drained += 1
             else:
                 # 共享队列也满了：放回本地队列，宁可保留也不要凭空丢弃
@@ -259,7 +271,7 @@ class TaskPrefetcher:
                     pass
                 warning(
                     f"Cannot drain task {task_id} back to shared queue "
-                    f"(queue full/disabled); {self._local_queue.qsize()} task(s) remain local"
+                    f"(queue full); {self._local_queue.qsize()} task(s) remain local"
                 )
                 break
 
@@ -403,7 +415,7 @@ class TaskPrefetcher:
 
         latency = (time.time() - start_time) * 1000  # 毫秒
 
-        async with self._lock:
+        with self._lock:
             self._stats.total_prefetch += 1
             self._stats.total_fetched += fetched_count
             self._stats.last_prefetch_time = time.time()

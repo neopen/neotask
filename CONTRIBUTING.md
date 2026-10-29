@@ -77,21 +77,33 @@ neotask/
 ├── api/                     # 用户 API 层
 │   ├── task_pool.py         # TaskPool - 即时任务入口
 │   └── task_scheduler.py    # TaskScheduler - 定时任务入口
+├── cli/                     # 命令行入口
+├── common/                  # 公共模块
+│   └── exceptions.py        # 异常定义
+├── config/                  # 配置加载
+├── contrib/                 # 第三方集成
 ├── core/                    # 核心组件
 │   ├── lifecycle.py         # 任务生命周期管理
 │   ├── dispatcher.py        # 任务分发器
 │   ├── future.py            # Future 异步等待
+│   ├── heartbeat.py         # 节点心跳
 │   └── context.py           # 任务上下文
+├── distributed/             # 分布式模块
+│   ├── node.py              # 节点管理
+│   ├── coordinator.py       # 协调器/负载均衡
+│   └── sharding.py          # 分片策略
 ├── queue/                   # 队列模块
 │   ├── base.py              # 队列抽象基类
 │   ├── priority_queue.py    # 优先级队列
 │   ├── delayed_queue.py     # 延迟队列
+│   ├── dead_letter.py       # 死信队列
 │   └── scheduler.py         # 队列调度器
 ├── storage/                 # 存储模块
 │   ├── base.py              # 存储抽象基类
 │   ├── memory.py            # 内存存储
 │   ├── sqlite.py            # SQLite 存储
 │   ├── redis.py             # Redis 存储
+│   ├── periodic.py          # 周期任务存储
 │   └── factory.py           # 存储工厂
 ├── executor/                # 执行器模块
 │   ├── base.py              # 执行器基类
@@ -110,7 +122,7 @@ neotask/
 │   ├── supervisor.py        # Worker 监督者
 │   ├── prefetcher.py        # 任务预取器
 │   └── reclaimer.py         # 任务回收器
-├── scheduler/               # 调度器模块 (v0.3)
+├── scheduler/               # 调度器模块
 │   ├── cron_parser.py       # Cron 表达式解析器
 │   ├── time_wheel.py        # 时间轮
 │   └── periodic.py          # 周期任务管理器
@@ -123,10 +135,13 @@ neotask/
 ├── models/                  # 数据模型
 │   ├── task.py              # 任务模型
 │   ├── config.py            # 配置模型
-│   └── schedule.py          # 调度模型 (v0.3)
-├── common/                  # 公共模块
-│   └── exceptions.py        # 异常定义
-└── web/                     # Web UI (计划中)
+│   └── schedule.py          # 调度模型
+├── utils/                   # 工具模块
+│   ├── dedicated_loop.py    # 专用事件循环线程
+│   ├── redis_compat.py      # Redis loop 安全客户端
+│   └── sqlite_compat.py     # SQLite loop 安全连接
+└── web/                     # 可选 Web UI（pip install neotask[ui]）
+    ├── server.py            # WebUIServer
     └── ...
 ```
 
@@ -483,7 +498,7 @@ if __name__ == "__main__":
 ## 环境
 - Python: 3.11
 - OS: Ubuntu 22.04
-- NeoTask: 0.3.0
+- NeoTask: 1.0.4
 
 ## 复现步骤
 1. 
@@ -501,6 +516,7 @@ traceback here
 
 ## 复现代码
 # minimal code to reproduce
+~~~
 
 ### 功能请求
 
@@ -554,7 +570,7 @@ Fixes #123
 [ ] 已自我审查代码
 [ ] 已添加注释
 [ ] 文档已更新
-~~~
+```
 
 
 
@@ -577,7 +593,20 @@ Fixes #123
 - **MINOR**: 向下兼容的新功能
 - **PATCH**: 向下兼容的 Bug 修复
 
-### 发布步骤（仅维护者）
+### 自动发布（推荐，仅维护者）
+
+`main` 分支启用了 [release-please](https://github.com/googleapis/release-please)，版本号与 Release 均由机器人生成：
+
+1. 向 `main` 合并符合 [Conventional Commits](https://www.conventionalcommits.org/) 的提交（`fix:` → PATCH，`feat:` → MINOR，`feat!:` / `BREAKING CHANGE` → MAJOR；默认按 PATCH）
+2. `.github/workflows/release-please.yml` 创建或更新 Release PR，自动修改 `pyproject.toml`、`src/neotask/__init__.py`、`CHANGELOG.md` 与 `.github/.release-please-manifest.json`
+3. 合并 Release PR 后自动创建 `vX.Y.Z` 标签和 GitHub Release
+4. Release 发布后 `.github/workflows/publish-pypi.yml` 自动构建并发布到 PyPI（也可通过 `workflow_dispatch` 指定 tag 手动发布）
+
+> 开发分支无需手动改版本号，保持与 `main` 已发布版本一致即可，由 Release PR 统一提升。
+
+### 手动发布（兜底）
+
+仅在 release-please 不可用时使用：
 
 ```bash
 # 1. 更新版本号
@@ -587,19 +616,17 @@ Fixes #123
 # 记录所有变更
 
 # 3. 提交变更
-git commit -am "chore: bump version to 1.0.2"
+git commit -am "chore: bump version to 1.0.5"
 
 # 4. 创建标签
-git tag -a v1.0.2 -m "Release v1.0.2"
+git tag -a v1.0.5 -m "Release v1.0.5"
 
 # 5. 推送
 git push origin main
-git push origin v1.0.2
+git push origin v1.0.5
 
-# 6. 构建分发包
+# 6. 手工创建 GitHub Release（触发 publish-pypi 工作流），或本地构建后上传
 python -m build
-
-# 7. 发布到 PyPI
 twine upload dist/*
 ```
 

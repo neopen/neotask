@@ -1,0 +1,67 @@
+<p>本页区分“1.0 已交付”与“后续规划”。规划项来自仓库公开路线图，尚未实现，接口与行为以最终发布为准。</p>
+
+<h2>1.0 能力边界</h2>
+<table>
+<thead><tr><th>能力</th><th>状态</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>即时任务、批量提交</td><td>已支持</td><td><code>TaskPool</code></td></tr>
+<tr><td>四级优先级</td><td>已支持</td><td>数值越小越优先</td></tr>
+<tr><td>延时、固定间隔、Cron</td><td>已支持</td><td><code>TaskScheduler</code></td></tr>
+<tr><td>Memory / SQLite / Redis</td><td>已支持</td><td>Redis 支持多节点共享队列</td></tr>
+<tr><td>自动重试、超时、进度</td><td>已支持</td><td>重试为线性延迟</td></tr>
+<tr><td>节点心跳、任务回收、死信</td><td>已支持（Redis）</td><td>死信无公开查询 API</td></tr>
+<tr><td>DAG 工作流</td><td>未支持</td><td>规划于 v1.5</td></tr>
+<tr><td>多租户隔离</td><td>未支持</td><td>规划于 v2.0</td></tr>
+<tr><td>独立 Web UI / CLI</td><td>未提供</td><td>仓库有 Web 代码，但未接入公开入口</td></tr>
+</tbody>
+</table>
+
+<h2>1.0 上的替代方案</h2>
+<p>规划中的能力在 1.0 上通常可以用业务代码组合现有原语实现，但状态与失败处理需要自行承担。</p>
+<table>
+<thead><tr><th>需求</th><th>1.0 做法</th><th>需要自行处理</th></tr></thead>
+<tbody>
+<tr><td>串联多个任务</td><td>在任务完成事件或 <code>wait_for_result()</code> 返回后提交下一步</td><td>失败传播、超时、重复提交与断点恢复</td></tr>
+<tr><td>条件分支</td><td>任务返回结构化结果，由业务层决定提交哪个后续任务</td><td>分支状态记录与失败补偿</td></tr>
+<tr><td>并行子任务</td><td><code>submit_batch()</code> + <code>wait_all()</code></td><td>部分失败时的清理与重试策略</td></tr>
+<tr><td>定时编排</td><td>用 <code>TaskScheduler</code> 分别定义周期任务</td><td>多实例重复触发；同一周期定义只应有一个调度者</td></tr>
+<tr><td>多租户</td><td>每个租户使用独立 TaskPool 与存储（独立 SQLite 文件或 Redis 库）</td><td>资源配额、统一鉴权与跨租户统计</td></tr>
+<tr><td>可视化管理</td><td>基于 <code>get_stats()</code>、<code>get_task()</code> 与事件自行构建</td><td>Web UI 与 CLI 尚未接入公开入口</td></tr>
+</tbody>
+</table>
+
+<h2>v1.5：任务编排</h2>
+<ul>
+<li>DAG 工作流定义与提交；</li>
+<li>节点依赖、条件分支与并行执行；</li>
+<li>工作流级状态查询与失败重跑。</li>
+</ul>
+<p>规划中的工作流引擎只负责拓扑推进与节流，节点执行仍复用 <code>TaskPool</code>。当前版本没有 <code>workflow</code> 模块，不应在 1.0 上使用相关接口。</p>
+
+<h2>v2.0：企业级特性</h2>
+<ul>
+<li>独立 Web UI；</li>
+<li>多租户隔离；</li>
+<li>更完整的 Prometheus 集成。</li>
+</ul>
+<p>1.0 已提供 <code>MetricsCollector</code> 与 Pushgateway 上报器，但没有内置 HTTP 指标端点；v2.0 的集成范围以发布说明为准。</p>
+
+<h2>升级准备</h2>
+<ul>
+<li>保持任务幂等：后续的工作流重跑、故障恢复和人工重试都会再次执行任务。</li>
+<li>只依赖公开 API：不要直接读写 Redis 键或调用内部模块，存储结构可能随版本变化。</li>
+<li>记录当前配置：升级前保存 <code>TaskPoolConfig</code> 与 <code>SchedulerConfig</code>，发布后逐项对照新版配置参考。</li>
+<li>不要把规划项写进生产依赖，也不要在 1.0 上导入尚不存在的 <code>workflow</code> 模块。</li>
+</ul>
+
+<h2>版本与文档路径</h2>
+<table>
+<thead><tr><th>库版本</th><th>文档路径</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>1.0.x</td><td><code>/docs/v1.0/</code></td><td>当前版本；补丁版本共享此路径</td></tr>
+<tr><td>后续 1.x</td><td><code>/docs/v1.x/</code></td><td>发布时新增，旧路径继续保留</td></tr>
+</tbody>
+</table>
+<p>文档按次版本线固定路径，补丁版本不会改变链接；升级后请切换到目标版本文档阅读配置与 API 变化。</p>
+
+<div class="doc-note"><strong>版本策略：</strong>文档按版本发布，1.0 文档只描述 1.0.x 的行为。后续版本文档会以新路径提供，旧版本链接保持可访问。</div>

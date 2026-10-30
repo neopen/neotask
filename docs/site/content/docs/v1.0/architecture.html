@@ -1,0 +1,78 @@
+<p>NeoTask 采用 Facade 结构：对外只有 <code>TaskPool</code> 与 <code>TaskScheduler</code>，内部按职责拆分为分发、队列、执行、生命周期、事件与存储组件。所有节点对等，不依赖调度中心。</p>
+
+<h2>组件关系</h2>
+<pre class="diagram"><code>TaskPool / TaskScheduler
+        │
+        ├── TaskDispatcher ──────► QueueScheduler
+        │                              ├── PriorityQueue（4 级）
+        │                              └── DelayedQueue（最小堆）
+        │
+        ├── WorkerPool ──────────► Executor（async / thread / process / class）
+        │      ├── Prefetcher
+        │      └── Supervisor
+        │
+        ├── TaskLifecycleManager ─► TaskRepository / QueueRepository
+        ├── EventBus ─────────────► on_created / started / completed / failed /
+        │                            cancelled / progress / reclaimed
+        ├── LockManager ──────────► MemoryLock / RedisLock + WatchDog
+        │
+        └── Redis 模式附加组件
+               ├── NodeManager
+               ├── HeartbeatManager
+               ├── TaskReclaimer
+               ├── DeadLetterQueue
+               └── Coordinator</code></pre>
+
+<table>
+<thead><tr><th>组件</th><th>职责</th></tr></thead>
+<tbody>
+<tr><td><code>TaskDispatcher</code></td><td>创建任务记录并写入优先队列或延时队列</td></tr>
+<tr><td><code>QueueScheduler</code></td><td>统一入队、出队、暂停、清空；延时到期后提升到优先队列</td></tr>
+<tr><td><code>WorkerPool</code></td><td>按 <code>worker_concurrency</code> 消费任务，执行超时与失败重试</td></tr>
+<tr><td><code>TaskLifecycleManager</code></td><td>维护状态机、结果、进度与等待者通知</td></tr>
+<tr><td><code>TaskRepository</code></td><td>任务记录持久化；Memory / SQLite / Redis 三种实现</td></tr>
+<tr><td><code>EventBus</code></td><td>异步事件分发，供回调和指标采集订阅</td></tr>
+<tr><td><code>TaskReclaimer</code></td><td>仅 Redis 模式：回收超时、孤儿任务与僵尸锁</td></tr>
+</tbody>
+</table>
+
+<h2>任务执行路径</h2>
+<ol>
+<li>调用 <code>submit()</code> 或 <code>submit_async()</code>，<code>TaskDispatcher</code> 创建 <code>PENDING</code> 任务并写入存储。</li>
+<li><code>QueueScheduler</code> 将任务放入优先队列；<code>delay &gt; 0</code> 时先进入延时队列。</li>
+<li><code>WorkerPool</code> 出队并将任务置为 <code>RUNNING</code>，获取任务锁后调用执行器。</li>
+<li>执行完成写入 <code>SUCCESS</code> / <code>FAILED</code>，发布事件并唤醒 <code>wait_for_result()</code>。</li>
+<li>失败且未超过 <code>max_retries</code> 时重置为 <code>PENDING</code>，按线性延迟重新入队。</li>
+</ol>
+
+<h2>三种部署形态</h2>
+<table>
+<thead><tr><th>形态</th><th>存储</th><th>适用场景</th><th>限制</th></tr></thead>
+<tbody>
+<tr><td>单进程嵌入</td><td>memory</td><td>脚本、测试、短生命周期服务</td><td>进程退出即丢失</td></tr>
+<tr><td>单机持久化</td><td>SQLite</td><td>低频、单写入者、需要本地持久化</td><td>多 worker 并发写入会出现 <code>database is locked</code></td></tr>
+<tr><td>多节点对等</td><td>Redis</td><td>水平扩展、共享队列、故障回收</td><td>需要 Redis，且节点 ID 必须唯一</td></tr>
+</tbody>
+</table>
+
+<h2>去中心化边界</h2>
+<p>Redis 模式下所有节点消费同一个队列，没有主节点、选主或任务指派。节点通过心跳登记存活状态，任务由任意空闲节点抢占执行。因此：</p>
+<ul>
+<li><code>TaskPool.is_leader()</code> 固定返回 <code>False</code>；</li>
+<li>任务不保证在提交节点执行；</li>
+<li>节点宕机后，其 <code>RUNNING</code> 任务由其他节点的回收器接手；</li>
+<li>执行顺序只保证队列的出队顺序，不保证跨节点的完成顺序。</li>
+</ul>
+
+<h2>执行器选择</h2>
+<table>
+<thead><tr><th>执行器</th><th>实现</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>AsyncExecutor</td><td>直接 <code>await</code></td><td>默认；同步函数会被包装为异步调用，仍运行在事件循环线程</td></tr>
+<tr><td>ThreadExecutor</td><td>线程池</td><td>适合阻塞 IO；支持 <code>report_progress_sync()</code></td></tr>
+<tr><td>ProcessExecutor</td><td>进程池</td><td>适合 CPU 密集任务；不支持进度上报</td></tr>
+<tr><td>ClassExecutor</td><td>调用对象 <code>execute()</code></td><td>适合带状态的服务对象</td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>相关页面：</strong><a href="/docs/task-lifecycle.html">任务生命周期</a> · <a href="/docs/priority-queue.html">优先级队列</a> · <a href="/docs/distributed.html">分布式部署</a> · <a href="/docs/persistence.html">持久化存储</a></div>

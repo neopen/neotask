@@ -1,0 +1,149 @@
+<p>公开入口为 <code>TaskPool</code> 与 <code>TaskScheduler</code>。除特别标注外，每个同步方法都有一个同名的 <code>_async</code> 版本，参数与返回值一致。</p>
+
+<pre><code class="language-python">from neotask import TaskPool, TaskScheduler, TaskPoolConfig, SchedulerConfig</code></pre>
+
+<h2>TaskPool</h2>
+<pre><code class="language-python">TaskPool(executor=None, config=None)</code></pre>
+<p><code>executor</code> 可以是普通函数、协程函数或 <code>TaskExecutor</code> 实例；为 <code>None</code> 时使用返回固定结果的默认执行器。</p>
+
+<h3>生命周期与提交</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>start()</code></td><td>显式启动；首次提交也会自动启动</td></tr>
+<tr><td><code>shutdown(graceful=True, timeout=30)</code></td><td>停止接收新任务，等待队列清空后关闭</td></tr>
+<tr><td><code>submit(data, task_id=None, priority=NORMAL, delay=0, ttl=3600)</code></td><td>提交任务，返回任务 ID</td></tr>
+<tr><td><code>submit_batch(tasks, priority=NORMAL)</code></td><td>逐条提交任务列表，返回 ID 列表</td></tr>
+<tr><td><code>create_pending_task(data, task_id=None, priority=NORMAL, ttl=3600)</code></td><td>只创建记录，不入队</td></tr>
+<tr><td><code>enqueue_task(task_id)</code></td><td>把 <code>pending</code> 任务入队；非 <code>pending</code> 返回 <code>False</code></td></tr>
+</tbody>
+</table>
+
+<h3>等待与查询</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>wait_for_result(task_id, timeout=300)</code></td><td>等待并返回结果；失败、取消或超时抛异常</td></tr>
+<tr><td><code>wait_all(task_ids, timeout=300)</code></td><td>逐项等待，返回 <code>{task_id: result}</code></td></tr>
+<tr><td><code>get_status(task_id)</code></td><td>状态字符串或 <code>None</code></td></tr>
+<tr><td><code>get_result(task_id)</code></td><td>结果摘要字典或 <code>None</code></td></tr>
+<tr><td><code>get_task(task_id)</code></td><td>完整任务字典或 <code>None</code></td></tr>
+<tr><td><code>task_exists(task_id)</code></td><td>任务是否存在</td></tr>
+</tbody>
+</table>
+
+<h3>任务管理</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>cancel(task_id)</code></td><td>移除队列项并置为 <code>cancelled</code>；仅 <code>pending</code> / <code>running</code> 有效</td></tr>
+<tr><td><code>retry(task_id, delay=0)</code></td><td>重置终态任务并重新入队</td></tr>
+<tr><td><code>delete(task_id)</code></td><td>删除任务记录</td></tr>
+<tr><td><code>pause()</code> / <code>resume()</code></td><td>暂停 / 恢复出队，仍可继续入队</td></tr>
+<tr><td><code>clear_queue()</code></td><td>清空队列；不修改已创建的任务记录</td></tr>
+</tbody>
+</table>
+
+<h3>统计与健康</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>get_stats()</code></td><td>队列、任务计数、指标、回收与预取摘要</td></tr>
+<tr><td><code>get_worker_stats()</code></td><td>各 Worker 的忙碌状态与计数</td></tr>
+<tr><td><code>get_health_status()</code></td><td>存储、队列、系统健康检查；缓存 5 秒</td></tr>
+<tr><td><code>get_queue_size()</code></td><td>优先队列与延时队列总数</td></tr>
+</tbody>
+</table>
+
+<h3>锁与节点</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>acquire_lock(task_id, ttl=30)</code></td><td>获取 <code>task:{task_id}</code> 锁</td></tr>
+<tr><td><code>release_lock(task_id)</code></td><td>释放本实例持有的锁</td></tr>
+<tr><td><code>get_active_nodes()</code></td><td>Redis 模式下的活跃节点列表</td></tr>
+<tr><td><code>is_leader()</code></td><td>始终返回 <code>False</code></td></tr>
+</tbody>
+</table>
+
+<h3>事件</h3>
+<table>
+<thead><tr><th>方法</th><th>事件</th></tr></thead>
+<tbody>
+<tr><td><code>on_created(handler)</code></td><td><code>task.created</code></td></tr>
+<tr><td><code>on_started(handler)</code></td><td><code>task.started</code></td></tr>
+<tr><td><code>on_completed(handler)</code></td><td><code>task.completed</code></td></tr>
+<tr><td><code>on_failed(handler)</code></td><td><code>task.failed</code></td></tr>
+<tr><td><code>on_cancelled(handler)</code></td><td><code>task.cancelled</code></td></tr>
+<tr><td><code>on_progress(handler)</code></td><td><code>task.progress</code></td></tr>
+<tr><td><code>on_reclaimed(handler)</code></td><td><code>task.reclaimed</code></td></tr>
+</tbody>
+</table>
+
+<h2>TaskScheduler</h2>
+<pre><code class="language-python">TaskScheduler(executor=None, config=None)</code></pre>
+<p>内部创建一个 <code>TaskPool</code>，并增加延时、周期与 Cron 调度。以下方法除 <code>get_periodic_*</code> 等同步专用项外，同样存在 <code>_async</code> 版本。</p>
+
+<h3>延时任务</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>submit_delayed(data, delay_seconds, task_id=None, priority=NORMAL, ttl=3600)</code></td><td>延迟执行一次</td></tr>
+<tr><td><code>submit_at(data, execute_at, task_id=None, priority=NORMAL, ttl=3600)</code></td><td>在指定时间执行一次</td></tr>
+</tbody>
+</table>
+
+<h3>周期任务</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>submit_interval(data, interval_seconds, task_id=None, priority=NORMAL, run_immediately=True, max_runs=None, name="", missed_policy=None)</code></td><td>固定间隔执行</td></tr>
+<tr><td><code>submit_cron(data, cron_expr, task_id=None, priority=NORMAL, max_runs=None, name="", missed_policy=None)</code></td><td>Cron 表达式执行</td></tr>
+<tr><td><code>get_periodic_tasks()</code></td><td>列出周期任务</td></tr>
+<tr><td><code>get_periodic_task(task_id)</code></td><td>查询单个周期任务</td></tr>
+<tr><td><code>pause_periodic(task_id)</code></td><td>暂停周期任务</td></tr>
+<tr><td><code>resume_periodic(task_id)</code></td><td>恢复周期任务</td></tr>
+<tr><td><code>cancel_periodic(task_id)</code></td><td>删除周期任务</td></tr>
+</tbody>
+</table>
+
+<h3>委托给 TaskPool 的方法</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>submit(...)</code> / <code>submit_async(...)</code></td><td>同 TaskPool</td></tr>
+<tr><td><code>wait_for_result(...)</code></td><td>同 TaskPool</td></tr>
+<tr><td><code>get_status</code> / <code>get_result</code> / <code>get_task</code> / <code>task_exists</code></td><td>同 TaskPool</td></tr>
+<tr><td><code>cancel</code> / <code>delete</code> / <code>retry</code></td><td>先尝试周期任务，再操作普通任务</td></tr>
+<tr><td><code>get_stats</code> / <code>get_queue_size</code> / <code>get_health_status</code></td><td>汇总周期与时间轮统计</td></tr>
+<tr><td><code>pause</code> / <code>resume</code> / <code>clear_queue</code></td><td>同 TaskPool</td></tr>
+<tr><td><code>on_created</code> 等 6 个回调</td><td>同 TaskPool；无 <code>on_reclaimed</code></td></tr>
+</tbody>
+</table>
+
+<h2>返回值语义</h2>
+<table>
+<thead><tr><th>方法</th><th>成功</th><th>失败 / 不存在</th></tr></thead>
+<tbody>
+<tr><td><code>submit*</code></td><td>任务 ID 字符串</td><td>队列满抛 <code>QueueFullError</code>；ID 重复抛 <code>TaskAlreadyExistsError</code></td></tr>
+<tr><td><code>wait_for_result</code></td><td>执行器返回值</td><td>抛异常；超时抛 <code>TimeoutError</code></td></tr>
+<tr><td><code>get_status</code> / <code>get_result</code> / <code>get_task</code></td><td>对应数据</td><td><code>None</code></td></tr>
+<tr><td><code>cancel</code> / <code>retry</code> / <code>delete</code></td><td><code>True</code></td><td><code>False</code></td></tr>
+</tbody>
+</table>
+
+<h2>异常</h2>
+<table>
+<thead><tr><th>异常</th><th>触发场景</th></tr></thead>
+<tbody>
+<tr><td><code>TaskSchedulerError</code></td><td>所有异常的基类</td></tr>
+<tr><td><code>TaskNotFoundError</code></td><td>等待不存在的任务</td></tr>
+<tr><td><code>TaskAlreadyExistsError</code></td><td>使用已存在的 <code>task_id</code> 提交</td></tr>
+<tr><td><code>QueueFullError</code></td><td>队列达到 <code>queue_max_size</code></td></tr>
+<tr><td><code>TimeoutError</code></td><td><code>wait_for_result</code> 超时</td></tr>
+<tr><td><code>TaskError</code></td><td>已定义但当前版本未使用</td></tr>
+</tbody>
+</table>
+
+<h2>其他导出</h2>
+<p><code>neotask</code> 还导出执行器、存储、队列、锁、监控与分布式组件：<code>AsyncExecutor</code>、<code>ThreadExecutor</code>、<code>ProcessExecutor</code>、<code>MemoryTaskRepository</code>、<code>SQLiteTaskRepository</code>、<code>RedisTaskRepository</code>、<code>PriorityQueue</code>、<code>DelayedQueue</code>、<code>MemoryLock</code>、<code>RedisLock</code>、<code>WatchDog</code>、<code>MetricsCollector</code>、<code>HealthChecker</code>、<code>NodeManager</code>、<code>Coordinator</code> 等。完整列表见 <code>neotask.__all__</code>。</p>

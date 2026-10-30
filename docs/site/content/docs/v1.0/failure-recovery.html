@@ -1,0 +1,61 @@
+<p>故障恢复依赖 Redis 模式下的节点心跳、任务回收器与死信队列。memory 与 SQLite 模式没有自动回收能力：进程退出后，运行中的任务会停留在 <code>running</code>。</p>
+
+<h2>恢复来源</h2>
+<table>
+<thead><tr><th>场景</th><th>检测方式</th><th>处理</th></tr></thead>
+<tbody>
+<tr><td>执行超时</td><td>回收器扫描 <code>running</code> 任务，比较 <code>started_at</code> 与任务 <code>ttl</code></td><td>未耗尽重试则重新入队，否则标记失败</td></tr>
+<tr><td>节点宕机</td><td>心跳超过 <code>heartbeat_timeout</code> 未刷新</td><td>存活节点回收该节点的任务</td></tr>
+<tr><td>孤儿任务</td><td>任务所属节点不在活跃节点集合中</td><td>回收并重新入队</td></tr>
+<tr><td>僵尸锁</td><td>锁 TTL 低于阈值或已过期</td><td>由锁扫描器清理</td></tr>
+<tr><td>重试耗尽</td><td><code>retry_count ≥ max_retries</code></td><td>标记失败并写入死信队列</td></tr>
+</tbody>
+</table>
+
+<h2>时间参数</h2>
+<table>
+<thead><tr><th>参数</th><th>默认值</th><th>作用</th></tr></thead>
+<tbody>
+<tr><td><code>task_timeout</code></td><td><code>None</code></td><td>单次执行超时；由 Worker 计时，触发后进入重试</td></tr>
+<tr><td>任务 <code>ttl</code></td><td><code>3600</code></td><td>回收器判断运行中超时的阈值；长任务需显式调大</td></tr>
+<tr><td><code>reclaimer_interval</code></td><td><code>30</code></td><td>回收器扫描间隔（秒）</td></tr>
+<tr><td><code>heartbeat_interval</code></td><td><code>5</code></td><td>节点心跳间隔（秒）</td></tr>
+<tr><td><code>heartbeat_timeout</code></td><td><code>20</code></td><td>节点失联判定（秒）</td></tr>
+</tbody>
+</table>
+
+<div class="doc-warning"><strong>两个超时不是一回事：</strong><code>task_timeout</code> 限制单次执行；任务 <code>ttl</code> 是回收器判断“这个 running 任务是否已经失联”的依据。仅设置 <code>task_timeout</code> 不会改变回收阈值，反之亦然。</div>
+
+<h2>回收流程</h2>
+<ol>
+<li>回收器发现超时或孤儿任务。</li>
+<li>若 <code>retry_count &lt; max_retries</code>，计数加一，状态重置为 <code>pending</code>，以 <code>retry_delay × retry_count</code> 的延迟重新入队。</li>
+<li>否则状态置为 <code>failed</code>，写入死信队列，并释放任务锁。</li>
+<li>每次处理都会发布 <code>task.reclaimed</code> 事件，负载包含原因与动作（<code>requeued</code> / <code>failed</code>）。</li>
+</ol>
+
+<pre><code class="language-python">async def on_reclaimed(event):
+    print(event.task_id, event.data)
+
+pool.on_reclaimed(on_reclaimed)</code></pre>
+
+<h2>死信队列</h2>
+<p>Redis 模式下，下列情况会写入死信队列：</p>
+<ul>
+<li>自动重试次数耗尽；</li>
+<li>回收后重新入队被拒绝（队列已满或已禁用）；</li>
+<li>回收时重试已耗尽。</li>
+</ul>
+
+<p>死信保存在 <code>neotask:dead_letter</code> 列表与 <code>neotask:dead_letter:index</code> 哈希中，默认保留 7 天、最多 10000 条。当前版本没有公开的查询或重放 API，需要人工通过 Redis 客户端读取 <code>DeadLetterQueue</code> 数据结构，或自行封装。</p>
+
+<h2>边界与前提</h2>
+<ul>
+<li>自动回收只在 <code>storage_type="redis"</code> 且配置 <code>redis_url</code> 时创建。</li>
+<li>孤儿回收需要节点管理器；没有活跃节点信息时会跳过，避免误判。</li>
+<li>回收不终止原进程中的业务代码。若旧节点恢复后仍在执行，任务可能被重复执行。</li>
+<li>锁能降低重复执行概率，但不能替代业务幂等。</li>
+<li>回收器每周期最多处理 100 个任务；大量堆积时需要多个节点共同回收。</li>
+</ul>
+
+<div class="doc-note"><strong>推荐做法：</strong>为所有长任务显式设置 <code>ttl</code>，保持 <code>heartbeat_timeout</code> 小于节点重启时间，并确保任务幂等。相关配置见 <a href="/docs/configuration.html">配置参考</a>。</div>

@@ -31,7 +31,7 @@
         <p>从提交、排队、执行，到持久化、重试、回收与观测。NeoTask 把耗时任务需要的运行时能力收进一个 Python 包，按需启用。</p>
         <div class="page-hero-actions">
           <a class="btn btn-primary" href="/docs/quickstart.html">快速开始 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
-          <a class="btn btn-outline" href="/docs/core-features.html">核心功能文档</a>
+          <a class="btn btn-outline" href="/docs/task-lifecycle.html">任务生命周期</a>
         </div>
         <div class="page-hero-meta">
           <span><svg class="icon icon-xs"><use href="#i-check"/></svg> Python {{PYTHON}}</span>
@@ -169,7 +169,7 @@
               <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Redis 分布式锁与看门狗续期</li>
               <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 可选预取与批量操作</li>
             </ul>
-            <a class="text-link" href="/docs/decentralization.html">去中心化架构 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+            <a class="text-link" href="/docs/distributed.html">分布式部署 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
           </div>
           <div class="feature-panel">
             <div class="panel-top"><span>cluster</span><span>3 nodes</span></div>
@@ -260,7 +260,7 @@
             </li>
             <li>
               <span class="boundary-icon">○</span>
-              <div><strong>进度回调</strong><p><code>on_progress</code> 订阅接口已存在，但进度发布链路当前版本尚未接通。</p></div>
+              <div><strong>进度回调</strong><p>v1.0.5 起任务内可调用 <code>report_progress()</code> 上报进度，通过 <code>on_progress</code> 订阅；进程执行器无法共享上下文，进度不可用。</p></div>
             </li>
           </ul>
         </div>

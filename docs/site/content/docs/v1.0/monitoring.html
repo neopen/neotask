@@ -1,0 +1,87 @@
+<p>NeoTask 提供任务指标、健康检查与指标上报三类能力。它们都是进程内数据，不提供内置 HTTP 端点。</p>
+
+<h2>统计快照</h2>
+<pre><code class="language-python">stats = pool.get_stats()
+print(stats["queue_size"], stats["completed"], stats["failed"])
+print(stats["metrics"]["p95_execution_time"])</code></pre>
+
+<table>
+<thead><tr><th>字段</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>queue_size</code></td><td>优先队列与延时队列中的任务总数</td></tr>
+<tr><td><code>total</code> / <code>pending</code> / <code>running</code></td><td>按存储统计的任务数量</td></tr>
+<tr><td><code>completed</code> / <code>failed</code> / <code>cancelled</code></td><td>终态任务数量</td></tr>
+<tr><td><code>success_rate</code></td><td>成功 / (成功 + 失败)</td></tr>
+<tr><td><code>node_id</code></td><td>当前节点标识</td></tr>
+<tr><td><code>metrics</code></td><td>指标摘要；仅 <code>enable_metrics=True</code> 时存在</td></tr>
+<tr><td><code>reclaimer</code></td><td>回收统计；仅 Redis 模式存在</td></tr>
+<tr><td><code>prefetcher</code></td><td>预取统计；仅启用预取时存在</td></tr>
+</tbody>
+</table>
+
+<p><code>TaskScheduler.get_stats()</code> 在相同字段上追加 <code>periodic</code> 与 <code>time_wheel</code>。</p>
+
+<h2>任务指标</h2>
+<table>
+<thead><tr><th>指标</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>total_submitted</code></td><td>提交总数</td></tr>
+<tr><td><code>total_completed</code> / <code>total_failed</code> / <code>total_cancelled</code></td><td>终态计数</td></tr>
+<tr><td><code>total_retried</code></td><td>重试次数</td></tr>
+<tr><td><code>pending</code> / <code>running</code></td><td>瞬时数量</td></tr>
+<tr><td><code>avg_execution_time</code>、<code>p50/p90/p95/p99_execution_time</code></td><td>执行耗时，来自最近 1000 个样本</td></tr>
+<tr><td><code>avg_queue_time</code>、<code>p95_queue_time</code></td><td>排队耗时</td></tr>
+<tr><td><code>throughput</code></td><td>按完成事件计算的吞吐</td></tr>
+<tr><td><code>priority_counts</code></td><td>各优先级提交数量</td></tr>
+<tr><td><code>system</code></td><td>CPU、内存、线程数等；需要 <code>psutil</code></td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>采样窗口：</strong>耗时分位数基于滑动窗口（默认 1000 条），不是全量历史。窗口填满后旧样本会被丢弃，长尾指标需结合外部监控系统。</div>
+
+<h2>健康检查</h2>
+<pre><code class="language-python">health = pool.get_health_status()
+# {
+#   "status": "healthy" | "degraded" | "unhealthy",
+#   "node_id": "...",
+#   "checks": {...},
+#   "active_nodes": 2,
+#   "heartbeat": {...},
+#   "reclaimer": {...}
+# }</code></pre>
+
+<table>
+<thead><tr><th>检查项</th><th>内容</th></tr></thead>
+<tbody>
+<tr><td>storage</td><td>存储可读写</td></tr>
+<tr><td>queue</td><td>队列是否可用、是否接近容量上限</td></tr>
+<tr><td>system</td><td>CPU、内存、磁盘使用率；超过 90% 记为 degraded；未安装 <code>psutil</code> 时跳过</td></tr>
+</tbody>
+</table>
+
+<ul>
+<li>结果缓存 5 秒，短时间内重复调用不会重复执行检查。</li>
+<li>单项检查默认超时 5 秒，避免依赖不可达时阻塞调用方。</li>
+<li>任一检查 <code>unhealthy</code> 时总状态为 <code>unhealthy</code>；存在 <code>degraded</code> 时为 <code>degraded</code>。</li>
+</ul>
+
+<h2>控制台上报</h2>
+<pre><code class="language-python">config = TaskPoolConfig(enable_reporter=True)
+pool = TaskPool(executor=handle, config=config)</code></pre>
+<p>启用后每 60 秒向控制台输出一次 <code>get_stats()</code> 摘要。它适合本地观察，不适合生产监控。</p>
+
+<h2>Prometheus</h2>
+<p>库内提供 <code>PrometheusReporter</code>，通过 Pushgateway 推送指标，不暴露 <code>/metrics</code> 端点。</p>
+
+<pre><code class="language-python">from neotask import ReporterManager, PrometheusReporter
+
+reporter = PrometheusReporter("http://pushgateway:9091", job_name="neotask")
+manager = ReporterManager(interval=60)
+manager.add_reporter(reporter)
+manager.set_metrics_callback(pool.get_stats)
+await manager.start()</code></pre>
+
+<div class="doc-warning"><strong>额外依赖：</strong><code>PrometheusReporter</code> 使用 <code>aiohttp</code>，它不在 NeoTask 的依赖或 extras 中，需要自行安装。上报字段仅包含提交/完成/失败/成功率、pending/running 以及平均与 P95 执行耗时。</div>
+
+<h2>事件驱动采集</h2>
+<p>指标由生命周期事件推导：<code>task.created</code>、<code>task.started</code>、<code>task.completed</code>、<code>task.failed</code>、<code>task.cancelled</code>、<code>task.retry</code>。因此指标只覆盖当前进程产生或消费的事件，跨节点汇总需要把各节点数据送到同一个监控系统。</p>

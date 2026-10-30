@@ -1,0 +1,110 @@
+<p>延时任务是“在某个时间点执行一次”，周期任务是“按间隔或 Cron 重复执行”。两者都由 <code>TaskScheduler</code> 提供，底层复用 <code>TaskPool</code> 的执行与存储。</p>
+
+<h2>延时一次</h2>
+<pre><code class="language-python">from datetime import datetime, timedelta
+from neotask import TaskScheduler
+
+scheduler = TaskScheduler(executor=send_reminder)
+
+# 相对延迟
+task_id = scheduler.submit_delayed({"user_id": 42}, delay_seconds=300)
+
+# 指定时间
+run_at = datetime.now() + timedelta(hours=2)
+task_id = scheduler.submit_at({"user_id": 42}, execute_at=run_at)</code></pre>
+
+<table>
+<thead><tr><th>参数</th><th>默认值</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>delay_seconds</code></td><td>必填</td><td>延迟秒数；小于等于 0 时立即入队</td></tr>
+<tr><td><code>task_id</code></td><td>自动生成</td><td>自定义 ID 需保证唯一</td></tr>
+<tr><td><code>priority</code></td><td><code>NORMAL</code></td><td>到期后按该优先级入队</td></tr>
+<tr><td><code>ttl</code></td><td><code>3600</code></td><td>任务级超时 / 回收阈值</td></tr>
+</tbody>
+</table>
+
+<h2>时间轮</h2>
+<p><code>SchedulerConfig(enable_time_wheel=True)</code> 后，延时任务会先写入存储（状态 <code>pending</code>），再加入时间轮。到期时只把任务推入队列，因此等待期间仍可通过任务 ID 查询和取消。</p>
+
+<pre><code class="language-python">from neotask import TaskScheduler, SchedulerConfig
+
+config = SchedulerConfig.high_performance()  # 360 槽 × 1 秒
+scheduler = TaskScheduler(executor=handle, config=config)
+scheduler.start()</code></pre>
+
+<ul>
+<li>默认量程为 <code>slots × tick × max_rounds</code>，即 60 × 1 秒 × 100 轮 ≈ 100 分钟。</li>
+<li>超过量程的延迟会退回普通延时队列，不会丢失。</li>
+<li>时间轮本身不持久化，进程重启后未到期的任务不会自动入队。</li>
+</ul>
+
+<h2>固定间隔</h2>
+<pre><code class="language-python">periodic_id = scheduler.submit_interval(
+    {"job": "heartbeat"},
+    interval_seconds=30,
+    run_immediately=True,
+    max_runs=None,
+    name="service-heartbeat",
+    missed_policy="skip",
+)</code></pre>
+
+<table>
+<thead><tr><th>参数</th><th>默认值</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>interval_seconds</code></td><td>必填</td><td>两次执行的间隔</td></tr>
+<tr><td><code>run_immediately</code></td><td><code>True</code></td><td>是否立即执行第一次</td></tr>
+<tr><td><code>max_runs</code></td><td><code>None</code></td><td>最大执行次数；<code>None</code> 表示不限</td></tr>
+<tr><td><code>missed_policy</code></td><td><code>"skip"</code></td><td>错过执行的补偿策略</td></tr>
+</tbody>
+</table>
+
+<h2>Cron</h2>
+<pre><code class="language-python">report_id = scheduler.submit_cron(
+    {"job": "daily-report"},
+    "0 9 * * *",          # 每天 09:00
+    name="daily-report",
+    max_runs=None,
+    missed_policy="run_once",
+)</code></pre>
+
+<p>Cron 表达式由 <code>croniter</code> 解析，支持标准五段格式。首次执行时间为下一个匹配时刻，不会立即执行。</p>
+
+<table>
+<thead><tr><th><code>missed_policy</code></th><th>行为</th></tr></thead>
+<tbody>
+<tr><td><code>skip</code></td><td>跳过所有错过的槽位，从当前时间继续（默认）</td></tr>
+<tr><td><code>ignore</code></td><td>忽略错过的槽位，与 <code>skip</code> 类似</td></tr>
+<tr><td><code>run_once</code></td><td>错过后只补跑一次</td></tr>
+<tr><td><code>catch_up</code></td><td>补跑错过的槽位，单轮最多 5 次</td></tr>
+</tbody>
+</table>
+
+<h2>管理周期任务</h2>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>get_periodic_tasks()</code></td><td>列出全部周期任务</td></tr>
+<tr><td><code>get_periodic_task(task_id)</code></td><td>查询单个周期任务</td></tr>
+<tr><td><code>pause_periodic(task_id)</code></td><td>暂停，保留定义</td></tr>
+<tr><td><code>resume_periodic(task_id)</code></td><td>恢复并重新计算下次执行时间</td></tr>
+<tr><td><code>cancel_periodic(task_id)</code></td><td>删除周期任务</td></tr>
+</tbody>
+</table>
+
+<p><code>cancel(task_id)</code> 会先尝试按周期任务取消，找不到时再按普通任务取消。</p>
+
+<h2>持久化</h2>
+<table>
+<thead><tr><th>存储</th><th>周期任务跨重启</th><th>延时任务跨重启</th></tr></thead>
+<tbody>
+<tr><td>memory</td><td>否，注册时输出一次告警</td><td>否</td></tr>
+<tr><td>SQLite</td><td>是，需 <code>enable_persistence=True</code></td><td>否，未到期任务不会自动入队</td></tr>
+<tr><td>Redis</td><td>是，需 <code>enable_persistence=True</code></td><td>否，未到期任务不会自动入队</td></tr>
+</tbody>
+</table>
+
+<div class="doc-warning"><strong>重启边界：</strong>任务记录会保留，但延时堆与时间轮都在进程内存中。重启后，处于等待期的延时任务会停留在 <code>pending</code>，不会自动执行；需要业务侧在启动时扫描并重新提交，或改用周期任务表达重复调度。</div>
+
+<h2>关闭</h2>
+<pre><code class="language-python">scheduler.shutdown(graceful=True, timeout=30)</code></pre>
+<p>优雅关闭会先停止接收新任务，等待队列清空，再停止周期管理器与时间轮。</p>

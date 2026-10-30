@@ -1,0 +1,53 @@
+<p>NeoTask 使用四级优先级。数值越小越优先，<code>CRITICAL</code> 最先被取出。优先级在提交时确定，任务执行期间不会改变。</p>
+
+<h2>优先级取值</h2>
+<table>
+<thead><tr><th>枚举</th><th>数值</th><th>用途</th></tr></thead>
+<tbody>
+<tr><td><code>TaskPriority.CRITICAL</code></td><td>0</td><td>必须尽快处理的任务</td></tr>
+<tr><td><code>TaskPriority.HIGH</code></td><td>1</td><td>高于常规优先级</td></tr>
+<tr><td><code>TaskPriority.NORMAL</code></td><td>2</td><td>默认值</td></tr>
+<tr><td><code>TaskPriority.LOW</code></td><td>3</td><td>可延后处理的后台任务</td></tr>
+</tbody>
+</table>
+
+<pre><code class="language-python">from neotask import TaskPool, TaskPriority
+
+pool = TaskPool(executor=handle)
+
+pool.submit({"job": "cleanup"}, priority=TaskPriority.LOW)
+pool.submit({"job": "billing"}, priority=TaskPriority.HIGH)
+pool.submit({"job": "alert"}, priority=0)  # 也可直接传整数
+
+# 批量提交共用一个优先级
+pool.submit_batch([{"job": "report"}], priority=TaskPriority.NORMAL)</code></pre>
+
+<h2>排序规则</h2>
+<table>
+<thead><tr><th>存储</th><th>实现</th><th>同优先级顺序</th></tr></thead>
+<tbody>
+<tr><td>memory</td><td>最小堆，元素为 <code>(priority, sequence, task_id)</code></td><td>严格 FIFO，由自增序号保证</td></tr>
+<tr><td>SQLite</td><td><code>ORDER BY priority ASC, created_at ASC</code></td><td>按入队时间 FIFO</td></tr>
+<tr><td>Redis</td><td>ZSET，score 为优先级</td><td>按成员字典序；默认任务 ID 带时间戳前缀，效果接近 FIFO</td></tr>
+</tbody>
+</table>
+
+<div class="doc-warning"><strong>自定义任务 ID 会影响 Redis 顺序：</strong>Redis 中相同 score 的成员按字典序排列。如果传入无序的自定义 <code>task_id</code>，同优先级任务将不再按提交顺序出队。需要严格 FIFO 时请使用默认 ID 或选择 SQLite。</div>
+
+<h2>优先级与并发</h2>
+<p>优先级决定出队顺序，不抢占正在执行的任务。若 10 个 Worker 都在执行低优先级长任务，新到的 <code>CRITICAL</code> 任务仍需等待空闲 Worker。需要更低延迟时：</p>
+<ul>
+<li>提高 <code>worker_concurrency</code>，保留空闲执行能力；</li>
+<li>把长任务拆分为多个短任务，减少单次占用；</li>
+<li>为关键任务使用独立的 TaskPool 实例与存储命名空间。</li>
+</ul>
+
+<div class="doc-warning"><strong>没有优先级老化：</strong>队列只按数值排序，不会因为等待时间长而提升低优先级任务。持续不断的高优先级流量会让 <code>LOW</code> 任务长期得不到执行；需要公平性时，应在业务层限流高优先级提交，或把低优先级任务放到独立队列。</div>
+
+<h2>预取对顺序的影响</h2>
+<p>启用预取后，Worker 会一次从队列取出 <code>prefetch_size</code> 个任务放入本地队列。跨优先级的严格顺序只在每次批量出队时成立；本地队列中的低优先级任务可能先于共享队列中新到达的高优先级任务执行。</p>
+
+<div class="doc-note">对顺序敏感的场景应设置 <code>enable_prefetch=False</code>，或使用 <code>worker_concurrency=1</code> 并将 <code>prefetch_size</code> 设为 1。更多说明见 <a href="/docs/prefetch.html">预取机制</a>。</div>
+
+<h2>延时任务</h2>
+<p><code>submit(..., delay=n)</code> 的任务先进入延时队列，到期后再按原优先级进入优先队列。<code>delay=0</code> 直接进入优先队列。延时队列是进程内最小堆，不随存储持久化。</p>

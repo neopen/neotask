@@ -1,8 +1,8 @@
 {
-  "default": "1.0",
+  "default": "v1.0",
   "versions": [
     {
-      "id": "1.0",
+      "id": "v1.0",
       "label": "v1.0",
       "status": "latest",
       "library": "NeoTask 1.0.x",
@@ -11,7 +11,22 @@
       "updated": "2026-10-30",
       "description": "首个正式文档版本，覆盖 1.0 系列的安装、配置、核心能力、可靠性与 API。",
       "data": "docs/v1.0.json",
-      "legacy": true
+      "legacy": true,
+      "legacySlugs": [
+        "quickstart",
+        "configuration",
+        "best-practices",
+        "architecture",
+        "priority-queue",
+        "delayed-tasks",
+        "persistence",
+        "failure-recovery",
+        "distributed-lock",
+        "prefetch",
+        "monitoring",
+        "api-reference",
+        "benchmarks"
+      ]
     }
   ]
 }

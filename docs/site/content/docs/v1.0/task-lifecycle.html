@@ -1,0 +1,96 @@
+<p>每个任务从提交到结束只经历有限几个状态。状态保存在存储层，事件通过事件总线发布；同步 API 与异步 API 查询的是同一份记录。</p>
+
+<h2>状态</h2>
+<table>
+<thead><tr><th>状态</th><th>含义</th><th>是否终态</th></tr></thead>
+<tbody>
+<tr><td><code>pending</code></td><td>已创建，等待 Worker 出队</td><td>否</td></tr>
+<tr><td><code>running</code></td><td>已被某个节点取走并开始执行</td><td>否</td></tr>
+<tr><td><code>success</code></td><td>执行完成且返回值已保存</td><td>是</td></tr>
+<tr><td><code>failed</code></td><td>执行失败且重试已耗尽，或被回收器判定失败</td><td>是</td></tr>
+<tr><td><code>cancelled</code></td><td>被显式取消</td><td>是</td></tr>
+<tr><td><code>scheduled</code></td><td>枚举中预留；1.0 的延时任务在等待期间仍为 <code>pending</code></td><td>否</td></tr>
+</tbody>
+</table>
+
+<h2>正常流转</h2>
+<pre class="diagram"><code>submit()
+  │
+  ▼
+pending ──► running ──► success
+  │            │
+  │            ├──► failed ──► pending（自动重试）
+  │            │                 │
+  │            │                 └──► failed（重试耗尽）
+  │            │
+  │            └──► failed（超时 / 回收）
+  │
+  └──► cancelled（未开始或运行中取消）</code></pre>
+
+<h2>查询与等待</h2>
+<table>
+<thead><tr><th>方法</th><th>返回</th></tr></thead>
+<tbody>
+<tr><td><code>get_status(task_id)</code></td><td>状态字符串；任务不存在返回 <code>None</code></td></tr>
+<tr><td><code>get_task(task_id)</code></td><td>完整记录，包含数据、优先级、进度、节点、重试次数、时间戳</td></tr>
+<tr><td><code>get_result(task_id)</code></td><td><code>task_id</code>、<code>status</code>、<code>result</code>、<code>error</code>、创建与完成时间</td></tr>
+<tr><td><code>wait_for_result(task_id, timeout=300)</code></td><td>成功返回结果；失败、取消或超时抛出异常</td></tr>
+<tr><td><code>wait_all(task_ids, timeout=300)</code></td><td>逐项等待，返回 <code>{task_id: result}</code>；失败项为 <code>{"error": "..."}</code></td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>跨节点等待：</strong><code>wait_for_result()</code> 除了监听本节点事件，还会按 0.2 秒间隔回查存储，因此任务在其他节点执行时也能及时返回。</div>
+
+<h2>事件</h2>
+<p>回调必须是异步函数，签名为 <code>async def handler(event: TaskEvent)</code>。事件在后台队列中处理，处理器抛出的异常会被吞掉，不会影响任务执行。</p>
+
+<table>
+<thead><tr><th>注册方法</th><th>事件</th><th><code>event.data</code></th></tr></thead>
+<tbody>
+<tr><td><code>on_created</code></td><td><code>task.created</code></td><td>任务的完整字典</td></tr>
+<tr><td><code>on_started</code></td><td><code>task.started</code></td><td><code>{"node_id": "..."}</code></td></tr>
+<tr><td><code>on_completed</code></td><td><code>task.completed</code></td><td>执行器的原始返回值</td></tr>
+<tr><td><code>on_failed</code></td><td><code>task.failed</code></td><td><code>{"error": "..."}</code></td></tr>
+<tr><td><code>on_cancelled</code></td><td><code>task.cancelled</code></td><td><code>None</code></td></tr>
+<tr><td><code>on_progress</code></td><td><code>task.progress</code></td><td><code>{"progress": 0.5, "message": "...", "timestamp": ...}</code></td></tr>
+<tr><td><code>on_reclaimed</code></td><td><code>task.reclaimed</code></td><td>回收原因等信息</td></tr>
+</tbody>
+</table>
+
+<pre><code class="language-python">import asyncio
+from neotask import TaskPool
+
+async def on_completed(event):
+    print("done", event.task_id, event.data)
+
+pool = TaskPool(executor=handle)
+pool.on_completed(on_completed)</code></pre>
+
+<h2>进度上报</h2>
+<p>异步任务调用 <code>report_progress()</code>；线程执行器中的同步任务调用 <code>report_progress_sync()</code>。进度值会收敛到 0 至 1，任务成功后自动置为 1.0。</p>
+
+<pre><code class="language-python">from neotask import report_progress, report_progress_sync
+
+async def async_task(data):
+    await report_progress(0.3, "解析输入")
+    await asyncio.sleep(1)
+    await report_progress(0.8, "写入结果")
+    return {"ok": True}
+
+def thread_task(data):
+    report_progress_sync(0.5, "处理中")
+    return {"ok": True}</code></pre>
+
+<div class="doc-warning">进程执行器运行在独立进程中，无法共享进度上下文，<code>report_progress()</code> 会返回 <code>False</code>。</div>
+
+<h2>取消、重试与删除</h2>
+<table>
+<thead><tr><th>操作</th><th>行为</th><th>限制</th></tr></thead>
+<tbody>
+<tr><td><code>cancel(task_id)</code></td><td>从队列移除并置为 <code>cancelled</code></td><td>仅 <code>pending</code> / <code>running</code> 可取消；正在执行的业务代码不会被强制终止</td></tr>
+<tr><td><code>retry(task_id, delay=0)</code></td><td>把终态任务重置为 <code>pending</code> 并重新入队</td><td>仅 <code>failed</code> / <code>cancelled</code> 可重试；<code>retry_count</code> 保留</td></tr>
+<tr><td><code>delete(task_id)</code></td><td>删除任务记录并清理等待者</td><td>不会停止已经开始执行的代码</td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>自动重试：</strong>执行失败后，若 <code>retry_count &lt; max_retries</code>，任务回到 <code>pending</code> 并以 <code>retry_delay × n</code> 的延迟重新入队。重试耗尽后写入 <code>failed</code>，Redis 模式下同时投递死信队列。</div>

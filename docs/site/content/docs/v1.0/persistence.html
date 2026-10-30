@@ -1,0 +1,78 @@
+<p>存储后端决定任务记录、队列和周期定义在进程退出后是否保留。NeoTask 1.0 提供 memory、SQLite、Redis 三种实现，通过 <code>storage_type</code> 选择。</p>
+
+<h2>对比</h2>
+<table>
+<thead><tr><th></th><th>memory</th><th>SQLite</th><th>Redis</th></tr></thead>
+<tbody>
+<tr><td>依赖</td><td>无</td><td><code>aiosqlite</code>（基础依赖）</td><td><code>neotask[redis]</code></td></tr>
+<tr><td>任务记录</td><td>进程内</td><td>单文件</td><td>Redis 键</td></tr>
+<tr><td>队列</td><td>堆</td><td>表</td><td>ZSET</td></tr>
+<tr><td>跨进程共享</td><td>否</td><td>有限（同一文件）</td><td>是</td></tr>
+<tr><td>故障回收</td><td>无</td><td>无</td><td>有</td></tr>
+<tr><td>适用规模</td><td>开发与测试</td><td>单机低频</td><td>多节点、高并发</td></tr>
+</tbody>
+</table>
+
+<h2>memory</h2>
+<pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
+
+pool = TaskPool(executor=handle, config=TaskPoolConfig.memory())</code></pre>
+<p>任务、队列、周期定义都只存在当前进程。进程退出后全部丢失，也不会创建心跳、回收器或死信队列。</p>
+
+<h2>SQLite</h2>
+<pre><code class="language-python">config = TaskPoolConfig.sqlite("/var/lib/neotask/neotask.db")
+pool = TaskPool(executor=handle, config=config)</code></pre>
+
+<p>数据库包含三组表：</p>
+<table>
+<thead><tr><th>表</th><th>内容</th></tr></thead>
+<tbody>
+<tr><td><code>tasks</code></td><td>任务数据、状态、优先级、节点、重试次数、结果、进度</td></tr>
+<tr><td><code>queue</code></td><td>待执行任务的 ID、优先级、入队时间</td></tr>
+<tr><td><code>periodic_tasks</code> / <code>periodic_executions</code></td><td>周期任务定义与执行记录（启用持久化时）</td></tr>
+</tbody>
+</table>
+
+<div class="doc-warning"><strong>并发写入限制：</strong>任务仓储与队列仓储各自持有连接，每次写入立即提交。多个 worker 并发写入时会出现 <code>database is locked</code>。生产环境请将 SQLite 限制为单写入者，或改用 Redis。实测单 worker 串行约 30 tasks/s。</div>
+
+<p>路径必须可写，目录需提前存在。容器中建议挂载持久卷，不要放在容器临时层。</p>
+
+<h2>Redis</h2>
+<pre><code class="language-python">config = TaskPoolConfig.redis(
+    "redis://127.0.0.1:6379/0",
+    node_id="worker-1",
+)
+pool = TaskPool(executor=handle, config=config)</code></pre>
+
+<p>主要键空间：</p>
+<table>
+<thead><tr><th>键</th><th>类型</th><th>用途</th></tr></thead>
+<tbody>
+<tr><td><code>task:{task_id}</code></td><td>String / JSON</td><td>任务记录</td></tr>
+<tr><td><code>queue:priority</code></td><td>ZSET</td><td>优先队列，score 为优先级</td></tr>
+<tr><td><code>queue:delayed</code></td><td>ZSET</td><td>仓储层延时索引</td></tr>
+<tr><td><code>lock:task:{task_id}</code></td><td>String</td><td>任务级互斥锁</td></tr>
+<tr><td><code>neotask:nodes</code></td><td>Set</td><td>节点集合</td></tr>
+<tr><td><code>neotask:node:{node_id}</code></td><td>Hash</td><td>节点信息与心跳</td></tr>
+<tr><td><code>neotask:dead_letter</code></td><td>List</td><td>死信队列</td></tr>
+<tr><td><code>periodic_task:{id}</code></td><td>String</td><td>周期任务定义</td></tr>
+<tr><td><code>periodic_tasks</code></td><td>Set</td><td>周期任务 ID 集合</td></tr>
+</tbody>
+</table>
+
+<p>所有节点必须连接同一个 Redis 数据库，并使用唯一的 <code>node_id</code>。Redis 模式下会自动启用节点心跳、任务回收、死信队列和分布式锁。</p>
+
+<h2>实际持久化范围</h2>
+<table>
+<thead><tr><th>数据</th><th>是否持久化</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>任务记录与结果</td><td>是（SQLite / Redis）</td><td>写入后跨重启保留</td></tr>
+<tr><td>优先队列</td><td>是（SQLite / Redis）</td><td>未出队任务可恢复</td></tr>
+<tr><td>周期任务定义</td><td>是（需启用持久化）</td><td>memory 模式除外</td></tr>
+<tr><td>延时堆 / 时间轮</td><td>否</td><td>仅进程内，重启后等待中的任务不会自动入队</td></tr>
+<tr><td>指标、事件、进度回调</td><td>否</td><td>运行时数据</td></tr>
+</tbody>
+</table>
+
+<h2>清理</h2>
+<p>任务记录不会自动删除。终态任务会一直保留，直到调用 <code>delete()</code>。任务级 <code>ttl</code> 用于回收器判断运行中超时，不负责清理历史记录；死信队列按 <code>dead_letter_ttl</code>（默认 7 天）过期。需要控制存储增长时，应自行定期清理终态任务。</p>

@@ -395,9 +395,19 @@ const versionCards = versions.map((v) => `
         <a class="btn btn-primary btn-block" href="${docsBase(v)}/">进入 ${esc(v.label)} 文档 <span aria-hidden="true">→</span></a>
       </article>`).join('');
 
+const latestScope = latest.doc.categories.map((cat) => {
+  const count = latest.doc.pages.filter((p) => p.category === cat.id).length;
+  return `
+          <div>
+            <h3><a href="${docsBase(latest)}/#${cat.id}">${esc(cat.label)} · ${count} 篇</a></h3>
+            <p>${esc(cat.description || '')}</p>
+          </div>`;
+}).join('');
+
 buildPage('docs-versions.html', 'docs/index.html', latest, {
   ACTIVE_DOCS: 'is-active',
   VERSION_CARDS: versionCards,
+  LATEST_SCOPE: latestScope,
   VERSION_COUNT: String(versions.length),
   LATEST_VERSION: latest.label,
   LATEST_VERSION_ID: latest.id,
@@ -413,8 +423,9 @@ const retired = {
   'dag-workflow': 'roadmap'
 };
 for (const v of versions.filter((x) => x.legacy)) {
-  for (const p of v.doc.pages) {
-    writeRedirect(`docs/${p.slug}.html`, docsHref(v, p.slug), p.title);
+  for (const slug of v.legacySlugs || []) {
+    const p = v.doc.pages.find((x) => x.slug === slug);
+    if (p) writeRedirect(`docs/${p.slug}.html`, docsHref(v, p.slug), p.title);
   }
   for (const [from, to] of Object.entries(retired)) {
     if (v.doc.pages.some((p) => p.slug === to)) {

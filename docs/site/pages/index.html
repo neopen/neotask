@@ -552,27 +552,27 @@ result = pool.wait_for_result(task_id)</code></pre>
         </div>
         <div class="bench-grid">
           <div class="bench-card bench-main">
-            <span class="bench-label">端到端基础吞吐</span>
-            <strong class="bench-num">1,697<span> tasks/s</span></strong>
-            <p>1,000 个 noop 任务，Memory 存储，成功率 100%。</p>
+            <span class="bench-label">提交吞吐</span>
+            <strong class="bench-num">14,657<span> tasks/s</span></strong>
+            <p>2,000 个 noop 任务，Memory 存储，10 个 Worker。</p>
           </div>
           <div class="bench-card">
-            <span class="bench-label">IO 任务吞吐</span>
-            <strong class="bench-num">4,671<span> tasks/s</span></strong>
-            <p>5ms 睡眠任务 × 200，20 个 worker 并发。</p>
+            <span class="bench-label">完成吞吐</span>
+            <strong class="bench-num">2,433<span> tasks/s</span></strong>
+            <p>3,000 个任务，含状态落库与事件分发，P50 790 ms。</p>
           </div>
           <div class="bench-card">
-            <span class="bench-label">队列出队</span>
-            <strong class="bench-num">312k<span> ops/s</span></strong>
-            <p>纯内存优先级堆操作，不含完整任务生命周期。</p>
+            <span class="bench-label">IO 扩展性</span>
+            <strong class="bench-num">7.76<span>×</span></strong>
+            <p>20 ms 睡眠任务，8 个 Worker 相对 1 个 Worker 的完成吞吐。</p>
           </div>
           <div class="bench-card">
-            <span class="bench-label">批量弹出</span>
-            <strong class="bench-num">2.0<span>×</span></strong>
-            <p>一次弹出 10 条，相比逐条弹出的吞吐提升。</p>
+            <span class="bench-label">串行往返</span>
+            <strong class="bench-num">15.50<span> ms</span></strong>
+            <p>单任务提交到完成的 P50 延迟，200 次串行测量。</p>
           </div>
         </div>
-        <p class="bench-note">数据摘自仓库 <code>docs/性能基准测试.md</code>：Windows 10、i7-10750H、Python 3.10、v0.3.0、Memory 后端，测试于 2026 年 4 月。绝对数值不代表当前版本或 Redis 分布式部署，请以自己的业务压测为准。<a href="/docs/benchmarks.html">阅读完整口径与陷阱分析 →</a></p>
+        <p class="bench-note">数据来自 NeoTask 1.0.5 官方基准脚本：Windows 10 19045、i7-1165G7、Python 3.13.15、Memory 后端，旁路组件全部关闭。绝对数值不代表你的部署环境，请以自己的业务压测为准。<a href="/docs/benchmarks.html">阅读完整口径与边界说明 →</a></p>
       </div>
     </section>
 
@@ -598,10 +598,10 @@ result = pool.wait_for_result(task_id)</code></pre>
             <span>TaskPoolConfig 与 SchedulerConfig 全部字段。</span>
             <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
           </a>
-          <a class="home-doc" href="/docs/core-features.html">
+          <a class="home-doc" href="/docs/task-lifecycle.html">
             <span class="home-doc-cat">核心概念</span>
-            <strong>核心功能</strong>
-            <span>提交、执行、回收的完整主链路。</span>
+            <strong>任务生命周期</strong>
+            <span>状态流转、事件、取消与重试的完整主链路。</span>
             <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
           </a>
           <a class="home-doc" href="/docs/api-reference.html">

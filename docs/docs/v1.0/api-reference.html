@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API 参考 · NeoTask v1.0 文档</title>
+  <meta name="description" content="TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。">
+  <link rel="canonical" href="https://task.helpenx.com/docs/v1.0/api-reference.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="API 参考 · NeoTask v1.0 文档">
+  <meta property="og:description" content="TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。">
+  <meta property="og:url" content="https://task.helpenx.com/docs/v1.0/api-reference.html">
+  <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/css/site.css">
+  <link rel="stylesheet" href="/assets/css/docs.css">
+</head>
+<body class="docs-page">
+  <a class="skip-link" href="#main">跳到主要内容</a>
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="/" aria-label="NeoTask 首页">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="9" fill="#0b1713"/>
+        <path d="M9.5 22.5v-13l13 13v-13" fill="none" stroke="#2dd4bf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
+      </svg>
+      <span class="brand-name">NeoTask</span>
+      <span class="brand-version">v1.0.5</span>
+    </a>
+
+    <nav class="site-nav" id="siteNav" aria-label="主导航">
+      <a class="site-nav-link " href="/features.html">产品能力</a>
+      <a class="site-nav-link is-active" href="/docs/">文档</a>
+      <a class="site-nav-link " href="/changelog.html">更新日志</a>
+      <a class="site-nav-link " href="/community.html">社区</a>
+    </nav>
+
+    <div class="header-actions">
+      <a class="gh-star" href="https://github.com/neopen/neotask" target="_blank" rel="noopener" aria-label="在 GitHub 上为 NeoTask 加 Star">
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.9 5.33.9 11.6c0 4.9 3.17 9.05 7.57 10.52.55.1.75-.24.75-.53v-1.85c-3.08.67-3.73-1.48-3.73-1.48-.5-1.28-1.23-1.62-1.23-1.62-1-.69.08-.68.08-.68 1.11.08 1.7 1.14 1.7 1.14.98 1.69 2.58 1.2 3.2.92.1-.71.39-1.2.7-1.48-2.46-.28-5.05-1.23-5.05-5.48 0-1.21.43-2.2 1.14-2.98-.11-.28-.49-1.4.11-2.92 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.6 1.52.22 2.64.11 2.92.71.78 1.14 1.77 1.14 2.98 0 4.26-2.6 5.2-5.06 5.47.4.35.76 1.03.76 2.07v3.07c0 .29.2.64.76.53a11.1 11.1 0 0 0 7.56-10.52C23.1 5.33 18.27.5 12 .5z"/></svg>
+        <span>Star</span>
+        <span class="gh-star-count">8</span>
+      </a>
+      <a class="btn btn-primary btn-sm header-cta" href="/docs/v1.0/quickstart.html">快速开始</a>
+      <button class="nav-toggle" id="navToggle" aria-label="打开菜单" aria-expanded="false" aria-controls="siteNav">
+        <span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+  <div class="docs-shell">
+    <aside class="docs-sidebar" id="docsSidebar">
+      <a class="docs-sidebar-home" href="/docs/"><span class="docs-sidebar-badge">DOCS</span> 文档中心</a>
+      <div class="docs-version-picker">
+        <span class="docs-version-caption">文档版本</span>
+        <div class="docs-version-row">
+          <select class="docs-version-select" data-docs-version aria-label="切换文档版本">
+            <option value="v1.0" selected>v1.0（最新）</option>
+          </select>
+          <a class="docs-version-all" href="/docs/">所有版本</a>
+        </div>
+        <p class="docs-version-note">适用于 NeoTask 1.0.x</p>
+      </div>
+      <div class="docs-search-wrap">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="docsSearch" type="search" placeholder="搜索文档" autocomplete="off" aria-label="搜索文档">
+      </div>
+      <nav class="docs-nav" id="docsNav" aria-label="文档导航">
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">开始使用</p>
+        <a class="docs-nav-link" href="/docs/v1.0/quickstart.html" data-search="快速开始 安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。">快速开始</a>
+        <a class="docs-nav-link" href="/docs/v1.0/configuration.html" data-search="配置参考 TaskPoolConfig 与 SchedulerConfig 的字段、默认值、生效范围和常用配置档位。">配置参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/best-practices.html" data-search="最佳实践 执行器、并发、重试、超时、存储选型与生产部署建议。">最佳实践</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">核心概念</p>
+        <a class="docs-nav-link" href="/docs/v1.0/architecture.html" data-search="架构概览 TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。">架构概览</a>
+        <a class="docs-nav-link" href="/docs/v1.0/task-lifecycle.html" data-search="任务生命周期 任务从提交到终态的状态流转、事件回调与结果获取方式。">任务生命周期</a>
+        <a class="docs-nav-link" href="/docs/v1.0/priority-queue.html" data-search="优先级队列 四级优先级的排序规则、同级 FIFO 边界与批量提交行为。">优先级队列</a>
+        <a class="docs-nav-link" href="/docs/v1.0/delayed-tasks.html" data-search="延时与周期任务 延时、指定时间、固定间隔与 Cron 任务的提交、管理和错过策略。">延时与周期任务</a>
+        <a class="docs-nav-link" href="/docs/v1.0/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。">持久化存储</a>
+        <a class="docs-nav-link" href="/docs/v1.0/distributed.html" data-search="分布式部署 多节点共享队列、节点心跳、任务回收与 Redis 部署要求。">分布式部署</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">可靠性</p>
+        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
+        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 批量预取的触发条件、阈值配置与对延迟和优先级的影响。">预取机制</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、Reporter 与 Prometheus 集成。">监控与健康检查</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">参考</p>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 基准测试环境、结果口径与解读边界。">性能基准</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">路线图</p>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 v1.0 的能力边界，以及 v1.5、v2.0 的规划项。">版本路线图<span class="nav-soon">规划</span></a>
+      </div>
+      </nav>
+      <p class="docs-nav-empty" id="docsNavEmpty" hidden>没有匹配的文档</p>
+    </aside>
+    <main class="docs-main" id="main">
+      <nav class="breadcrumb" aria-label="面包屑">
+        <a href="/">首页</a><span>/</span><a href="/docs/">文档</a><span>/</span><a href="/docs/v1.0/">v1.0</a><span>/</span><span>参考</span>
+      </nav>
+      <details class="docs-mobile-nav">
+        <summary>文档导航 · v1.0</summary>
+        <div class="docs-version-picker">
+        <span class="docs-version-caption">文档版本</span>
+        <div class="docs-version-row">
+          <select class="docs-version-select" data-docs-version aria-label="切换文档版本">
+            <option value="v1.0" selected>v1.0（最新）</option>
+          </select>
+          <a class="docs-version-all" href="/docs/">所有版本</a>
+        </div>
+        <p class="docs-version-note">适用于 NeoTask 1.0.x</p>
+      </div>
+      
+      <nav class="docs-nav" id="docsNavMobile" aria-label="文档导航">
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">开始使用</p>
+        <a class="docs-nav-link" href="/docs/v1.0/quickstart.html" data-search="快速开始 安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。">快速开始</a>
+        <a class="docs-nav-link" href="/docs/v1.0/configuration.html" data-search="配置参考 TaskPoolConfig 与 SchedulerConfig 的字段、默认值、生效范围和常用配置档位。">配置参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/best-practices.html" data-search="最佳实践 执行器、并发、重试、超时、存储选型与生产部署建议。">最佳实践</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">核心概念</p>
+        <a class="docs-nav-link" href="/docs/v1.0/architecture.html" data-search="架构概览 TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。">架构概览</a>
+        <a class="docs-nav-link" href="/docs/v1.0/task-lifecycle.html" data-search="任务生命周期 任务从提交到终态的状态流转、事件回调与结果获取方式。">任务生命周期</a>
+        <a class="docs-nav-link" href="/docs/v1.0/priority-queue.html" data-search="优先级队列 四级优先级的排序规则、同级 FIFO 边界与批量提交行为。">优先级队列</a>
+        <a class="docs-nav-link" href="/docs/v1.0/delayed-tasks.html" data-search="延时与周期任务 延时、指定时间、固定间隔与 Cron 任务的提交、管理和错过策略。">延时与周期任务</a>
+        <a class="docs-nav-link" href="/docs/v1.0/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。">持久化存储</a>
+        <a class="docs-nav-link" href="/docs/v1.0/distributed.html" data-search="分布式部署 多节点共享队列、节点心跳、任务回收与 Redis 部署要求。">分布式部署</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">可靠性</p>
+        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
+        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 批量预取的触发条件、阈值配置与对延迟和优先级的影响。">预取机制</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、Reporter 与 Prometheus 集成。">监控与健康检查</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">参考</p>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 基准测试环境、结果口径与解读边界。">性能基准</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">路线图</p>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 v1.0 的能力边界，以及 v1.5、v2.0 的规划项。">版本路线图<span class="nav-soon">规划</span></a>
+      </div>
+      </nav>
+      
+      </details>
+      <article class="article">
+        <header class="article-header">
+          <p class="article-eyebrow">参考</p>
+          <h1>API 参考</h1>
+          <p class="article-lede">TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。</p>
+          <div class="article-meta">
+            <span class="article-version">v1.0 · NeoTask 1.0.x</span>
+            <span class="dot"></span>
+            <span>更新于 2026-10-30</span>
+            <span class="dot"></span>
+            <span>约 12 分钟 读完</span>
+            <span class="dot"></span>
+            <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg></a>
+          </div>
+        </header>
+        <div class="article-body">
+<p>公开入口为 <code>TaskPool</code> 与 <code>TaskScheduler</code>。除特别标注外，每个同步方法都有一个同名的 <code>_async</code> 版本，参数与返回值一致。</p>
+
+<pre><code class="language-python">from neotask import TaskPool, TaskScheduler, TaskPoolConfig, SchedulerConfig</code></pre>
+
+<h2 id="TaskPool">TaskPool</h2>
+<pre><code class="language-python">TaskPool(executor=None, config=None)</code></pre>
+<p><code>executor</code> 可以是普通函数、协程函数或 <code>TaskExecutor</code> 实例；为 <code>None</code> 时使用返回固定结果的默认执行器。</p>
+
+<h3>生命周期与提交</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>start()</code></td><td>显式启动；首次提交也会自动启动</td></tr>
+<tr><td><code>shutdown(graceful=True, timeout=30)</code></td><td>停止接收新任务，等待队列清空后关闭</td></tr>
+<tr><td><code>submit(data, task_id=None, priority=NORMAL, delay=0, ttl=3600)</code></td><td>提交任务，返回任务 ID</td></tr>
+<tr><td><code>submit_batch(tasks, priority=NORMAL)</code></td><td>逐条提交任务列表，返回 ID 列表</td></tr>
+<tr><td><code>create_pending_task(data, task_id=None, priority=NORMAL, ttl=3600)</code></td><td>只创建记录，不入队</td></tr>
+<tr><td><code>enqueue_task(task_id)</code></td><td>把 <code>pending</code> 任务入队；非 <code>pending</code> 返回 <code>False</code></td></tr>
+</tbody>
+</table>
+
+<h3>等待与查询</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>wait_for_result(task_id, timeout=300)</code></td><td>等待并返回结果；失败、取消或超时抛异常</td></tr>
+<tr><td><code>wait_all(task_ids, timeout=300)</code></td><td>逐项等待，返回 <code>{task_id: result}</code></td></tr>
+<tr><td><code>get_status(task_id)</code></td><td>状态字符串或 <code>None</code></td></tr>
+<tr><td><code>get_result(task_id)</code></td><td>结果摘要字典或 <code>None</code></td></tr>
+<tr><td><code>get_task(task_id)</code></td><td>完整任务字典或 <code>None</code></td></tr>
+<tr><td><code>task_exists(task_id)</code></td><td>任务是否存在</td></tr>
+</tbody>
+</table>
+
+<h3>任务管理</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>cancel(task_id)</code></td><td>移除队列项并置为 <code>cancelled</code>；仅 <code>pending</code> / <code>running</code> 有效</td></tr>
+<tr><td><code>retry(task_id, delay=0)</code></td><td>重置终态任务并重新入队</td></tr>
+<tr><td><code>delete(task_id)</code></td><td>删除任务记录</td></tr>
+<tr><td><code>pause()</code> / <code>resume()</code></td><td>暂停 / 恢复出队，仍可继续入队</td></tr>
+<tr><td><code>clear_queue()</code></td><td>清空队列；不修改已创建的任务记录</td></tr>
+</tbody>
+</table>
+
+<h3>统计与健康</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>get_stats()</code></td><td>队列、任务计数、指标、回收与预取摘要</td></tr>
+<tr><td><code>get_worker_stats()</code></td><td>各 Worker 的忙碌状态与计数</td></tr>
+<tr><td><code>get_health_status()</code></td><td>存储、队列、系统健康检查；缓存 5 秒</td></tr>
+<tr><td><code>get_queue_size()</code></td><td>优先队列与延时队列总数</td></tr>
+</tbody>
+</table>
+
+<h3>锁与节点</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>acquire_lock(task_id, ttl=30)</code></td><td>获取 <code>task:{task_id}</code> 锁</td></tr>
+<tr><td><code>release_lock(task_id)</code></td><td>释放本实例持有的锁</td></tr>
+<tr><td><code>get_active_nodes()</code></td><td>Redis 模式下的活跃节点列表</td></tr>
+<tr><td><code>is_leader()</code></td><td>始终返回 <code>False</code></td></tr>
+</tbody>
+</table>
+
+<h3>事件</h3>
+<table>
+<thead><tr><th>方法</th><th>事件</th></tr></thead>
+<tbody>
+<tr><td><code>on_created(handler)</code></td><td><code>task.created</code></td></tr>
+<tr><td><code>on_started(handler)</code></td><td><code>task.started</code></td></tr>
+<tr><td><code>on_completed(handler)</code></td><td><code>task.completed</code></td></tr>
+<tr><td><code>on_failed(handler)</code></td><td><code>task.failed</code></td></tr>
+<tr><td><code>on_cancelled(handler)</code></td><td><code>task.cancelled</code></td></tr>
+<tr><td><code>on_progress(handler)</code></td><td><code>task.progress</code></td></tr>
+<tr><td><code>on_reclaimed(handler)</code></td><td><code>task.reclaimed</code></td></tr>
+</tbody>
+</table>
+
+<h2 id="TaskScheduler">TaskScheduler</h2>
+<pre><code class="language-python">TaskScheduler(executor=None, config=None)</code></pre>
+<p>内部创建一个 <code>TaskPool</code>，并增加延时、周期与 Cron 调度。以下方法除 <code>get_periodic_*</code> 等同步专用项外，同样存在 <code>_async</code> 版本。</p>
+
+<h3>延时任务</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>submit_delayed(data, delay_seconds, task_id=None, priority=NORMAL, ttl=3600)</code></td><td>延迟执行一次</td></tr>
+<tr><td><code>submit_at(data, execute_at, task_id=None, priority=NORMAL, ttl=3600)</code></td><td>在指定时间执行一次</td></tr>
+</tbody>
+</table>
+
+<h3>周期任务</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>submit_interval(data, interval_seconds, task_id=None, priority=NORMAL, run_immediately=True, max_runs=None, name="", missed_policy=None)</code></td><td>固定间隔执行</td></tr>
+<tr><td><code>submit_cron(data, cron_expr, task_id=None, priority=NORMAL, max_runs=None, name="", missed_policy=None)</code></td><td>Cron 表达式执行</td></tr>
+<tr><td><code>get_periodic_tasks()</code></td><td>列出周期任务</td></tr>
+<tr><td><code>get_periodic_task(task_id)</code></td><td>查询单个周期任务</td></tr>
+<tr><td><code>pause_periodic(task_id)</code></td><td>暂停周期任务</td></tr>
+<tr><td><code>resume_periodic(task_id)</code></td><td>恢复周期任务</td></tr>
+<tr><td><code>cancel_periodic(task_id)</code></td><td>删除周期任务</td></tr>
+</tbody>
+</table>
+
+<h3>委托给 TaskPool 的方法</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>submit(...)</code> / <code>submit_async(...)</code></td><td>同 TaskPool</td></tr>
+<tr><td><code>wait_for_result(...)</code></td><td>同 TaskPool</td></tr>
+<tr><td><code>get_status</code> / <code>get_result</code> / <code>get_task</code> / <code>task_exists</code></td><td>同 TaskPool</td></tr>
+<tr><td><code>cancel</code> / <code>delete</code> / <code>retry</code></td><td>先尝试周期任务，再操作普通任务</td></tr>
+<tr><td><code>get_stats</code> / <code>get_queue_size</code> / <code>get_health_status</code></td><td>汇总周期与时间轮统计</td></tr>
+<tr><td><code>pause</code> / <code>resume</code> / <code>clear_queue</code></td><td>同 TaskPool</td></tr>
+<tr><td><code>on_created</code> 等 6 个回调</td><td>同 TaskPool；无 <code>on_reclaimed</code></td></tr>
+</tbody>
+</table>
+
+<h2 id="返回值语义">返回值语义</h2>
+<table>
+<thead><tr><th>方法</th><th>成功</th><th>失败 / 不存在</th></tr></thead>
+<tbody>
+<tr><td><code>submit*</code></td><td>任务 ID 字符串</td><td>队列满抛 <code>QueueFullError</code>；ID 重复抛 <code>TaskAlreadyExistsError</code></td></tr>
+<tr><td><code>wait_for_result</code></td><td>执行器返回值</td><td>抛异常；超时抛 <code>TimeoutError</code></td></tr>
+<tr><td><code>get_status</code> / <code>get_result</code> / <code>get_task</code></td><td>对应数据</td><td><code>None</code></td></tr>
+<tr><td><code>cancel</code> / <code>retry</code> / <code>delete</code></td><td><code>True</code></td><td><code>False</code></td></tr>
+</tbody>
+</table>
+
+<h2 id="异常">异常</h2>
+<table>
+<thead><tr><th>异常</th><th>触发场景</th></tr></thead>
+<tbody>
+<tr><td><code>TaskSchedulerError</code></td><td>所有异常的基类</td></tr>
+<tr><td><code>TaskNotFoundError</code></td><td>等待不存在的任务</td></tr>
+<tr><td><code>TaskAlreadyExistsError</code></td><td>使用已存在的 <code>task_id</code> 提交</td></tr>
+<tr><td><code>QueueFullError</code></td><td>队列达到 <code>queue_max_size</code></td></tr>
+<tr><td><code>TimeoutError</code></td><td><code>wait_for_result</code> 超时</td></tr>
+<tr><td><code>TaskError</code></td><td>已定义但当前版本未使用</td></tr>
+</tbody>
+</table>
+
+<h2 id="其他导出">其他导出</h2>
+<p><code>neotask</code> 还导出执行器、存储、队列、锁、监控与分布式组件：<code>AsyncExecutor</code>、<code>ThreadExecutor</code>、<code>ProcessExecutor</code>、<code>MemoryTaskRepository</code>、<code>SQLiteTaskRepository</code>、<code>RedisTaskRepository</code>、<code>PriorityQueue</code>、<code>DelayedQueue</code>、<code>MemoryLock</code>、<code>RedisLock</code>、<code>WatchDog</code>、<code>MetricsCollector</code>、<code>HealthChecker</code>、<code>NodeManager</code>、<code>Coordinator</code> 等。完整列表见 <code>neotask.__all__</code>。</p>
+
+        </div>
+      </article>
+      <nav class="docs-pager" aria-label="上一篇与下一篇">
+      <a class="pager-prev" href="/docs/v1.0/monitoring.html"><span>上一篇</span><strong>监控与健康检查</strong></a>
+      <a class="pager-next" href="/docs/v1.0/benchmarks.html"><span>下一篇</span><strong>性能基准</strong></a>
+    </nav>
+      <p class="docs-feedback">发现文档问题？欢迎在 <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">GitHub Issues</a> 反馈。</p>
+    </main>
+    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#TaskPool">TaskPool</a><a href="#TaskScheduler">TaskScheduler</a><a href="#%E8%BF%94%E5%9B%9E%E5%80%BC%E8%AF%AD%E4%B9%89">返回值语义</a><a href="#%E5%BC%82%E5%B8%B8">异常</a><a href="#%E5%85%B6%E4%BB%96%E5%AF%BC%E5%87%BA">其他导出</a></nav>
+  </div>
+  <footer class="site-footer">
+  <div class="container">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a class="brand" href="/" aria-label="NeoTask 首页">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="9" fill="#10211b"/>
+            <path d="M9.5 22.5v-13l13 13v-13" fill="none" stroke="#2dd4bf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
+          </svg>
+          <span class="brand-name">NeoTask</span>
+        </a>
+        <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
+        <div class="footer-status"><span class="status-dot"></span> v1.0.5 · 发布于 2026-10-29</div>
+      </div>
+
+      <div class="footer-col">
+        <h3>产品</h3>
+        <a href="/features.html">产品能力</a>
+        <a href="/docs/">文档中心</a>
+        <a href="/changelog.html">更新日志</a>
+        <a href="https://pypi.org/project/neotask/" target="_blank" rel="noopener">PyPI</a>
+      </div>
+      <div class="footer-col">
+        <h3>文档</h3>
+        <a href="/docs/v1.0/quickstart.html">快速上手</a>
+        <a href="/docs/v1.0/architecture.html">架构设计</a>
+        <a href="/docs/v1.0/api-reference.html">API 参考</a>
+        <a href="/docs/v1.0/benchmarks.html">性能基准</a>
+      </div>
+      <div class="footer-col">
+        <h3>社区</h3>
+        <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/neopen/neotask/discussions" target="_blank" rel="noopener">Discussions</a>
+        <a href="https://github.com/neopen/neotask/tree/main/examples" target="_blank" rel="noopener">示例代码</a>
+      </div>
+      <div class="footer-col">
+        <h3>资源</h3>
+        <a href="/community.html">参与贡献</a>
+        <a href="https://pengline.cn" target="_blank" rel="noopener">技术博客</a>
+        <a href="https://github.com/neopen/neotask/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+        <a href="https://github.com/neopen/neotask/releases" target="_blank" rel="noopener">Release Notes</a>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p>© 2026 NeoTask · 由 <a href="https://pengline.cn" target="_blank" rel="noopener">NeoTask 作者 NeoPen</a> 维护 · 基于 MIT 协议开源</p>
+      <p class="footer-motto">Embedded by design. Observable by default.</p>
+    </div>
+  </div>
+</footer>
+
+  <script src="/assets/js/site.js" defer></script>
+</body>
+</html>

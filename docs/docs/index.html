@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>文档 · NeoTask</title>
-  <meta name="description" content="NeoTask 文档中心：快速上手、配置参考、核心概念、架构设计、分布式、故障恢复、API 参考与性能基准。">
+  <title>文档版本 · NeoTask</title>
+  <meta name="description" content="NeoTask 按版本维护的官方文档。选择与你的 NeoTask 版本对应的文档集。">
   <link rel="canonical" href="https://task.helpenx.com/docs/">
   <meta property="og:site_name" content="NeoTask">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="NeoTask 文档中心">
-  <meta property="og:description" content="从第一条任务到生产运维：快速上手、配置、架构、可靠性与 API 参考。">
+  <meta property="og:title" content="NeoTask 文档版本">
+  <meta property="og:description" content="按 NeoTask 版本维护的官方文档，当前最新为 v1.0。">
   <meta property="og:url" content="https://task.helpenx.com/docs/">
   <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
   <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
@@ -73,7 +73,7 @@
         <span>Star</span>
         <span class="gh-star-count">8</span>
       </a>
-      <a class="btn btn-primary btn-sm header-cta" href="/docs/quickstart.html">快速开始</a>
+      <a class="btn btn-primary btn-sm header-cta" href="/docs/v1.0/quickstart.html">快速开始</a>
       <button class="nav-toggle" id="navToggle" aria-label="打开菜单" aria-expanded="false" aria-controls="siteNav">
         <span></span><span></span>
       </button>
@@ -87,269 +87,98 @@
       <div class="docs-hero-inner">
         <span class="eyebrow">DOCUMENTATION</span>
         <h1>NeoTask 文档</h1>
-        <p>从安装第一个任务，到理解分布式链路与故障恢复。每篇文档都对照源码版本编写，标注能力边界与规划中的功能。</p>
+        <p>文档按 NeoTask 版本独立发布。每个版本拥有固定的文档集与链接，升级前可对照目标版本的配置、接口与迁移说明。</p>
         <div class="docs-hero-actions">
-          <a class="btn btn-primary" href="/docs/quickstart.html">快速上手 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
-          <a class="btn btn-outline" href="/docs/api-reference.html">API 参考</a>
+          <a class="btn btn-primary" href="/docs/v1.0/quickstart.html">阅读最新文档 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+          <a class="btn btn-outline" href="/docs/v1.0/api-reference.html">API 参考</a>
           <a class="btn btn-outline" href="https://github.com/neopen/neotask" target="_blank" rel="noopener"><svg class="icon icon-sm"><use href="#i-github"/></svg> 源码仓库</a>
         </div>
         <div class="docs-meta-row">
-          <span>17 篇文档</span>
-          <span>Python 3.8+</span>
-          <span>v1.0.5</span>
+          <span>1 个文档版本</span>
+          <span>最新 v1.0</span>
+          <span>基线 v1.0.5</span>
           <span>简体中文</span>
         </div>
       </div>
     </section>
 
     <div class="docs-hub">
-      <div class="hub-search">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input id="docsHubSearch" type="search" placeholder="搜索文档，例如：Redis、Cron、重试、配置" aria-label="搜索文档" autocomplete="off">
-        <span class="hub-search-hint">/</span>
+      <div class="docs-hub-intro">
+        <h2>选择文档版本</h2>
+        <a href="https://github.com/neopen/neotask/releases" target="_blank" rel="noopener">查看版本发布记录 →</a>
       </div>
 
-      <div class="docs-quick">
-        <a class="docs-quick-item" href="/docs/quickstart.html">
-          <span>5 分钟</span>
-          <strong>跑通第一个任务</strong>
-          <p>安装、执行器、提交与等待结果。</p>
-        </a>
-        <a class="docs-quick-item" href="/docs/configuration.html">
-          <span>配置</span>
-          <strong>选对存储与并发</strong>
-          <p>三档部署配置与真实生效参数。</p>
-        </a>
-        <a class="docs-quick-item" href="/docs/failure-recovery.html">
-          <span>运维</span>
-          <strong>任务丢失怎么办</strong>
-          <p>心跳、回收器与死信队列。</p>
-        </a>
+      <div class="version-grid">
+
+      <article class="version-card is-latest">
+        <div class="version-card-head">
+          <div>
+            <p class="version-card-label">v1.0</p>
+            <h2>NeoTask 1.0.x</h2>
+          </div>
+          <span class="version-badge">最新</span>
+        </div>
+        <p class="version-card-desc">首个正式文档版本，覆盖 1.0 系列的安装、配置、核心能力、可靠性与 API。</p>
+        <dl class="version-card-meta">
+          <div><dt>文档基线</dt><dd>v1.0.5</dd></div>
+          <div><dt>适用版本</dt><dd>NeoTask 1.0.x</dd></div>
+          <div><dt>更新于</dt><dd>2026-10-30</dd></div>
+          <div><dt>文档数量</dt><dd>16 篇</dd></div>
+        </dl>
+        <a class="btn btn-primary btn-block" href="/docs/v1.0/">进入 v1.0 文档 <span aria-hidden="true">→</span></a>
+      </article>
       </div>
 
-      <div class="docs-hub-intro" style="margin-top:40px">
-        <h2>推荐阅读</h2>
-        <a href="/docs/quickstart.html">从快速上手开始 →</a>
-      </div>
-      <div class="doc-feature-grid">
+      <section class="version-policy">
+        <h2>v1.0 文档包含</h2>
+        <div class="version-policy-grid">
 
-        <a class="doc-feature" href="/docs/quickstart.html" data-doc-card data-doc-search="快速上手 安装 NeoTask，用几行代码提交第一个任务，掌握同步等待、异步等待与上下文管理器三种用法。 开始使用">
-          <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg></span>
-          <span class="doc-feature-body">
-            <span class="doc-feature-cat">开始使用</span>
-            <strong>快速上手</strong>
-            <span>安装 NeoTask，用几行代码提交第一个任务，掌握同步等待、异步等待与上下文管理器三种用法。</span>
-          </span>
-          <span class="doc-feature-arrow" aria-hidden="true">→</span>
-        </a>
-        <a class="doc-feature" href="/docs/configuration.html" data-doc-card data-doc-search="配置参考 TaskPoolConfig / SchedulerConfig 全部字段、默认值与真实生效情况，以及开发、单机、分布式三档配置。 开始使用">
-          <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></span>
-          <span class="doc-feature-body">
-            <span class="doc-feature-cat">开始使用</span>
-            <strong>配置参考</strong>
-            <span>TaskPoolConfig / SchedulerConfig 全部字段、默认值与真实生效情况，以及开发、单机、分布式三档配置。</span>
-          </span>
-          <span class="doc-feature-arrow" aria-hidden="true">→</span>
-        </a>
-        <a class="doc-feature" href="/docs/best-practices.html" data-doc-card data-doc-search="最佳实践 执行器设计、并发度、重试与预取的取舍，以及生产环境常见的配置陷阱。 开始使用">
-          <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
-          <span class="doc-feature-body">
-            <span class="doc-feature-cat">开始使用</span>
-            <strong>最佳实践</strong>
-            <span>执行器设计、并发度、重试与预取的取舍，以及生产环境常见的配置陷阱。</span>
-          </span>
-          <span class="doc-feature-arrow" aria-hidden="true">→</span>
-        </a>
-        <a class="doc-feature" href="/docs/core-features.html" data-doc-card data-doc-search="核心功能 从组件树到两阶段装配，完整拆解任务提交、执行、回收的主链路。 核心概念">
-          <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 9 5-9 5-9-5 9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg></span>
-          <span class="doc-feature-body">
-            <span class="doc-feature-cat">核心概念</span>
-            <strong>核心功能</strong>
-            <span>从组件树到两阶段装配，完整拆解任务提交、执行、回收的主链路。</span>
-          </span>
-          <span class="doc-feature-arrow" aria-hidden="true">→</span>
-        </a>
-        <a class="doc-feature" href="/docs/architecture.html" data-doc-card data-doc-search="架构设计 三种部署形态、装配拓扑、两阶段生命周期与关键架构决策。 核心概念">
-          <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
-          <span class="doc-feature-body">
-            <span class="doc-feature-cat">核心概念</span>
-            <strong>架构设计</strong>
-            <span>三种部署形态、装配拓扑、两阶段生命周期与关键架构决策。</span>
-          </span>
-          <span class="doc-feature-arrow" aria-hidden="true">→</span>
-        </a>
-        <a class="doc-feature" href="/docs/failure-recovery.html" data-doc-card data-doc-search="故障恢复 任务回收器、僵尸锁扫描与孤儿任务处理，节点宕机后任务如何被重新拾起。 可靠性与可观测性">
-          <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
-          <span class="doc-feature-body">
-            <span class="doc-feature-cat">可靠性与可观测性</span>
-            <strong>故障恢复</strong>
-            <span>任务回收器、僵尸锁扫描与孤儿任务处理，节点宕机后任务如何被重新拾起。</span>
-          </span>
-          <span class="doc-feature-arrow" aria-hidden="true">→</span>
-        </a>
-        <a class="doc-feature" href="/docs/api-reference.html" data-doc-card data-doc-search="API 参考 TaskPool 与 TaskScheduler 共 54 个公开方法的签名总表、委托关系与行为说明。 参考">
-          <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg></span>
-          <span class="doc-feature-body">
-            <span class="doc-feature-cat">参考</span>
-            <strong>API 参考</strong>
-            <span>TaskPool 与 TaskScheduler 共 54 个公开方法的签名总表、委托关系与行为说明。</span>
-          </span>
-          <span class="doc-feature-arrow" aria-hidden="true">→</span>
-        </a>
-      </div>
+          <div>
+            <h3><a href="/docs/v1.0/#start">开始使用 · 3 篇</a></h3>
+            <p>安装、配置与生产使用建议。</p>
+          </div>
+          <div>
+            <h3><a href="/docs/v1.0/#concepts">核心概念 · 6 篇</a></h3>
+            <p>架构、任务状态、优先级、延时与存储。</p>
+          </div>
+          <div>
+            <h3><a href="/docs/v1.0/#reliability">可靠性 · 4 篇</a></h3>
+            <p>故障恢复、分布式锁、预取与监控。</p>
+          </div>
+          <div>
+            <h3><a href="/docs/v1.0/#reference">参考 · 2 篇</a></h3>
+            <p>API 签名、返回语义与性能基准。</p>
+          </div>
+          <div>
+            <h3><a href="/docs/v1.0/#roadmap">路线图 · 1 篇</a></h3>
+            <p>1.0 能力边界与后续版本规划。</p>
+          </div>
+        </div>
+        <p class="version-scope-note">从 <a href="/docs/v1.0/quickstart.html">快速开始</a> 进入，或在 <a href="/docs/v1.0/">版本首页</a> 浏览全部 16 篇文档。</p>
+      </section>
 
-      <div id="docsGroups">
-
-      <section class="doc-group" data-doc-group id="start">
-        <div class="doc-group-head">
-          <h2>开始使用</h2>
-          <span>03</span>
-        </div>
-        <div class="doc-card-grid">
-          <a class="doc-card" href="/docs/quickstart.html" data-doc-card data-doc-search="快速上手 安装 NeoTask，用几行代码提交第一个任务，掌握同步等待、异步等待与上下文管理器三种用法。 开始使用">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg></span>
-            <span class="doc-card-title">快速上手</span>
-            <span class="doc-card-desc">安装 NeoTask，用几行代码提交第一个任务，掌握同步等待、异步等待与上下文管理器三种用法。</span>
-            <span class="doc-card-meta">8 分钟</span>
-          </a>
-          <a class="doc-card" href="/docs/configuration.html" data-doc-card data-doc-search="配置参考 TaskPoolConfig / SchedulerConfig 全部字段、默认值与真实生效情况，以及开发、单机、分布式三档配置。 开始使用">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></span>
-            <span class="doc-card-title">配置参考</span>
-            <span class="doc-card-desc">TaskPoolConfig / SchedulerConfig 全部字段、默认值与真实生效情况，以及开发、单机、分布式三档配置。</span>
-            <span class="doc-card-meta">15 分钟</span>
-          </a>
-          <a class="doc-card" href="/docs/best-practices.html" data-doc-card data-doc-search="最佳实践 执行器设计、并发度、重试与预取的取舍，以及生产环境常见的配置陷阱。 开始使用">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
-            <span class="doc-card-title">最佳实践</span>
-            <span class="doc-card-desc">执行器设计、并发度、重试与预取的取舍，以及生产环境常见的配置陷阱。</span>
-            <span class="doc-card-meta">12 分钟</span>
-          </a>
+      <section class="version-policy">
+        <h2>版本策略</h2>
+        <div class="version-policy-grid">
+          <div>
+            <h3>版本对应</h3>
+            <p>文档版本对应 NeoTask 的次版本线。例如 v1.0 文档适用于 1.0.x，缺陷修复不会改变文档路径。</p>
+          </div>
+          <div>
+            <h3>链接稳定</h3>
+            <p>已发布版本的文档链接保持不变；新版本在独立路径下发布，不会覆盖旧版内容。</p>
+          </div>
+          <div>
+            <h3>升级前核对</h3>
+            <p>跨次版本升级时，请同时阅读新旧两版文档的配置参考与 API 参考，确认参数和行为变化。</p>
+          </div>
         </div>
       </section>
-      <section class="doc-group" data-doc-group id="concepts">
-        <div class="doc-group-head">
-          <h2>核心概念</h2>
-          <span>06</span>
-        </div>
-        <div class="doc-card-grid">
-          <a class="doc-card" href="/docs/core-features.html" data-doc-card data-doc-search="核心功能 从组件树到两阶段装配，完整拆解任务提交、执行、回收的主链路。 核心概念">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 9 5-9 5-9-5 9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg></span>
-            <span class="doc-card-title">核心功能</span>
-            <span class="doc-card-desc">从组件树到两阶段装配，完整拆解任务提交、执行、回收的主链路。</span>
-            <span class="doc-card-meta">20 分钟</span>
-          </a>
-          <a class="doc-card" href="/docs/architecture.html" data-doc-card data-doc-search="架构设计 三种部署形态、装配拓扑、两阶段生命周期与关键架构决策。 核心概念">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
-            <span class="doc-card-title">架构设计</span>
-            <span class="doc-card-desc">三种部署形态、装配拓扑、两阶段生命周期与关键架构决策。</span>
-            <span class="doc-card-meta">18 分钟</span>
-          </a>
-          <a class="doc-card" href="/docs/decentralization.html" data-doc-card data-doc-search="去中心化架构 对等节点、抢占式消费与无主架构：多节点如何共享队列而不需要调度中心。 核心概念">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 6h9M6.5 8.2l4 7.6M17.5 8.2l-4 7.6"/></svg></span>
-            <span class="doc-card-title">去中心化架构</span>
-            <span class="doc-card-desc">对等节点、抢占式消费与无主架构：多节点如何共享队列而不需要调度中心。</span>
-            <span class="doc-card-meta">14 分钟</span>
-          </a>
-          <a class="doc-card" href="/docs/persistence.html" data-doc-card data-doc-search="持久化存储 Memory、SQLite、Redis 三种存储后端的实现差异、数据格式与清理策略。 核心概念">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/></svg></span>
-            <span class="doc-card-title">持久化存储</span>
-            <span class="doc-card-desc">Memory、SQLite、Redis 三种存储后端的实现差异、数据格式与清理策略。</span>
-            <span class="doc-card-meta">16 分钟</span>
-          </a>
-          <a class="doc-card" href="/docs/priority-queue.html" data-doc-card data-doc-search="优先级队列 四级优先级在堆与 Redis ZSET 上的双实现，同优先级 FIFO 与延迟迁移。 核心概念">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/></svg></span>
-            <span class="doc-card-title">优先级队列</span>
-            <span class="doc-card-desc">四级优先级在堆与 Redis ZSET 上的双实现，同优先级 FIFO 与延迟迁移。</span>
-            <span class="doc-card-meta">14 分钟</span>
-          </a>
-          <a class="doc-card" href="/docs/delayed-tasks.html" data-doc-card data-doc-search="延时与定时任务 延时队列、最小堆、可选时间轮，以及周期任务和 Cron 调度的完整链路。 核心概念">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
-            <span class="doc-card-title">延时与定时任务</span>
-            <span class="doc-card-desc">延时队列、最小堆、可选时间轮，以及周期任务和 Cron 调度的完整链路。</span>
-            <span class="doc-card-meta">18 分钟</span>
-          </a>
-        </div>
-      </section>
-      <section class="doc-group" data-doc-group id="reliability">
-        <div class="doc-group-head">
-          <h2>可靠性与可观测性</h2>
-          <span>04</span>
-        </div>
-        <div class="doc-card-grid">
-          <a class="doc-card" href="/docs/failure-recovery.html" data-doc-card data-doc-search="故障恢复 任务回收器、僵尸锁扫描与孤儿任务处理，节点宕机后任务如何被重新拾起。 可靠性与可观测性">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
-            <span class="doc-card-title">故障恢复</span>
-            <span class="doc-card-desc">任务回收器、僵尸锁扫描与孤儿任务处理，节点宕机后任务如何被重新拾起。</span>
-            <span class="doc-card-meta">15 分钟</span>
-          </a>
-          <a class="doc-card" href="/docs/distributed-lock.html" data-doc-card data-doc-search="分布式锁 Redis + Lua + 看门狗：任务级互斥、锁续期与故障场景下的正确性边界。 可靠性与可观测性">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
-            <span class="doc-card-title">分布式锁</span>
-            <span class="doc-card-desc">Redis + Lua + 看门狗：任务级互斥、锁续期与故障场景下的正确性边界。</span>
-            <span class="doc-card-meta">16 分钟</span>
-          </a>
-          <a class="doc-card" href="/docs/prefetch.html" data-doc-card data-doc-search="预取机制 批量拉取、高低水位与 HYBRID 自适应策略，以及预取对优先级顺序的影响。 可靠性与可观测性">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 14 17 9"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/><circle cx="12" cy="14" r="1"/></svg></span>
-            <span class="doc-card-title">预取机制</span>
-            <span class="doc-card-desc">批量拉取、高低水位与 HYBRID 自适应策略，以及预取对优先级顺序的影响。</span>
-            <span class="doc-card-meta">12 分钟</span>
-          </a>
-          <a class="doc-card" href="/docs/monitoring.html" data-doc-card data-doc-search="节点监控 事件驱动的指标采集、滑动窗口、健康检查与 Prometheus 集成方式。 可靠性与可观测性">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>
-            <span class="doc-card-title">节点监控</span>
-            <span class="doc-card-desc">事件驱动的指标采集、滑动窗口、健康检查与 Prometheus 集成方式。</span>
-            <span class="doc-card-meta">15 分钟</span>
-          </a>
-        </div>
-      </section>
-      <section class="doc-group" data-doc-group id="reference">
-        <div class="doc-group-head">
-          <h2>参考</h2>
-          <span>03</span>
-        </div>
-        <div class="doc-card-grid">
-          <a class="doc-card" href="/docs/api-reference.html" data-doc-card data-doc-search="API 参考 TaskPool 与 TaskScheduler 共 54 个公开方法的签名总表、委托关系与行为说明。 参考">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg></span>
-            <span class="doc-card-title">API 参考</span>
-            <span class="doc-card-desc">TaskPool 与 TaskScheduler 共 54 个公开方法的签名总表、委托关系与行为说明。</span>
-            <span class="doc-card-meta">30 分钟</span>
-          </a>
-          <a class="doc-card" href="/docs/benchmarks.html" data-doc-card data-doc-search="性能基准 官方基准脚本与实测数据解读：队列吞吐、端到端吞吐、延迟分布与调优建议。 参考">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6" rx="1"/><rect x="12" y="8" width="3" height="10" rx="1"/><rect x="17" y="5" width="3" height="13" rx="1"/></svg></span>
-            <span class="doc-card-title">性能基准</span>
-            <span class="doc-card-desc">官方基准脚本与实测数据解读：队列吞吐、端到端吞吐、延迟分布与调优建议。</span>
-            <span class="doc-card-meta">20 分钟</span>
-          </a>
-          <a class="doc-card" href="/docs/evolution.html" data-doc-card data-doc-search="版本演进 从 0.1.0 到 1.0.5 的真实发布史，以及每个版本解决的问题。 参考">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg></span>
-            <span class="doc-card-title">版本演进</span>
-            <span class="doc-card-desc">从 0.1.0 到 1.0.5 的真实发布史，以及每个版本解决的问题。</span>
-            <span class="doc-card-meta">10 分钟</span>
-          </a>
-        </div>
-      </section>
-      <section class="doc-group" data-doc-group id="roadmap">
-        <div class="doc-group-head">
-          <h2>路线图</h2>
-          <span>01</span>
-        </div>
-        <div class="doc-card-grid">
-          <a class="doc-card" href="/docs/dag-workflow.html" data-doc-card data-doc-search="任务编排（规划） DAG 工作流引擎的设计推演：条件分支、并行执行与依赖管理，规划于 v1.5。 路线图">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="6" rx="1.5"/><rect x="14" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 9v5a4 4 0 0 0 4 4H14"/></svg></span>
-            <span class="doc-card-title">任务编排（规划）<em class="tag-soon">规划</em></span>
-            <span class="doc-card-desc">DAG 工作流引擎的设计推演：条件分支、并行执行与依赖管理，规划于 v1.5。</span>
-            <span class="doc-card-meta">18 分钟</span>
-          </a>
-        </div>
-      </section>
-      </div>
-
-      <p class="hub-empty" id="docsHubEmpty" hidden>没有找到匹配的文档，试试「快速上手」「Redis」「Cron」或「重试」。</p>
 
       <div class="hub-foot">
         <div>
-          <h2>发现文档问题？</h2>
-          <p>文档基于源码与发布记录编写。如果发现过期或错误内容，欢迎提交 Issue 或 PR。</p>
+          <h2>找不到对应版本？</h2>
+          <p>旧版本文档会随版本发布持续保留。如果需要更早版本或迁移帮助，请在 GitHub Issues 中说明使用的版本。</p>
         </div>
         <a class="btn btn-outline" href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">提交文档问题 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
       </div>
@@ -381,10 +210,10 @@
       </div>
       <div class="footer-col">
         <h3>文档</h3>
-        <a href="/docs/quickstart.html">快速上手</a>
-        <a href="/docs/architecture.html">架构设计</a>
-        <a href="/docs/api-reference.html">API 参考</a>
-        <a href="/docs/benchmarks.html">性能基准</a>
+        <a href="/docs/v1.0/quickstart.html">快速上手</a>
+        <a href="/docs/v1.0/architecture.html">架构设计</a>
+        <a href="/docs/v1.0/api-reference.html">API 参考</a>
+        <a href="/docs/v1.0/benchmarks.html">性能基准</a>
       </div>
       <div class="footer-col">
         <h3>社区</h3>

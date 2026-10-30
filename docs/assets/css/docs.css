@@ -1429,6 +1429,16 @@ body.docs-page {
   line-height: 1.7;
 }
 
+.version-scope-note {
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.version-scope-note a {
+  color: var(--brand-strong, var(--brand));
+}
+
 /* Documentation callouts and diagrams ------------------------------------- */
 
 .article-body .doc-note,

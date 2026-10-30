@@ -91,7 +91,7 @@
         <span>Star</span>
         <span class="gh-star-count">8</span>
       </a>
-      <a class="btn btn-primary btn-sm header-cta" href="/docs/quickstart.html">快速开始</a>
+      <a class="btn btn-primary btn-sm header-cta" href="/docs/v1.0/quickstart.html">快速开始</a>
       <button class="nav-toggle" id="navToggle" aria-label="打开菜单" aria-expanded="false" aria-controls="siteNav">
         <span></span><span></span>
       </button>
@@ -123,7 +123,7 @@
           </div>
 
           <div class="hero-actions">
-            <a class="btn btn-primary btn-lg" href="/docs/quickstart.html">
+            <a class="btn btn-primary btn-lg" href="/docs/v1.0/quickstart.html">
               快速开始
               <svg class="icon icon-sm"><use href="#i-arrow"/></svg>
             </a>
@@ -393,7 +393,7 @@
                 </ul>
               </div>
             </div>
-            <a class="text-link" href="/docs/quickstart.html">阅读快速上手 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+            <a class="text-link" href="/docs/v1.0/quickstart.html">阅读快速上手 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
           </div>
 
           <div class="code-window">
@@ -546,7 +546,7 @@ result = pool.wait_for_result(task_id)</code></pre>
             <span class="eyebrow">ARCHITECTURE</span>
             <h2>分层清晰，逐级增强</h2>
           </div>
-          <a class="text-link" href="/docs/architecture.html">架构设计文档 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          <a class="text-link" href="/docs/v1.0/architecture.html">架构设计文档 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
         </div>
 
         <div class="arch-layout">
@@ -592,7 +592,7 @@ result = pool.wait_for_result(task_id)</code></pre>
               <span class="deploy-tag">分布式</span>
               <p><strong>Redis</strong> · 多节点共享队列、心跳与任务锁。</p>
             </div>
-            <a class="btn btn-outline btn-block" href="/docs/configuration.html">查看配置参考</a>
+            <a class="btn btn-outline btn-block" href="/docs/v1.0/configuration.html">查看配置参考</a>
           </aside>
         </div>
       </div>
@@ -605,31 +605,31 @@ result = pool.wait_for_result(task_id)</code></pre>
             <span class="eyebrow">BENCHMARKS</span>
             <h2>性能，有基准可查</h2>
           </div>
-          <a class="text-link" href="/docs/benchmarks.html">阅读基准报告 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          <a class="text-link" href="/docs/v1.0/benchmarks.html">阅读基准报告 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
         </div>
         <div class="bench-grid">
           <div class="bench-card bench-main">
-            <span class="bench-label">端到端基础吞吐</span>
-            <strong class="bench-num">1,697<span> tasks/s</span></strong>
-            <p>1,000 个 noop 任务，Memory 存储，成功率 100%。</p>
+            <span class="bench-label">提交吞吐</span>
+            <strong class="bench-num">14,657<span> tasks/s</span></strong>
+            <p>2,000 个 noop 任务，Memory 存储，10 个 Worker。</p>
           </div>
           <div class="bench-card">
-            <span class="bench-label">IO 任务吞吐</span>
-            <strong class="bench-num">4,671<span> tasks/s</span></strong>
-            <p>5ms 睡眠任务 × 200，20 个 worker 并发。</p>
+            <span class="bench-label">完成吞吐</span>
+            <strong class="bench-num">2,433<span> tasks/s</span></strong>
+            <p>3,000 个任务，含状态落库与事件分发，P50 790 ms。</p>
           </div>
           <div class="bench-card">
-            <span class="bench-label">队列出队</span>
-            <strong class="bench-num">312k<span> ops/s</span></strong>
-            <p>纯内存优先级堆操作，不含完整任务生命周期。</p>
+            <span class="bench-label">IO 扩展性</span>
+            <strong class="bench-num">7.76<span>×</span></strong>
+            <p>20 ms 睡眠任务，8 个 Worker 相对 1 个 Worker 的完成吞吐。</p>
           </div>
           <div class="bench-card">
-            <span class="bench-label">批量弹出</span>
-            <strong class="bench-num">2.0<span>×</span></strong>
-            <p>一次弹出 10 条，相比逐条弹出的吞吐提升。</p>
+            <span class="bench-label">串行往返</span>
+            <strong class="bench-num">15.50<span> ms</span></strong>
+            <p>单任务提交到完成的 P50 延迟，200 次串行测量。</p>
           </div>
         </div>
-        <p class="bench-note">数据摘自仓库 <code>docs/性能基准测试.md</code>：Windows 10、i7-10750H、Python 3.10、v0.3.0、Memory 后端，测试于 2026 年 4 月。绝对数值不代表当前版本或 Redis 分布式部署，请以自己的业务压测为准。<a href="/docs/benchmarks.html">阅读完整口径与陷阱分析 →</a></p>
+        <p class="bench-note">数据来自 NeoTask 1.0.5 官方基准脚本：Windows 10 19045、i7-1165G7、Python 3.13.15、Memory 后端，旁路组件全部关闭。绝对数值不代表你的部署环境，请以自己的业务压测为准。<a href="/docs/v1.0/benchmarks.html">阅读完整口径与边界说明 →</a></p>
       </div>
     </section>
 
@@ -643,37 +643,37 @@ result = pool.wait_for_result(task_id)</code></pre>
           <a class="text-link" href="/docs/">进入文档中心 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
         </div>
         <div class="home-doc-grid">
-          <a class="home-doc" href="/docs/quickstart.html">
+          <a class="home-doc" href="/docs/v1.0/quickstart.html">
             <span class="home-doc-cat">开始使用</span>
             <strong>快速上手</strong>
             <span>安装、定义执行器，提交并等待第一个任务。</span>
             <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
           </a>
-          <a class="home-doc" href="/docs/configuration.html">
+          <a class="home-doc" href="/docs/v1.0/configuration.html">
             <span class="home-doc-cat">开始使用</span>
             <strong>配置参考</strong>
             <span>TaskPoolConfig 与 SchedulerConfig 全部字段。</span>
             <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
           </a>
-          <a class="home-doc" href="/docs/core-features.html">
+          <a class="home-doc" href="/docs/v1.0/task-lifecycle.html">
             <span class="home-doc-cat">核心概念</span>
-            <strong>核心功能</strong>
-            <span>提交、执行、回收的完整主链路。</span>
+            <strong>任务生命周期</strong>
+            <span>状态流转、事件、取消与重试的完整主链路。</span>
             <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
           </a>
-          <a class="home-doc" href="/docs/api-reference.html">
+          <a class="home-doc" href="/docs/v1.0/api-reference.html">
             <span class="home-doc-cat">参考</span>
             <strong>API 参考</strong>
             <span>54 个公开方法的签名与行为说明。</span>
             <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
           </a>
-          <a class="home-doc" href="/docs/failure-recovery.html">
+          <a class="home-doc" href="/docs/v1.0/failure-recovery.html">
             <span class="home-doc-cat">可靠性</span>
             <strong>故障恢复</strong>
             <span>任务回收、僵尸锁扫描与孤儿任务。</span>
             <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
           </a>
-          <a class="home-doc" href="/docs/monitoring.html">
+          <a class="home-doc" href="/docs/v1.0/monitoring.html">
             <span class="home-doc-cat">可靠性</span>
             <strong>节点监控</strong>
             <span>指标、健康检查与告警接入。</span>
@@ -709,7 +709,7 @@ result = pool.wait_for_result(task_id)</code></pre>
           </details>
           <details class="faq-item">
             <summary>可以在生产环境使用吗？<span class="faq-icon"></span></summary>
-            <div class="faq-answer"><p>可以。v1.0 起已具备持久化、故障恢复、分布式锁、死信队列与指标采集。建议使用 SQLite 或 Redis 持久化，并为关键任务配置重试与监控；上线前请阅读<a href="/docs/best-practices.html">最佳实践</a>。</p></div>
+            <div class="faq-answer"><p>可以。v1.0 起已具备持久化、故障恢复、分布式锁、死信队列与指标采集。建议使用 SQLite 或 Redis 持久化，并为关键任务配置重试与监控；上线前请阅读<a href="/docs/v1.0/best-practices.html">最佳实践</a>。</p></div>
           </details>
         </div>
       </div>
@@ -732,7 +732,7 @@ result = pool.wait_for_result(task_id)</code></pre>
             </button>
           </div>
           <div class="cta-buttons">
-            <a class="btn btn-primary btn-lg" href="/docs/quickstart.html">阅读快速上手 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+            <a class="btn btn-primary btn-lg" href="/docs/v1.0/quickstart.html">阅读快速上手 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
             <a class="btn btn-ghost btn-lg" href="https://github.com/neopen/neotask" target="_blank" rel="noopener"><svg class="icon icon-sm"><use href="#i-github"/></svg> 在 GitHub 查看源码</a>
           </div>
         </div>
@@ -765,10 +765,10 @@ result = pool.wait_for_result(task_id)</code></pre>
       </div>
       <div class="footer-col">
         <h3>文档</h3>
-        <a href="/docs/quickstart.html">快速上手</a>
-        <a href="/docs/architecture.html">架构设计</a>
-        <a href="/docs/api-reference.html">API 参考</a>
-        <a href="/docs/benchmarks.html">性能基准</a>
+        <a href="/docs/v1.0/quickstart.html">快速上手</a>
+        <a href="/docs/v1.0/architecture.html">架构设计</a>
+        <a href="/docs/v1.0/api-reference.html">API 参考</a>
+        <a href="/docs/v1.0/benchmarks.html">性能基准</a>
       </div>
       <div class="footer-col">
         <h3>社区</h3>

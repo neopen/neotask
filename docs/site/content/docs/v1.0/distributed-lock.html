@@ -1,0 +1,68 @@
+<p>任务锁用于避免同一任务被多个节点同时执行。默认使用内存锁，只在进程内有效；跨节点互斥必须使用 Redis 锁。</p>
+
+<h2>启用</h2>
+<pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
+
+config = TaskPoolConfig(
+    storage_type="redis",
+    redis_url="redis://10.0.0.10:6379/0",
+    node_id="worker-1",
+    lock_type="redis",       # 关键：显式开启跨节点锁
+    lock_timeout=30,
+)
+pool = TaskPool(executor=handle, config=config)</code></pre>
+
+<div class="doc-warning"><strong>默认值陷阱：</strong><code>lock_type</code> 默认是 <code>"memory"</code>，即使 <code>storage_type="redis"</code> 也不会自动改为 Redis 锁。仅在单进程内运行时，内存锁足够；多节点部署必须设置 <code>lock_type="redis"</code>。</div>
+
+<h2>自动加锁</h2>
+<p>Worker 在执行每个任务前自动获取锁，键为 <code>lock:task:{task_id}</code>（RedisLock 前缀 <code>lock:</code>），任务结束后释放。</p>
+
+<table>
+<thead><tr><th>属性</th><th>行为</th></tr></thead>
+<tbody>
+<tr><td>TTL</td><td>自动加锁固定 30 秒</td></tr>
+<tr><td>续期</td><td>看门狗每 <code>TTL × 0.3</code>（最小 0.5 秒）续期一次</td></tr>
+<tr><td>释放</td><td>Lua 脚本校验 owner 后删除，避免误删他人锁</td></tr>
+<tr><td>获取失败</td><td>本次执行直接跳过，任务保持 <code>pending</code></td></tr>
+</tbody>
+</table>
+
+<p>锁在任务开始时获取、结束时释放，不覆盖排队阶段。因此同一个任务不会被两个 Worker 同时开始执行；但执行超时、节点失联后的重复执行仍可能发生，业务侧必须保证幂等。</p>
+
+<h2>手动加锁</h2>
+<pre><code class="language-python">if pool.acquire_lock("report-2026-10", ttl=60):
+    try:
+        generate_report()
+    finally:
+        pool.release_lock("report-2026-10")</code></pre>
+
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>acquire_lock(task_id, ttl=30)</code></td><td>获取 <code>task:{task_id}</code> 锁，返回是否成功</td></tr>
+<tr><td><code>release_lock(task_id)</code></td><td>释放本实例持有的锁</td></tr>
+</tbody>
+</table>
+
+<p>手动锁与自动任务锁使用同一命名空间。不要用正在执行的任务 ID 作为手动锁键，否则会与 Worker 争锁。</p>
+
+<h2>实现细节</h2>
+<table>
+<thead><tr><th>环节</th><th>实现</th></tr></thead>
+<tbody>
+<tr><td>加锁</td><td><code>SET key owner NX EX ttl</code></td></tr>
+<tr><td>解锁</td><td>Lua：值等于 owner 才 <code>DEL</code></td></tr>
+<tr><td>续期</td><td>Lua：值等于 owner 才 <code>EXPIRE</code></td></tr>
+<tr><td>owner</td><td>每个锁实例生成随机 UUID，保存在进程内</td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>非重入：</strong>同一实例重复获取同一把锁会失败。需要重入语义时，应在业务层合并临界区，而不是重复调用 <code>acquire_lock()</code>。</div>
+
+<h2>正确性边界</h2>
+<ul>
+<li>锁保证“同一时刻只有一个持有者”，不保证任务只执行一次。执行超时、进程暂停（GC、容器冻结）或网络分区都可能造成重复执行。</li>
+<li>看门狗只能在本进程存活时续期；进程被杀后锁会在 TTL 内自动过期。</li>
+<li>Redis 主从切换可能丢失未同步的锁写入，强一致场景需要 Redis 集群/Redlock 等额外方案，当前版本未内置。</li>
+<li>锁 TTL 与任务时长不匹配时，长任务可能在执行期间失去锁。自动锁固定 30 秒并持续续期，手动锁需要自行设置足够的 <code>ttl</code>。</li>
+</ul>

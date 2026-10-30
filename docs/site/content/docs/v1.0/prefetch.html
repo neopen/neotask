@@ -1,0 +1,73 @@
+<p>预取器把共享队列中的任务批量搬到每个 Worker 的本地队列，减少对 Redis 或存储层的出队请求。默认开启。</p>
+
+<h2>配置</h2>
+<pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
+
+config = TaskPoolConfig(
+    prefetch_size=20,        # 每次预取数量
+    enable_prefetch=True,
+)
+pool = TaskPool(executor=handle, config=config)</code></pre>
+
+<p>其余参数由 <code>prefetch_size</code> 推导，不能通过 <code>TaskPoolConfig</code> 单独设置：</p>
+
+<table>
+<thead><tr><th>参数</th><th>推导规则（默认 <code>prefetch_size=20</code>）</th></tr></thead>
+<tbody>
+<tr><td>本地队列容量</td><td><code>prefetch_size × 5</code> = 100</td></tr>
+<tr><td>触发下限</td><td><code>max(1, prefetch_size // 4)</code> = 5</td></tr>
+<tr><td>停止上限</td><td><code>prefetch_size × 3</code> = 60</td></tr>
+<tr><td>预取检查间隔</td><td>0.1 秒</td></tr>
+<tr><td>空闲超时</td><td>5 秒无消费后暂停预取</td></tr>
+<tr><td>空预取退避</td><td>0.1 秒起指数增长，上限 0.5 秒</td></tr>
+</tbody>
+</table>
+
+<h2>触发逻辑</h2>
+<p>默认使用 HYBRID 策略：</p>
+<ul>
+<li>本地队列低于下限（5）时立即预取；</li>
+<li>低于上限（60）且最近 5 个批次的平均消费量超过 <code>prefetch_size × 0.5</code> 时也会预取；</li>
+<li>本地队列达到上限后延长检查间隔，避免空转；</li>
+<li>连续空预取时按指数退避，最高 0.5 秒，与 Worker 空转退避对齐。</li>
+</ul>
+
+<h2>一次预取</h2>
+<ol>
+<li>计算本地队列剩余容量。</li>
+<li>从共享队列批量弹出最多 <code>prefetch_size</code> 个任务。</li>
+<li>放入本地队列；容量不足时停止放入。</li>
+<li>Worker 从本地队列取任务执行。</li>
+</ol>
+
+<h2>对优先级的影响</h2>
+<p>预取按批出队，跨优先级的严格顺序只在每批出队时成立。本地队列中已存在的低优先级任务，可能先于共享队列中新到达的高优先级任务执行。</p>
+
+<table>
+<thead><tr><th>需求</th><th>配置</th></tr></thead>
+<tbody>
+<tr><td>严格优先级顺序</td><td><code>enable_prefetch=False</code></td></tr>
+<tr><td>降低顺序影响</td><td>减小 <code>prefetch_size</code>，例如 1–5</td></tr>
+<tr><td>高吞吐、任务较长</td><td>增大 <code>prefetch_size</code>，例如 50–100</td></tr>
+</tbody>
+</table>
+
+<h2>吞吐影响</h2>
+<p>预取优化的是队列争用，不是极短任务的吞吐。预取补充节奏约为每 0.1 秒一批；当任务本身只有几十微秒时，默认 20 个/批会成为瓶颈。官方基准中，极短任务关闭预取后的完成吞吐明显高于默认预取配置。</p>
+
+<div class="doc-note">是否启用应基于任务耗时判断：毫秒级以上任务通常受益；微秒级任务建议先关闭预取做对照测试。数据口径见 <a href="/docs/benchmarks.html">性能基准</a>。</div>
+
+<h2>统计</h2>
+<pre><code class="language-python">stats = pool.get_stats()
+print(stats.get("prefetcher"))
+# total_prefetch / total_fetched / total_errors
+# avg_batch_size / avg_latency_ms / p95_latency_ms</code></pre>
+
+<p>仅在预取启用时返回 <code>prefetcher</code> 字段。预取器统计不包含 Worker 实际执行时间。</p>
+
+<h2>关闭与停机</h2>
+<ul>
+<li><code>enable_prefetch=False</code> 后 Worker 直接从共享队列出队。</li>
+<li>优雅停机时，预取器先等待本地队列被消费；超时后把剩余任务放回共享队列，避免任务变成孤儿。</li>
+<li>强制终止会丢失本地队列中已出队但未执行的任务，只能等待回收器按 <code>ttl</code> 兜底。</li>
+</ul>

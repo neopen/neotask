@@ -1,0 +1,83 @@
+<p>NeoTask 的配置由两个数据类提供：<code>TaskPoolConfig</code>（即时任务）与 <code>SchedulerConfig</code>（延时与周期任务）。所有字段都有默认值，直接实例化即可运行。</p>
+
+<pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
+
+config = TaskPoolConfig(
+    storage_type="redis",
+    redis_url="redis://127.0.0.1:6379/0",
+    worker_concurrency=20,
+    task_timeout=60,
+    max_retries=3,
+)
+pool = TaskPool(executor=handle, config=config)</code></pre>
+
+<h2>TaskPoolConfig</h2>
+<table>
+<thead><tr><th>字段</th><th>默认值</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>storage_type</code></td><td><code>"memory"</code></td><td><code>memory</code> / <code>sqlite</code> / <code>redis</code></td></tr>
+<tr><td><code>sqlite_path</code></td><td><code>"/data/neotask.db"</code></td><td>SQLite 数据库路径</td></tr>
+<tr><td><code>redis_url</code></td><td><code>None</code></td><td>Redis 连接串；使用 Redis 时必填</td></tr>
+<tr><td><code>executor_type</code></td><td><code>ExecutorType.ASYNC</code></td><td>仅在传入异步执行器时生效</td></tr>
+<tr><td><code>max_workers</code></td><td><code>10</code></td><td>执行器内部线程/进程数，取决于执行器实现</td></tr>
+<tr><td><code>worker_concurrency</code></td><td><code>10</code></td><td>同时执行的任务数</td></tr>
+<tr><td><code>prefetch_size</code></td><td><code>20</code></td><td>每次预取任务数；同时决定本地队列容量（5 倍）</td></tr>
+<tr><td><code>task_timeout</code></td><td><code>None</code></td><td>单任务执行超时（秒），默认不限制</td></tr>
+<tr><td><code>queue_max_size</code></td><td><code>10000</code></td><td>队列上限，满时提交抛出 <code>QueueFullError</code></td></tr>
+<tr><td><code>priority_levels</code></td><td><code>4</code></td><td>优先级级数，当前实现固定为四级</td></tr>
+<tr><td><code>lock_type</code></td><td><code>"memory"</code></td><td><code>memory</code> / <code>redis</code>，任务级互斥锁</td></tr>
+<tr><td><code>lock_timeout</code></td><td><code>30</code></td><td>任务锁 TTL（秒）</td></tr>
+<tr><td><code>enable_metrics</code></td><td><code>True</code></td><td>采集任务指标</td></tr>
+<tr><td><code>enable_health_check</code></td><td><code>True</code></td><td>启用存储、队列、系统健康检查</td></tr>
+<tr><td><code>enable_reporter</code></td><td><code>False</code></td><td>每 60 秒输出一次控制台指标摘要</td></tr>
+<tr><td><code>max_retries</code></td><td><code>3</code></td><td>失败后的自动重试次数</td></tr>
+<tr><td><code>retry_delay</code></td><td><code>1.0</code></td><td>重试延迟基数；第 n 次重试延迟为 <code>retry_delay × n</code></td></tr>
+<tr><td><code>enable_prefetch</code></td><td><code>True</code></td><td>启用批量预取</td></tr>
+<tr><td><code>prefetch_min_threshold</code></td><td><code>5</code></td><td>当前版本未生效，阈值由 <code>prefetch_size</code> 推导</td></tr>
+<tr><td><code>reclaimer_interval</code></td><td><code>30.0</code></td><td>Redis 模式下回收器扫描间隔（秒）</td></tr>
+<tr><td><code>heartbeat_interval</code></td><td><code>5</code></td><td>Redis 模式下心跳间隔（秒）</td></tr>
+<tr><td><code>heartbeat_timeout</code></td><td><code>20</code></td><td>节点心跳超时（秒）</td></tr>
+<tr><td><code>enable_dead_letter</code></td><td><code>True</code></td><td>Redis 模式下启用死信队列</td></tr>
+<tr><td><code>dead_letter_max_size</code></td><td><code>10000</code></td><td>死信队列容量</td></tr>
+<tr><td><code>dead_letter_ttl</code></td><td><code>604800</code></td><td>死信保留时间（秒，默认 7 天）</td></tr>
+<tr><td><code>node_id</code></td><td>主机名</td><td>节点标识；分布式部署时必须唯一</td></tr>
+</tbody>
+</table>
+
+<div class="doc-warning"><strong>未生效字段：</strong><code>enable_reclaimer</code> 与 <code>enable_heartbeat</code> 当前没有读取路径；回收器与心跳只会在 <code>storage_type="redis"</code> 且配置了 <code>redis_url</code> 时自动创建。需要关闭相关能力时，不要依赖这两个开关。</div>
+
+<h2>SchedulerConfig</h2>
+<table>
+<thead><tr><th>字段</th><th>默认值</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>storage_type</code></td><td><code>"memory"</code></td><td>与底层 TaskPool 共用</td></tr>
+<tr><td><code>sqlite_path</code> / <code>redis_url</code></td><td>同 TaskPoolConfig</td><td>存储连接参数</td></tr>
+<tr><td><code>worker_concurrency</code></td><td><code>10</code></td><td>同时执行的任务数</td></tr>
+<tr><td><code>max_retries</code> / <code>retry_delay</code></td><td><code>3</code> / <code>1.0</code></td><td>失败重试策略</td></tr>
+<tr><td><code>enable_persistence</code></td><td><code>True</code></td><td>周期任务写入 SQLite / Redis，重启后可恢复</td></tr>
+<tr><td><code>scan_interval</code></td><td><code>1.0</code></td><td>调度循环扫描间隔（秒）</td></tr>
+<tr><td><code>enable_periodic_manager</code></td><td><code>True</code></td><td>关闭后退化为内存中的简易周期调度</td></tr>
+<tr><td><code>enable_time_wheel</code></td><td><code>False</code></td><td>启用时间轮处理延时任务</td></tr>
+<tr><td><code>time_wheel_slots</code></td><td><code>60</code></td><td>时间轮槽位数</td></tr>
+<tr><td><code>time_wheel_tick</code></td><td><code>1.0</code></td><td>时间轮滴答间隔（秒）</td></tr>
+<tr><td><code>default_max_runs</code></td><td><code>None</code></td><td>周期任务默认最大执行次数</td></tr>
+<tr><td><code>default_missed_policy</code></td><td><code>"skip"</code></td><td>错过执行的默认策略</td></tr>
+</tbody>
+</table>
+
+<div class="doc-warning"><strong>配置不会全部向下传递：</strong><code>TaskScheduler</code> 只把存储、<code>worker_concurrency</code>、<code>max_retries</code>、<code>retry_delay</code> 传给内部 <code>TaskPool</code>。预取、锁、监控、超时等参数需通过底层池配置控制；当前入口没有暴露这些字段。</div>
+
+<h2>常用档位</h2>
+<table>
+<thead><tr><th>场景</th><th>配置</th></tr></thead>
+<tbody>
+<tr><td>本地开发</td><td><code>TaskPoolConfig.memory()</code></td></tr>
+<tr><td>单机持久化</td><td><code>TaskPoolConfig.sqlite("/var/lib/neotask.db")</code>，单 worker 写入</td></tr>
+<tr><td>多节点共享队列</td><td><code>TaskPoolConfig.redis("redis://host:6379/0", node_id="worker-1")</code></td></tr>
+<tr><td>定时任务</td><td><code>SchedulerConfig.redis("redis://host:6379/0")</code> 或 <code>SchedulerConfig.sqlite(path)</code></td></tr>
+<tr><td>低延迟延时任务</td><td><code>SchedulerConfig.high_performance()</code>（启用时间轮）</td></tr>
+</tbody>
+</table>
+
+<h2>环境变量</h2>
+<p>该版本不读取环境变量，所有配置均通过代码传入。容器化部署时请在启动脚本中显式构造配置对象。</p>

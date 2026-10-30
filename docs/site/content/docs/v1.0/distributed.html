@@ -1,0 +1,84 @@
+<p>多节点部署使用 Redis 作为共享存储。所有节点消费同一个队列，没有主节点、选主或任务指派；任意节点都可以提交和执行任务。</p>
+
+<h2>前置条件</h2>
+<ul>
+<li>所有节点连接同一个 Redis 数据库，并设置唯一 <code>node_id</code>；</li>
+<li>安装 <code>neotask[redis]</code>；</li>
+<li>各节点代码与任务数据格式一致；</li>
+<li>业务任务可安全重复执行。</li>
+</ul>
+
+<pre><code class="language-bash">pip install "neotask[redis]"</code></pre>
+
+<h2>节点配置</h2>
+<pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
+
+config = TaskPoolConfig(
+    storage_type="redis",
+    redis_url="redis://10.0.0.10:6379/0",
+    node_id="worker-1",          # 每个节点必须唯一
+    lock_type="redis",           # 跨节点互斥必须显式开启
+    worker_concurrency=20,
+    heartbeat_interval=5,
+    heartbeat_timeout=20,
+    reclaimer_interval=30,
+)
+pool = TaskPool(executor=handle, config=config)
+pool.start()</code></pre>
+
+<div class="doc-warning"><strong>锁类型不会自动切换：</strong><code>TaskPoolConfig.redis()</code> 只设置存储，<code>lock_type</code> 仍默认为 <code>"memory"</code>。多节点部署必须显式设置 <code>lock_type="redis"</code>，否则任务锁只在进程内有效，无法阻止重复执行。</div>
+
+<h2>运行方式</h2>
+<p>在每台机器启动相同进程即可。提交到任意节点的任务都会进入共享队列，由最先取到任务的节点执行。</p>
+
+<pre class="diagram"><code>             ┌──────────── Redis ────────────┐
+             │ queue:priority   task:*       │
+             │ neotask:nodes    lock:*       │
+             └───────▲───────────▲───────────┘
+                     │           │
+          ┌──────────┴──┐   ┌────┴──────────┐
+          │  worker-1   │   │  worker-2     │
+          │ TaskPool    │   │ TaskPool      │
+          └─────────────┘   └───────────────┘</code></pre>
+
+<h2>节点发现</h2>
+<table>
+<thead><tr><th>能力</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>注册</td><td>启动时写入 <code>neotask:node:{node_id}</code> 并加入 <code>neotask:nodes</code></td></tr>
+<tr><td>心跳</td><td>默认每 5 秒刷新，键的过期时间为心跳超时的 2 倍</td></tr>
+<tr><td>存活判定</td><td>超过 <code>heartbeat_timeout</code>（默认 20 秒）未刷新视为失联</td></tr>
+<tr><td>查询</td><td><code>pool.get_active_nodes()</code> 返回节点 ID、主机名与进程号</td></tr>
+</tbody>
+</table>
+
+<pre><code class="language-python">pool.get_active_nodes()
+# [{"node_id": "worker-1", "hostname": "host-a", "pid": 1234}, ...]</code></pre>
+
+<h2>无主架构</h2>
+<ul>
+<li><code>pool.is_leader()</code> 始终返回 <code>False</code>，不存在领导者；</li>
+<li>任务不绑定提交节点，可能在任意节点执行；</li>
+<li>节点宕机后，其运行中的任务由存活节点回收并重新入队；</li>
+<li>队列只保证出队顺序，不保证跨节点完成顺序。</li>
+</ul>
+
+<h2>定时任务的多节点限制</h2>
+<p><code>TaskScheduler</code> 没有选主或分布式去重。多个调度器实例注册相同周期任务时，每个实例都会按自己的时钟触发，导致重复执行。</p>
+<ul>
+<li>周期任务只在一个调度器实例上注册；</li>
+<li>或让周期任务本身具备幂等性，并在业务侧加分布式互斥；</li>
+<li>仅需即时任务的节点使用 <code>TaskPool</code> 即可，不要启动 <code>TaskScheduler</code>。</li>
+</ul>
+
+<h2>扩缩容</h2>
+<table>
+<thead><tr><th>操作</th><th>步骤</th></tr></thead>
+<tbody>
+<tr><td>扩容</td><td>启动新节点并设置新的 <code>node_id</code>；自动开始消费共享队列</td></tr>
+<tr><td>缩容</td><td>调用 <code>shutdown(graceful=True)</code>，等待队列清空后退出</td></tr>
+<tr><td>强制下线</td><td>直接终止进程；心跳超时后其他节点回收其任务</td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>相关页面：</strong><a href="/docs/failure-recovery.html">故障恢复</a> · <a href="/docs/distributed-lock.html">分布式锁</a> · <a href="/docs/persistence.html">持久化存储</a></div>

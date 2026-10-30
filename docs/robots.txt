@@ -1,6 +1,4 @@
 User-agent: *
 Allow: /
-Disallow: /bak/
-Disallow: /blog/
 
 Sitemap: https://task.helpenx.com/sitemap.xml

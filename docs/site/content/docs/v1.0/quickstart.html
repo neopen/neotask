@@ -1,0 +1,97 @@
+<p>NeoTask 1.0 提供两个入口：<code>TaskPool</code> 负责即时任务，<code>TaskScheduler</code> 负责任务的延时与周期调度。两者执行模型相同：你提供一个可调用对象，NeoTask 负责排队、并发执行、状态记录与结果回传。</p>
+
+<h2>环境要求</h2>
+<table>
+<thead><tr><th>项目</th><th>要求</th></tr></thead>
+<tbody>
+<tr><td>Python</td><td>≥ 3.8</td></tr>
+<tr><td>基础依赖</td><td><code>aiosqlite</code>、<code>croniter</code>、<code>colorama</code></td></tr>
+<tr><td>Redis 后端</td><td><code>pip install "neotask[redis]"</code></td></tr>
+<tr><td>系统指标</td><td><code>pip install "neotask[monitor]"</code></td></tr>
+</tbody>
+</table>
+
+<pre><code class="language-bash">pip install neotask</code></pre>
+
+<h2>安装校验</h2>
+<pre><code class="language-bash">python -c "import neotask; print(neotask.__version__)"
+# 1.0.5</code></pre>
+<p>如果导入失败，先确认当前 Python 环境与安装位置一致。Redis 后端和系统指标是可选依赖，未安装时不影响内存模式运行。</p>
+
+<h2>提交第一个任务</h2>
+<p>执行器接收一个 <code>dict</code>，返回值会作为任务结果保存。返回值必须可 JSON 序列化。</p>
+
+<pre><code class="language-python">import asyncio
+from neotask import TaskPool
+
+async def handle(data):
+    await asyncio.sleep(0.1)
+    return {"value": data["value"] * 2}
+
+pool = TaskPool(executor=handle)
+task_id = pool.submit({"value": 21})
+result = pool.wait_for_result(task_id)
+print(result)  # {'value': 42}
+pool.shutdown()</code></pre>
+
+<p><code>TaskPool</code> 首次提交时会自动启动，也可以显式调用 <code>pool.start()</code>。</p>
+
+<h2>三种调用方式</h2>
+<table>
+<thead><tr><th>方式</th><th>适用场景</th><th>示例</th></tr></thead>
+<tbody>
+<tr><td>同步 API</td><td>脚本、普通函数、需要立即拿结果</td><td><code>submit()</code> + <code>wait_for_result()</code></td></tr>
+<tr><td>异步 API</td><td>已在事件循环中的服务</td><td><code>await submit_async()</code> + <code>await wait_for_result_async()</code></td></tr>
+<tr><td>上下文管理器</td><td>需要确保资源释放</td><td><code>with TaskPool(...) as pool:</code></td></tr>
+</tbody>
+</table>
+
+<pre><code class="language-python"># 异步
+task_id = await pool.submit_async({"value": 1})
+result = await pool.wait_for_result_async(task_id, timeout=30)
+
+# 同步上下文管理器
+with TaskPool(executor=handle) as pool:
+    task_id = pool.submit({"value": 2})
+    print(pool.wait_for_result(task_id))
+
+# 异步上下文管理器
+async with TaskPool(executor=handle) as pool:
+    task_id = await pool.submit_async({"value": 3})
+    print(await pool.wait_for_result_async(task_id))</code></pre>
+
+<h2>只提交，不等待</h2>
+<p>后台任务通常不需要等待结果。提交后通过任务 ID 查询状态或结果：</p>
+
+<pre><code class="language-python">task_id = pool.submit({"value": 5})
+pool.get_status(task_id)   # pending / running / success / failed / cancelled
+pool.get_result(task_id)   # 包含 status、result、error、时间戳
+
+# 需要时可阻塞等待
+result = pool.wait_for_result(task_id, timeout=60)</code></pre>
+
+<h2>批量提交</h2>
+<pre><code class="language-python">task_ids = pool.submit_batch([{"value": i} for i in range(100)])
+results = pool.wait_all(task_ids, timeout=60)
+# {task_id: result}；失败任务的值形如 {"error": "..."}</code></pre>
+
+<h2>常见错误</h2>
+<table>
+<thead><tr><th>现象</th><th>常见原因</th><th>处理</th></tr></thead>
+<tbody>
+<tr><td><code>ModuleNotFoundError: neotask</code></td><td>安装到了另一个 Python 或虚拟环境</td><td>确认 <code>python -m pip</code> 与运行解释器一致，重新安装</td></tr>
+<tr><td>Redis 连接失败</td><td>未安装 <code>redis</code> 扩展或地址不可达</td><td>安装 <code>neotask[redis]</code>，检查 <code>redis_url</code> 与网络</td></tr>
+<tr><td>任务一直 <code>pending</code></td><td>池未启动、并发为 0 或 Worker 异常</td><td>显式调用 <code>pool.start()</code>，用 <code>get_stats()</code> 查看队列与 Worker 状态</td></tr>
+<tr><td><code>wait_for_result</code> 超时</td><td>任务仍在执行，或同步阻塞函数占住了事件循环</td><td>调大等待时间；阻塞代码改用 <code>ThreadExecutor</code></td></tr>
+<tr><td><code>database is locked</code></td><td>SQLite 被多个写入者并发访问</td><td>保持单写入者，或改用 Redis</td></tr>
+</tbody>
+</table>
+
+<h2>下一步</h2>
+<ul>
+<li>调整并发、超时、存储与重试：<a href="/docs/configuration.html">配置参考</a></li>
+<li>了解任务状态与事件：<a href="/docs/task-lifecycle.html">任务生命周期</a></li>
+<li>部署多节点：<a href="/docs/distributed.html">分布式部署</a></li>
+</ul>
+
+<div class="doc-note"><strong>关于执行器类型：</strong>传入普通同步函数时，<code>TaskPool</code> 会自动包装为异步执行器；<code>TaskPoolConfig.executor_type</code> 不会改变这一行为。需要在线程或进程中执行，请显式传入 <code>ThreadExecutor</code> 或 <code>ProcessExecutor</code> 实例，参见 <a href="/docs/architecture.html">架构概览</a>。</div>

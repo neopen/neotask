@@ -328,29 +328,6 @@ function buildPage(name, outRel, version, extraVars = {}) {
   fs.writeFileSync(outFile, html, 'utf8');
 }
 
-function writeRedirect(outRel, target, title) {
-  const url = target.startsWith('http') ? target : `${data.homepage}${target}`;
-  const html = `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="robots" content="noindex">
-  <title>${esc(title)} · NeoTask 文档</title>
-  <link rel="canonical" href="${url}">
-  <meta http-equiv="refresh" content="0; url=${target}">
-  <script>location.replace(${JSON.stringify(target)});</script>
-</head>
-<body>
-  <p>此页面已迁移至 <a href="${target}">${esc(target)}</a>。</p>
-</body>
-</html>
-`;
-  const outFile = path.join(ROOT, outRel);
-  fs.mkdirSync(path.dirname(outFile), { recursive: true });
-  fs.writeFileSync(outFile, html, 'utf8');
-}
-
 // --- Clean generated output -------------------------------------------------
 fs.rmSync(path.join(ROOT, 'docs'), { recursive: true, force: true });
 fs.mkdirSync(path.join(ROOT, 'docs'), { recursive: true });
@@ -415,27 +392,6 @@ buildPage('docs-versions.html', 'docs/index.html', latest, {
   LATEST_BASELINE: latest.baseline,
   LATEST_UPDATED: latest.updated
 });
-
-// --- Legacy unversioned docs routes ---------------------------------------
-const retired = {
-  'core-features': 'task-lifecycle',
-  decentralization: 'distributed',
-  'dag-workflow': 'roadmap'
-};
-for (const v of versions.filter((x) => x.legacy)) {
-  for (const slug of v.legacySlugs || []) {
-    const p = v.doc.pages.find((x) => x.slug === slug);
-    if (p) writeRedirect(`docs/${p.slug}.html`, docsHref(v, p.slug), p.title);
-  }
-  for (const [from, to] of Object.entries(retired)) {
-    if (v.doc.pages.some((p) => p.slug === to)) {
-      writeRedirect(`docs/${from}.html`, docsHref(v, to), to);
-    }
-  }
-}
-if (latestPages.some((p) => p.slug === 'roadmap')) {
-  writeRedirect('docs/evolution.html', '/changelog.html', '版本路线图');
-}
 
 // --- Generate changelog -----------------------------------------------------
 const typeLabel = { major: '主要版本', minor: '功能版本', patch: '修复版本', alpha: '内测版本' };

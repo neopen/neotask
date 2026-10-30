@@ -1,0 +1,191 @@
+{
+  "name": "NeoTask",
+  "tagline": "轻量级 Python 异步任务队列",
+  "description": "NeoTask 是纯 Python 实现的轻量级异步任务队列与调度器：嵌入式设计、零外部服务、支持优先级、延时、周期与 Cron 任务，可通过 Redis 平滑扩展到分布式集群。",
+  "version": "1.0.5",
+  "releaseDate": "2026-10-29",
+  "python": "3.8+",
+  "license": "MIT",
+  "homepage": "https://task.helpenx.com",
+  "repo": "https://github.com/neopen/neotask",
+  "pypi": "https://pypi.org/project/neotask/",
+  "issues": "https://github.com/neopen/neotask/issues",
+  "discussions": "https://github.com/neopen/neotask/discussions",
+  "changelog": "https://github.com/neopen/neotask/releases",
+  "examples": "https://github.com/neopen/neotask/tree/main/examples",
+  "blog": "https://pengline.cn",
+  "author": "NeoPen",
+  "email": "helpenx@gmail.com",
+  "stats": {
+    "stars": 8,
+    "forks": 2,
+    "openIssues": 1,
+    "topics": 20
+  },
+  "releases": [
+    {
+      "version": "1.0.5",
+      "date": "2026-10-29",
+      "type": "patch",
+      "summary": "稳定性修复：跨事件循环等待、手动重试、Cron 别名与优雅停机。",
+      "items": [
+        "修复跨事件循环等待与手动重试问题",
+        "修复 Cron 别名解析",
+        "修复优雅停机流程"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.0.5"
+    },
+    {
+      "version": "1.0.4",
+      "date": "2026-10-04",
+      "type": "patch",
+      "summary": "代码风格调整与常规维护。",
+      "items": [
+        "统一代码风格与格式"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.0.4"
+    },
+    {
+      "version": "1.0.3",
+      "date": "2026-10-03",
+      "type": "patch",
+      "summary": "缺陷修复与文档更新。",
+      "items": [
+        "合入开发分支的缺陷修复",
+        "修复文档中的错误"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.0.3"
+    },
+    {
+      "version": "1.0.2",
+      "date": "2026-09-13",
+      "type": "minor",
+      "summary": "修复分布式链路缺陷，接通死信队列、时间轮与指标；依赖收敛为 aiosqlite + croniter。",
+      "items": [
+        "Redis 分布式锁按 key 续期，修复多锁串扰",
+        "孤儿任务回收按节点过滤，避免误伤其他节点",
+        "队列满时显式失败并抛出 QueueFullError",
+        "周期任务 missed 策略：IGNORE / SKIP / RUN_ONCE / CATCH_UP",
+        "死信队列、时间轮与指标采集接入主链路",
+        "预取空批指数退避，降低空转开销",
+        "最低支持 Python 3.8"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.0.2"
+    },
+    {
+      "version": "1.0.1",
+      "date": "2026-08-20",
+      "type": "patch",
+      "summary": "修复周期任务双重调度、Redis 状态索引污染与结果丢失等问题。",
+      "items": [
+        "修复周期任务被调度两次",
+        "修复 Redis 状态索引残留",
+        "修复结果丢失或篡改",
+        "修复预取破坏优先级顺序",
+        "支持线程执行器字符串类型"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.0.1"
+    },
+    {
+      "version": "1.0.0",
+      "date": "2026-05-11",
+      "type": "major",
+      "summary": "去中心化架构、多级存储、故障恢复、死信队列与预取机制全面就位。",
+      "items": [
+        "对等节点、无主架构",
+        "延时、周期与 Cron 调度（时间轮）",
+        "任务生命周期事件与指标采集",
+        "内存 / SQLite / Redis 多级存储",
+        "看门狗机制防止锁过期重复执行",
+        "死信队列与失败任务回收",
+        "预取机制提升吞吐"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.0.0"
+    },
+    {
+      "version": "0.5.0",
+      "date": "2026-05-10",
+      "type": "minor",
+      "summary": "预取与批量操作、节点心跳、孤儿任务回收。",
+      "items": [
+        "预取机制与批量操作",
+        "节点注册、发现与心跳",
+        "孤儿任务回收",
+        "抢占式消费"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v0.5.0"
+    },
+    {
+      "version": "0.4.1",
+      "date": "2026-05-08",
+      "type": "patch",
+      "summary": "修复锁扫描器、清理僵尸锁，完善心跳与任务回收。",
+      "items": [
+        "清理僵尸锁",
+        "完善节点心跳与任务回收"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v0.4.1-beta"
+    },
+    {
+      "version": "0.4.0",
+      "date": "2026-05-01",
+      "type": "minor",
+      "summary": "加入分布式能力、执行器超时与子秒级延时。",
+      "items": [
+        "分布式预取与选举能力",
+        "执行器超时控制",
+        "支持小数点秒级延时"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v0.4.0"
+    },
+    {
+      "version": "0.3.0",
+      "date": "2026-04-22",
+      "type": "minor",
+      "summary": "完成延时队列、周期任务、Cron 表达式与时间轮算法。",
+      "items": [
+        "延时队列与周期任务",
+        "Cron 表达式支持",
+        "时间轮算法",
+        "修复优先级队列异常"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v0.3.0"
+    },
+    {
+      "version": "0.2.0",
+      "date": "2026-04-21",
+      "type": "minor",
+      "summary": "补齐可观测性组件，事件总线与指标收集器落地。",
+      "items": [
+        "事件总线",
+        "指标收集器",
+        "健康检查",
+        "优化内存队列与 SQLite 存储"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v0.2.0"
+    },
+    {
+      "version": "0.1.1",
+      "date": "2026-04-09",
+      "type": "minor",
+      "summary": "首个完整版本：任务池、定时调度、存储后端与事件回调一次成型。",
+      "items": [
+        "即时任务、延时任务、周期任务与 Cron 表达式",
+        "优先级队列与自动重试",
+        "Memory / SQLite / Redis 存储",
+        "任务生命周期事件回调"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v0.1.1-beta.3"
+    },
+    {
+      "version": "0.1.0",
+      "date": "2026-03-25",
+      "type": "alpha",
+      "summary": "内部测试版本，仅用于验证发布流程。",
+      "items": [
+        "内部测试使用"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v0.1.0-alpha.1"
+    }
+  ]
+}

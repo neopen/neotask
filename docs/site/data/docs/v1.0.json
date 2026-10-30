@@ -1,0 +1,162 @@
+{
+  "categories": [
+    { "id": "start", "label": "开始使用" },
+    { "id": "concepts", "label": "核心概念" },
+    { "id": "reliability", "label": "可靠性" },
+    { "id": "reference", "label": "参考" },
+    { "id": "roadmap", "label": "路线图" }
+  ],
+  "pages": [
+    {
+      "slug": "quickstart",
+      "title": "快速开始",
+      "category": "start",
+      "featured": true,
+      "description": "安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。",
+      "updated": "2026-10-30",
+      "icon": "rocket",
+      "time": "6 分钟"
+    },
+    {
+      "slug": "configuration",
+      "title": "配置参考",
+      "category": "start",
+      "featured": true,
+      "description": "TaskPoolConfig 与 SchedulerConfig 的字段、默认值、生效范围和常用配置档位。",
+      "updated": "2026-10-30",
+      "icon": "sliders",
+      "time": "10 分钟"
+    },
+    {
+      "slug": "best-practices",
+      "title": "最佳实践",
+      "category": "start",
+      "description": "执行器、并发、重试、超时、存储选型与生产部署建议。",
+      "updated": "2026-10-30",
+      "icon": "check",
+      "time": "6 分钟"
+    },
+    {
+      "slug": "architecture",
+      "title": "架构概览",
+      "category": "concepts",
+      "featured": true,
+      "description": "TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。",
+      "updated": "2026-10-30",
+      "icon": "blocks",
+      "time": "6 分钟"
+    },
+    {
+      "slug": "task-lifecycle",
+      "title": "任务生命周期",
+      "category": "concepts",
+      "featured": true,
+      "description": "任务从提交到终态的状态流转、事件回调与结果获取方式。",
+      "updated": "2026-10-30",
+      "icon": "layers",
+      "time": "6 分钟"
+    },
+    {
+      "slug": "priority-queue",
+      "title": "优先级队列",
+      "category": "concepts",
+      "description": "四级优先级的排序规则、同级 FIFO 边界与批量提交行为。",
+      "updated": "2026-10-30",
+      "icon": "sort",
+      "time": "5 分钟"
+    },
+    {
+      "slug": "delayed-tasks",
+      "title": "延时与周期任务",
+      "category": "concepts",
+      "description": "延时、指定时间、固定间隔与 Cron 任务的提交、管理和错过策略。",
+      "updated": "2026-10-30",
+      "icon": "clock",
+      "time": "8 分钟"
+    },
+    {
+      "slug": "persistence",
+      "title": "持久化存储",
+      "category": "concepts",
+      "description": "Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。",
+      "updated": "2026-10-30",
+      "icon": "database",
+      "time": "7 分钟"
+    },
+    {
+      "slug": "distributed",
+      "title": "分布式部署",
+      "category": "concepts",
+      "featured": true,
+      "description": "多节点共享队列、节点心跳、任务回收与 Redis 部署要求。",
+      "updated": "2026-10-30",
+      "icon": "nodes",
+      "time": "7 分钟"
+    },
+    {
+      "slug": "failure-recovery",
+      "title": "故障恢复",
+      "category": "reliability",
+      "featured": true,
+      "description": "超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。",
+      "updated": "2026-10-30",
+      "icon": "shield",
+      "time": "7 分钟"
+    },
+    {
+      "slug": "distributed-lock",
+      "title": "分布式锁",
+      "category": "reliability",
+      "description": "任务级互斥锁、TTL、看门狗续期与手动加锁接口。",
+      "updated": "2026-10-30",
+      "icon": "lock",
+      "time": "5 分钟"
+    },
+    {
+      "slug": "prefetch",
+      "title": "预取机制",
+      "category": "reliability",
+      "description": "批量预取的触发条件、阈值配置与对延迟和优先级的影响。",
+      "updated": "2026-10-30",
+      "icon": "gauge",
+      "time": "5 分钟"
+    },
+    {
+      "slug": "monitoring",
+      "title": "监控与健康检查",
+      "category": "reliability",
+      "description": "指标采集、健康检查、Reporter 与 Prometheus 集成。",
+      "updated": "2026-10-30",
+      "icon": "activity",
+      "time": "7 分钟"
+    },
+    {
+      "slug": "api-reference",
+      "title": "API 参考",
+      "category": "reference",
+      "featured": true,
+      "description": "TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。",
+      "updated": "2026-10-30",
+      "icon": "code",
+      "time": "12 分钟"
+    },
+    {
+      "slug": "benchmarks",
+      "title": "性能基准",
+      "category": "reference",
+      "description": "基准测试环境、结果口径与解读边界。",
+      "updated": "2026-10-30",
+      "icon": "chart",
+      "time": "5 分钟"
+    },
+    {
+      "slug": "roadmap",
+      "title": "版本路线图",
+      "category": "roadmap",
+      "description": "v1.0 的能力边界，以及 v1.5、v2.0 的规划项。",
+      "updated": "2026-10-30",
+      "icon": "workflow",
+      "time": "3 分钟"
+    }
+  ]
+}

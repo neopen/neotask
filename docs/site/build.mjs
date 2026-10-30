@@ -2,6 +2,7 @@
 /**
  * NeoTask website build.
  * Source: site/{data,pages,partials,content} -> static HTML at repo root and /docs.
+ * Docs are versioned: /docs/ lists versions, /docs/<version>/ holds each doc set.
  * No dependencies; run with `node site/build.mjs`.
  */
 import fs from 'node:fs';
@@ -13,14 +14,22 @@ const SITE = path.join(ROOT, 'site');
 
 const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
 const data = readJson(path.join(SITE, 'data', 'site.json'));
-const docs = readJson(path.join(SITE, 'data', 'docs.json'));
-const pages = docs.pages;
+const manifest = readJson(path.join(SITE, 'data', 'docs.json'));
+const versions = manifest.versions.map((v) => ({
+  ...v,
+  doc: readJson(path.join(SITE, 'data', v.data))
+}));
+const latest = versions.find((v) => v.id === manifest.default) || versions[0];
+const latestPages = latest.doc.pages;
 
 const esc = (s) => String(s)
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;');
+
+const docsBase = (v) => `/docs/${v.id}`;
+const docsHref = (v, slug) => `${docsBase(v)}/${slug}.html`;
 
 const baseVars = {
   NAME: data.name,
@@ -40,7 +49,12 @@ const baseVars = {
   PYTHON: data.python,
   STARS: String(data.stats.stars),
   FORKS: String(data.stats.forks),
-  DOCS_COUNT: String(pages.length),
+  DOCS_COUNT: String(latestPages.length),
+  DOCS_URL: docsBase(latest),
+  DOCS_VERSION: latest.label,
+  DOCS_LIBRARY: latest.library,
+  DOCS_BASELINE: latest.baseline,
+  DOCS_UPDATED: latest.updated,
   YEAR: '2026',
   ACTIVE_HOME: '',
   ACTIVE_FEATURES: '',
@@ -61,6 +75,17 @@ function includePartials(html) {
     const file = path.join(SITE, 'partials', `${name}.html`);
     if (!fs.existsSync(file)) throw new Error(`Missing partial: ${name}`);
     return fs.readFileSync(file, 'utf8');
+  });
+}
+
+// Rewrite unversioned docs links to the current (or latest known) doc set.
+function rewriteDocsLinks(html, version) {
+  return html.replace(/\/docs\/([a-z0-9-]+)\.html/g, (match, slug) => {
+    if (version.doc.pages.some((p) => p.slug === slug)) return docsHref(version, slug);
+    if (version.id !== latest.id && latestPages.some((p) => p.slug === slug)) {
+      return docsHref(latest, slug);
+    }
+    return match;
   });
 }
 
@@ -87,13 +112,30 @@ const iconPaths = {
 const icon = (name, cls = 'icon') =>
   `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${iconPaths[name] || iconPaths.layers}</svg>`;
 
-const categoryLabel = (id) => docs.categories.find((c) => c.id === id)?.label || id;
+const categoryLabel = (v, id) => v.doc.categories.find((c) => c.id === id)?.label || id;
 
-function renderSidebar(activeSlug, includeSearch = true) {
-  const groups = docs.categories.map((cat) => {
-    const links = pages
+function versionOptions(current) {
+  return versions.map((v) => `<option value="${v.id}"${v.id === current.id ? ' selected' : ''}>${v.label}${v.status === 'latest' ? '（最新）' : ''}</option>`).join('');
+}
+
+function renderVersionPicker(v) {
+  return `<div class="docs-version-picker">
+        <span class="docs-version-caption">文档版本</span>
+        <div class="docs-version-row">
+          <select class="docs-version-select" data-docs-version aria-label="切换文档版本">
+            ${versionOptions(v)}
+          </select>
+          <a class="docs-version-all" href="/docs/">所有版本</a>
+        </div>
+        <p class="docs-version-note">适用于 ${esc(v.library)}</p>
+      </div>`;
+}
+
+function renderSidebar(v, activeSlug, includeSearch = true) {
+  const groups = v.doc.categories.map((cat) => {
+    const links = v.doc.pages
       .filter((p) => p.category === cat.id)
-      .map((p) => `<a class="docs-nav-link${p.slug === activeSlug ? ' is-active' : ''}" href="/docs/${p.slug}.html" data-search="${esc(`${p.title} ${p.description}`)}">${esc(p.title)}${p.category === 'roadmap' ? '<span class="nav-soon">规划</span>' : ''}</a>`)
+      .map((p) => `<a class="docs-nav-link${p.slug === activeSlug ? ' is-active' : ''}" href="${docsHref(v, p.slug)}" data-search="${esc(`${p.title} ${p.description}`)}">${esc(p.title)}${p.category === 'roadmap' ? '<span class="nav-soon">规划</span>' : ''}</a>`)
       .join('\n        ');
     return `<div class="docs-nav-group">
         <p class="docs-nav-label">${esc(cat.label)}</p>
@@ -105,7 +147,8 @@ function renderSidebar(activeSlug, includeSearch = true) {
         <input id="docsSearch" type="search" placeholder="搜索文档" autocomplete="off" aria-label="搜索文档">
       </div>` : '';
   const navId = includeSearch ? 'docsNav' : 'docsNavMobile';
-  return `${search}
+  return `${renderVersionPicker(v)}
+      ${search}
       <nav class="docs-nav" id="${navId}" aria-label="文档导航">
         ${groups.join('\n        ')}
       </nav>
@@ -135,9 +178,9 @@ function renderToc(content) {
   };
 }
 
-function docsPageHead(p) {
-  const title = `${p.title} · NeoTask 文档`;
-  const url = `${data.homepage}/docs/${p.slug}.html`;
+function docsPageHead(v, p) {
+  const title = `${p.title} · NeoTask ${v.label} 文档`;
+  const url = `${data.homepage}${docsHref(v, p.slug)}`;
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -163,58 +206,50 @@ function docsPageHead(p) {
 </head>`;
 }
 
-function buildDocsPage(p) {
-  const contentFile = path.join(SITE, 'content', 'docs', `${p.slug}.html`);
-  const outFile = path.join(ROOT, 'docs', `${p.slug}.html`);
+function buildDocsPage(v, p) {
+  const contentFile = path.join(SITE, 'content', 'docs', v.id, `${p.slug}.html`);
   if (!fs.existsSync(contentFile)) {
-    const old = fs.readFileSync(outFile, 'utf8');
-    const start = old.indexOf('<article class="article">');
-    const end = old.lastIndexOf('</article>');
-    if (start < 0 || end < 0) throw new Error(`Cannot extract article from ${p.slug}`);
-    let inner = old.slice(start + '<article class="article">'.length, end).trim();
-    inner = inner
-      .replace(/<div class="doc-meta">[\s\S]*?<\/div>\s*/, '')
-      .replace(/<h1>[\s\S]*?<\/h1>\s*/, '')
-      .replace(/<p>📚[\s\S]*?<\/p>\s*/, '');
-    fs.mkdirSync(path.dirname(contentFile), { recursive: true });
-    fs.writeFileSync(contentFile, inner + '\n', 'utf8');
+    throw new Error(`Missing docs content: ${path.relative(ROOT, contentFile)}`);
   }
+  const outFile = path.join(ROOT, 'docs', v.id, `${p.slug}.html`);
 
   const raw = fs.readFileSync(contentFile, 'utf8');
   const { content, toc } = renderToc(raw);
-  const idx = pages.findIndex((x) => x.slug === p.slug);
-  const prev = pages[idx - 1];
-  const next = pages[idx + 1];
+  const idx = v.doc.pages.findIndex((x) => x.slug === p.slug);
+  const prev = v.doc.pages[idx - 1];
+  const next = v.doc.pages[idx + 1];
   const pager = `<nav class="docs-pager" aria-label="上一篇与下一篇">
-      ${prev ? `<a class="pager-prev" href="/docs/${prev.slug}.html"><span>上一篇</span><strong>${esc(prev.title)}</strong></a>` : '<span></span>'}
-      ${next ? `<a class="pager-next" href="/docs/${next.slug}.html"><span>下一篇</span><strong>${esc(next.title)}</strong></a>` : '<span></span>'}
+      ${prev ? `<a class="pager-prev" href="${docsHref(v, prev.slug)}"><span>上一篇</span><strong>${esc(prev.title)}</strong></a>` : '<span></span>'}
+      ${next ? `<a class="pager-next" href="${docsHref(v, next.slug)}"><span>下一篇</span><strong>${esc(next.title)}</strong></a>` : '<span></span>'}
     </nav>`;
   const mermaid = /class="mermaid"/.test(content)
     ? `\n  <script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'; mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>`
     : '';
 
-  const page = `${docsPageHead(p)}
+  const page = `${docsPageHead(v, p)}
 <body class="docs-page">
   <!-- @include header -->
   <div class="docs-shell">
     <aside class="docs-sidebar" id="docsSidebar">
       <a class="docs-sidebar-home" href="/docs/"><span class="docs-sidebar-badge">DOCS</span> 文档中心</a>
-      ${renderSidebar(p.slug)}
+      ${renderSidebar(v, p.slug)}
     </aside>
     <main class="docs-main" id="main">
       <nav class="breadcrumb" aria-label="面包屑">
-        <a href="/">首页</a><span>/</span><a href="/docs/">文档</a><span>/</span><span>${esc(categoryLabel(p.category))}</span>
+        <a href="/">首页</a><span>/</span><a href="/docs/">文档</a><span>/</span><a href="${docsBase(v)}/">${esc(v.label)}</a><span>/</span><span>${esc(categoryLabel(v, p.category))}</span>
       </nav>
       <details class="docs-mobile-nav">
-        <summary>文档导航</summary>
-        ${renderSidebar(p.slug, false)}
+        <summary>文档导航 · ${esc(v.label)}</summary>
+        ${renderSidebar(v, p.slug, false)}
       </details>
       <article class="article">
         <header class="article-header">
-          <p class="article-eyebrow">${esc(categoryLabel(p.category))}</p>
+          <p class="article-eyebrow">${esc(categoryLabel(v, p.category))}</p>
           <h1>${esc(p.title)}</h1>
           <p class="article-lede">${esc(p.description)}</p>
           <div class="article-meta">
+            <span class="article-version">${esc(v.label)} · ${esc(v.library)}</span>
+            <span class="dot"></span>
             <span>更新于 ${esc(p.updated)}</span>
             <span class="dot"></span>
             <span>约 ${esc(p.time)} 读完</span>
@@ -237,25 +272,33 @@ ${content}
 </html>
 `;
 
-  const rendered = applyVars(includePartials(page), { ACTIVE_DOCS: 'is-active' });
+  let rendered = includePartials(page);
+  rendered = applyVars(rendered, {
+    ACTIVE_DOCS: 'is-active',
+    DOCS_VERSION: v.label,
+    DOCS_LIBRARY: v.library,
+    DOCS_BASELINE: v.baseline
+  });
+  rendered = rewriteDocsLinks(rendered, v);
+  fs.mkdirSync(path.dirname(outFile), { recursive: true });
   fs.writeFileSync(outFile, rendered, 'utf8');
 }
 
-function renderDocsHub() {
-  const featured = pages.filter((p) => p.featured).map((p) => `
-        <a class="doc-feature" href="/docs/${p.slug}.html" data-doc-card data-doc-search="${esc(`${p.title} ${p.description} ${categoryLabel(p.category)}`)}">
+function renderDocsHub(v) {
+  const featured = v.doc.pages.filter((p) => p.featured).map((p) => `
+        <a class="doc-feature" href="${docsHref(v, p.slug)}" data-doc-card data-doc-search="${esc(`${p.title} ${p.description} ${categoryLabel(v, p.category)}`)}">
           <span class="doc-feature-icon">${icon(p.icon)}</span>
           <span class="doc-feature-body">
-            <span class="doc-feature-cat">${esc(categoryLabel(p.category))}</span>
+            <span class="doc-feature-cat">${esc(categoryLabel(v, p.category))}</span>
             <strong>${esc(p.title)}</strong>
             <span>${esc(p.description)}</span>
           </span>
           <span class="doc-feature-arrow" aria-hidden="true">→</span>
         </a>`).join('');
 
-  const groups = docs.categories.map((cat, i) => {
-    const cards = pages.filter((p) => p.category === cat.id).map((p) => `
-          <a class="doc-card" href="/docs/${p.slug}.html" data-doc-card data-doc-search="${esc(`${p.title} ${p.description} ${cat.label}`)}">
+  const groups = v.doc.categories.map((cat) => {
+    const cards = v.doc.pages.filter((p) => p.category === cat.id).map((p) => `
+          <a class="doc-card" href="${docsHref(v, p.slug)}" data-doc-card data-doc-search="${esc(`${p.title} ${p.description} ${cat.label}`)}">
             <span class="doc-card-icon">${icon(p.icon)}</span>
             <span class="doc-card-title">${esc(p.title)}${p.category === 'roadmap' ? '<em class="tag-soon">规划</em>' : ''}</span>
             <span class="doc-card-desc">${esc(p.description)}</span>
@@ -265,7 +308,7 @@ function renderDocsHub() {
       <section class="doc-group" data-doc-group id="${cat.id}">
         <div class="doc-group-head">
           <h2>${esc(cat.label)}</h2>
-          <span>${String(pages.filter((p) => p.category === cat.id).length).padStart(2, '0')}</span>
+          <span>${String(v.doc.pages.filter((p) => p.category === cat.id).length).padStart(2, '0')}</span>
         </div>
         <div class="doc-card-grid">${cards}
         </div>
@@ -275,25 +318,113 @@ function renderDocsHub() {
   return { featured, groups };
 }
 
-function buildPage(name, outRel, extraVars = {}) {
+function buildPage(name, outRel, version, extraVars = {}) {
   let html = fs.readFileSync(path.join(SITE, 'pages', name), 'utf8');
   html = includePartials(html);
   html = applyVars(html, extraVars);
+  html = rewriteDocsLinks(html, version);
   const outFile = path.join(ROOT, outRel);
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
   fs.writeFileSync(outFile, html, 'utf8');
 }
 
-// --- Generate docs articles -------------------------------------------------
-for (const p of pages) buildDocsPage(p);
+function writeRedirect(outRel, target, title) {
+  const url = target.startsWith('http') ? target : `${data.homepage}${target}`;
+  const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>${esc(title)} · NeoTask 文档</title>
+  <link rel="canonical" href="${url}">
+  <meta http-equiv="refresh" content="0; url=${target}">
+  <script>location.replace(${JSON.stringify(target)});</script>
+</head>
+<body>
+  <p>此页面已迁移至 <a href="${target}">${esc(target)}</a>。</p>
+</body>
+</html>
+`;
+  const outFile = path.join(ROOT, outRel);
+  fs.mkdirSync(path.dirname(outFile), { recursive: true });
+  fs.writeFileSync(outFile, html, 'utf8');
+}
 
-// --- Generate docs hub ------------------------------------------------------
-const hub = renderDocsHub();
-buildPage('docs.html', 'docs/index.html', {
+// --- Clean generated output -------------------------------------------------
+fs.rmSync(path.join(ROOT, 'docs'), { recursive: true, force: true });
+fs.mkdirSync(path.join(ROOT, 'docs'), { recursive: true });
+
+// --- Generate docs articles -------------------------------------------------
+for (const v of versions) {
+  for (const p of v.doc.pages) buildDocsPage(v, p);
+}
+
+// --- Generate version hubs --------------------------------------------------
+for (const v of versions) {
+  const hub = renderDocsHub(v);
+  buildPage('docs.html', `docs/${v.id}/index.html`, v, {
+    ACTIVE_DOCS: 'is-active',
+    DOCS_VERSION: v.label,
+    DOCS_LIBRARY: v.library,
+    DOCS_BASELINE: v.baseline,
+    DOCS_UPDATED: v.updated,
+    DOCS_VERSION_OPTIONS: versionOptions(v),
+    DOCS_FEATURED: hub.featured,
+    DOCS_GROUPS: hub.groups
+  });
+}
+
+// --- Version center ---------------------------------------------------------
+const versionCards = versions.map((v) => `
+      <article class="version-card${v.status === 'latest' ? ' is-latest' : ''}">
+        <div class="version-card-head">
+          <div>
+            <p class="version-card-label">${esc(v.label)}</p>
+            <h2>${esc(v.library)}</h2>
+          </div>
+          ${v.status === 'latest' ? '<span class="version-badge">最新</span>' : '<span class="version-badge is-muted">维护中</span>'}
+        </div>
+        <p class="version-card-desc">${esc(v.description)}</p>
+        <dl class="version-card-meta">
+          <div><dt>文档基线</dt><dd>v${esc(v.baseline)}</dd></div>
+          <div><dt>适用版本</dt><dd>${esc(v.library)}</dd></div>
+          <div><dt>更新于</dt><dd>${esc(v.updated)}</dd></div>
+          <div><dt>文档数量</dt><dd>${v.doc.pages.length} 篇</dd></div>
+        </dl>
+        <a class="btn btn-primary btn-block" href="${docsBase(v)}/">进入 ${esc(v.label)} 文档 <span aria-hidden="true">→</span></a>
+      </article>`).join('');
+
+buildPage('docs-versions.html', 'docs/index.html', latest, {
   ACTIVE_DOCS: 'is-active',
-  DOCS_FEATURED: hub.featured,
-  DOCS_GROUPS: hub.groups
+  VERSION_CARDS: versionCards,
+  VERSION_COUNT: String(versions.length),
+  LATEST_VERSION: latest.label,
+  LATEST_VERSION_ID: latest.id,
+  LATEST_LIBRARY: latest.library,
+  LATEST_BASELINE: latest.baseline,
+  LATEST_UPDATED: latest.updated
 });
+
+// --- Legacy unversioned docs routes ---------------------------------------
+const retired = {
+  'core-features': 'task-lifecycle',
+  decentralization: 'distributed',
+  'dag-workflow': 'roadmap'
+};
+for (const v of versions.filter((x) => x.legacy)) {
+  for (const p of v.doc.pages) {
+    writeRedirect(`docs/${p.slug}.html`, docsHref(v, p.slug), p.title);
+  }
+  for (const [from, to] of Object.entries(retired)) {
+    if (v.doc.pages.some((p) => p.slug === to)) {
+      writeRedirect(`docs/${from}.html`, docsHref(v, to), to);
+    }
+  }
+}
+if (latestPages.some((p) => p.slug === 'roadmap')) {
+  writeRedirect('docs/evolution.html', '/changelog.html', '版本路线图');
+}
 
 // --- Generate changelog -----------------------------------------------------
 const typeLabel = { major: '主要版本', minor: '功能版本', patch: '修复版本', alpha: '内测版本' };
@@ -312,16 +443,16 @@ const releaseList = data.releases.map((r, i) => `
           <a class="text-link" href="${r.url}" target="_blank" rel="noopener">查看完整发布说明 <span aria-hidden="true">→</span></a>
         </div>
       </article>`).join('');
-buildPage('changelog.html', 'changelog.html', {
+buildPage('changelog.html', 'changelog.html', latest, {
   ACTIVE_CHANGELOG: 'is-active',
   RELEASES: releaseList
 });
 
 // --- Other top-level pages --------------------------------------------------
-buildPage('index.html', 'index.html', { ACTIVE_HOME: 'is-active' });
-buildPage('features.html', 'features.html', { ACTIVE_FEATURES: 'is-active' });
-buildPage('community.html', 'community.html', { ACTIVE_COMMUNITY: 'is-active' });
-buildPage('404.html', '404.html', {});
+buildPage('index.html', 'index.html', latest, { ACTIVE_HOME: 'is-active' });
+buildPage('features.html', 'features.html', latest, { ACTIVE_FEATURES: 'is-active' });
+buildPage('community.html', 'community.html', latest, { ACTIVE_COMMUNITY: 'is-active' });
+buildPage('404.html', '404.html', latest, {});
 
 // --- Sitemap ---------------------------------------------------------------
 const urls = [
@@ -330,7 +461,8 @@ const urls = [
   '/changelog.html',
   '/community.html',
   '/docs/',
-  ...pages.map((p) => `/docs/${p.slug}.html`)
+  `${docsBase(latest)}/`,
+  ...latestPages.map((p) => docsHref(latest, p.slug))
 ];
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -338,7 +470,6 @@ ${urls.map((u) => `  <url><loc>${data.homepage}${u}</loc></url>`).join('\n')}
 </urlset>
 `;
 fs.writeFileSync(path.join(ROOT, 'sitemap.xml'), sitemap, 'utf8');
-fs.writeFileSync(path.join(ROOT, 'robots.txt'), `User-agent: *\nAllow: /\nDisallow: /bak/\nDisallow: /blog/\n\nSitemap: ${data.homepage}/sitemap.xml\n`, 'utf8');
-fs.rmSync(path.join(ROOT, 'docs', 'sitemap.xml'), { force: true });
+fs.writeFileSync(path.join(ROOT, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${data.homepage}/sitemap.xml\n`, 'utf8');
 
-console.log(`Built ${pages.length} docs pages + ${4} site pages.`);
+console.log(`Built ${versions.length} docs version(s), ${latestPages.length} latest pages, 4 site pages.`);

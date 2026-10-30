@@ -131,6 +131,15 @@
     });
   }
 
+  // Docs version switcher
+  document.querySelectorAll('[data-docs-version]').forEach(function (select) {
+    select.addEventListener('change', function () {
+      var id = select.value;
+      if (!/^[a-z0-9.-]+$/.test(id)) return;
+      window.location.href = '/docs/' + id + '/';
+    });
+  });
+
   // Docs sidebar search
   var docsSearch = document.getElementById('docsSearch');
   if (docsSearch) {

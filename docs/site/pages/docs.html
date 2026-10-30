@@ -28,24 +28,35 @@
   <main id="main">
     <section class="docs-hero">
       <div class="docs-hero-inner">
-        <span class="eyebrow">DOCUMENTATION</span>
+        <span class="eyebrow">DOCUMENTATION · {{DOCS_VERSION}}</span>
         <h1>NeoTask 文档</h1>
-        <p>从安装第一个任务，到理解分布式链路与故障恢复。每篇文档都对照源码版本编写，标注能力边界与规划中的功能。</p>
+        <p>当前为 {{DOCS_VERSION}} 文档，适用于 {{DOCS_LIBRARY}}，文档基线 v{{DOCS_BASELINE}}。内容覆盖安装、配置、核心能力、可靠性与 API 参考。</p>
         <div class="docs-hero-actions">
           <a class="btn btn-primary" href="/docs/quickstart.html">快速上手 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
           <a class="btn btn-outline" href="/docs/api-reference.html">API 参考</a>
+          <a class="btn btn-outline" href="/docs/">切换版本</a>
           <a class="btn btn-outline" href="{{REPO}}" target="_blank" rel="noopener"><svg class="icon icon-sm"><use href="#i-github"/></svg> 源码仓库</a>
         </div>
         <div class="docs-meta-row">
           <span>{{DOCS_COUNT}} 篇文档</span>
-          <span>Python {{PYTHON}}</span>
-          <span>v{{VERSION}}</span>
-          <span>简体中文</span>
+          <span>{{DOCS_VERSION}}</span>
+          <span>适用于 {{DOCS_LIBRARY}}</span>
+          <span>基线 v{{DOCS_BASELINE}}</span>
+          <span>更新于 {{DOCS_UPDATED}}</span>
         </div>
       </div>
     </section>
 
     <div class="docs-hub">
+      <div class="docs-version-bar">
+        <label for="docsVersionHub">文档版本</label>
+        <select id="docsVersionHub" data-docs-version>
+          {{DOCS_VERSION_OPTIONS}}
+        </select>
+        <span>适用于 {{DOCS_LIBRARY}} · 基线 v{{DOCS_BASELINE}}</span>
+        <a href="/docs/">所有版本</a>
+      </div>
+
       <div class="hub-search">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         <input id="docsHubSearch" type="search" placeholder="搜索文档，例如：Redis、Cron、重试、配置" aria-label="搜索文档" autocomplete="off">

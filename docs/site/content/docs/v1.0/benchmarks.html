@@ -42,7 +42,7 @@
 <table>
 <thead><tr><th>场景</th><th>建议配置</th><th>依据</th></tr></thead>
 <tbody>
-<tr><td>数十微秒的纯计算微任务</td><td>关闭预取，Worker 数与 CPU 核数对齐</td><td>预取批间隔成为瓶颈，关闭后完成吞吐从约 200 提升到 2,382 tasks/s</td></tr>
+<tr><td>数十微秒的纯计算微任务</td><td>关闭预取，Worker 数与 CPU 核数对齐</td><td>预取批间隔成为瓶颈，关闭后完成吞吐从 181 提升到 2,382 tasks/s</td></tr>
 <tr><td>毫秒级 IO 任务</td><td>保持默认预取，Worker 16–32 起步</td><td>20 ms 睡眠任务在 8 Worker 下仍有 7.76× 扩展</td></tr>
 <tr><td>CPU 密集任务</td><td>ProcessExecutor，Worker 不超过物理核数</td><td>异步 Worker 共享 GIL，超配只增加切换开销</td></tr>
 <tr><td>单机低频、需重启恢复</td><td>SQLite，单写入者</td><td>100 条突发在 1 Worker 下全部成功；2 Worker 起出现 <code>database is locked</code></td></tr>

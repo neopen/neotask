@@ -38,6 +38,24 @@ const esc = (s) => String(s)
 const docsBase = (v) => `/docs/${v.id}`;
 const docsHref = (v, slug) => `${docsBase(v)}/${slug}.html`;
 
+const absUrl = (p = '/') => `${data.homepage}${p}`;
+const orgRef = {
+  '@type': 'Organization',
+  name: 'NeoPen',
+  url: data.homepage,
+  logo: { '@type': 'ImageObject', url: absUrl('/assets/img/favicon.svg') }
+};
+const siteRef = { '@type': 'WebSite', name: data.name, url: `${data.homepage}/` };
+
+const jsonLd = (obj) => {
+  const body = JSON.stringify(obj, null, 2)
+    .replace(/</g, '\\u003c')
+    .split('\n')
+    .map((line) => `  ${line}`)
+    .join('\n');
+  return `  <script type="application/ld+json">\n${body}\n  </script>`;
+};
+
 const baseVars = {
   NAME: data.name,
   VERSION: data.version,
@@ -59,6 +77,7 @@ const baseVars = {
   DOCS_COUNT: String(latestPages.length),
   DOCS_URL: docsBase(latest),
   DOCS_VERSION: latest.label,
+  DOCS_VERSION_ID: latest.id,
   DOCS_LIBRARY: latest.library,
   DOCS_BASELINE: latest.baseline,
   DOCS_UPDATED: latest.updated,
@@ -264,7 +283,58 @@ function renderBenchmarkContent(raw, b) {
 
 function docsPageHead(v, p) {
   const title = `${p.title} · NeoTask ${v.label} 文档`;
-  const url = `${data.homepage}${docsHref(v, p.slug)}`;
+  const url = absUrl(docsHref(v, p.slug));
+  const image = absUrl('/assets/img/og.png');
+  const section = categoryLabel(v, p.category);
+  const keywords = [
+    p.title,
+    `${p.title} 教程`,
+    `${p.title} 文档`,
+    section,
+    `NeoTask ${v.label} 文档`,
+    v.library,
+    'Python 任务队列'
+  ].filter((k, i, arr) => arr.indexOf(k) === i).join(', ');
+  const ld = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'TechArticle',
+        '@id': `${url}#article`,
+        headline: p.title,
+        name: title,
+        description: p.description,
+        image,
+        url,
+        mainEntityOfPage: url,
+        inLanguage: 'zh-CN',
+        datePublished: v.released,
+        dateModified: p.updated,
+        articleSection: section,
+        keywords,
+        author: orgRef,
+        publisher: orgRef,
+        isPartOf: siteRef,
+        about: {
+          '@type': 'SoftwareApplication',
+          name: data.name,
+          applicationCategory: 'DeveloperApplication',
+          operatingSystem: 'OS Independent',
+          url: `${data.homepage}/`
+        }
+      },
+      {
+        '@type': 'BreadcrumbList',
+        '@id': `${url}#breadcrumb`,
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: '首页', item: `${data.homepage}/` },
+          { '@type': 'ListItem', position: 2, name: '文档', item: absUrl('/docs/') },
+          { '@type': 'ListItem', position: 3, name: v.label, item: absUrl(`${docsBase(v)}/`) },
+          { '@type': 'ListItem', position: 4, name: p.title, item: url }
+        ]
+      }
+    ]
+  };
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -272,21 +342,37 @@ function docsPageHead(v, p) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${esc(title)}</title>
   <meta name="description" content="${esc(p.description)}">
+  <meta name="keywords" content="${esc(keywords)}">
+  <meta name="author" content="NeoPen">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
   <link rel="canonical" href="${url}">
   <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:locale" content="zh_CN">
   <meta property="og:type" content="article">
   <meta property="og:title" content="${esc(title)}">
   <meta property="og:description" content="${esc(p.description)}">
   <meta property="og:url" content="${url}">
-  <meta property="og:image" content="${data.homepage}/assets/img/og.png">
+  <meta property="og:image" content="${image}">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="${esc(`${p.title} · NeoTask 文档`)}">
+  <meta property="article:published_time" content="${v.released}">
+  <meta property="article:modified_time" content="${p.updated}">
+  <meta property="article:section" content="${esc(section)}">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:image" content="${data.homepage}/assets/img/og.png">
+  <meta name="twitter:title" content="${esc(title)}">
+  <meta name="twitter:description" content="${esc(p.description)}">
+  <meta name="twitter:image" content="${image}">
+  <meta name="twitter:image:alt" content="${esc(`${p.title} · NeoTask 文档`)}">
+  <meta name="theme-color" content="#0b1713">
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="/assets/css/site.css">
   <link rel="stylesheet" href="/assets/css/docs.css">
+${jsonLd(ld)}
 </head>`;
 }
 
@@ -373,6 +459,78 @@ ${content}
   fs.writeFileSync(outFile, rendered, 'utf8');
 }
 
+function docsHubLd(v) {
+  const url = absUrl(`${docsBase(v)}/`);
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'CollectionPage',
+        '@id': `${url}#collection`,
+        name: `NeoTask ${v.label} 文档`,
+        description: v.description,
+        url,
+        inLanguage: 'zh-CN',
+        isPartOf: siteRef,
+        about: {
+          '@type': 'SoftwareApplication',
+          name: data.name,
+          applicationCategory: 'DeveloperApplication',
+          operatingSystem: 'OS Independent',
+          url: `${data.homepage}/`
+        },
+        hasPart: v.doc.pages.map((p) => ({
+          '@type': 'TechArticle',
+          headline: p.title,
+          description: p.description,
+          url: absUrl(docsHref(v, p.slug))
+        }))
+      },
+      {
+        '@type': 'BreadcrumbList',
+        '@id': `${url}#breadcrumb`,
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: '首页', item: `${data.homepage}/` },
+          { '@type': 'ListItem', position: 2, name: '文档', item: absUrl('/docs/') },
+          { '@type': 'ListItem', position: 3, name: v.label, item: url }
+        ]
+      }
+    ]
+  };
+}
+
+function docsVersionsLd() {
+  const url = absUrl('/docs/');
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'CollectionPage',
+        '@id': `${url}#collection`,
+        name: 'NeoTask 文档版本',
+        description: 'NeoTask 按版本维护的官方文档，选择与运行版本对应的文档集。',
+        url,
+        inLanguage: 'zh-CN',
+        isPartOf: siteRef,
+        hasPart: versions.map((v) => ({
+          '@type': 'WebPage',
+          name: `NeoTask ${v.label} 文档`,
+          description: v.description,
+          url: absUrl(`${docsBase(v)}/`)
+        }))
+      },
+      {
+        '@type': 'BreadcrumbList',
+        '@id': `${url}#breadcrumb`,
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: '首页', item: `${data.homepage}/` },
+          { '@type': 'ListItem', position: 2, name: '文档', item: url }
+        ]
+      }
+    ]
+  };
+}
+
 function renderDocsHub(v) {
   const featured = v.doc.pages.filter((p) => p.featured).map((p) => `
         <a class="doc-feature" href="${docsHref(v, p.slug)}" data-doc-card data-doc-search="${esc(`${p.title} ${p.description} ${categoryLabel(v, p.category)}`)}">
@@ -435,9 +593,11 @@ for (const v of versions) {
     DOCS_LIBRARY: v.library,
     DOCS_BASELINE: v.baseline,
     DOCS_UPDATED: v.updated,
+    DOCS_VERSION_ID: v.id,
     DOCS_VERSION_OPTIONS: versionOptions(v),
     DOCS_FEATURED: hub.featured,
-    DOCS_GROUPS: hub.groups
+    DOCS_GROUPS: hub.groups,
+    DOCS_JSONLD: jsonLd(docsHubLd(v))
   });
 }
 
@@ -479,7 +639,8 @@ buildPage('docs-versions.html', 'docs/index.html', latest, {
   LATEST_VERSION_ID: latest.id,
   LATEST_LIBRARY: latest.library,
   LATEST_BASELINE: latest.baseline,
-  LATEST_UPDATED: latest.updated
+  LATEST_UPDATED: latest.updated,
+  DOCS_INDEX_JSONLD: jsonLd(docsVersionsLd())
 });
 
 // --- Generate changelog -----------------------------------------------------

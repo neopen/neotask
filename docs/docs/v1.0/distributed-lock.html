@@ -5,21 +5,118 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>分布式锁 · NeoTask v1.0 文档</title>
   <meta name="description" content="任务级互斥锁、TTL、看门狗续期与手动加锁接口。">
+  <meta name="keywords" content="分布式锁, 分布式锁 教程, 分布式锁 文档, 可靠性, NeoTask v1.0 文档, NeoTask 1.0.x, Python 任务队列">
+  <meta name="author" content="NeoPen">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
   <link rel="canonical" href="https://task.helpenx.com/docs/v1.0/distributed-lock.html">
   <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:locale" content="zh_CN">
   <meta property="og:type" content="article">
   <meta property="og:title" content="分布式锁 · NeoTask v1.0 文档">
   <meta property="og:description" content="任务级互斥锁、TTL、看门狗续期与手动加锁接口。">
   <meta property="og:url" content="https://task.helpenx.com/docs/v1.0/distributed-lock.html">
   <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="分布式锁 · NeoTask 文档">
+  <meta property="article:published_time" content="2026-10-29">
+  <meta property="article:modified_time" content="2026-10-30">
+  <meta property="article:section" content="可靠性">
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="分布式锁 · NeoTask v1.0 文档">
+  <meta name="twitter:description" content="任务级互斥锁、TTL、看门狗续期与手动加锁接口。">
   <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta name="twitter:image:alt" content="分布式锁 · NeoTask 文档">
+  <meta name="theme-color" content="#0b1713">
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="/assets/css/site.css">
   <link rel="stylesheet" href="/assets/css/docs.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "@id": "https://task.helpenx.com/docs/v1.0/distributed-lock.html#article",
+        "headline": "分布式锁",
+        "name": "分布式锁 · NeoTask v1.0 文档",
+        "description": "任务级互斥锁、TTL、看门狗续期与手动加锁接口。",
+        "image": "https://task.helpenx.com/assets/img/og.png",
+        "url": "https://task.helpenx.com/docs/v1.0/distributed-lock.html",
+        "mainEntityOfPage": "https://task.helpenx.com/docs/v1.0/distributed-lock.html",
+        "inLanguage": "zh-CN",
+        "datePublished": "2026-10-29",
+        "dateModified": "2026-10-30",
+        "articleSection": "可靠性",
+        "keywords": "分布式锁, 分布式锁 教程, 分布式锁 文档, 可靠性, NeoTask v1.0 文档, NeoTask 1.0.x, Python 任务队列",
+        "author": {
+          "@type": "Organization",
+          "name": "NeoPen",
+          "url": "https://task.helpenx.com",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://task.helpenx.com/assets/img/favicon.svg"
+          }
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "NeoPen",
+          "url": "https://task.helpenx.com",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://task.helpenx.com/assets/img/favicon.svg"
+          }
+        },
+        "isPartOf": {
+          "@type": "WebSite",
+          "name": "NeoTask",
+          "url": "https://task.helpenx.com/"
+        },
+        "about": {
+          "@type": "SoftwareApplication",
+          "name": "NeoTask",
+          "applicationCategory": "DeveloperApplication",
+          "operatingSystem": "OS Independent",
+          "url": "https://task.helpenx.com/"
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "@id": "https://task.helpenx.com/docs/v1.0/distributed-lock.html#breadcrumb",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "首页",
+            "item": "https://task.helpenx.com/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "文档",
+            "item": "https://task.helpenx.com/docs/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": "v1.0",
+            "item": "https://task.helpenx.com/docs/v1.0/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 4,
+            "name": "分布式锁",
+            "item": "https://task.helpenx.com/docs/v1.0/distributed-lock.html"
+          }
+        ]
+      }
+    ]
+  }
+  </script>
 </head>
 <body class="docs-page">
   <a class="skip-link" href="#main">跳到主要内容</a>

@@ -3,20 +3,30 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NeoTask · 轻量级 Python 异步任务队列与调度器</title>
-  <meta name="description" content="NeoTask 是纯 Python 实现的嵌入式异步任务队列：无需部署 Redis 等中间件，内置优先级、延时、周期与 Cron 调度、自动重试、SQLite/Redis 持久化，可按需扩展到分布式集群。">
-  <meta name="keywords" content="Python 任务队列, 异步任务, 任务调度, Cron, asyncio, 分布式任务, Celery 替代">
+  <title>NeoTask · 轻量级 Python 异步任务队列与定时任务调度器</title>
+  <meta name="description" content="NeoTask 是纯 Python 实现的嵌入式异步任务队列：无需部署 Redis 等中间件，内置优先级、延时、周期与 Cron 调度、自动重试、SQLite/Redis 持久化，可按需扩展到分布式集群。MIT 开源，Python 3.8+。">
+  <meta name="keywords" content="Python 任务队列, Python 异步任务队列, 后台任务, 任务调度器, 定时任务, Cron 定时任务, 分布式任务队列, asyncio, Celery 替代, Redis 任务队列, SQLite 任务队列, 任务重试">
+  <meta name="author" content="NeoPen">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+  <meta name="application-name" content="NeoTask">
+  <meta name="theme-color" content="#0b1713">
   <link rel="canonical" href="https://task.helpenx.com/">
   <meta property="og:site_name" content="NeoTask">
+  <meta property="og:locale" content="zh_CN">
   <meta property="og:type" content="website">
   <meta property="og:title" content="NeoTask · 轻量级 Python 异步任务队列">
   <meta property="og:description" content="嵌入式、零外部服务、可平滑扩展。用几行 Python 代码处理耗时任务。">
   <meta property="og:url" content="https://task.helpenx.com/">
   <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="NeoTask 轻量级 Python 异步任务队列">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="NeoTask · 轻量级 Python 异步任务队列">
   <meta name="twitter:description" content="嵌入式、零外部服务、可平滑扩展。用几行 Python 代码处理耗时任务。">
   <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta name="twitter:image:alt" content="NeoTask 轻量级 Python 异步任务队列">
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,17 +35,99 @@
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "NeoTask",
-    "applicationCategory": "DeveloperApplication",
-    "operatingSystem": "OS Independent",
-    "programmingLanguage": "Python",
-    "description": "轻量级 Python 异步任务队列与调度器，嵌入式设计，零外部服务，可扩展到分布式。",
-    "url": "https://task.helpenx.com",
-    "codeRepository": "https://github.com/neopen/neotask",
-    "license": "https://task.helpenx.com/LICENSE",
-    "softwareVersion": "1.0.5",
-    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://task.helpenx.com/#organization",
+        "name": "NeoPen",
+        "url": "https://task.helpenx.com/",
+        "email": "helpenx@gmail.com",
+        "logo": { "@type": "ImageObject", "url": "https://task.helpenx.com/assets/img/favicon.svg" },
+        "sameAs": ["https://github.com/neopen/neotask", "https://pypi.org/project/neotask/", "https://pengline.cn"]
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://task.helpenx.com/#website",
+        "name": "NeoTask",
+        "url": "https://task.helpenx.com/",
+        "description": "NeoTask 是纯 Python 实现的轻量级异步任务队列与调度器，支持优先级、延时、周期与 Cron 任务，可通过 Redis 扩展到分布式集群。",
+        "inLanguage": "zh-CN",
+        "publisher": { "@id": "https://task.helpenx.com/#organization" }
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://task.helpenx.com/#software",
+        "name": "NeoTask",
+        "applicationCategory": "DeveloperApplication",
+        "applicationSubCategory": "Asynchronous Task Queue",
+        "operatingSystem": "OS Independent",
+        "programmingLanguage": "Python",
+        "description": "轻量级 Python 异步任务队列与调度器，嵌入式设计，零外部服务，可扩展到分布式。",
+        "url": "https://task.helpenx.com/",
+        "codeRepository": "https://github.com/neopen/neotask",
+        "downloadUrl": "https://pypi.org/project/neotask/",
+        "softwareVersion": "1.0.5",
+        "license": "https://github.com/neopen/neotask/blob/main/LICENSE",
+        "screenshot": "https://task.helpenx.com/assets/img/og.png",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "publisher": { "@id": "https://task.helpenx.com/#organization" },
+        "featureList": [
+          "四级优先级队列",
+          "延时、周期与 Cron 调度",
+          "自动重试与故障恢复",
+          "Memory / SQLite / Redis 持久化",
+          "Redis 分布式队列与任务锁",
+          "任务生命周期事件与指标",
+          "预取机制"
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://task.helpenx.com/#faq",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "NeoTask 需要额外部署 Redis 或消息队列吗？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "不需要。默认使用内存或 SQLite 存储，安装后即可在应用进程内使用。只有需要多节点共享队列时，才需要切换到 Redis。"
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "NeoTask 和 Celery 有什么区别？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "NeoTask 更轻：无需 Broker，内置定时、优先级和存储抽象，适合嵌入式场景。Celery 的生态、复杂任务编排和运维工具更成熟，适合已有大规模任务平台。"
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "NeoTask 任务失败会自动重试吗？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "会。通过 max_retries 与 retry_delay 配置重试次数和退避间隔；节点宕机留下的任务由回收器重新入队，最终失败的任务进入死信队列。"
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "NeoTask 支持 Python 3.8 吗？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "支持。基础包要求 Python ≥ 3.8+，依赖 aiosqlite、croniter 与 colorama；Redis、psutil 与 Web UI 为可选扩展，通过 neotask[redis]、neotask[ui] 或 neotask[full] 安装。"
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "NeoTask 可以在生产环境使用吗？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "可以。v1.0 起已具备持久化、故障恢复、分布式锁、死信队列与指标采集。建议使用 SQLite 或 Redis 持久化，并为关键任务配置重试与监控，上线前阅读最佳实践文档。"
+            }
+          }
+        ]
+      }
+    ]
   }
   </script>
 </head>

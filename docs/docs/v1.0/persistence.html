@@ -5,21 +5,118 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>持久化存储 · NeoTask v1.0 文档</title>
   <meta name="description" content="Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。">
+  <meta name="keywords" content="持久化存储, 持久化存储 教程, 持久化存储 文档, 核心概念, NeoTask v1.0 文档, NeoTask 1.0.x, Python 任务队列">
+  <meta name="author" content="NeoPen">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
   <link rel="canonical" href="https://task.helpenx.com/docs/v1.0/persistence.html">
   <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:locale" content="zh_CN">
   <meta property="og:type" content="article">
   <meta property="og:title" content="持久化存储 · NeoTask v1.0 文档">
   <meta property="og:description" content="Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。">
   <meta property="og:url" content="https://task.helpenx.com/docs/v1.0/persistence.html">
   <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="持久化存储 · NeoTask 文档">
+  <meta property="article:published_time" content="2026-10-29">
+  <meta property="article:modified_time" content="2026-10-30">
+  <meta property="article:section" content="核心概念">
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="持久化存储 · NeoTask v1.0 文档">
+  <meta name="twitter:description" content="Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。">
   <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta name="twitter:image:alt" content="持久化存储 · NeoTask 文档">
+  <meta name="theme-color" content="#0b1713">
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="/assets/css/site.css">
   <link rel="stylesheet" href="/assets/css/docs.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "@id": "https://task.helpenx.com/docs/v1.0/persistence.html#article",
+        "headline": "持久化存储",
+        "name": "持久化存储 · NeoTask v1.0 文档",
+        "description": "Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。",
+        "image": "https://task.helpenx.com/assets/img/og.png",
+        "url": "https://task.helpenx.com/docs/v1.0/persistence.html",
+        "mainEntityOfPage": "https://task.helpenx.com/docs/v1.0/persistence.html",
+        "inLanguage": "zh-CN",
+        "datePublished": "2026-10-29",
+        "dateModified": "2026-10-30",
+        "articleSection": "核心概念",
+        "keywords": "持久化存储, 持久化存储 教程, 持久化存储 文档, 核心概念, NeoTask v1.0 文档, NeoTask 1.0.x, Python 任务队列",
+        "author": {
+          "@type": "Organization",
+          "name": "NeoPen",
+          "url": "https://task.helpenx.com",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://task.helpenx.com/assets/img/favicon.svg"
+          }
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "NeoPen",
+          "url": "https://task.helpenx.com",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://task.helpenx.com/assets/img/favicon.svg"
+          }
+        },
+        "isPartOf": {
+          "@type": "WebSite",
+          "name": "NeoTask",
+          "url": "https://task.helpenx.com/"
+        },
+        "about": {
+          "@type": "SoftwareApplication",
+          "name": "NeoTask",
+          "applicationCategory": "DeveloperApplication",
+          "operatingSystem": "OS Independent",
+          "url": "https://task.helpenx.com/"
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "@id": "https://task.helpenx.com/docs/v1.0/persistence.html#breadcrumb",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "首页",
+            "item": "https://task.helpenx.com/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "文档",
+            "item": "https://task.helpenx.com/docs/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": "v1.0",
+            "item": "https://task.helpenx.com/docs/v1.0/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 4,
+            "name": "持久化存储",
+            "item": "https://task.helpenx.com/docs/v1.0/persistence.html"
+          }
+        ]
+      }
+    ]
+  }
+  </script>
 </head>
 <body class="docs-page">
   <a class="skip-link" href="#main">跳到主要内容</a>

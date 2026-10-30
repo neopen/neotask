@@ -80,6 +80,7 @@
 
     <nav class="site-nav" id="siteNav" aria-label="主导航">
       <a class="site-nav-link " href="/features.html">产品能力</a>
+      <a class="site-nav-link " href="/docs/v1.0/benchmarks.html">性能</a>
       <a class="site-nav-link " href="/docs/">文档</a>
       <a class="site-nav-link " href="/changelog.html">更新日志</a>
       <a class="site-nav-link " href="/community.html">社区</a>
@@ -605,7 +606,7 @@ result = pool.wait_for_result(task_id)</code></pre>
             <span class="eyebrow">BENCHMARKS</span>
             <h2>性能，有基准可查</h2>
           </div>
-          <a class="text-link" href="/docs/v1.0/benchmarks.html">阅读基准报告 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          <a class="text-link" href="/docs/v1.0/benchmarks.html">查看完整基准与方法 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
         </div>
         <div class="bench-grid">
           <div class="bench-card bench-main">
@@ -619,14 +620,14 @@ result = pool.wait_for_result(task_id)</code></pre>
             <p>3,000 个任务，含状态落库与事件分发，P50 790 ms。</p>
           </div>
           <div class="bench-card">
-            <span class="bench-label">IO 扩展性</span>
-            <strong class="bench-num">7.76<span>×</span></strong>
-            <p>20 ms 睡眠任务，8 个 Worker 相对 1 个 Worker 的完成吞吐。</p>
-          </div>
-          <div class="bench-card">
             <span class="bench-label">串行往返</span>
             <strong class="bench-num">15.50<span> ms</span></strong>
             <p>单任务提交到完成的 P50 延迟，200 次串行测量。</p>
+          </div>
+          <div class="bench-card">
+            <span class="bench-label">IO 扩展性</span>
+            <strong class="bench-num">7.76<span> ×</span></strong>
+            <p>20 ms 睡眠任务，8 个 Worker 相对 1 个 Worker 的完成吞吐。</p>
           </div>
         </div>
         <p class="bench-note">数据来自 NeoTask 1.0.5 官方基准脚本：Windows 10 19045、i7-1165G7、Python 3.13.15、Memory 后端，旁路组件全部关闭。绝对数值不代表你的部署环境，请以自己的业务压测为准。<a href="/docs/v1.0/benchmarks.html">阅读完整口径与边界说明 →</a></p>

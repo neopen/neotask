@@ -1,17 +1,10 @@
-<p>以下数据来自 NeoTask 1.0.5 的官方基准脚本，运行在单台开发笔记本上。它们用于判断相对趋势与配置影响，不构成性能承诺。</p>
+<p>以下数据由 NeoTask {{BENCH_RELEASE}} 官方基准脚本测得，用于判断相对趋势与配置影响，不构成性能承诺。数字随 CPU、Python 版本、存储后端与旁路组件变化，请按同一口径在自己的目标环境复测。</p>
+
+{{BENCH_METRICS}}
 
 <h2>测试环境</h2>
-<table>
-<thead><tr><th>项目</th><th>配置</th></tr></thead>
-<tbody>
-<tr><td>CPU</td><td>Intel Core i7-1165G7，4 核 8 线程</td></tr>
-<tr><td>内存</td><td>15.8 GiB</td></tr>
-<tr><td>系统</td><td>Windows 10 19045，64 位</td></tr>
-<tr><td>Python</td><td>3.13.15</td></tr>
-<tr><td>存储</td><td>memory（主套件）；SQLite（边界探针）</td></tr>
-<tr><td>旁路组件</td><td>metrics、health check、reporter、reclaimer、heartbeat、dead letter、retry 全部关闭</td></tr>
-</tbody>
-</table>
+{{BENCH_ENV_TABLE}}
+<p>主套件使用 Memory 后端；SQLite 数据来自独立探针，两组结果不可合并比较。</p>
 
 <h2>口径</h2>
 <table>
@@ -23,67 +16,56 @@
 <tr><td>等待吞吐</td><td>N 个并发 <code>wait_for_result_async</code> 全部返回的速率</td></tr>
 </tbody>
 </table>
-
-<p>每个场景独立创建 <code>TaskPool</code>，预热 10 个任务；主套件重复 2–3 轮取中位数。提交吞吐与完成吞吐分母不同，不能直接比较。</p>
+<p>每个场景独立创建 <code>TaskPool</code>，预热 10 个任务；主套件重复 2–3 轮取中位数。提交吞吐与完成吞吐的分母不同，不能直接比较：前者衡量入队链路，后者包含调度、执行与状态落库。</p>
 
 <h2>调度与执行开销</h2>
-<table>
-<thead><tr><th>场景</th><th>N</th><th>Workers</th><th>提交吞吐</th><th>完成吞吐</th><th>P50</th><th>P95</th><th>P99</th></tr></thead>
-<tbody>
-<tr><td>只提交</td><td>2000</td><td>10</td><td>14,657/s</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-<tr><td>提交并等待完成</td><td>3000</td><td>10</td><td>10,526/s</td><td>2,433/s</td><td>790 ms</td><td>869 ms</td><td>882 ms</td></tr>
-<tr><td>串行往返</td><td>200</td><td>10</td><td>64.3/s</td><td>64.3/s</td><td>15.50 ms</td><td>16.33 ms</td><td>16.55 ms</td></tr>
-</tbody>
-</table>
+{{BENCH_SCHEDULING_TABLE}}
+<p>空任务单条提交的主链路开销约 68 μs。完成吞吐的瓶颈在生命周期流转、状态落库与事件分发，不在执行器本身；单纯增加 Worker 无法突破这一上限。</p>
 
-<p>空任务提交的单条主链路开销约 68 μs。完成吞吐的瓶颈在生命周期、状态落库与事件分发，不在执行器本身。</p>
-
-<h2>IO 任务扩展性</h2>
-<p>任务体为 <code>asyncio.sleep(0.020)</code>，N=400。</p>
-<table>
-<thead><tr><th>Workers</th><th>完成吞吐</th><th>相对 1 worker</th><th>P50</th><th>P95</th><th>P99</th></tr></thead>
-<tbody>
-<tr><td>1</td><td>32.1/s</td><td>1.00x</td><td>6,231 ms</td><td>11,807 ms</td><td>12,303 ms</td></tr>
-<tr><td>2</td><td>64.0/s</td><td>1.99x</td><td>3,132 ms</td><td>5,914 ms</td><td>6,157 ms</td></tr>
-<tr><td>4</td><td>127.0/s</td><td>3.96x</td><td>1,583 ms</td><td>2,966 ms</td><td>3,089 ms</td></tr>
-<tr><td>8</td><td>249.3/s</td><td>7.76x</td><td>809 ms</td><td>1,503 ms</td><td>1,565 ms</td></tr>
-</tbody>
-</table>
-
-<p>IO 任务随 Worker 数接近线性扩展。1 worker 的绝对值受 Windows 定时器粒度影响（20 ms 的 sleep 实际约 31 ms），扩展效率比绝对值更有参考意义。</p>
+<h2>IO 扩展性</h2>
+<p>任务体为 <code>asyncio.sleep(0.020)</code>，N=400，Memory 后端。完成吞吐随 Worker 数增加接近线性增长。</p>
+{{BENCH_IO_CHART}}
+{{BENCH_IO_TABLE}}
+<p>1 Worker 的绝对值受 Windows 定时器粒度影响：20 ms 的 sleep 实际约 31 ms，因此 32.1 tasks/s 略低于理论上限。评估扩展性时看相对倍率，不要只看单点绝对值。</p>
 
 <h2>SQLite 边界</h2>
-<p>noop 任务，每次重建数据库。</p>
-<table>
-<thead><tr><th>模式</th><th>Workers</th><th>结果</th></tr></thead>
-<tbody>
-<tr><td>串行提交 100 条</td><td>1</td><td>30.1 tasks/s，P50 31.31 ms，P95 66.34 ms，全部成功</td></tr>
-<tr><td>突发提交 100 条</td><td>1</td><td>25.5 tasks/s，全部成功</td></tr>
-<tr><td>突发提交 100 条</td><td>2</td><td>第 37 次起 <code>database is locked</code></td></tr>
-<tr><td>突发提交 100 条</td><td>4</td><td>第 36 次起 <code>database is locked</code></td></tr>
-</tbody>
-</table>
-
-<p>SQLite 适合低频、单写入者场景。高并发或分布式请使用 Redis。</p>
+<p>noop 任务，每次重建数据库，对比单写入者与并发写入的行为。</p>
+{{BENCH_SQLITE_BOUNDARIES}}
+<p>SQLite 适合低频、单写入者场景。需要多 Worker 并发写入或跨节点共享队列时改用 Redis，配置方式见 <a href="/docs/persistence.html">持久化存储</a> 与 <a href="/docs/distributed.html">分布式部署</a>。</p>
 
 <h2>预取的配置影响</h2>
-<p>极短任务（数十微秒）下，默认预取按约 0.1 秒一批补充，可能把完成吞吐限制在约 200 tasks/s；关闭预取后官方实测恢复到约 2,382 tasks/s。任务较长时预取通常有利。</p>
+<p>极短任务由事件循环直接调度更快；默认预取按约 0.1 秒一批补充任务，批间隔会限制微任务的完成吞吐。</p>
+{{BENCH_PREFETCH_CHART}}
+<p>任务体本身有 IO 等待或执行时间较长时，预取节省的取任务往返通常更有价值，保持默认即可。触发条件与批量参数见 <a href="/docs/prefetch.html">预取机制</a>。</p>
 
-<div class="doc-note"><strong>不要直接引用绝对值做容量规划。</strong>操作系统、Python 版本、CPU、存储后端和旁路组件都会显著影响结果。请在自己的目标环境用相同口径复测。</div>
+<h2>怎么选配置</h2>
+<table>
+<thead><tr><th>场景</th><th>建议配置</th><th>依据</th></tr></thead>
+<tbody>
+<tr><td>数十微秒的纯计算微任务</td><td>关闭预取，Worker 数与 CPU 核数对齐</td><td>预取批间隔成为瓶颈，关闭后完成吞吐从约 200 提升到 2,382 tasks/s</td></tr>
+<tr><td>毫秒级 IO 任务</td><td>保持默认预取，Worker 16–32 起步</td><td>20 ms 睡眠任务在 8 Worker 下仍有 7.76× 扩展</td></tr>
+<tr><td>CPU 密集任务</td><td>ProcessExecutor，Worker 不超过物理核数</td><td>异步 Worker 共享 GIL，超配只增加切换开销</td></tr>
+<tr><td>单机低频、需重启恢复</td><td>SQLite，单写入者</td><td>100 条突发在 1 Worker 下全部成功；2 Worker 起出现 <code>database is locked</code></td></tr>
+<tr><td>多节点或高并发写入</td><td>Redis，唯一 <code>node_id</code>，<code>lock_type="redis"</code></td><td>SQLite 没有跨进程写协调，见分布式部署</td></tr>
+<tr><td>优先级严格生效</td><td>关闭预取或调小批量</td><td>预取会提前取走任务，后提交的高优先级任务可能排在已取走的低优先级任务之后</td></tr>
+</tbody>
+</table>
+<p>字段默认值与生效范围见 <a href="/docs/configuration.html">配置参考</a>；执行器与并发选型的完整建议见 <a href="/docs/best-practices.html">最佳实践</a>。</p>
 
 <h2>复现</h2>
 <pre><code class="language-bash">git clone https://github.com/neopen/neotask.git
 cd neotask
 pip install -e ".[dev]"
 python tests/benchmark/run_benchmark.py</code></pre>
-
-<p>基准脚本位于仓库 <code>tests/benchmark/</code>，不属于 PyPI 包内容。主套件约需 2 分钟，SQLite 探针另需约 2 分钟。</p>
+<p>基准脚本位于仓库 <code>tests/benchmark/</code>，不随 PyPI 包分发。主套件约需 2 分钟，SQLite 探针另需约 2 分钟。复测时记录 CPU、Python 版本、存储后端与 Worker 数，否则结果不可比。</p>
 
 <h2>解读边界</h2>
 <ul>
-<li>所有数据来自单机笔记本，不能外推到服务器或容器环境。</li>
-<li>主套件使用 memory 后端，SQLite 数据单独测量，两者不可混用。</li>
-<li>旁路组件全部关闭，开启 metrics、health check、reclaimer 后吞吐会下降。</li>
+<li>数据来自单台开发笔记本（4 核 8 线程），不能外推到服务器或容器环境。</li>
+<li>主套件使用 Memory 后端，SQLite 数据单独测量，两者不可混用。</li>
+<li>旁路组件（metrics、health check、reporter、reclaimer、heartbeat、dead letter、retry）全部关闭，开启后吞吐会下降。</li>
 <li>延迟分位数来自单次场景，不代表长期稳定性；持续负载与突发负载应分开评估。</li>
 <li>版本间口径可能变化，1.0.5 之前的历史数字不应直接比较。</li>
 </ul>
+
+<div class="doc-note"><strong>不要直接引用绝对值做容量规划。</strong>请在自己的目标环境用相同脚本、相同口径复测，并把业务任务的真实耗时分布纳入评估。</div>

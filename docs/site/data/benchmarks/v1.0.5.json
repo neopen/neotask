@@ -1,0 +1,116 @@
+{
+  "version": "1.0.5",
+  "environment": [
+    { "label": "CPU", "value": "Intel Core i7-1165G7，4 核 8 线程" },
+    { "label": "内存", "value": "15.8 GiB" },
+    { "label": "系统", "value": "Windows 10 19045，64 位" },
+    { "label": "Python", "value": "3.13.15" },
+    { "label": "存储", "value": "memory（主套件）；SQLite（边界探针）" },
+    { "label": "旁路组件", "value": "metrics、health check、reporter、reclaimer、heartbeat、dead letter、retry 全部关闭" }
+  ],
+  "metrics": [
+    {
+      "label": "提交吞吐",
+      "value": "14,657",
+      "unit": "tasks/s",
+      "detail": "2,000 个 noop 任务，Memory 后端，10 个 Worker。",
+      "homeDetail": "2,000 个 noop 任务，Memory 存储，10 个 Worker。",
+      "highlight": true
+    },
+    {
+      "label": "完成吞吐",
+      "value": "2,433",
+      "unit": "tasks/s",
+      "detail": "3,000 个任务，含状态落库与事件分发，P95 869 ms。",
+      "homeDetail": "3,000 个任务，含状态落库与事件分发，P50 790 ms。"
+    },
+    {
+      "label": "串行往返",
+      "value": "15.50",
+      "unit": "ms",
+      "detail": "单任务提交到完成的 P50 延迟，200 次串行测量，P95 16.33 ms。",
+      "homeDetail": "单任务提交到完成的 P50 延迟，200 次串行测量。"
+    },
+    {
+      "label": "IO 扩展性",
+      "value": "7.76",
+      "unit": "×",
+      "detail": "20 ms 睡眠任务，8 个 Worker 相对 1 个 Worker 的完成吞吐。",
+      "homeDetail": "20 ms 睡眠任务，8 个 Worker 相对 1 个 Worker 的完成吞吐。"
+    }
+  ],
+  "scheduling": {
+    "headers": ["场景", "N", "Workers", "提交吞吐", "完成吞吐", "P50", "P95", "P99"],
+    "rows": [
+      ["只提交", "2,000", "10", "14,657/s", "—", "—", "—", "—"],
+      ["提交并等待完成", "3,000", "10", "10,526/s", "2,433/s", "790 ms", "869 ms", "882 ms"],
+      ["串行往返", "200", "10", "64.3/s", "64.3/s", "15.50 ms", "16.33 ms", "16.55 ms"]
+    ]
+  },
+  "io": {
+    "max": 249.3,
+    "caption": "完成吞吐 · 400 个 20 ms 睡眠任务（线性刻度）",
+    "note": "柱长按 249.3 tasks/s 满刻度换算；8 Worker 下的 P99 为 1,565 ms。",
+    "headers": ["Workers", "完成吞吐", "相对 1 Worker", "P50", "P95", "P99"],
+    "rows": [
+      ["1", "32.1/s", "1.00×", "6,231 ms", "11,807 ms", "12,303 ms"],
+      ["2", "64.0/s", "1.99×", "3,132 ms", "5,914 ms", "6,157 ms"],
+      ["4", "127.0/s", "3.96×", "1,583 ms", "2,966 ms", "3,089 ms"],
+      ["8", "249.3/s", "7.76×", "809 ms", "1,503 ms", "1,565 ms"]
+    ],
+    "bars": [
+      { "label": "1 worker", "value": 32.1, "display": "32.1/s" },
+      { "label": "2 workers", "value": 64.0, "display": "64.0/s" },
+      { "label": "4 workers", "value": 127.0, "display": "127.0/s" },
+      { "label": "8 workers", "value": 249.3, "display": "249.3/s" }
+    ]
+  },
+  "sqlite": {
+    "rows": [
+      {
+        "mode": "串行提交 100 条",
+        "workers": 1,
+        "ok": true,
+        "outcome": "全部成功",
+        "meta": [
+          { "label": "吞吐", "value": "30.1 tasks/s" },
+          { "label": "P50", "value": "31.31 ms" },
+          { "label": "P95", "value": "66.34 ms" }
+        ]
+      },
+      {
+        "mode": "突发提交 100 条",
+        "workers": 1,
+        "ok": true,
+        "outcome": "全部成功",
+        "meta": [
+          { "label": "吞吐", "value": "25.5 tasks/s" }
+        ]
+      },
+      {
+        "mode": "突发提交 100 条",
+        "workers": 2,
+        "ok": false,
+        "failAt": 37,
+        "outcome": "从第 37 次提交起报错",
+        "meta": []
+      },
+      {
+        "mode": "突发提交 100 条",
+        "workers": 4,
+        "ok": false,
+        "failAt": 36,
+        "outcome": "从第 36 次提交起报错",
+        "meta": []
+      }
+    ]
+  },
+  "prefetch": {
+    "caption": "完成吞吐 · 微任务场景（线性刻度）",
+    "note": "线性刻度，最大值为 2,382 tasks/s；关闭预取后约为默认配置的 11.9 倍。",
+    "bars": [
+      { "label": "默认预取", "value": 200, "display": "≈200/s" },
+      { "label": "关闭预取", "value": 2382, "display": "2,382/s" }
+    ]
+  }
+}

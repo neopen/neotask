@@ -22,6 +22,13 @@ const versions = manifest.versions.map((v) => ({
 const latest = versions.find((v) => v.id === manifest.default) || versions[0];
 const latestPages = latest.doc.pages;
 
+for (const v of versions) {
+  if (!v.benchmarks) continue;
+  const file = path.join(SITE, 'data', v.benchmarks);
+  if (!fs.existsSync(file)) throw new Error(`Missing benchmark data: ${path.relative(ROOT, file)}`);
+  v.bench = readJson(file);
+}
+
 const esc = (s) => String(s)
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -55,9 +62,11 @@ const baseVars = {
   DOCS_LIBRARY: latest.library,
   DOCS_BASELINE: latest.baseline,
   DOCS_UPDATED: latest.updated,
+  DOCS_BENCHMARK_URL: latestPages.some((p) => p.slug === 'benchmarks') ? docsHref(latest, 'benchmarks') : '/docs/',
   YEAR: '2026',
   ACTIVE_HOME: '',
   ACTIVE_FEATURES: '',
+  ACTIVE_BENCHMARKS: '',
   ACTIVE_DOCS: '',
   ACTIVE_CHANGELOG: '',
   ACTIVE_COMMUNITY: ''
@@ -178,6 +187,81 @@ function renderToc(content) {
   };
 }
 
+// --- Benchmark rendering ---------------------------------------------------
+const benchPct = (value, max) => `${Math.max(2, Math.round((value / max) * 100))}%`;
+
+function benchTable(headers, rows, cls = '') {
+  return `<table${cls ? ` class="${cls}"` : ''}>
+<thead><tr>${headers.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead>
+<tbody>
+${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('\n')}
+</tbody>
+</table>`;
+}
+
+function benchKpis(b) {
+  return `<div class="bench-kpis">
+${b.metrics.map((m) => `  <div class="bench-kpi${m.highlight ? ' is-highlight' : ''}">
+    <span class="bench-kpi-label">${esc(m.label)}</span>
+    <span class="bench-kpi-value">${esc(m.value)}<span>${esc(m.unit)}</span></span>
+    <span class="bench-kpi-detail">${esc(m.detail)}</span>
+  </div>`).join('\n')}
+</div>`;
+}
+
+function benchHomeCards(b) {
+  return b.metrics.map((m, i) => `          <div class="bench-card${i === 0 ? ' bench-main' : ''}">
+            <span class="bench-label">${esc(m.label)}</span>
+            <strong class="bench-num">${esc(m.value)}<span> ${esc(m.unit)}</span></strong>
+            <p>${esc(m.homeDetail || m.detail)}</p>
+          </div>`).join('\n');
+}
+
+function benchBars(caption, bars, max, note) {
+  const top = max || Math.max(...bars.map((b) => b.value));
+  return `<figure class="bench-chart">
+  <figcaption>${esc(caption)}</figcaption>
+  <div class="bench-bars">
+${bars.map((b) => `    <div class="bench-bar-row">
+      <span class="bench-bar-label">${esc(b.label)}</span>
+      <span class="bench-bar-track"><span class="bench-bar-fill" style="width: ${benchPct(b.value, top)}"></span></span>
+      <span class="bench-bar-value">${esc(b.display)}</span>
+    </div>`).join('\n')}
+  </div>
+  ${note ? `<p class="bench-chart-note">${esc(note)}</p>` : ''}
+</figure>`;
+}
+
+function benchBoundaries(rows) {
+  return `<div class="bench-boundaries">
+${rows.map((r) => `  <div class="bench-boundary ${r.ok ? 'is-ok' : 'is-fail'}">
+    <div class="bench-boundary-head">
+      <span class="bench-boundary-badge">${r.ok ? '成功' : '受限'}</span>
+      <strong>${esc(r.mode)}</strong>
+      <span class="bench-boundary-workers">${r.workers} worker${r.workers > 1 ? 's' : ''}</span>
+    </div>
+    <p class="bench-boundary-outcome">${esc(r.outcome)}${r.ok ? '' : ' <code>database is locked</code>'}</p>
+${r.meta.length ? `    <dl class="bench-boundary-meta">${r.meta.map((m) => `<div><dt>${esc(m.label)}</dt><dd>${esc(m.value)}</dd></div>`).join('')}</dl>` : ''}
+  </div>`).join('\n')}
+</div>`;
+}
+
+function renderBenchmarkContent(raw, b) {
+  const vars = {
+    BENCH_RELEASE: esc(b.version),
+    BENCH_METRICS: benchKpis(b),
+    BENCH_ENV_TABLE: benchTable(['项目', '配置'], b.environment.map((r) => [r.label, r.value]), 'bench-env'),
+    BENCH_SCHEDULING_TABLE: benchTable(b.scheduling.headers, b.scheduling.rows),
+    BENCH_IO_CHART: benchBars(b.io.caption, b.io.bars, b.io.max, b.io.note),
+    BENCH_IO_TABLE: benchTable(b.io.headers, b.io.rows),
+    BENCH_SQLITE_BOUNDARIES: benchBoundaries(b.sqlite.rows),
+    BENCH_PREFETCH_CHART: benchBars(b.prefetch.caption, b.prefetch.bars, 0, b.prefetch.note)
+  };
+  return raw.replace(/\{\{([A-Z0-9_]+)\}\}/g, (m, key) =>
+    Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : m
+  );
+}
+
 function docsPageHead(v, p) {
   const title = `${p.title} · NeoTask ${v.label} 文档`;
   const url = `${data.homepage}${docsHref(v, p.slug)}`;
@@ -213,7 +297,11 @@ function buildDocsPage(v, p) {
   }
   const outFile = path.join(ROOT, 'docs', v.id, `${p.slug}.html`);
 
-  const raw = fs.readFileSync(contentFile, 'utf8');
+  let raw = fs.readFileSync(contentFile, 'utf8');
+  if (p.slug === 'benchmarks') {
+    if (!v.bench) throw new Error(`Missing benchmark data for docs version ${v.id}`);
+    raw = renderBenchmarkContent(raw, v.bench);
+  }
   const { content, toc } = renderToc(raw);
   const idx = v.doc.pages.findIndex((x) => x.slug === p.slug);
   const prev = v.doc.pages[idx - 1];
@@ -274,7 +362,8 @@ ${content}
 
   let rendered = includePartials(page);
   rendered = applyVars(rendered, {
-    ACTIVE_DOCS: 'is-active',
+    ACTIVE_DOCS: p.slug === 'benchmarks' ? '' : 'is-active',
+    ACTIVE_BENCHMARKS: p.slug === 'benchmarks' ? 'is-active' : '',
     DOCS_VERSION: v.label,
     DOCS_LIBRARY: v.library,
     DOCS_BASELINE: v.baseline
@@ -416,7 +505,10 @@ buildPage('changelog.html', 'changelog.html', latest, {
 });
 
 // --- Other top-level pages --------------------------------------------------
-buildPage('index.html', 'index.html', latest, { ACTIVE_HOME: 'is-active' });
+buildPage('index.html', 'index.html', latest, {
+  ACTIVE_HOME: 'is-active',
+  BENCH_HOME_CARDS: latest.bench ? benchHomeCards(latest.bench) : ''
+});
 buildPage('features.html', 'features.html', latest, { ACTIVE_FEATURES: 'is-active' });
 buildPage('community.html', 'community.html', latest, { ACTIVE_COMMUNITY: 'is-active' });
 buildPage('404.html', '404.html', latest, {});

@@ -144,10 +144,11 @@
       "slug": "benchmarks",
       "title": "性能基准",
       "category": "reference",
-      "description": "基准测试环境、结果口径与解读边界。",
+      "featured": true,
+      "description": "提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。",
       "updated": "2026-10-30",
       "icon": "chart",
-      "time": "5 分钟"
+      "time": "9 分钟"
     },
     {
       "slug": "roadmap",

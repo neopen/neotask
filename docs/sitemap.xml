@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://task.helpenx.com/</loc></url>
+  <url><loc>https://task.helpenx.com/features.html</loc></url>
+  <url><loc>https://task.helpenx.com/changelog.html</loc></url>
+  <url><loc>https://task.helpenx.com/community.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/</loc></url>
+  <url><loc>https://task.helpenx.com/docs/quickstart.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/configuration.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/best-practices.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/core-features.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/architecture.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/decentralization.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/persistence.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/priority-queue.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/delayed-tasks.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/failure-recovery.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/distributed-lock.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/prefetch.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/monitoring.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/api-reference.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/benchmarks.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/evolution.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/dag-workflow.html</loc></url>
+</urlset>

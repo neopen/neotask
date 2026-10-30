@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>更新日志 · NeoTask</title>
+  <meta name="description" content="NeoTask 全部 13 个版本的发布记录：v1.0.5 最新版本，以及从 0.1.0 到 1.0.x 的功能演进、缺陷修复与升级说明。">
+  <link rel="canonical" href="{{HOMEPAGE}}/changelog.html">
+  <meta property="og:site_name" content="NeoTask">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="更新日志 · NeoTask">
+  <meta property="og:description" content="NeoTask 版本发布记录与升级说明。">
+  <meta property="og:url" content="{{HOMEPAGE}}/changelog.html">
+  <meta property="og:image" content="{{HOMEPAGE}}/assets/img/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="{{HOMEPAGE}}/assets/img/og.png">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/css/site.css">
+</head>
+<body class="sub-page">
+  <!-- @include icons -->
+  <!-- @include header -->
+
+  <main id="main">
+    <section class="page-hero">
+      <div class="container">
+        <span class="eyebrow">CHANGELOG</span>
+        <h1>更新日志</h1>
+        <p>NeoTask 的真实发布记录。每个版本都对应 PyPI 发布与 GitHub Release，升级前请阅读当前版本的修复说明。</p>
+        <div class="page-hero-actions">
+          <a class="btn btn-primary" href="{{PYPI}}" target="_blank" rel="noopener">在 PyPI 安装 v{{VERSION}} <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+          <a class="btn btn-outline" href="{{CHANGELOG_URL}}" target="_blank" rel="noopener">GitHub Releases</a>
+        </div>
+        <div class="page-hero-meta">
+          <span><strong>最新版本</strong> v{{VERSION}}</span>
+          <span><strong>发布日期</strong> {{RELEASE_DATE}}</span>
+          <span><strong>许可证</strong> {{LICENSE}}</span>
+          <span><strong>Python</strong> {{PYTHON}}</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container changelog-layout">
+        <aside class="changelog-aside">
+          <div class="aside-card">
+            <h2>升级建议</h2>
+            <p>生产环境建议使用最新补丁版本。从 1.0.2 起依赖收敛到少量基础库；当前 1.0.5 基础依赖为 <code>aiosqlite</code>、<code>croniter</code> 与 <code>colorama</code>，最低支持 Python {{PYTHON}}。</p>
+            <code class="aside-command">pip install -U neotask</code>
+          </div>
+          <div class="aside-card">
+            <h2>订阅更新</h2>
+            <p>在 GitHub 仓库选择 Watch → Releases，即可在每次发布时收到通知。</p>
+            <a class="text-link" href="{{REPO}}" target="_blank" rel="noopener">前往仓库 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+          <div class="aside-card">
+            <h2>版本查阅</h2>
+            <p>完整的历史版本、构建产物与校验信息可在 PyPI 与 GitHub Releases 查阅。</p>
+            <a class="text-link" href="{{PYPI}}" target="_blank" rel="noopener">PyPI 版本列表 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+        </aside>
+
+        <div class="changelog-list">
+{{RELEASES}}
+        </div>
+      </div>
+    </section>
+
+    <section class="cta">
+      <div class="container cta-inner">
+        <div class="cta-copy">
+          <span class="eyebrow">STAY CURRENT</span>
+          <h2>使用最新版本</h2>
+          <p>补丁版本包含重要的稳定性修复，建议保持更新。</p>
+        </div>
+        <div class="cta-actions">
+          <div class="install-box install-box-light">
+            <span class="install-prompt">$</span>
+            <code>pip install -U neotask</code>
+            <button class="copy-btn" data-copy="pip install -U neotask" aria-label="复制升级命令">
+              <svg class="icon icon-sm copy-icon"><use href="#i-copy"/></svg>
+              <svg class="icon icon-sm check-icon"><use href="#i-check"/></svg>
+            </button>
+          </div>
+          <div class="cta-buttons">
+            <a class="btn btn-primary btn-lg" href="/docs/quickstart.html">查看快速上手 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+            <a class="btn btn-ghost btn-lg" href="/docs/evolution.html">阅读版本演进</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- @include footer -->
+  <script src="/assets/js/site.js" defer></script>
+</body>
+</html>

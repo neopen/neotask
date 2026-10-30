@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>产品能力 · NeoTask</title>
+  <meta name="description" content="NeoTask 产品能力：即时任务与四级优先级、延时/周期/Cron 调度、自动重试与故障恢复、Memory/SQLite/Redis 存储、Redis 分布式队列与任务锁、生命周期事件与指标。">
+  <link rel="canonical" href="{{HOMEPAGE}}/features.html">
+  <meta property="og:site_name" content="NeoTask">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="产品能力 · NeoTask">
+  <meta property="og:description" content="一个库，覆盖后台任务的提交、调度、执行、持久化与故障恢复。">
+  <meta property="og:url" content="{{HOMEPAGE}}/features.html">
+  <meta property="og:image" content="{{HOMEPAGE}}/assets/img/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/css/site.css">
+</head>
+<body class="sub-page">
+  <!-- @include icons -->
+  <!-- @include header -->
+
+  <main id="main">
+    <section class="page-hero">
+      <div class="container">
+        <span class="eyebrow">PRODUCT CAPABILITIES</span>
+        <h1>一个库，覆盖后台任务的<br><span class="grad-text">完整生命周期。</span></h1>
+        <p>从提交、排队、执行，到持久化、重试、回收与观测。NeoTask 把耗时任务需要的运行时能力收进一个 Python 包，按需启用。</p>
+        <div class="page-hero-actions">
+          <a class="btn btn-primary" href="/docs/quickstart.html">快速开始 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+          <a class="btn btn-outline" href="/docs/core-features.html">核心功能文档</a>
+        </div>
+        <div class="page-hero-meta">
+          <span><svg class="icon icon-xs"><use href="#i-check"/></svg> Python {{PYTHON}}</span>
+          <span><svg class="icon icon-xs"><use href="#i-check"/></svg> {{LICENSE}} License</span>
+          <span><svg class="icon icon-xs"><use href="#i-check"/></svg> 无需外部服务</span>
+          <span><svg class="icon icon-xs"><use href="#i-check"/></svg> 可平滑扩展分布式</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container feature-rows">
+        <article class="feature-row">
+          <div class="feature-copy">
+            <span class="feature-tag">01 · 即时任务</span>
+            <h2>提交即执行，优先级决定顺序</h2>
+            <p>TaskPool 接收任务后立即交给 Worker 池处理。四级优先级让关键任务在突发流量下优先获得执行机会，同优先级保持 FIFO。</p>
+            <ul class="check-list">
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 同步、异步与批量提交</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 结果等待、状态查询与取消</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 上下文管理器自动启停</li>
+            </ul>
+            <a class="text-link" href="/docs/priority-queue.html">优先级队列实现 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+          <div class="feature-panel">
+            <div class="panel-top"><span>priority queue</span><span class="panel-live"><span class="dot-live"></span> live</span></div>
+            <div class="feature-priority">
+              <div class="prio-row"><span>CRITICAL</span><i style="--w:100%"></i><em>0</em></div>
+              <div class="prio-row"><span>HIGH</span><i style="--w:78%"></i><em>1</em></div>
+              <div class="prio-row"><span>NORMAL</span><i style="--w:52%"></i><em>2</em></div>
+              <div class="prio-row"><span>LOW</span><i style="--w:26%"></i><em>3</em></div>
+            </div>
+            <div class="panel-foot"><span>TaskPriority</span><span>FIFO within level</span></div>
+          </div>
+        </article>
+
+        <article class="feature-row is-reverse">
+          <div class="feature-copy">
+            <span class="feature-tag">02 · 定时调度</span>
+            <h2>延时、周期与 Cron，一个调度器</h2>
+            <p>TaskScheduler 在任务池之上提供时间维度：延迟执行、指定时刻执行、固定间隔和 Cron 表达式，并支持周期任务的暂停与恢复。</p>
+            <ul class="check-list">
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 秒级延时与定点执行</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 固定间隔周期任务</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Cron 表达式与错过策略</li>
+            </ul>
+            <a class="text-link" href="/docs/delayed-tasks.html">定时调度实现 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+          <div class="feature-panel">
+            <div class="panel-top"><span>scheduler</span><span>Asia/Shanghai</span></div>
+            <div class="schedule-list">
+              <div class="schedule-row"><span class="schedule-time">60s</span><span>remind_checkout</span><em>delayed</em></div>
+              <div class="schedule-row"><span class="schedule-time">5m</span><span>heartbeat</span><em>interval</em></div>
+              <div class="schedule-row"><span class="schedule-time">09:00</span><span>daily_report</span><em>cron</em></div>
+              <div class="schedule-row"><span class="schedule-time">02:00</span><span>nightly_cleanup</span><em>cron</em></div>
+            </div>
+            <div class="panel-foot"><span>submit_delayed · submit_interval · submit_cron</span></div>
+          </div>
+        </article>
+
+        <article class="feature-row">
+          <div class="feature-copy">
+            <span class="feature-tag">03 · 可靠性</span>
+            <h2>失败可重试，节点故障可回收</h2>
+            <p>执行异常按配置自动重试；心跳过期与回收器把失联节点上的任务重新放回队列。最终失败的任务进入死信队列，等待人工处理。</p>
+            <ul class="check-list">
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 自动重试与退避</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 孤儿任务回收与僵尸锁扫描</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 死信队列保留失败现场</li>
+            </ul>
+            <a class="text-link" href="/docs/failure-recovery.html">故障恢复机制 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+          <div class="feature-panel">
+            <div class="panel-top"><span>task lifecycle</span><span>watchdog</span></div>
+            <div class="lifecycle">
+              <span class="life-node">PENDING</span>
+              <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
+              <span class="life-node">RUNNING</span>
+              <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
+              <span class="life-node is-ok">SUCCESS</span>
+            </div>
+            <div class="lifecycle-branch">
+              <span class="life-node is-fail">FAILED</span>
+              <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
+              <span class="life-node">RETRY</span>
+              <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
+              <span class="life-node is-muted">DEAD LETTER</span>
+            </div>
+            <div class="panel-foot"><span>max_retries</span><span>reclaimer · heartbeat</span></div>
+          </div>
+        </article>
+
+        <article class="feature-row is-reverse">
+          <div class="feature-copy">
+            <span class="feature-tag">04 · 持久化</span>
+            <h2>三种存储，同一套抽象</h2>
+            <p>根据部署规模选择后端：开发时用内存，单机持久化用 SQLite，多节点共享用 Redis。存储切换不需要改动业务代码。</p>
+            <ul class="check-list">
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Memory：零配置，进程内</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> SQLite：单文件落盘</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Redis：共享队列与状态索引</li>
+            </ul>
+            <a class="text-link" href="/docs/persistence.html">存储实现细节 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+          <div class="feature-panel">
+            <div class="panel-top"><span>storage backends</span><span>TaskRepository</span></div>
+            <div class="storage-options">
+              <div class="storage-option">
+                <span class="storage-name">Memory</span>
+                <span class="storage-desc">开发 / 临时任务</span>
+                <span class="storage-state">默认</span>
+              </div>
+              <div class="storage-option is-active">
+                <span class="storage-name">SQLite</span>
+                <span class="storage-desc">单机持久化</span>
+                <span class="storage-state">推荐</span>
+              </div>
+              <div class="storage-option">
+                <span class="storage-name">Redis</span>
+                <span class="storage-desc">分布式集群</span>
+                <span class="storage-state">可选</span>
+              </div>
+            </div>
+            <div class="panel-foot"><span>aiosqlite</span><span>TaskPoolConfig</span></div>
+          </div>
+        </article>
+
+        <article class="feature-row">
+          <div class="feature-copy">
+            <span class="feature-tag">05 · 分布式</span>
+            <h2>对等节点，无主架构</h2>
+            <p>切换 Redis 后，多个节点对等消费共享队列。心跳维护节点存活状态，锁与看门狗避免重复执行，预取减少往返开销。</p>
+            <ul class="check-list">
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 抢占式消费，无需调度中心</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Redis 分布式锁与看门狗续期</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 可选预取与批量操作</li>
+            </ul>
+            <a class="text-link" href="/docs/decentralization.html">去中心化架构 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+          <div class="feature-panel">
+            <div class="panel-top"><span>cluster</span><span>3 nodes</span></div>
+            <div class="cluster-visual">
+              <span class="cluster-node">node-1<br><em>active</em></span>
+              <span class="cluster-node">node-2<br><em>active</em></span>
+              <span class="cluster-node is-muted">node-3<br><em>offline</em></span>
+              <span class="cluster-queue">Redis shared queue</span>
+            </div>
+            <div class="panel-foot"><span>heartbeat</span><span>reclaimer</span><span>lock</span></div>
+          </div>
+        </article>
+
+        <article class="feature-row is-reverse">
+          <div class="feature-copy">
+            <span class="feature-tag">06 · 可观测性</span>
+            <h2>任务状态进入你的监控体系</h2>
+            <p>订阅六类生命周期事件，读取统计与健康状态。需要可视化时，可自行装配可选的 Web UI 扩展。</p>
+            <ul class="check-list">
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> created / started / completed / failed</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> cancelled / reclaimed 事件</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 指标采集与健康检查</li>
+            </ul>
+            <a class="text-link" href="/docs/monitoring.html">监控与健康检查 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+          <div class="feature-panel">
+            <div class="panel-top"><span>event bus</span><span class="panel-live"><span class="dot-live"></span> streaming</span></div>
+            <div class="event-stream">
+              <div><span class="ev-time">12:01:04</span><span class="ev-name">task.created</span><span class="ev-id">#a3f1</span></div>
+              <div><span class="ev-time">12:01:04</span><span class="ev-name">task.started</span><span class="ev-id">#a3f1</span></div>
+              <div><span class="ev-time">12:01:06</span><span class="ev-name">task.completed</span><span class="ev-id">#a3f1</span></div>
+              <div><span class="ev-time">12:01:09</span><span class="ev-name">task.failed</span><span class="ev-id">#b91c</span></div>
+              <div><span class="ev-time">12:01:12</span><span class="ev-name">task.reclaimed</span><span class="ev-id">#c40e</span></div>
+            </div>
+            <div class="panel-foot"><span>EventBus</span><span>health check</span></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section section-tint">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">CAPABILITY MATRIX</span>
+          <h2>不同存储下的能力边界</h2>
+          <p>同一套 API，随存储后端提供不同的能力。选择之前，先确认你的部署形态。</p>
+        </div>
+        <div class="cap-wrap">
+          <table class="cap-table">
+            <thead>
+              <tr><th>能力</th><th>Memory</th><th>SQLite</th><th>Redis</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>即时任务与优先级</td><td><span class="cap-yes">支持</span></td><td><span class="cap-yes">支持</span></td><td><span class="cap-yes">支持</span></td></tr>
+              <tr><td>延时 / 周期 / Cron</td><td><span class="cap-yes">支持</span></td><td><span class="cap-yes">支持</span></td><td><span class="cap-yes">支持</span></td></tr>
+              <tr><td>任务状态持久化</td><td><span class="cap-no">进程内</span></td><td><span class="cap-yes">落盘</span></td><td><span class="cap-yes">持久化</span></td></tr>
+              <tr><td>多节点共享队列</td><td><span class="cap-no">不支持</span></td><td><span class="cap-no">不支持</span></td><td><span class="cap-yes">支持</span></td></tr>
+              <tr><td>分布式锁与看门狗</td><td><span class="cap-no">进程内锁</span></td><td><span class="cap-no">进程内锁</span></td><td><span class="cap-yes">Redis 锁</span></td></tr>
+              <tr><td>跨节点故障回收</td><td><span class="cap-no">不支持</span></td><td><span class="cap-no">不支持</span></td><td><span class="cap-yes">支持</span></td></tr>
+              <tr><td>预取与跨节点指标</td><td><span class="cap-no">不需要</span></td><td><span class="cap-no">不需要</span></td><td><span class="cap-yes">支持</span></td></tr>
+              <tr><td>额外依赖</td><td><span class="cap-muted">无</span></td><td><span class="cap-muted">aiosqlite</span></td><td><span class="cap-muted">redis</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="boundary">
+          <div class="boundary-copy">
+            <span class="eyebrow">HONEST LIMITS</span>
+            <h2>知道它不做什么，比知道它做什么更重要</h2>
+            <p>NeoTask 是一个聚焦的任务队列，而不是万能工作流平台。以下能力目前不具备，或仅以可选项提供：</p>
+          </div>
+          <ul class="boundary-list">
+            <li>
+              <span class="boundary-icon">—</span>
+              <div><strong>DAG 工作流编排</strong><p>规划于 v1.5，当前版本未实现。多任务串联请在业务层组合提交与等待。</p></div>
+            </li>
+            <li>
+              <span class="boundary-icon">—</span>
+              <div><strong>多租户与配额</strong><p>暂无租户隔离与资源配额，规划在企业级版本中提供。</p></div>
+            </li>
+            <li>
+              <span class="boundary-icon">○</span>
+              <div><strong>Web UI</strong><p>以 <code>neotask[ui]</code> 扩展提供，需要自行装配，TaskPool 不会自动挂载。</p></div>
+            </li>
+            <li>
+              <span class="boundary-icon">○</span>
+              <div><strong>进度回调</strong><p><code>on_progress</code> 订阅接口已存在，但进度发布链路当前版本尚未接通。</p></div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta">
+      <div class="container cta-inner">
+        <div class="cta-copy">
+          <span class="eyebrow">NEXT STEP</span>
+          <h2>用几分钟验证它是否适合你</h2>
+          <p>安装后提交一个真实任务，比阅读任何特性列表都更有说服力。</p>
+        </div>
+        <div class="cta-actions">
+          <div class="install-box install-box-light">
+            <span class="install-prompt">$</span>
+            <code>pip install neotask</code>
+            <button class="copy-btn" data-copy="pip install neotask" aria-label="复制安装命令">
+              <svg class="icon icon-sm copy-icon"><use href="#i-copy"/></svg>
+              <svg class="icon icon-sm check-icon"><use href="#i-check"/></svg>
+            </button>
+          </div>
+          <div class="cta-buttons">
+            <a class="btn btn-primary btn-lg" href="/docs/quickstart.html">阅读快速上手 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+            <a class="btn btn-ghost btn-lg" href="/docs/configuration.html">配置参考</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- @include footer -->
+  <script src="/assets/js/site.js" defer></script>
+</body>
+</html>

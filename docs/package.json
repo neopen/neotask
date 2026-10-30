@@ -1,0 +1,8 @@
+{
+  "name": "neotask-site",
+  "private": true,
+  "description": "NeoTask official website (static build)",
+  "scripts": {
+    "build": "node site/build.mjs"
+  }
+}

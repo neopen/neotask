@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>文档 · NeoTask</title>
+  <meta name="description" content="NeoTask 文档中心：快速上手、配置参考、核心概念、架构设计、分布式、故障恢复、API 参考与性能基准。">
+  <link rel="canonical" href="{{HOMEPAGE}}/docs/">
+  <meta property="og:site_name" content="NeoTask">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="NeoTask 文档中心">
+  <meta property="og:description" content="从第一条任务到生产运维：快速上手、配置、架构、可靠性与 API 参考。">
+  <meta property="og:url" content="{{HOMEPAGE}}/docs/">
+  <meta property="og:image" content="{{HOMEPAGE}}/assets/img/og.png">
+  <meta name="twitter:image" content="{{HOMEPAGE}}/assets/img/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/css/site.css">
+  <link rel="stylesheet" href="/assets/css/docs.css">
+</head>
+<body class="docs-page docs-landing">
+  <!-- @include icons -->
+  <!-- @include header -->
+
+  <main id="main">
+    <section class="docs-hero">
+      <div class="docs-hero-inner">
+        <span class="eyebrow">DOCUMENTATION</span>
+        <h1>NeoTask 文档</h1>
+        <p>从安装第一个任务，到理解分布式链路与故障恢复。每篇文档都对照源码版本编写，标注能力边界与规划中的功能。</p>
+        <div class="docs-hero-actions">
+          <a class="btn btn-primary" href="/docs/quickstart.html">快速上手 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+          <a class="btn btn-outline" href="/docs/api-reference.html">API 参考</a>
+          <a class="btn btn-outline" href="{{REPO}}" target="_blank" rel="noopener"><svg class="icon icon-sm"><use href="#i-github"/></svg> 源码仓库</a>
+        </div>
+        <div class="docs-meta-row">
+          <span>{{DOCS_COUNT}} 篇文档</span>
+          <span>Python {{PYTHON}}</span>
+          <span>v{{VERSION}}</span>
+          <span>简体中文</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="docs-hub">
+      <div class="hub-search">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="docsHubSearch" type="search" placeholder="搜索文档，例如：Redis、Cron、重试、配置" aria-label="搜索文档" autocomplete="off">
+        <span class="hub-search-hint">/</span>
+      </div>
+
+      <div class="docs-quick">
+        <a class="docs-quick-item" href="/docs/quickstart.html">
+          <span>5 分钟</span>
+          <strong>跑通第一个任务</strong>
+          <p>安装、执行器、提交与等待结果。</p>
+        </a>
+        <a class="docs-quick-item" href="/docs/configuration.html">
+          <span>配置</span>
+          <strong>选对存储与并发</strong>
+          <p>三档部署配置与真实生效参数。</p>
+        </a>
+        <a class="docs-quick-item" href="/docs/failure-recovery.html">
+          <span>运维</span>
+          <strong>任务丢失怎么办</strong>
+          <p>心跳、回收器与死信队列。</p>
+        </a>
+      </div>
+
+      <div class="docs-hub-intro" style="margin-top:40px">
+        <h2>推荐阅读</h2>
+        <a href="/docs/quickstart.html">从快速上手开始 →</a>
+      </div>
+      <div class="doc-feature-grid">
+{{DOCS_FEATURED}}
+      </div>
+
+      <div id="docsGroups">
+{{DOCS_GROUPS}}
+      </div>
+
+      <p class="hub-empty" id="docsHubEmpty" hidden>没有找到匹配的文档，试试「快速上手」「Redis」「Cron」或「重试」。</p>
+
+      <div class="hub-foot">
+        <div>
+          <h2>发现文档问题？</h2>
+          <p>文档基于源码与发布记录编写。如果发现过期或错误内容，欢迎提交 Issue 或 PR。</p>
+        </div>
+        <a class="btn btn-outline" href="{{ISSUES}}" target="_blank" rel="noopener">提交文档问题 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+      </div>
+    </div>
+  </main>
+
+  <!-- @include footer -->
+  <script src="/assets/js/site.js" defer></script>
+</body>
+</html>

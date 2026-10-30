@@ -3,122 +3,159 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NeoTask 延时任务：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路 · NeoTask 文档</title>
-  <meta name="description" content="NeoTask 延时任务：主链路的最小堆 DelayedQueue 与 0.1 秒精度机制、opt-in 的 TimeWheel 时间轮接线（量程回退/等待期取消/停机回投）、周期任务与 Cron 的 1 秒扫描调度、触发计划易失的持久化边界，以及 4 个延时调度故障场景。">
-  <meta name="robots" content="index, follow">
+  <title>延时与定时任务 · NeoTask 文档</title>
+  <meta name="description" content="延时队列、最小堆、可选时间轮，以及周期任务和 Cron 调度的完整链路。">
   <link rel="canonical" href="https://task.helpenx.com/docs/delayed-tasks.html">
   <meta property="og:site_name" content="NeoTask 文档">
-  <meta property="og:title" content="NeoTask 延时任务：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路">
-  <meta property="og:description" content="NeoTask 延时任务：主链路的最小堆 DelayedQueue 与 0.1 秒精度机制、opt-in 的 TimeWheel 时间轮接线（量程回退/等待期取消/停机回投）、周期任务与 Cron 的 1 秒扫描调度、触发计划易失的持久化边界，以及 4 个延时调度故障场景。">
   <meta property="og:type" content="article">
+  <meta property="og:title" content="延时与定时任务 · NeoTask 文档">
+  <meta property="og:description" content="延时队列、最小堆、可选时间轮，以及周期任务和 Cron 调度的完整链路。">
   <meta property="og:url" content="https://task.helpenx.com/docs/delayed-tasks.html">
-  <meta name="twitter:card" content="summary">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>⏱️</text></svg>">
-  <style>
-:root{--brand:#0d9488;--brand-dark:#0f766e;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
-*{margin:0;padding:0;box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:var(--ink);background:#fff;line-height:1.75;font-size:16px}
-a{color:var(--brand);text-decoration:none}a:hover{color:var(--brand-dark);text-decoration:underline}
-.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
-.topbar .brand .doc-badge{font-size:12px;font-weight:600;color:#fff;background:var(--brand);border-radius:6px;padding:2px 8px}
-.topbar nav{display:flex;gap:20px;font-size:14.5px}
-.topbar nav a{color:var(--muted);font-weight:500}
-.topbar nav a:hover{color:var(--brand)}
-.wrap{display:flex;max-width:1280px;margin:0 auto;padding:0 16px}
-.sidebar{width:264px;flex-shrink:0;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 40px 0;border-right:1px solid var(--line)}
-.sidebar .side-home{display:block;font-weight:600;color:var(--ink);margin-bottom:16px;font-size:15px}
-.sidebar .side-home:hover{color:var(--brand);text-decoration:none}
-.sidebar h4{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px;font-weight:600}
-.sidebar a{display:block;padding:5px 10px;border-radius:6px;font-size:14px;color:#334155;line-height:1.5}
-.sidebar a:hover{background:var(--bg);color:var(--brand);text-decoration:none}
-.sidebar a.active{background:var(--brand);color:#fff}
-.content{flex:1;min-width:0;padding:32px 20px 60px 36px;max-width:860px}
-.toc-mobile{display:none;margin-bottom:20px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
-.toc-mobile summary{cursor:pointer;font-weight:600;color:var(--ink)}
-.toc-mobile a{display:block;padding:3px 0;font-size:14px}
-.article h1{font-size:1.9em;line-height:1.35;margin:.4em 0 .8em}
-.article h2{font-size:1.45em;margin:1.8em 0 .7em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
-.article h3{font-size:1.22em;margin:1.5em 0 .6em}
-.article h4{font-size:1.08em;margin:1.3em 0 .5em}
-.article p{margin:.85em 0}
-.article ul,.article ol{padding-left:1.6em;margin:.7em 0}
-.article li{margin:.35em 0}
-.article img{max-width:100%;height:auto;border-radius:8px}
-.article table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:.94em;display:block;overflow-x:auto}
-.article th,.article td{border:1px solid var(--line);padding:8px 12px;text-align:left}
-.article th{background:var(--bg);font-weight:600}
-.article tr:nth-child(even) td{background:#fbfdff}
-.article blockquote{margin:1.1em 0;padding:.7em 1.1em;border-left:4px solid var(--brand);background:var(--bg);border-radius:0 8px 8px 0;color:#334155}
-.article blockquote p{margin:.3em 0}
-.article code:not(pre code){background:#eef2f7;color:#c7254e;padding:.15em .4em;border-radius:4px;font-size:.88em;word-break:break-word}
-.article pre.hljs{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0;line-height:1.6}
-.article pre.hljs code{background:none;padding:0;color:var(--ink);font-size:.9em;font-family:ui-monospace,SFMono-Regular,'Cascadia Code',Consolas,Menlo,monospace}
-.article pre.mermaid{text-align:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0}
-.article hr{border:none;border-top:1px solid var(--line);margin:2em 0}
-.article .success,.article .tips,.article .warning,.article .danger{border-radius:8px;padding:.9em 1.1em;margin:1.1em 0;border:1px solid}
-.article .success{border-color:#a7f3d0;background:#ecfdf5}.article .success p:first-of-type::before{content:'✅ '}
-.article .tips{border-color:#bfdbfe;background:#eff6ff}.article .tips p:first-of-type::before{content:'💡 '}
-.article .warning{border-color:#fde68a;background:#fffbeb}.article .warning p:first-of-type::before{content:'⚠️ '}
-.article .danger{border-color:#fecaca;background:#fef2f2}.article .danger p:first-of-type::before{content:'🚫 '}
-.article .success>p:first-child,.article .tips>p:first-child,.article .warning>p:first-child,.article .danger>p:first-child{margin-top:0}
-.article .success>p:last-child,.article .tips>p:last-child,.article .warning>p:last-child,.article .danger>p:last-child{margin-bottom:0}
-.doc-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--muted)}
-.doc-meta .tag{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
-.doc-nav{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
-.doc-nav a{font-weight:600}
-footer{border-top:1px solid var(--line);padding:22px 24px;text-align:center;color:var(--muted);font-size:13.5px}
-footer a{color:var(--muted);margin:0 10px}
-footer a:hover{color:var(--brand)}
-@media (max-width:960px){
-  .sidebar{display:none}
-  .toc-mobile{display:block}
-  .content{padding:20px 6px 50px}
-  .topbar nav{gap:12px}
-}
-</style>
-  <style>
-.hljs{color:#24292e;background:#f6f8fa}
-.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.constant_{color:#d73a49}
-.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}
-.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}
-.hljs-string,.hljs-meta .hljs-string,.hljs-regexp{color:#032f62}
-.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-tag,.hljs-subst,.hljs-symbol{color:#e36209}
-.hljs-built_in,.hljs-class .hljs-title{color:#e36209}
-.hljs-comment,.hljs-meta,.hljs-quote{color:#6a737d}
-.hljs-section{color:#005cc5;font-weight:700}
-.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
-</style>
+  <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/css/site.css">
+  <link rel="stylesheet" href="/assets/css/docs.css">
 </head>
-<body>
-  <header class="topbar">
-    <a class="brand" href="index.html">⏱️ NeoTask <span class="doc-badge">文档</span></a>
-    <nav>
-      <a href="https://task.helpenx.com" target="_blank" rel="noopener">产品官网</a>
-      <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+<body class="docs-page">
+  <a class="skip-link" href="#main">跳到主要内容</a>
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="/" aria-label="NeoTask 首页">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="9" fill="#0b1713"/>
+        <path d="M9.5 22.5v-13l13 13v-13" fill="none" stroke="#2dd4bf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
+      </svg>
+      <span class="brand-name">NeoTask</span>
+      <span class="brand-version">v1.0.5</span>
+    </a>
+
+    <nav class="site-nav" id="siteNav" aria-label="主导航">
+      <a class="site-nav-link " href="/features.html">产品能力</a>
+      <a class="site-nav-link is-active" href="/docs/">文档</a>
+      <a class="site-nav-link " href="/changelog.html">更新日志</a>
+      <a class="site-nav-link " href="/community.html">社区</a>
     </nav>
-  </header>
-  <div class="wrap">
-    <aside class="sidebar">
-      <a class="side-home" href="index.html">⏱️ 分布式任务调度系统 · 文档中心</a>
-      <h4>技术分析</h4>
-<h4>API 与配置参考</h4><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a>
-<h4>实现与源码分析</h4><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html" class="active">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a>
-<h4>设计与方案</h4><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a>
-<h4>项目概览</h4><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a>
-<h4>入门与使用</h4><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a>
-<h4>性能与评测</h4><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a>
-<h4>实践与运维</h4><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a>
-<h4>架构与核心设计</h4><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a>
-<h4>版本与演进</h4><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a>
+
+    <div class="header-actions">
+      <a class="gh-star" href="https://github.com/neopen/neotask" target="_blank" rel="noopener" aria-label="在 GitHub 上为 NeoTask 加 Star">
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.9 5.33.9 11.6c0 4.9 3.17 9.05 7.57 10.52.55.1.75-.24.75-.53v-1.85c-3.08.67-3.73-1.48-3.73-1.48-.5-1.28-1.23-1.62-1.23-1.62-1-.69.08-.68.08-.68 1.11.08 1.7 1.14 1.7 1.14.98 1.69 2.58 1.2 3.2.92.1-.71.39-1.2.7-1.48-2.46-.28-5.05-1.23-5.05-5.48 0-1.21.43-2.2 1.14-2.98-.11-.28-.49-1.4.11-2.92 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.6 1.52.22 2.64.11 2.92.71.78 1.14 1.77 1.14 2.98 0 4.26-2.6 5.2-5.06 5.47.4.35.76 1.03.76 2.07v3.07c0 .29.2.64.76.53a11.1 11.1 0 0 0 7.56-10.52C23.1 5.33 18.27.5 12 .5z"/></svg>
+        <span>Star</span>
+        <span class="gh-star-count">8</span>
+      </a>
+      <a class="btn btn-primary btn-sm header-cta" href="/docs/quickstart.html">快速开始</a>
+      <button class="nav-toggle" id="navToggle" aria-label="打开菜单" aria-expanded="false" aria-controls="siteNav">
+        <span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+  <div class="docs-shell">
+    <aside class="docs-sidebar" id="docsSidebar">
+      <a class="docs-sidebar-home" href="/docs/"><span class="docs-sidebar-badge">DOCS</span> 文档中心</a>
+      <div class="docs-search-wrap">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="docsSearch" type="search" placeholder="搜索文档" autocomplete="off" aria-label="搜索文档">
+      </div>
+      <nav class="docs-nav" id="docsNav" aria-label="文档导航">
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">开始使用</p>
+        <a class="docs-nav-link" href="/docs/quickstart.html" data-search="快速上手 安装 NeoTask，用几行代码提交第一个任务，掌握同步等待、异步等待与上下文管理器三种用法。">快速上手</a>
+        <a class="docs-nav-link" href="/docs/configuration.html" data-search="配置参考 TaskPoolConfig / SchedulerConfig 全部字段、默认值与真实生效情况，以及开发、单机、分布式三档配置。">配置参考</a>
+        <a class="docs-nav-link" href="/docs/best-practices.html" data-search="最佳实践 执行器设计、并发度、重试与预取的取舍，以及生产环境常见的配置陷阱。">最佳实践</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">核心概念</p>
+        <a class="docs-nav-link" href="/docs/core-features.html" data-search="核心功能 从组件树到两阶段装配，完整拆解任务提交、执行、回收的主链路。">核心功能</a>
+        <a class="docs-nav-link" href="/docs/architecture.html" data-search="架构设计 三种部署形态、装配拓扑、两阶段生命周期与关键架构决策。">架构设计</a>
+        <a class="docs-nav-link" href="/docs/decentralization.html" data-search="去中心化架构 对等节点、抢占式消费与无主架构：多节点如何共享队列而不需要调度中心。">去中心化架构</a>
+        <a class="docs-nav-link" href="/docs/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种存储后端的实现差异、数据格式与清理策略。">持久化存储</a>
+        <a class="docs-nav-link" href="/docs/priority-queue.html" data-search="优先级队列 四级优先级在堆与 Redis ZSET 上的双实现，同优先级 FIFO 与延迟迁移。">优先级队列</a>
+        <a class="docs-nav-link is-active" href="/docs/delayed-tasks.html" data-search="延时与定时任务 延时队列、最小堆、可选时间轮，以及周期任务和 Cron 调度的完整链路。">延时与定时任务</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">可靠性与可观测性</p>
+        <a class="docs-nav-link" href="/docs/failure-recovery.html" data-search="故障恢复 任务回收器、僵尸锁扫描与孤儿任务处理，节点宕机后任务如何被重新拾起。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/distributed-lock.html" data-search="分布式锁 Redis + Lua + 看门狗：任务级互斥、锁续期与故障场景下的正确性边界。">分布式锁</a>
+        <a class="docs-nav-link" href="/docs/prefetch.html" data-search="预取机制 批量拉取、高低水位与 HYBRID 自适应策略，以及预取对优先级顺序的影响。">预取机制</a>
+        <a class="docs-nav-link" href="/docs/monitoring.html" data-search="节点监控 事件驱动的指标采集、滑动窗口、健康检查与 Prometheus 集成方式。">节点监控</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">参考</p>
+        <a class="docs-nav-link" href="/docs/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 共 54 个公开方法的签名总表、委托关系与行为说明。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/benchmarks.html" data-search="性能基准 官方基准脚本与实测数据解读：队列吞吐、端到端吞吐、延迟分布与调优建议。">性能基准</a>
+        <a class="docs-nav-link" href="/docs/evolution.html" data-search="版本演进 从 0.1.0 到 1.0.5 的真实发布史，以及每个版本解决的问题。">版本演进</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">路线图</p>
+        <a class="docs-nav-link" href="/docs/dag-workflow.html" data-search="任务编排（规划） DAG 工作流引擎的设计推演：条件分支、并行执行与依赖管理，规划于 v1.5。">任务编排（规划）<span class="nav-soon">规划</span></a>
+      </div>
+      </nav>
+      <p class="docs-nav-empty" id="docsNavEmpty" hidden>没有匹配的文档</p>
     </aside>
-    <main class="content">
-      <details class="toc-mobile"><summary>📑 文档目录</summary><div><strong style="font-size:13px;color:var(--muted)">技术分析</strong></div><div><strong style="font-size:13px;color:var(--muted)">API 与配置参考</strong><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a></div><div><strong style="font-size:13px;color:var(--muted)">实现与源码分析</strong><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a></div><div><strong style="font-size:13px;color:var(--muted)">设计与方案</strong><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a></div><div><strong style="font-size:13px;color:var(--muted)">项目概览</strong><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a></div><div><strong style="font-size:13px;color:var(--muted)">入门与使用</strong><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a></div><div><strong style="font-size:13px;color:var(--muted)">性能与评测</strong><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a></div><div><strong style="font-size:13px;color:var(--muted)">实践与运维</strong><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a></div><div><strong style="font-size:13px;color:var(--muted)">架构与核心设计</strong><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a></div><div><strong style="font-size:13px;color:var(--muted)">版本与演进</strong><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a></div></details>
+    <main class="docs-main" id="main">
+      <nav class="breadcrumb" aria-label="面包屑">
+        <a href="/">首页</a><span>/</span><a href="/docs/">文档</a><span>/</span><span>核心概念</span>
+      </nav>
+      <details class="docs-mobile-nav">
+        <summary>文档导航</summary>
+        
+      <nav class="docs-nav" id="docsNavMobile" aria-label="文档导航">
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">开始使用</p>
+        <a class="docs-nav-link" href="/docs/quickstart.html" data-search="快速上手 安装 NeoTask，用几行代码提交第一个任务，掌握同步等待、异步等待与上下文管理器三种用法。">快速上手</a>
+        <a class="docs-nav-link" href="/docs/configuration.html" data-search="配置参考 TaskPoolConfig / SchedulerConfig 全部字段、默认值与真实生效情况，以及开发、单机、分布式三档配置。">配置参考</a>
+        <a class="docs-nav-link" href="/docs/best-practices.html" data-search="最佳实践 执行器设计、并发度、重试与预取的取舍，以及生产环境常见的配置陷阱。">最佳实践</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">核心概念</p>
+        <a class="docs-nav-link" href="/docs/core-features.html" data-search="核心功能 从组件树到两阶段装配，完整拆解任务提交、执行、回收的主链路。">核心功能</a>
+        <a class="docs-nav-link" href="/docs/architecture.html" data-search="架构设计 三种部署形态、装配拓扑、两阶段生命周期与关键架构决策。">架构设计</a>
+        <a class="docs-nav-link" href="/docs/decentralization.html" data-search="去中心化架构 对等节点、抢占式消费与无主架构：多节点如何共享队列而不需要调度中心。">去中心化架构</a>
+        <a class="docs-nav-link" href="/docs/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种存储后端的实现差异、数据格式与清理策略。">持久化存储</a>
+        <a class="docs-nav-link" href="/docs/priority-queue.html" data-search="优先级队列 四级优先级在堆与 Redis ZSET 上的双实现，同优先级 FIFO 与延迟迁移。">优先级队列</a>
+        <a class="docs-nav-link is-active" href="/docs/delayed-tasks.html" data-search="延时与定时任务 延时队列、最小堆、可选时间轮，以及周期任务和 Cron 调度的完整链路。">延时与定时任务</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">可靠性与可观测性</p>
+        <a class="docs-nav-link" href="/docs/failure-recovery.html" data-search="故障恢复 任务回收器、僵尸锁扫描与孤儿任务处理，节点宕机后任务如何被重新拾起。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/distributed-lock.html" data-search="分布式锁 Redis + Lua + 看门狗：任务级互斥、锁续期与故障场景下的正确性边界。">分布式锁</a>
+        <a class="docs-nav-link" href="/docs/prefetch.html" data-search="预取机制 批量拉取、高低水位与 HYBRID 自适应策略，以及预取对优先级顺序的影响。">预取机制</a>
+        <a class="docs-nav-link" href="/docs/monitoring.html" data-search="节点监控 事件驱动的指标采集、滑动窗口、健康检查与 Prometheus 集成方式。">节点监控</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">参考</p>
+        <a class="docs-nav-link" href="/docs/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 共 54 个公开方法的签名总表、委托关系与行为说明。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/benchmarks.html" data-search="性能基准 官方基准脚本与实测数据解读：队列吞吐、端到端吞吐、延迟分布与调优建议。">性能基准</a>
+        <a class="docs-nav-link" href="/docs/evolution.html" data-search="版本演进 从 0.1.0 到 1.0.5 的真实发布史，以及每个版本解决的问题。">版本演进</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">路线图</p>
+        <a class="docs-nav-link" href="/docs/dag-workflow.html" data-search="任务编排（规划） DAG 工作流引擎的设计推演：条件分支、并行执行与依赖管理，规划于 v1.5。">任务编排（规划）<span class="nav-soon">规划</span></a>
+      </div>
+      </nav>
+      
+      </details>
       <article class="article">
-        <div class="doc-meta"><span class="tag">NeoTask</span><span class="tag">更新 2026-05-10</span><a href="https://task.helpenx.com" target="_blank" rel="noopener">task.helpenx.com ↗</a></div>
-        <h1>NeoTask 延时任务详解</h1>
-<p>📚 <a href="index.html">返回首页</a> | 📖 <a href="quickstart.html">快速上手</a> | 📘 <a href="api-reference.html">API 参考</a> | ⚙️ <a href="configuration.html">配置说明</a> | 🐙  <a href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a href="https://task.helpenx.com">NeoTask 官网</a></p>
+        <header class="article-header">
+          <p class="article-eyebrow">核心概念</p>
+          <h1>延时与定时任务</h1>
+          <p class="article-lede">延时队列、最小堆、可选时间轮，以及周期任务和 Cron 调度的完整链路。</p>
+          <div class="article-meta">
+            <span>更新于 2026-05-10</span>
+            <span class="dot"></span>
+            <span>约 18 分钟 读完</span>
+            <span class="dot"></span>
+            <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg></a>
+          </div>
+        </header>
+        <div class="article-body">
 <blockquote>
 <p><strong>文档定位</strong>：这是一篇实现细节文档。重点放在源码路径、状态变化、数据结构和异常边界，方便开发者从“能用”进一步理解“为什么这样实现”。<br>
 <strong>事实边界</strong>：实现文档：功能、接口和代码行为以文中标注版本对应的源码为准；仓库后续版本可能发生变化。<br>
@@ -129,7 +166,7 @@ footer a:hover{color:var(--brand)}
 <strong>相关阅读</strong>：<a href="priority-queue.html">优先级</a>、<a href="failure-recovery.html">故障恢复</a>、<a href="benchmarks.html">性能基准</a>。</p>
 </blockquote>
 <hr>
-<h2>概述</h2>
+<h2 id="概述">概述</h2>
 <p>延时/定时能力是任务调度系统的&quot;全场景覆盖&quot;关键。NeoTask 从 v0.3 起提供了完整的定时调度 API：<strong>延时执行（delay）</strong>、<strong>指定时间点（at）</strong>、<strong>固定间隔（interval）</strong>、<strong>Cron 表达式</strong>。底层是&quot;单节点内存定时器（最小堆）为主、时间轮为 opt-in 旁路 + 全链路任务实体持久化&quot;：</p>
 <table>
 <thead>
@@ -173,7 +210,7 @@ footer a:hover{color:var(--brand)}
     WP --&gt; LK[执行锁 lock:task:{id}]
 </pre>
 <hr>
-<h2>延时任务的核心挑战</h2>
+<h2 id="延时任务的核心挑战">延时任务的核心挑战</h2>
 <ol>
 <li class="lvl-3">
 <p><strong>时间精度</strong>：误差要可接受。NeoTask 的延时精度 = 0.1s（<code>DelayedQueue.check_interval</code>），周期任务精度 = 1s（扫描间隔）；</p>
@@ -189,7 +226,7 @@ footer a:hover{color:var(--brand)}
 </li>
 </ol>
 <hr>
-<h2>主链路解剖：DelayedQueue 最小堆</h2>
+<h2 id="主链路解剖：DelayedQueue 最小堆">主链路解剖：DelayedQueue 最小堆</h2>
 <h3>数据结构与入队（🔧 <code>src/neotask/queue/delayed_queue.py</code>）</h3>
 <pre class="hljs"><code><span class="hljs-keyword">class</span> <span class="hljs-title class_">DelayedQueue</span>:
     <span class="hljs-keyword">def</span> <span class="hljs-title function_">__init__</span>(<span class="hljs-params">self, check_interval: <span class="hljs-built_in">float</span> = <span class="hljs-number">0.1</span></span>):
@@ -281,7 +318,7 @@ footer a:hover{color:var(--brand)}
 </code></pre>
 <p><strong>为什么延时任务复用 TaskPool.submit(delay=) 而不是独立的调度组件？</strong> 这是刻意的架构决策：延时只是&quot;入队时机不同&quot;，任务的生命周期（创建/状态机/重试/超时回收/结果查询）与即时任务<strong>完全共用一套</strong>——<code>submit_delayed</code> 返回的 task_id 可以像即时任务一样 <code>wait_for_result</code>、重试、取消，业务心智负担为零。如果延时任务走独立的&quot;定时器组件直接调 executor&quot;，就得重复实现生命周期、持久化、失败恢复一整套逻辑。<strong>把&quot;何时触发&quot;与&quot;如何执行&quot;彻底分离，是任务调度框架的基本功</strong>。</p>
 <hr>
-<h2>持久化：实体不丢，触发计划易失</h2>
+<h2 id="持久化：实体不丢，触发计划易失">持久化：实体不丢，触发计划易失</h2>
 <h3>三层数据，两层持久</h3>
 <table>
 <thead>
@@ -336,7 +373,7 @@ footer a:hover{color:var(--brand)}
 </code></pre>
 <p><strong>幂等/不重复靠的是 worker 侧</strong>（执行前 PENDING 检查 + <code>lock:task:{id}</code> 互斥，见<a href="distributed-lock.html">分布式锁</a>），不是&quot;分布式延时队列&quot;。这里刻意没有做&quot;多节点同时 ZRANGEBYSCORE 扫描 + SET NX 防重&quot;的多级架构——单点触发在工程上是合理简化：触发本身是廉价的入队动作（不做业务），真正的执行安全和负载均衡全部下沉到共享队列层，<strong>架构上不存在&quot;分布式定时器&quot;这一层</strong>。代价是需要跨节点容错的延时（提交节点挂了任务必须换节点触发）当前版本做不到，请在外层加补偿（见故障场景 1）。</p>
 <hr>
-<h2>TimeWheel：可选的高性能延时通道</h2>
+<h2 id="TimeWheel：可选的高性能延时通道">TimeWheel：可选的高性能延时通道</h2>
 <h3>真实实现解剖（🔧 <code>src/neotask/scheduler/time_wheel.py</code>）</h3>
 <pre class="hljs"><code><span class="hljs-meta">@dataclass</span>
 <span class="hljs-keyword">class</span> <span class="hljs-title class_">TimeWheelTask</span>:
@@ -492,7 +529,7 @@ slot = <span class="hljs-keyword">await</span> wheel.add_task(<span class="hljs-
     ...  <span class="hljs-comment"># 超过容量上限，需要业务补偿</span>
 </code></pre>
 <hr>
-<h2>周期任务与 Cron：PeriodicTaskManager 全链路</h2>
+<h2 id="周期任务与 Cron：PeriodicTaskManager 全链路">周期任务与 Cron：PeriodicTaskManager 全链路</h2>
 <h3>双模型结构</h3>
 <p>周期任务不是&quot;重复提交的延时任务&quot;，它有独立的定义/实例/执行记录三层（🔧 <code>scheduler/periodic.py</code>）：</p>
 <pre class="hljs"><code>PeriodicTaskDefinition  （周期任务定义：interval/cron、data、max_runs、start_at/end_at、missed_policy、ttl）
@@ -575,7 +612,7 @@ instance.next_run = <span class="hljs-variable language_">self</span>._calculate
 <h3>timeout 参数的隐藏代价</h3>
 <p><code>create_interval(timeout=60)</code> 会让每次执行<strong>同步等待结果</strong>（最长 60s），而 <code>_scheduler_loop</code> 是顺序 await 的——<strong>一个慢周期任务会阻塞整条周期调度循环</strong>，其他周期任务全部延误。默认 timeout=None 走异步分支没问题；显式设置 timeout 时，请评估该任务最长执行时间对调度循环的影响。</p>
 <hr>
-<h2>submit_at 与 Cron：时间换算与表达式</h2>
+<h2 id="submit_at 与 Cron：时间换算与表达式">submit_at 与 Cron：时间换算与表达式</h2>
 <ul class="lvl-0">
 <li class="lvl-2">
 <p><strong>submit_at</strong>：<code>delay = max(0, execute_at - now)</code> 后走 submit_delayed（🔧 纯时间换算，无独立队列）；</p>
@@ -588,7 +625,7 @@ instance.next_run = <span class="hljs-variable language_">self</span>._calculate
 </li>
 </ul>
 <hr>
-<h2>配置速查（🔧 <code>SchedulerConfig</code> 真实默认值）</h2>
+<h2 id="配置速查（🔧 SchedulerConfig 真实默认值）">配置速查（🔧 <code>SchedulerConfig</code> 真实默认值）</h2>
 <table>
 <thead>
 <tr>
@@ -647,7 +684,7 @@ instance.next_run = <span class="hljs-variable language_">self</span>._calculate
 <p>注意 <code>time_wheel_tick</code> 在 config 默认 1.0，而 <code>TimeWheel</code> 类默认 0.1——TaskScheduler 接线时用 config 值（1.0s 滴答），即 60 槽 × 100 轮 × 1s = <strong>100 分钟延迟上限、1 秒触发粒度</strong>。相比之下堆实现的精度自适应（任务越近睡越准）在秒级以下的延时上更细，这也正是时间轮保持 opt-in 的原因。</p>
 </blockquote>
 <hr>
-<h2>使用示例（真实 API 📝）</h2>
+<h2 id="使用示例（真实 API 📝）">使用示例（真实 API 📝）</h2>
 <pre class="hljs"><code><span class="hljs-keyword">from</span> neotask <span class="hljs-keyword">import</span> TaskScheduler, SchedulerConfig
 
 <span class="hljs-keyword">async</span> <span class="hljs-keyword">def</span> <span class="hljs-title function_">remind</span>(<span class="hljs-params">data</span>):
@@ -680,7 +717,7 @@ scheduler.submit_cron(data={<span class="hljs-string">&quot;action&quot;</span>:
 result = scheduler.wait_for_result(tid, timeout=<span class="hljs-number">60</span>)
 </code></pre>
 <hr>
-<h2>故障场景实战</h2>
+<h2 id="故障场景实战">故障场景实战</h2>
 <h3>场景 1：进程重启，延时任务集体&quot;蒸发&quot;</h3>
 <p><strong>现象</strong>：提交了一批 <code>submit(delay=3600)</code>（1 小时后执行）的任务；凌晨发布重启进程；1 小时后任务没跑，<code>task:{id}</code> 状态永远停在 PENDING，无任何日志。</p>
 <p><strong>根因</strong>：触发计划在 DelayedQueue 内存堆里，重启即失；实体虽在 Redis 但没有任何恢复逻辑把它重新入队。<strong>重启前已到期未执行的会丢，重启后到期的更不会执行</strong>。</p>
@@ -710,7 +747,7 @@ result = scheduler.wait_for_result(tid, timeout=<span class="hljs-number">60</sp
 <p><strong>根因</strong>：<code>_execute_periodic_task</code> 在 timeout 非空时 <code>await wait_for_result(...)</code>（最长 60s），而它是被 <code>_scheduler_loop</code> 顺序 await 的——<strong>一个慢任务把每秒扫描的调度循环堵死</strong>；若该任务失败重试链较长，阻塞更久，后面的周期任务集体错过 next_run，触发 missed 追赶（CATCH_UP 最多补 5 次）→ 追赶又排队 → 恶性循环。</p>
 <p><strong>解决</strong>：周期任务不设 timeout（默认异步 fire-and-forget，由 TaskPool 的 task_timeout 兜底执行超时）；确实需要同步确认结果的场景，把结果确认逻辑放进业务函数内部，别用调度器等结果。</p>
 <hr>
-<h2>版本与验证说明</h2>
+<h2 id="版本与验证说明">版本与验证说明</h2>
 <p>本文属于项目文档而不是永久不变的 API 契约。以下情况发生时，应重新核对源码或发布说明：</p>
 <ol>
 <li class="lvl-3">
@@ -724,7 +761,7 @@ result = scheduler.wait_for_result(tid, timeout=<span class="hljs-number">60</sp
 </li>
 </ol>
 <p>如果你要把本文内容用于生产环境，请优先使用仓库当前版本的 README、源码、测试和 Release 记录进行最终确认。</p>
-<h2>总结</h2>
+<h2 id="总结">总结</h2>
 <table>
 <thead>
 <tr>
@@ -769,7 +806,7 @@ result = scheduler.wait_for_result(tid, timeout=<span class="hljs-number">60</sp
 </table>
 <p>延时任务在 v1.0.2 是&quot;够用但别过度信任&quot;的模块：<strong>API 层语义完整（delay/at/interval/cron + 统一生命周期），调度层是朴素的单节点最小堆，可靠性层存在触发计划易失与多处静默失败</strong>。生产使用请记住三件事：发布窗口别压延时提交、到期回调要自己加补偿、周期任务别设 timeout。</p>
 <hr>
-<h2>相关链接</h2>
+<h2 id="相关链接">相关链接</h2>
 <p><a href="index.html">返回首页</a></p>
 <p><strong>入门与参考</strong></p>
 <ul class="lvl-0">
@@ -838,18 +875,70 @@ result = scheduler.wait_for_result(tid, timeout=<span class="hljs-number">60</sp
 </li>
 </ul>
 
+        </div>
       </article>
+      <nav class="docs-pager" aria-label="上一篇与下一篇">
+      <a class="pager-prev" href="/docs/priority-queue.html"><span>上一篇</span><strong>优先级队列</strong></a>
+      <a class="pager-next" href="/docs/failure-recovery.html"><span>下一篇</span><strong>故障恢复</strong></a>
+    </nav>
+      <p class="docs-feedback">发现文档问题？欢迎在 <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">GitHub Issues</a> 反馈。</p>
     </main>
+    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#%E6%A6%82%E8%BF%B0">概述</a><a href="#%E5%BB%B6%E6%97%B6%E4%BB%BB%E5%8A%A1%E7%9A%84%E6%A0%B8%E5%BF%83%E6%8C%91%E6%88%98">延时任务的核心挑战</a><a href="#%E4%B8%BB%E9%93%BE%E8%B7%AF%E8%A7%A3%E5%89%96%EF%BC%9ADelayedQueue%20%E6%9C%80%E5%B0%8F%E5%A0%86">主链路解剖：DelayedQueue 最小堆</a><a href="#%E6%8C%81%E4%B9%85%E5%8C%96%EF%BC%9A%E5%AE%9E%E4%BD%93%E4%B8%8D%E4%B8%A2%EF%BC%8C%E8%A7%A6%E5%8F%91%E8%AE%A1%E5%88%92%E6%98%93%E5%A4%B1">持久化：实体不丢，触发计划易失</a><a href="#TimeWheel%EF%BC%9A%E5%8F%AF%E9%80%89%E7%9A%84%E9%AB%98%E6%80%A7%E8%83%BD%E5%BB%B6%E6%97%B6%E9%80%9A%E9%81%93">TimeWheel：可选的高性能延时通道</a><a href="#%E5%91%A8%E6%9C%9F%E4%BB%BB%E5%8A%A1%E4%B8%8E%20Cron%EF%BC%9APeriodicTaskManager%20%E5%85%A8%E9%93%BE%E8%B7%AF">周期任务与 Cron：PeriodicTaskManager 全链路</a><a href="#submit_at%20%E4%B8%8E%20Cron%EF%BC%9A%E6%97%B6%E9%97%B4%E6%8D%A2%E7%AE%97%E4%B8%8E%E8%A1%A8%E8%BE%BE%E5%BC%8F">submit_at 与 Cron：时间换算与表达式</a><a href="#%E9%85%8D%E7%BD%AE%E9%80%9F%E6%9F%A5%EF%BC%88%F0%9F%94%A7%20SchedulerConfig%20%E7%9C%9F%E5%AE%9E%E9%BB%98%E8%AE%A4%E5%80%BC%EF%BC%89">配置速查（🔧 SchedulerConfig 真实默认值）</a><a href="#%E4%BD%BF%E7%94%A8%E7%A4%BA%E4%BE%8B%EF%BC%88%E7%9C%9F%E5%AE%9E%20API%20%F0%9F%93%9D%EF%BC%89">使用示例（真实 API 📝）</a><a href="#%E6%95%85%E9%9A%9C%E5%9C%BA%E6%99%AF%E5%AE%9E%E6%88%98">故障场景实战</a><a href="#%E7%89%88%E6%9C%AC%E4%B8%8E%E9%AA%8C%E8%AF%81%E8%AF%B4%E6%98%8E">版本与验证说明</a><a href="#%E6%80%BB%E7%BB%93">总结</a><a href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5">相关链接</a></nav>
   </div>
-  <footer>
-    <a href="https://task.helpenx.com" target="_blank" rel="noopener">NeoTask 官网</a>·
-    <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>·
-    <a href="index.html">文档中心</a>
-    <div style="margin-top:6px">© 2026 helpenx.com · 文档基线以文中标注版本对应的源码为准</div>
-  </footer>
-  <script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
-  </script>
+  <footer class="site-footer">
+  <div class="container">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a class="brand" href="/" aria-label="NeoTask 首页">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="9" fill="#10211b"/>
+            <path d="M9.5 22.5v-13l13 13v-13" fill="none" stroke="#2dd4bf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
+          </svg>
+          <span class="brand-name">NeoTask</span>
+        </a>
+        <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
+        <div class="footer-status"><span class="status-dot"></span> v1.0.5 · 发布于 2026-10-29</div>
+      </div>
+
+      <div class="footer-col">
+        <h3>产品</h3>
+        <a href="/features.html">产品能力</a>
+        <a href="/docs/">文档中心</a>
+        <a href="/changelog.html">更新日志</a>
+        <a href="https://pypi.org/project/neotask/" target="_blank" rel="noopener">PyPI</a>
+      </div>
+      <div class="footer-col">
+        <h3>文档</h3>
+        <a href="/docs/quickstart.html">快速上手</a>
+        <a href="/docs/architecture.html">架构设计</a>
+        <a href="/docs/api-reference.html">API 参考</a>
+        <a href="/docs/benchmarks.html">性能基准</a>
+      </div>
+      <div class="footer-col">
+        <h3>社区</h3>
+        <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/neopen/neotask/discussions" target="_blank" rel="noopener">Discussions</a>
+        <a href="https://github.com/neopen/neotask/tree/main/examples" target="_blank" rel="noopener">示例代码</a>
+      </div>
+      <div class="footer-col">
+        <h3>资源</h3>
+        <a href="/community.html">参与贡献</a>
+        <a href="https://pengline.cn" target="_blank" rel="noopener">技术博客</a>
+        <a href="https://github.com/neopen/neotask/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+        <a href="https://github.com/neopen/neotask/releases" target="_blank" rel="noopener">Release Notes</a>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p>© 2026 NeoTask · 由 <a href="https://pengline.cn" target="_blank" rel="noopener">NeoTask 作者 NeoPen</a> 维护 · 基于 MIT 协议开源</p>
+      <p class="footer-motto">Embedded by design. Observable by default.</p>
+    </div>
+  </div>
+</footer>
+
+  <script src="/assets/js/site.js" defer></script>
+  <script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'; mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
 </body>
 </html>

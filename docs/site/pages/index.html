@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoTask · 轻量级 Python 异步任务队列与调度器</title>
+  <meta name="description" content="NeoTask 是纯 Python 实现的嵌入式异步任务队列：无需部署 Redis 等中间件，内置优先级、延时、周期与 Cron 调度、自动重试、SQLite/Redis 持久化，可按需扩展到分布式集群。">
+  <meta name="keywords" content="Python 任务队列, 异步任务, 任务调度, Cron, asyncio, 分布式任务, Celery 替代">
+  <link rel="canonical" href="{{HOMEPAGE}}/">
+  <meta property="og:site_name" content="NeoTask">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="NeoTask · 轻量级 Python 异步任务队列">
+  <meta property="og:description" content="嵌入式、零外部服务、可平滑扩展。用几行 Python 代码处理耗时任务。">
+  <meta property="og:url" content="{{HOMEPAGE}}/">
+  <meta property="og:image" content="{{HOMEPAGE}}/assets/img/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="NeoTask · 轻量级 Python 异步任务队列">
+  <meta name="twitter:description" content="嵌入式、零外部服务、可平滑扩展。用几行 Python 代码处理耗时任务。">
+  <meta name="twitter:image" content="{{HOMEPAGE}}/assets/img/og.png">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/css/site.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "NeoTask",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "OS Independent",
+    "programmingLanguage": "Python",
+    "description": "轻量级 Python 异步任务队列与调度器，嵌入式设计，零外部服务，可扩展到分布式。",
+    "url": "{{HOMEPAGE}}",
+    "codeRepository": "{{REPO}}",
+    "license": "{{HOMEPAGE}}/LICENSE",
+    "softwareVersion": "{{VERSION}}",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  }
+  </script>
+</head>
+<body class="home-page">
+  <!-- @include icons -->
+  <!-- @include header -->
+
+  <main id="main">
+    <section class="hero">
+      <div class="hero-grid-bg" aria-hidden="true"></div>
+      <div class="container hero-layout">
+        <div class="hero-copy">
+          <a class="announce" href="/changelog.html#v{{VERSION}}">
+            <span class="announce-tag">NEW</span>
+            <span>v{{VERSION}} 已发布 · {{RELEASE_DATE}}</span>
+            <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
+          </a>
+          <h1>把耗时任务<br><span class="grad-text">交给后台。</span></h1>
+          <p class="hero-lede">NeoTask 是纯 Python 实现的嵌入式异步任务队列。<br class="br-lg">几行代码接入，无需部署消息中间件；需要时，再平滑扩展到分布式。</p>
+
+          <div class="install-box">
+            <span class="install-prompt">$</span>
+            <code>pip install neotask</code>
+            <button class="copy-btn" data-copy="pip install neotask" aria-label="复制安装命令">
+              <svg class="icon icon-sm copy-icon"><use href="#i-copy"/></svg>
+              <svg class="icon icon-sm check-icon"><use href="#i-check"/></svg>
+            </button>
+          </div>
+
+          <div class="hero-actions">
+            <a class="btn btn-primary btn-lg" href="/docs/quickstart.html">
+              快速开始
+              <svg class="icon icon-sm"><use href="#i-arrow"/></svg>
+            </a>
+            <a class="btn btn-ghost btn-lg" href="{{REPO}}" target="_blank" rel="noopener">
+              <svg class="icon icon-sm"><use href="#i-github"/></svg>
+              GitHub
+              <span class="btn-meta">{{STARS}} stars</span>
+            </a>
+          </div>
+
+          <ul class="hero-facts" aria-label="项目信息">
+            <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Python {{PYTHON}}</li>
+            <li><svg class="icon icon-xs"><use href="#i-check"/></svg> {{LICENSE}} License</li>
+            <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 无需外部服务</li>
+          </ul>
+        </div>
+
+        <div class="hero-visual" aria-hidden="true">
+          <div class="console-glow"></div>
+          <div class="hero-chip chip-redis"><span class="chip-dot"></span> Redis 可选</div>
+          <div class="hero-chip chip-async"><svg class="icon icon-xs"><use href="#i-bolt"/></svg> asyncio</div>
+          <div class="console">
+            <div class="console-top">
+              <div class="console-dots"><i></i><i></i><i></i></div>
+              <span class="console-title">neotask · task-pool</span>
+              <span class="console-live"><span class="live-dot"></span> running</span>
+            </div>
+            <div class="console-stats">
+              <div><span>Running</span><strong>3</strong></div>
+              <div><span>Queued</span><strong>128</strong></div>
+              <div><span>Completed</span><strong>12.4k</strong></div>
+            </div>
+            <ul class="task-list">
+              <li class="task">
+                <span class="task-id">#a3f1</span>
+                <span class="task-name">generate_image</span>
+                <span class="prio prio-high">HIGH</span>
+                <span class="task-state state-run">running</span>
+                <span class="task-bar" style="--p:76%"></span>
+              </li>
+              <li class="task">
+                <span class="task-id">#b91c</span>
+                <span class="task-name">transcode_video</span>
+                <span class="prio prio-normal">NORMAL</span>
+                <span class="task-state state-queue">queued</span>
+                <span class="task-bar" style="--p:0%"></span>
+              </li>
+              <li class="task">
+                <span class="task-id">#7d02</span>
+                <span class="task-name">send_daily_report</span>
+                <span class="prio prio-low">LOW</span>
+                <span class="task-state state-done">done 1.2s</span>
+                <span class="task-bar" style="--p:100%"></span>
+              </li>
+              <li class="task">
+                <span class="task-id">#c40e</span>
+                <span class="task-name">crawl_prices</span>
+                <span class="prio prio-normal">NORMAL</span>
+                <span class="task-state state-run">running</span>
+                <span class="task-bar" style="--p:42%"></span>
+              </li>
+              <li class="task">
+                <span class="task-id">#e88a</span>
+                <span class="task-name">cleanup_expired</span>
+                <span class="prio prio-low">LOW</span>
+                <span class="task-state state-queue">queued</span>
+                <span class="task-bar" style="--p:0%"></span>
+              </li>
+            </ul>
+            <div class="console-foot">
+              <span class="console-tag"><svg class="icon icon-xs"><use href="#i-database"/></svg> memory</span>
+              <span class="console-tag"><svg class="icon icon-xs"><use href="#i-sliders"/></svg> workers=10</span>
+              <span class="console-tag">v{{VERSION}}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="container proof-strip">
+        <div class="proof-item"><span class="proof-num">3</span><span class="proof-label">存储后端<br>Memory / SQLite / Redis</span></div>
+        <div class="proof-item"><span class="proof-num">4</span><span class="proof-label">任务优先级<br>0 – 3 四级调度</span></div>
+        <div class="proof-item"><span class="proof-num">6</span><span class="proof-label">生命周期事件<br>创建到回收全覆盖</span></div>
+        <div class="proof-item"><span class="proof-num">0</span><span class="proof-label">必需中间件<br>无需额外部署</span></div>
+      </div>
+    </section>
+
+    <section class="section" id="why">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">WHY NEOTASK</span>
+          <h2>轻量，但不简陋。</h2>
+          <p>为耗时任务设计的嵌入式任务运行时：从单进程后台任务到多节点共享队列，保持同一套 API 与同一份心智模型。</p>
+        </div>
+        <div class="value-grid">
+          <article class="value-card">
+            <span class="value-icon"><svg class="icon"><use href="#i-box"/></svg></span>
+            <h3>少一个中间件，少一类故障</h3>
+            <p>默认使用内存或 SQLite，应用启动即用。不必为了几十个后台任务，再维护一套 Broker、Worker 与监控组件。</p>
+            <div class="value-visual visual-stack">
+              <span class="vnode">你的应用</span>
+              <span class="varrow">→</span>
+              <span class="vnode vnode-brand">TaskPool</span>
+              <span class="varrow">→</span>
+              <span class="vnode">SQLite</span>
+            </div>
+          </article>
+          <article class="value-card">
+            <span class="value-icon"><svg class="icon"><use href="#i-nodes"/></svg></span>
+            <h3>从单进程到多节点，不换 API</h3>
+            <p>一个配置工厂切换到 Redis 共享队列：节点对等、抢占消费，心跳与回收自动接管异常节点留下的任务。</p>
+            <div class="value-visual visual-nodes">
+              <span class="vnode vnode-brand">node-1</span>
+              <span class="vnode vnode-brand">node-2</span>
+              <span class="vnode vnode-brand">node-3</span>
+              <span class="vline"></span>
+              <span class="vnode">Redis Queue</span>
+            </div>
+          </article>
+          <article class="value-card">
+            <span class="value-icon"><svg class="icon"><use href="#i-activity"/></svg></span>
+            <h3>默认可观测，失败可回收</h3>
+            <p>生命周期事件、指标与健康检查开箱可用；失败自动重试，超时与宕机任务由回收器重新入队。</p>
+            <div class="value-visual visual-bars">
+              <i style="--h:38%"></i><i style="--h:56%"></i><i style="--h:44%"></i><i style="--h:72%"></i><i style="--h:61%"></i><i style="--h:88%"></i><i style="--h:70%"></i><i style="--h:96%"></i>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-tint" id="features">
+      <div class="container">
+        <div class="section-head split-head">
+          <div>
+            <span class="eyebrow">CAPABILITIES</span>
+            <h2>处理耗时任务所需的一切</h2>
+          </div>
+          <a class="text-link" href="/features.html">查看完整能力 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+        </div>
+
+        <div class="bento">
+          <article class="bento-card bento-wide">
+            <div class="bento-head">
+              <span class="bento-icon"><svg class="icon"><use href="#i-bolt"/></svg></span>
+              <span class="bento-kicker">即时任务</span>
+            </div>
+            <h3>四级优先级，重要任务先执行</h3>
+            <p>提交即入队，按 TaskPriority 分级调度，同优先级 FIFO。突发流量下，关键任务不会被批量任务堵住。</p>
+            <div class="priority-visual">
+              <div class="prio-row"><span>CRITICAL</span><i style="--w:100%"></i><em>0</em></div>
+              <div class="prio-row"><span>HIGH</span><i style="--w:74%"></i><em>1</em></div>
+              <div class="prio-row"><span>NORMAL</span><i style="--w:48%"></i><em>2</em></div>
+              <div class="prio-row"><span>LOW</span><i style="--w:24%"></i><em>3</em></div>
+            </div>
+          </article>
+
+          <article class="bento-card">
+            <div class="bento-head">
+              <span class="bento-icon"><svg class="icon"><use href="#i-clock"/></svg></span>
+              <span class="bento-kicker">定时调度</span>
+            </div>
+            <h3>延时、间隔与 Cron</h3>
+            <p>延迟 60 秒、每 5 分钟一次，或每天 9 点执行，统一用 TaskScheduler 表达。</p>
+            <div class="chip-cloud">
+              <span class="code-chip">delay_seconds=60</span>
+              <span class="code-chip">interval_seconds=300</span>
+              <span class="code-chip">cron="0 9 * * *"</span>
+            </div>
+          </article>
+
+          <article class="bento-card">
+            <div class="bento-head">
+              <span class="bento-icon"><svg class="icon"><use href="#i-refresh"/></svg></span>
+              <span class="bento-kicker">可靠性</span>
+            </div>
+            <h3>失败重试与故障回收</h3>
+            <p>执行异常按 max_retries 自动重试；节点失联后，心跳过期与回收器让任务重新可执行。</p>
+            <div class="mini-flow">
+              <span>FAILED</span><svg class="icon icon-xs"><use href="#i-arrow"/></svg><span>RETRY</span><svg class="icon icon-xs"><use href="#i-arrow"/></svg><span class="ok">SUCCESS</span>
+            </div>
+          </article>
+
+          <article class="bento-card">
+            <div class="bento-head">
+              <span class="bento-icon"><svg class="icon"><use href="#i-database"/></svg></span>
+              <span class="bento-kicker">持久化</span>
+            </div>
+            <h3>三种存储，一个抽象</h3>
+            <p>开发用 Memory，单机用 SQLite，集群切换 Redis。存储层可替换，业务代码不变。</p>
+            <div class="storage-visual">
+              <span>Memory</span><span class="active">SQLite</span><span>Redis</span>
+            </div>
+          </article>
+
+          <article class="bento-card">
+            <div class="bento-head">
+              <span class="bento-icon"><svg class="icon"><use href="#i-lock"/></svg></span>
+              <span class="bento-kicker">分布式</span>
+            </div>
+            <h3>共享队列与任务级互斥</h3>
+            <p>基于 Redis 的分布式锁带看门狗续期，避免同一任务在多节点被重复执行。</p>
+            <div class="lock-visual">
+              <span class="lock-node">node-1</span>
+              <svg class="icon"><use href="#i-lock"/></svg>
+              <span class="lock-task">task #a3f1</span>
+            </div>
+          </article>
+
+          <article class="bento-card bento-wide">
+            <div class="bento-head">
+              <span class="bento-icon"><svg class="icon"><use href="#i-activity"/></svg></span>
+              <span class="bento-kicker">可观测性</span>
+            </div>
+            <h3>订阅生命周期，接入现有监控</h3>
+            <p>监听创建、开始、完成、失败、取消与回收事件，配合指标采集和健康检查，把任务状态带进你的告警体系。</p>
+            <div class="event-chips">
+              <span>created</span><span>started</span><span>completed</span><span>failed</span><span>cancelled</span><span>reclaimed</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="code">
+      <div class="container">
+        <div class="section-head split-head">
+          <div>
+            <span class="eyebrow">QUICK TO ADOPT</span>
+            <h2>几分钟接入，而不是几天</h2>
+          </div>
+          <p class="section-note">安装后即可运行。以下示例均为 v{{VERSION}} 的真实 API。</p>
+        </div>
+
+        <div class="code-layout">
+          <div class="code-side">
+            <div class="code-tabs" role="tablist" aria-label="代码示例">
+              <button class="code-tab is-active" role="tab" aria-selected="true" data-code-tab="basic">即时任务</button>
+              <button class="code-tab" role="tab" aria-selected="false" data-code-tab="schedule">定时调度</button>
+              <button class="code-tab" role="tab" aria-selected="false" data-code-tab="distributed">分布式</button>
+            </div>
+            <div class="code-tab-panels">
+              <div class="code-tab-panel is-active" id="code-basic" role="tabpanel">
+                <h3>提交并等待结果</h3>
+                <p>定义异步执行器，创建 TaskPool，提交任务。同步、异步与上下文管理器三种用法按需选择。</p>
+                <ul class="check-list">
+                  <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 自动启动后台事件循环</li>
+                  <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 支持结果等待与状态查询</li>
+                  <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 退出时优雅关闭</li>
+                </ul>
+              </div>
+              <div class="code-tab-panel" id="code-schedule" role="tabpanel" hidden>
+                <h3>延时、周期与 Cron</h3>
+                <p>TaskScheduler 在 TaskPool 之上提供调度能力，三种定时方式共用同一个执行器。</p>
+                <ul class="check-list">
+                  <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 延迟执行与指定时刻执行</li>
+                  <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 固定间隔周期任务</li>
+                  <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Cron 表达式与暂停/恢复</li>
+                </ul>
+              </div>
+              <div class="code-tab-panel" id="code-distributed" role="tabpanel" hidden>
+                <h3>切换到共享队列</h3>
+                <p>用配置工厂切换到 Redis：多节点消费同一队列，心跳、回收与任务锁自动生效。</p>
+                <ul class="check-list">
+                  <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 节点对等，无主架构</li>
+                  <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Redis 锁与看门狗续期</li>
+                  <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 可选预取提升吞吐</li>
+                </ul>
+              </div>
+            </div>
+            <a class="text-link" href="/docs/quickstart.html">阅读快速上手 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+
+          <div class="code-window">
+            <div class="code-window-top">
+              <span class="code-file"><svg class="icon icon-xs"><use href="#i-terminal"/></svg> main.py</span>
+              <button class="code-copy" data-copy-target="code-basic-src" aria-label="复制代码">
+                <svg class="icon icon-sm copy-icon"><use href="#i-copy"/></svg>
+                <svg class="icon icon-sm check-icon"><use href="#i-check"/></svg>
+              </button>
+            </div>
+            <pre class="code-block is-active" id="code-basic-src"><code><span class="tok-k">from</span> neotask <span class="tok-k">import</span> TaskPool
+
+<span class="tok-k">async def</span> <span class="tok-f">process_order</span>(data):
+    <span class="tok-c"># 耗时业务逻辑</span>
+    <span class="tok-k">await</span> asyncio.sleep(<span class="tok-n">2</span>)
+    <span class="tok-k">return</span> {<span class="tok-s">"status"</span>: <span class="tok-s">"ok"</span>, <span class="tok-s">"id"</span>: data[<span class="tok-s">"id"</span>]}
+
+pool = TaskPool(executor=process_order)
+
+task_id = pool.submit({<span class="tok-s">"id"</span>: <span class="tok-s">"order_001"</span>})
+result = pool.wait_for_result(task_id, timeout=<span class="tok-n">30</span>)
+
+<span class="tok-f">print</span>(result)
+pool.shutdown()</code></pre>
+            <pre class="code-block" id="code-schedule-src" hidden><code><span class="tok-k">from</span> neotask <span class="tok-k">import</span> TaskScheduler
+
+scheduler = TaskScheduler(executor=process_order)
+
+<span class="tok-c"># 60 秒后执行一次</span>
+scheduler.submit_delayed({<span class="tok-s">"id"</span>: <span class="tok-s">"123"</span>}, delay_seconds=<span class="tok-n">60</span>)
+
+<span class="tok-c"># 每 5 分钟执行一次</span>
+scheduler.submit_interval(
+    {<span class="tok-s">"job"</span>: <span class="tok-s">"heartbeat"</span>},
+    interval_seconds=<span class="tok-n">300</span>,
+)
+
+<span class="tok-c"># 每天 9:00 执行</span>
+scheduler.submit_cron(
+    {<span class="tok-s">"job"</span>: <span class="tok-s">"daily_report"</span>},
+    cron_expr=<span class="tok-s">"0 9 * * *"</span>,
+)
+
+scheduler.shutdown()</code></pre>
+            <pre class="code-block" id="code-distributed-src" hidden><code><span class="tok-k">from</span> neotask <span class="tok-k">import</span> TaskPool, TaskPoolConfig
+
+cfg = TaskPoolConfig.redis(
+    url=<span class="tok-s">"redis://localhost:6379/0"</span>,
+    node_id=<span class="tok-s">"worker-1"</span>,
+    lock_type=<span class="tok-s">"redis"</span>,
+    enable_prefetch=<span class="tok-l">True</span>,
+    prefetch_size=<span class="tok-n">30</span>,
+)
+
+pool = TaskPool(executor=process_order, config=cfg)
+
+<span class="tok-c"># 相同代码，多节点共享队列</span>
+task_id = pool.submit({<span class="tok-s">"id"</span>: <span class="tok-s">"order_002"</span>})
+result = pool.wait_for_result(task_id)</code></pre>
+            <div class="code-window-foot">
+              <span><span class="dot-live"></span> Python {{PYTHON}}</span>
+              <span>MIT</span>
+              <span>v{{VERSION}}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-dark" id="compare">
+      <div class="container">
+        <div class="section-head section-head-dark">
+          <span class="eyebrow">CHOOSE THE RIGHT TOOL</span>
+          <h2>什么时候选 NeoTask？</h2>
+          <p>NeoTask 不试图替代所有任务平台。它专注一件事：让 Python 应用以最低的运维成本，可靠地处理耗时任务。</p>
+        </div>
+
+        <div class="compare-wrap">
+          <table class="compare-table">
+            <thead>
+              <tr><th>维度</th><th class="col-neo">NeoTask</th><th>Celery</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>部署依赖</td><td class="col-neo">无需中间件，Redis 可选</td><td>需要 Broker（Redis / RabbitMQ）</td></tr>
+              <tr><td>定位</td><td class="col-neo">嵌入式轻量任务队列</td><td>全功能分布式任务平台</td></tr>
+              <tr><td>定时任务</td><td class="col-neo">内置延时、间隔、Cron</td><td>需要 Celery Beat</td></tr>
+              <tr><td>优先级</td><td class="col-neo">内置四级优先级</td><td>通过多队列与路由实现</td></tr>
+              <tr><td>任务编排</td><td class="col-neo">DAG 规划中（v1.5）</td><td>Canvas / Chord 成熟</td></tr>
+              <tr><td>Web 监控</td><td class="col-neo">可选 <code>neotask[ui]</code></td><td>Flower</td></tr>
+              <tr><td>生态与插件</td><td class="col-neo">聚焦核心，轻量</td><td>成熟、插件丰富</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="compare-note">如果你的团队已经在 Celery 上运行复杂编排，继续使用它是合理的。NeoTask 适合希望减少基础设施、快速交付后台任务能力的 Python 项目。</p>
+      </div>
+    </section>
+
+    <section class="section" id="use-cases">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">USE CASES</span>
+          <h2>适合这些工作负载</h2>
+          <p>凡是“用户不该等待”的计算，都适合放进 NeoTask。</p>
+        </div>
+        <div class="use-grid">
+          <article class="use-card">
+            <span class="use-num">01</span>
+            <h3>AI 生成任务</h3>
+            <p>文生图、视频生成、模型推理排队，避免阻塞 Web 请求。</p>
+            <span class="use-meta">worker_concurrency=3</span>
+          </article>
+          <article class="use-card">
+            <span class="use-num">02</span>
+            <h3>媒体处理</h3>
+            <p>视频转码、图片压缩、文件上传等批量后台作业。</p>
+            <span class="use-meta">worker_concurrency=10</span>
+          </article>
+          <article class="use-card">
+            <span class="use-num">03</span>
+            <h3>数据采集</h3>
+            <p>分布式爬取与清洗，多节点共享队列，水平扩展。</p>
+            <span class="use-meta">storage_type=redis</span>
+          </article>
+          <article class="use-card">
+            <span class="use-num">04</span>
+            <h3>定时报表</h3>
+            <p>每天固定时间生成并发送业务报表。</p>
+            <span class="use-meta">cron="0 9 * * *"</span>
+          </article>
+          <article class="use-card">
+            <span class="use-num">05</span>
+            <h3>延迟通知</h3>
+            <p>用户操作后延迟触发的提醒、回访与状态检查。</p>
+            <span class="use-meta">delay_seconds=300</span>
+          </article>
+          <article class="use-card">
+            <span class="use-num">06</span>
+            <h3>夜间批处理</h3>
+            <p>低峰期执行数据聚合、对账与清理任务。</p>
+            <span class="use-meta">cron="0 2 * * *"</span>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-tint" id="architecture">
+      <div class="container">
+        <div class="section-head split-head">
+          <div>
+            <span class="eyebrow">ARCHITECTURE</span>
+            <h2>分层清晰，逐级增强</h2>
+          </div>
+          <a class="text-link" href="/docs/architecture.html">架构设计文档 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+        </div>
+
+        <div class="arch-layout">
+          <div class="arch-diagram">
+            <div class="arch-layer">
+              <span class="arch-index">01</span>
+              <div class="arch-layer-copy"><h3>入口层</h3><p>面向业务的 Python API</p></div>
+              <div class="arch-tags"><span>TaskPool</span><span>TaskScheduler</span><span>TaskEngine</span></div>
+            </div>
+            <div class="arch-layer">
+              <span class="arch-index">02</span>
+              <div class="arch-layer-copy"><h3>核心层</h3><p>生命周期、分发、事件与结果等待</p></div>
+              <div class="arch-tags"><span>Lifecycle</span><span>Dispatcher</span><span>Future</span><span>EventBus</span></div>
+            </div>
+            <div class="arch-layer">
+              <span class="arch-index">03</span>
+              <div class="arch-layer-copy"><h3>执行层</h3><p>优先级队列、延时队列与 Worker 池</p></div>
+              <div class="arch-tags"><span>Priority Queue</span><span>Delayed Queue</span><span>WorkerPool</span><span>Prefetcher</span></div>
+            </div>
+            <div class="arch-layer">
+              <span class="arch-index">04</span>
+              <div class="arch-layer-copy"><h3>存储层</h3><p>同一抽象下的三种后端</p></div>
+              <div class="arch-tags"><span>Memory</span><span>SQLite</span><span class="tag-accent">Redis</span></div>
+            </div>
+            <div class="arch-layer arch-layer-side">
+              <span class="arch-index">+</span>
+              <div class="arch-layer-copy"><h3>分布式与高可用</h3><p>可选启用的横向能力</p></div>
+              <div class="arch-tags"><span>Heartbeat</span><span>Reclaimer</span><span>Lock</span><span>Dead Letter</span></div>
+            </div>
+          </div>
+
+          <aside class="deploy-panel">
+            <h3>三种部署形态</h3>
+            <div class="deploy-item">
+              <span class="deploy-tag">嵌入式</span>
+              <p><strong>Memory</strong> · 开发与临时任务，随进程生命周期。</p>
+            </div>
+            <div class="deploy-item">
+              <span class="deploy-tag">单机持久化</span>
+              <p><strong>SQLite</strong> · 无需额外服务，任务落盘可恢复。</p>
+            </div>
+            <div class="deploy-item">
+              <span class="deploy-tag">分布式</span>
+              <p><strong>Redis</strong> · 多节点共享队列、心跳与任务锁。</p>
+            </div>
+            <a class="btn btn-outline btn-block" href="/docs/configuration.html">查看配置参考</a>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="performance">
+      <div class="container">
+        <div class="section-head split-head">
+          <div>
+            <span class="eyebrow">BENCHMARKS</span>
+            <h2>性能，有基准可查</h2>
+          </div>
+          <a class="text-link" href="/docs/benchmarks.html">阅读基准报告 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+        </div>
+        <div class="bench-grid">
+          <div class="bench-card bench-main">
+            <span class="bench-label">端到端基础吞吐</span>
+            <strong class="bench-num">1,697<span> tasks/s</span></strong>
+            <p>1,000 个 noop 任务，Memory 存储，成功率 100%。</p>
+          </div>
+          <div class="bench-card">
+            <span class="bench-label">IO 任务吞吐</span>
+            <strong class="bench-num">4,671<span> tasks/s</span></strong>
+            <p>5ms 睡眠任务 × 200，20 个 worker 并发。</p>
+          </div>
+          <div class="bench-card">
+            <span class="bench-label">队列出队</span>
+            <strong class="bench-num">312k<span> ops/s</span></strong>
+            <p>纯内存优先级堆操作，不含完整任务生命周期。</p>
+          </div>
+          <div class="bench-card">
+            <span class="bench-label">批量弹出</span>
+            <strong class="bench-num">2.0<span>×</span></strong>
+            <p>一次弹出 10 条，相比逐条弹出的吞吐提升。</p>
+          </div>
+        </div>
+        <p class="bench-note">数据摘自仓库 <code>docs/性能基准测试.md</code>：Windows 10、i7-10750H、Python 3.10、v0.3.0、Memory 后端，测试于 2026 年 4 月。绝对数值不代表当前版本或 Redis 分布式部署，请以自己的业务压测为准。<a href="/docs/benchmarks.html">阅读完整口径与陷阱分析 →</a></p>
+      </div>
+    </section>
+
+    <section class="section section-tint" id="docs">
+      <div class="container">
+        <div class="section-head split-head">
+          <div>
+            <span class="eyebrow">DOCUMENTATION</span>
+            <h2>从第一条任务到生产运维</h2>
+          </div>
+          <a class="text-link" href="/docs/">进入文档中心 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+        </div>
+        <div class="home-doc-grid">
+          <a class="home-doc" href="/docs/quickstart.html">
+            <span class="home-doc-cat">开始使用</span>
+            <strong>快速上手</strong>
+            <span>安装、定义执行器，提交并等待第一个任务。</span>
+            <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
+          </a>
+          <a class="home-doc" href="/docs/configuration.html">
+            <span class="home-doc-cat">开始使用</span>
+            <strong>配置参考</strong>
+            <span>TaskPoolConfig 与 SchedulerConfig 全部字段。</span>
+            <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
+          </a>
+          <a class="home-doc" href="/docs/core-features.html">
+            <span class="home-doc-cat">核心概念</span>
+            <strong>核心功能</strong>
+            <span>提交、执行、回收的完整主链路。</span>
+            <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
+          </a>
+          <a class="home-doc" href="/docs/api-reference.html">
+            <span class="home-doc-cat">参考</span>
+            <strong>API 参考</strong>
+            <span>54 个公开方法的签名与行为说明。</span>
+            <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
+          </a>
+          <a class="home-doc" href="/docs/failure-recovery.html">
+            <span class="home-doc-cat">可靠性</span>
+            <strong>故障恢复</strong>
+            <span>任务回收、僵尸锁扫描与孤儿任务。</span>
+            <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
+          </a>
+          <a class="home-doc" href="/docs/monitoring.html">
+            <span class="home-doc-cat">可靠性</span>
+            <strong>节点监控</strong>
+            <span>指标、健康检查与告警接入。</span>
+            <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="faq">
+      <div class="container faq-layout">
+        <div class="section-head faq-head">
+          <span class="eyebrow">FAQ</span>
+          <h2>常见问题</h2>
+          <p>还有疑问？在 <a href="{{DISCUSSIONS}}" target="_blank" rel="noopener">GitHub Discussions</a> 发起讨论。</p>
+        </div>
+        <div class="faq-list">
+          <details class="faq-item" open>
+            <summary>NeoTask 需要额外部署 Redis 或消息队列吗？<span class="faq-icon"></span></summary>
+            <div class="faq-answer"><p>不需要。默认使用内存或 SQLite 存储，安装后即可在应用进程内使用。只有需要多节点共享队列时，才需要切换到 Redis。</p></div>
+          </details>
+          <details class="faq-item">
+            <summary>它和 Celery 有什么区别？<span class="faq-icon"></span></summary>
+            <div class="faq-answer"><p>NeoTask 更轻：无需 Broker，内置定时、优先级和存储抽象，适合嵌入式场景。Celery 的生态、复杂任务编排和运维工具更成熟，适合已有大规模任务平台。</p></div>
+          </details>
+          <details class="faq-item">
+            <summary>任务失败会自动重试吗？<span class="faq-icon"></span></summary>
+            <div class="faq-answer"><p>会。通过 <code>max_retries</code> 与 <code>retry_delay</code> 配置重试次数和退避间隔；节点宕机留下的任务由回收器重新入队，最终失败的任务进入死信队列。</p></div>
+          </details>
+          <details class="faq-item">
+            <summary>支持 Python 3.8 吗？<span class="faq-icon"></span></summary>
+            <div class="faq-answer"><p>支持。基础包要求 Python ≥ {{PYTHON}}，依赖 <code>aiosqlite</code>、<code>croniter</code> 与 <code>colorama</code>；Redis、psutil 与 Web UI 为可选扩展，通过 <code>neotask[redis]</code>、<code>neotask[ui]</code> 或 <code>neotask[full]</code> 安装。</p></div>
+          </details>
+          <details class="faq-item">
+            <summary>可以在生产环境使用吗？<span class="faq-icon"></span></summary>
+            <div class="faq-answer"><p>可以。v1.0 起已具备持久化、故障恢复、分布式锁、死信队列与指标采集。建议使用 SQLite 或 Redis 持久化，并为关键任务配置重试与监控；上线前请阅读<a href="/docs/best-practices.html">最佳实践</a>。</p></div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta">
+      <div class="container cta-inner">
+        <div class="cta-copy">
+          <span class="eyebrow">GET STARTED</span>
+          <h2>现在就把后台任务交给 NeoTask</h2>
+          <p>一条安装命令，一个执行器，几分钟内跑通你的第一个任务。</p>
+        </div>
+        <div class="cta-actions">
+          <div class="install-box install-box-light">
+            <span class="install-prompt">$</span>
+            <code>pip install neotask</code>
+            <button class="copy-btn" data-copy="pip install neotask" aria-label="复制安装命令">
+              <svg class="icon icon-sm copy-icon"><use href="#i-copy"/></svg>
+              <svg class="icon icon-sm check-icon"><use href="#i-check"/></svg>
+            </button>
+          </div>
+          <div class="cta-buttons">
+            <a class="btn btn-primary btn-lg" href="/docs/quickstart.html">阅读快速上手 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+            <a class="btn btn-ghost btn-lg" href="{{REPO}}" target="_blank" rel="noopener"><svg class="icon icon-sm"><use href="#i-github"/></svg> 在 GitHub 查看源码</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- @include footer -->
+  <script src="/assets/js/site.js" defer></script>
+</body>
+</html>

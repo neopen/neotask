@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>社区 · NeoTask</title>
+  <meta name="description" content="参与 NeoTask 开源社区：报告问题、提交功能建议、改进文档或贡献代码。MIT 协议开源，欢迎任何形式的参与。">
+  <link rel="canonical" href="{{HOMEPAGE}}/community.html">
+  <meta property="og:site_name" content="NeoTask">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="社区 · NeoTask">
+  <meta property="og:description" content="NeoTask 是 MIT 协议开源项目，欢迎报告问题、改进文档或贡献代码。">
+  <meta property="og:url" content="{{HOMEPAGE}}/community.html">
+  <meta property="og:image" content="{{HOMEPAGE}}/assets/img/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="{{HOMEPAGE}}/assets/img/og.png">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/css/site.css">
+</head>
+<body class="sub-page">
+  <!-- @include icons -->
+  <!-- @include header -->
+
+  <main id="main">
+    <section class="page-hero">
+      <div class="container">
+        <span class="eyebrow">COMMUNITY</span>
+        <h1>开源，一起把它<br><span class="grad-text">做得更好。</span></h1>
+        <p>NeoTask 以 MIT 协议开源。无论你是在生产中使用它、发现了问题，还是只想改进一行文档，都欢迎参与。</p>
+        <div class="page-hero-actions">
+          <a class="btn btn-primary" href="{{REPO}}" target="_blank" rel="noopener"><svg class="icon icon-sm"><use href="#i-github"/></svg> 访问 GitHub</a>
+          <a class="btn btn-outline" href="{{DISCUSSIONS}}" target="_blank" rel="noopener">参与讨论</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container community-layout">
+        <div class="community-main">
+          <div class="section-head">
+            <span class="eyebrow">CONTRIBUTE</span>
+            <h2>你可以这样参与</h2>
+            <p>没有贡献太小。一个可复现的 Issue、一段更清楚的文档，都会让下一个使用者少走弯路。</p>
+          </div>
+          <div class="contrib-grid">
+            <a class="contrib-card" href="{{ISSUES}}" target="_blank" rel="noopener">
+              <span class="contrib-icon"><svg class="icon"><use href="#i-shield"/></svg></span>
+              <h3>报告问题</h3>
+              <p>提供版本、运行环境、最小复现代码与完整报错信息。</p>
+              <span class="contrib-link">提交 Issue <svg class="icon icon-xs"><use href="#i-arrow"/></svg></span>
+            </a>
+            <a class="contrib-card" href="{{ISSUES}}" target="_blank" rel="noopener">
+              <span class="contrib-icon"><svg class="icon"><use href="#i-sparkle"/></svg></span>
+              <h3>提出建议</h3>
+              <p>描述使用场景与预期行为，帮助判断能力边界与优先级。</p>
+              <span class="contrib-link">发起讨论 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></span>
+            </a>
+            <a class="contrib-card" href="{{REPO}}" target="_blank" rel="noopener">
+              <span class="contrib-icon"><svg class="icon"><use href="#i-code"/></svg></span>
+              <h3>贡献代码</h3>
+              <p>从 Issue 或改进点出发，附上测试，保持改动聚焦。</p>
+              <span class="contrib-link">创建 Pull Request <svg class="icon icon-xs"><use href="#i-arrow"/></svg></span>
+            </a>
+            <a class="contrib-card" href="{{REPO}}/tree/main/docs" target="_blank" rel="noopener">
+              <span class="contrib-icon"><svg class="icon"><use href="#i-layers"/></svg></span>
+              <h3>改进文档</h3>
+              <p>修正过期示例、补充边界说明，或翻译为其他语言。</p>
+              <span class="contrib-link">编辑文档 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></span>
+            </a>
+          </div>
+
+          <div class="dev-setup">
+            <div class="dev-setup-copy">
+              <h2>本地开发</h2>
+              <p>克隆仓库，以可编辑模式安装开发依赖，然后运行测试。</p>
+              <ul class="check-list">
+                <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Python {{PYTHON}}</li>
+                <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 测试使用 pytest</li>
+                <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 建议按模块运行相关测试</li>
+              </ul>
+            </div>
+            <div class="code-window dev-code">
+              <div class="code-window-top">
+                <span class="code-file"><svg class="icon icon-xs"><use href="#i-terminal"/></svg> terminal</span>
+                <button class="code-copy" data-copy-target="dev-code-src" aria-label="复制命令">
+                  <svg class="icon icon-sm copy-icon"><use href="#i-copy"/></svg>
+                  <svg class="icon icon-sm check-icon"><use href="#i-check"/></svg>
+                </button>
+              </div>
+              <pre class="code-block is-active" id="dev-code-src"><code><span class="tok-c"># 克隆并安装开发依赖</span>
+git clone https://github.com/neopen/neotask.git
+<span class="tok-k">cd</span> neotask
+pip install -e <span class="tok-s">".[dev]"</span>
+
+<span class="tok-c"># 运行全部测试</span>
+pytest tests/
+
+<span class="tok-c"># 运行单个模块</span>
+pytest tests/test_task_pool.py -v</code></pre>
+            </div>
+          </div>
+
+          <div class="contrib-steps">
+            <h2>Pull Request 流程</h2>
+            <ol class="step-list">
+              <li><span>01</span><div><strong>Fork 并创建分支</strong><p>从 main 创建聚焦的特性或修复分支。</p></div></li>
+              <li><span>02</span><div><strong>补充测试</strong><p>行为变更应附带可复现的测试用例，确保既有测试通过。</p></div></li>
+              <li><span>03</span><div><strong>保持改动聚焦</strong><p>一个 PR 解决一个问题，避免混入无关格式化。</p></div></li>
+              <li><span>04</span><div><strong>描述变更与影响</strong><p>说明动机、行为差异与升级注意事项。</p></div></li>
+              <li><span>05</span><div><strong>根据评审迭代</strong><p>讨论达成一致后合并，并进入下一个发布周期。</p></div></li>
+            </ol>
+          </div>
+        </div>
+
+        <aside class="community-side">
+          <div class="gh-card">
+            <div class="gh-card-head">
+              <svg class="icon"><use href="#i-github"/></svg>
+              <div><strong>neopen/neotask</strong><span>Public repository</span></div>
+            </div>
+            <div class="gh-stats">
+              <div><strong>{{STARS}}</strong><span>Stars</span></div>
+              <div><strong>{{FORKS}}</strong><span>Forks</span></div>
+              <div><strong>{{VERSION}}</strong><span>Version</span></div>
+            </div>
+            <a class="btn btn-primary btn-block" href="{{REPO}}" target="_blank" rel="noopener">Star on GitHub</a>
+          </div>
+
+          <div class="aside-card">
+            <h2>社区入口</h2>
+            <ul class="link-list">
+              <li><a href="{{DISCUSSIONS}}" target="_blank" rel="noopener">GitHub Discussions <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a></li>
+              <li><a href="{{ISSUES}}" target="_blank" rel="noopener">Issues <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a></li>
+              <li><a href="{{EXAMPLES}}" target="_blank" rel="noopener">示例代码 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a></li>
+              <li><a href="{{BLOG}}" target="_blank" rel="noopener">技术博客 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a></li>
+              <li><a href="mailto:{{EMAIL}}">邮件联系 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a></li>
+            </ul>
+          </div>
+
+          <div class="aside-card">
+            <h2>协作约定</h2>
+            <ul class="plain-list">
+              <li>尊重不同经验背景的参与者。</li>
+              <li>技术讨论聚焦事实与可复现证据。</li>
+              <li>不提交他人未授权的代码或资源。</li>
+            </ul>
+          </div>
+
+          <div class="aside-card license-card">
+            <span class="license-badge">MIT</span>
+            <h2>自由使用</h2>
+            <p>可商用、修改与分发，保留版权与许可声明即可。</p>
+            <a class="text-link" href="{{REPO}}/blob/main/LICENSE" target="_blank" rel="noopener">查看许可证 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="cta">
+      <div class="container cta-inner">
+        <div class="cta-copy">
+          <span class="eyebrow">OPEN SOURCE</span>
+          <h2>从一次 Issue 开始</h2>
+          <p>遇到问题、想要新能力，或者有更好的实现思路，都欢迎告诉我们。</p>
+        </div>
+        <div class="cta-actions">
+          <div class="cta-buttons">
+            <a class="btn btn-primary btn-lg" href="{{ISSUES}}" target="_blank" rel="noopener">提交 Issue <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+            <a class="btn btn-ghost btn-lg" href="{{DISCUSSIONS}}" target="_blank" rel="noopener">参与讨论</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- @include footer -->
+  <script src="/assets/js/site.js" defer></script>
+</body>
+</html>

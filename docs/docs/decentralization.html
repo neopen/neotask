@@ -3,122 +3,159 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NeoTask 去中心化：对等节点 + 抢占式消费 + 无主架构 · NeoTask 文档</title>
-  <meta name="description" content="NeoTask 去中心化架构：对等节点模型与零节点间通信的设计取舍、出队原子与执行加锁分离（pop Lua 只有 ZRANGE+ZREM）、节点注册/心跳/判活的 key 结构与三态模型、NodeManager 与 HeartbeatManager 两套实现共用同一注册表的现状、已预留但未接入主链路的 Coordinator，以及水平扩展与分区容错的实战推演。">
-  <meta name="robots" content="index, follow">
+  <title>去中心化架构 · NeoTask 文档</title>
+  <meta name="description" content="对等节点、抢占式消费与无主架构：多节点如何共享队列而不需要调度中心。">
   <link rel="canonical" href="https://task.helpenx.com/docs/decentralization.html">
   <meta property="og:site_name" content="NeoTask 文档">
-  <meta property="og:title" content="NeoTask 去中心化：对等节点 + 抢占式消费 + 无主架构">
-  <meta property="og:description" content="NeoTask 去中心化架构：对等节点模型与零节点间通信的设计取舍、出队原子与执行加锁分离（pop Lua 只有 ZRANGE+ZREM）、节点注册/心跳/判活的 key 结构与三态模型、NodeManager 与 HeartbeatManager 两套实现共用同一注册表的现状、已预留但未接入主链路的 Coordinator，以及水平扩展与分区容错的实战推演。">
   <meta property="og:type" content="article">
+  <meta property="og:title" content="去中心化架构 · NeoTask 文档">
+  <meta property="og:description" content="对等节点、抢占式消费与无主架构：多节点如何共享队列而不需要调度中心。">
   <meta property="og:url" content="https://task.helpenx.com/docs/decentralization.html">
-  <meta name="twitter:card" content="summary">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>⏱️</text></svg>">
-  <style>
-:root{--brand:#0d9488;--brand-dark:#0f766e;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
-*{margin:0;padding:0;box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;color:var(--ink);background:#fff;line-height:1.75;font-size:16px}
-a{color:var(--brand);text-decoration:none}a:hover{color:var(--brand-dark);text-decoration:underline}
-.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-.topbar .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;color:var(--ink)}
-.topbar .brand .doc-badge{font-size:12px;font-weight:600;color:#fff;background:var(--brand);border-radius:6px;padding:2px 8px}
-.topbar nav{display:flex;gap:20px;font-size:14.5px}
-.topbar nav a{color:var(--muted);font-weight:500}
-.topbar nav a:hover{color:var(--brand)}
-.wrap{display:flex;max-width:1280px;margin:0 auto;padding:0 16px}
-.sidebar{width:264px;flex-shrink:0;position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 40px 0;border-right:1px solid var(--line)}
-.sidebar .side-home{display:block;font-weight:600;color:var(--ink);margin-bottom:16px;font-size:15px}
-.sidebar .side-home:hover{color:var(--brand);text-decoration:none}
-.sidebar h4{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 8px;font-weight:600}
-.sidebar a{display:block;padding:5px 10px;border-radius:6px;font-size:14px;color:#334155;line-height:1.5}
-.sidebar a:hover{background:var(--bg);color:var(--brand);text-decoration:none}
-.sidebar a.active{background:var(--brand);color:#fff}
-.content{flex:1;min-width:0;padding:32px 20px 60px 36px;max-width:860px}
-.toc-mobile{display:none;margin-bottom:20px;border:1px solid var(--line);border-radius:8px;padding:10px 14px}
-.toc-mobile summary{cursor:pointer;font-weight:600;color:var(--ink)}
-.toc-mobile a{display:block;padding:3px 0;font-size:14px}
-.article h1{font-size:1.9em;line-height:1.35;margin:.4em 0 .8em}
-.article h2{font-size:1.45em;margin:1.8em 0 .7em;padding-bottom:.3em;border-bottom:1px solid var(--line)}
-.article h3{font-size:1.22em;margin:1.5em 0 .6em}
-.article h4{font-size:1.08em;margin:1.3em 0 .5em}
-.article p{margin:.85em 0}
-.article ul,.article ol{padding-left:1.6em;margin:.7em 0}
-.article li{margin:.35em 0}
-.article img{max-width:100%;height:auto;border-radius:8px}
-.article table{border-collapse:collapse;width:100%;margin:1.1em 0;font-size:.94em;display:block;overflow-x:auto}
-.article th,.article td{border:1px solid var(--line);padding:8px 12px;text-align:left}
-.article th{background:var(--bg);font-weight:600}
-.article tr:nth-child(even) td{background:#fbfdff}
-.article blockquote{margin:1.1em 0;padding:.7em 1.1em;border-left:4px solid var(--brand);background:var(--bg);border-radius:0 8px 8px 0;color:#334155}
-.article blockquote p{margin:.3em 0}
-.article code:not(pre code){background:#eef2f7;color:#c7254e;padding:.15em .4em;border-radius:4px;font-size:.88em;word-break:break-word}
-.article pre.hljs{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0;line-height:1.6}
-.article pre.hljs code{background:none;padding:0;color:var(--ink);font-size:.9em;font-family:ui-monospace,SFMono-Regular,'Cascadia Code',Consolas,Menlo,monospace}
-.article pre.mermaid{text-align:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:1.1em 0}
-.article hr{border:none;border-top:1px solid var(--line);margin:2em 0}
-.article .success,.article .tips,.article .warning,.article .danger{border-radius:8px;padding:.9em 1.1em;margin:1.1em 0;border:1px solid}
-.article .success{border-color:#a7f3d0;background:#ecfdf5}.article .success p:first-of-type::before{content:'✅ '}
-.article .tips{border-color:#bfdbfe;background:#eff6ff}.article .tips p:first-of-type::before{content:'💡 '}
-.article .warning{border-color:#fde68a;background:#fffbeb}.article .warning p:first-of-type::before{content:'⚠️ '}
-.article .danger{border-color:#fecaca;background:#fef2f2}.article .danger p:first-of-type::before{content:'🚫 '}
-.article .success>p:first-child,.article .tips>p:first-child,.article .warning>p:first-child,.article .danger>p:first-child{margin-top:0}
-.article .success>p:last-child,.article .tips>p:last-child,.article .warning>p:last-child,.article .danger>p:last-child{margin-bottom:0}
-.doc-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 8px;font-size:13px;color:var(--muted)}
-.doc-meta .tag{background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
-.doc-nav{display:flex;justify-content:space-between;gap:16px;margin-top:48px;padding-top:20px;border-top:1px solid var(--line)}
-.doc-nav a{font-weight:600}
-footer{border-top:1px solid var(--line);padding:22px 24px;text-align:center;color:var(--muted);font-size:13.5px}
-footer a{color:var(--muted);margin:0 10px}
-footer a:hover{color:var(--brand)}
-@media (max-width:960px){
-  .sidebar{display:none}
-  .toc-mobile{display:block}
-  .content{padding:20px 6px 50px}
-  .topbar nav{gap:12px}
-}
-</style>
-  <style>
-.hljs{color:#24292e;background:#f6f8fa}
-.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.constant_{color:#d73a49}
-.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}
-.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}
-.hljs-string,.hljs-meta .hljs-string,.hljs-regexp{color:#032f62}
-.hljs-bullet,.hljs-link,.hljs-meta,.hljs-selector-tag,.hljs-subst,.hljs-symbol{color:#e36209}
-.hljs-built_in,.hljs-class .hljs-title{color:#e36209}
-.hljs-comment,.hljs-meta,.hljs-quote{color:#6a737d}
-.hljs-section{color:#005cc5;font-weight:700}
-.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}
-</style>
+  <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/css/site.css">
+  <link rel="stylesheet" href="/assets/css/docs.css">
 </head>
-<body>
-  <header class="topbar">
-    <a class="brand" href="index.html">⏱️ NeoTask <span class="doc-badge">文档</span></a>
-    <nav>
-      <a href="https://task.helpenx.com" target="_blank" rel="noopener">产品官网</a>
-      <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+<body class="docs-page">
+  <a class="skip-link" href="#main">跳到主要内容</a>
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="/" aria-label="NeoTask 首页">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="9" fill="#0b1713"/>
+        <path d="M9.5 22.5v-13l13 13v-13" fill="none" stroke="#2dd4bf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
+      </svg>
+      <span class="brand-name">NeoTask</span>
+      <span class="brand-version">v1.0.5</span>
+    </a>
+
+    <nav class="site-nav" id="siteNav" aria-label="主导航">
+      <a class="site-nav-link " href="/features.html">产品能力</a>
+      <a class="site-nav-link is-active" href="/docs/">文档</a>
+      <a class="site-nav-link " href="/changelog.html">更新日志</a>
+      <a class="site-nav-link " href="/community.html">社区</a>
     </nav>
-  </header>
-  <div class="wrap">
-    <aside class="sidebar">
-      <a class="side-home" href="index.html">⏱️ 分布式任务调度系统 · 文档中心</a>
-      <h4>技术分析</h4>
-<h4>API 与配置参考</h4><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a>
-<h4>实现与源码分析</h4><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a>
-<h4>设计与方案</h4><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a>
-<h4>项目概览</h4><a href="decentralization.html" class="active">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a>
-<h4>入门与使用</h4><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a>
-<h4>性能与评测</h4><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a>
-<h4>实践与运维</h4><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a>
-<h4>架构与核心设计</h4><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a>
-<h4>版本与演进</h4><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a>
+
+    <div class="header-actions">
+      <a class="gh-star" href="https://github.com/neopen/neotask" target="_blank" rel="noopener" aria-label="在 GitHub 上为 NeoTask 加 Star">
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.9 5.33.9 11.6c0 4.9 3.17 9.05 7.57 10.52.55.1.75-.24.75-.53v-1.85c-3.08.67-3.73-1.48-3.73-1.48-.5-1.28-1.23-1.62-1.23-1.62-1-.69.08-.68.08-.68 1.11.08 1.7 1.14 1.7 1.14.98 1.69 2.58 1.2 3.2.92.1-.71.39-1.2.7-1.48-2.46-.28-5.05-1.23-5.05-5.48 0-1.21.43-2.2 1.14-2.98-.11-.28-.49-1.4.11-2.92 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.6 1.52.22 2.64.11 2.92.71.78 1.14 1.77 1.14 2.98 0 4.26-2.6 5.2-5.06 5.47.4.35.76 1.03.76 2.07v3.07c0 .29.2.64.76.53a11.1 11.1 0 0 0 7.56-10.52C23.1 5.33 18.27.5 12 .5z"/></svg>
+        <span>Star</span>
+        <span class="gh-star-count">8</span>
+      </a>
+      <a class="btn btn-primary btn-sm header-cta" href="/docs/quickstart.html">快速开始</a>
+      <button class="nav-toggle" id="navToggle" aria-label="打开菜单" aria-expanded="false" aria-controls="siteNav">
+        <span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+  <div class="docs-shell">
+    <aside class="docs-sidebar" id="docsSidebar">
+      <a class="docs-sidebar-home" href="/docs/"><span class="docs-sidebar-badge">DOCS</span> 文档中心</a>
+      <div class="docs-search-wrap">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="docsSearch" type="search" placeholder="搜索文档" autocomplete="off" aria-label="搜索文档">
+      </div>
+      <nav class="docs-nav" id="docsNav" aria-label="文档导航">
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">开始使用</p>
+        <a class="docs-nav-link" href="/docs/quickstart.html" data-search="快速上手 安装 NeoTask，用几行代码提交第一个任务，掌握同步等待、异步等待与上下文管理器三种用法。">快速上手</a>
+        <a class="docs-nav-link" href="/docs/configuration.html" data-search="配置参考 TaskPoolConfig / SchedulerConfig 全部字段、默认值与真实生效情况，以及开发、单机、分布式三档配置。">配置参考</a>
+        <a class="docs-nav-link" href="/docs/best-practices.html" data-search="最佳实践 执行器设计、并发度、重试与预取的取舍，以及生产环境常见的配置陷阱。">最佳实践</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">核心概念</p>
+        <a class="docs-nav-link" href="/docs/core-features.html" data-search="核心功能 从组件树到两阶段装配，完整拆解任务提交、执行、回收的主链路。">核心功能</a>
+        <a class="docs-nav-link" href="/docs/architecture.html" data-search="架构设计 三种部署形态、装配拓扑、两阶段生命周期与关键架构决策。">架构设计</a>
+        <a class="docs-nav-link is-active" href="/docs/decentralization.html" data-search="去中心化架构 对等节点、抢占式消费与无主架构：多节点如何共享队列而不需要调度中心。">去中心化架构</a>
+        <a class="docs-nav-link" href="/docs/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种存储后端的实现差异、数据格式与清理策略。">持久化存储</a>
+        <a class="docs-nav-link" href="/docs/priority-queue.html" data-search="优先级队列 四级优先级在堆与 Redis ZSET 上的双实现，同优先级 FIFO 与延迟迁移。">优先级队列</a>
+        <a class="docs-nav-link" href="/docs/delayed-tasks.html" data-search="延时与定时任务 延时队列、最小堆、可选时间轮，以及周期任务和 Cron 调度的完整链路。">延时与定时任务</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">可靠性与可观测性</p>
+        <a class="docs-nav-link" href="/docs/failure-recovery.html" data-search="故障恢复 任务回收器、僵尸锁扫描与孤儿任务处理，节点宕机后任务如何被重新拾起。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/distributed-lock.html" data-search="分布式锁 Redis + Lua + 看门狗：任务级互斥、锁续期与故障场景下的正确性边界。">分布式锁</a>
+        <a class="docs-nav-link" href="/docs/prefetch.html" data-search="预取机制 批量拉取、高低水位与 HYBRID 自适应策略，以及预取对优先级顺序的影响。">预取机制</a>
+        <a class="docs-nav-link" href="/docs/monitoring.html" data-search="节点监控 事件驱动的指标采集、滑动窗口、健康检查与 Prometheus 集成方式。">节点监控</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">参考</p>
+        <a class="docs-nav-link" href="/docs/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 共 54 个公开方法的签名总表、委托关系与行为说明。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/benchmarks.html" data-search="性能基准 官方基准脚本与实测数据解读：队列吞吐、端到端吞吐、延迟分布与调优建议。">性能基准</a>
+        <a class="docs-nav-link" href="/docs/evolution.html" data-search="版本演进 从 0.1.0 到 1.0.5 的真实发布史，以及每个版本解决的问题。">版本演进</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">路线图</p>
+        <a class="docs-nav-link" href="/docs/dag-workflow.html" data-search="任务编排（规划） DAG 工作流引擎的设计推演：条件分支、并行执行与依赖管理，规划于 v1.5。">任务编排（规划）<span class="nav-soon">规划</span></a>
+      </div>
+      </nav>
+      <p class="docs-nav-empty" id="docsNavEmpty" hidden>没有匹配的文档</p>
     </aside>
-    <main class="content">
-      <details class="toc-mobile"><summary>📑 文档目录</summary><div><strong style="font-size:13px;color:var(--muted)">技术分析</strong></div><div><strong style="font-size:13px;color:var(--muted)">API 与配置参考</strong><a href="api-reference.html">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</a><a href="configuration.html">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</a></div><div><strong style="font-size:13px;color:var(--muted)">实现与源码分析</strong><a href="persistence.html">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</a><a href="priority-queue.html">NeoTask 优先级任务详解：堆/ZSET 双实现四级优先级 + 同优先级 FIFO 与延迟迁移</a><a href="distributed-lock.html">NeoTask 分布式锁详解：Redis 看门狗 + 任务抢占与故障恢复</a><a href="delayed-tasks.html">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期/Cron 调度全链路</a><a href="failure-recovery.html">NeoTask 故障恢复详解：回收器 + 僵尸锁扫描 + 孤儿任务</a><a href="monitoring.html">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</a><a href="prefetch.html">NeoTask 预取机制详解：批量拉取 + 高低水位 + HYBRID 自适应策略</a></div><div><strong style="font-size:13px;color:var(--muted)">设计与方案</strong><a href="dag-workflow.html">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</a></div><div><strong style="font-size:13px;color:var(--muted)">项目概览</strong><a href="decentralization.html">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</a><a href="index.html">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a></div><div><strong style="font-size:13px;color:var(--muted)">入门与使用</strong><a href="quickstart.html">NeoTask 快速上手：安装全流程 + 提交/等待/定时三分钟通关</a></div><div><strong style="font-size:13px;color:var(--muted)">性能与评测</strong><a href="benchmarks.html">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</a></div><div><strong style="font-size:13px;color:var(--muted)">实践与运维</strong><a href="best-practices.html">NeoTask 最佳实践：一个配置类 + 预取/执行器/重试三大要点</a></div><div><strong style="font-size:13px;color:var(--muted)">架构与核心设计</strong><a href="architecture.html">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</a><a href="core-features.html">NeoTask 核心功能详解：组件树与两阶段装配 + 提交/执行/回收链路全解</a></div><div><strong style="font-size:13px;color:var(--muted)">版本与演进</strong><a href="evolution.html">分布式任务调度（NeoTask）版本演进过程</a></div></details>
+    <main class="docs-main" id="main">
+      <nav class="breadcrumb" aria-label="面包屑">
+        <a href="/">首页</a><span>/</span><a href="/docs/">文档</a><span>/</span><span>核心概念</span>
+      </nav>
+      <details class="docs-mobile-nav">
+        <summary>文档导航</summary>
+        
+      <nav class="docs-nav" id="docsNavMobile" aria-label="文档导航">
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">开始使用</p>
+        <a class="docs-nav-link" href="/docs/quickstart.html" data-search="快速上手 安装 NeoTask，用几行代码提交第一个任务，掌握同步等待、异步等待与上下文管理器三种用法。">快速上手</a>
+        <a class="docs-nav-link" href="/docs/configuration.html" data-search="配置参考 TaskPoolConfig / SchedulerConfig 全部字段、默认值与真实生效情况，以及开发、单机、分布式三档配置。">配置参考</a>
+        <a class="docs-nav-link" href="/docs/best-practices.html" data-search="最佳实践 执行器设计、并发度、重试与预取的取舍，以及生产环境常见的配置陷阱。">最佳实践</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">核心概念</p>
+        <a class="docs-nav-link" href="/docs/core-features.html" data-search="核心功能 从组件树到两阶段装配，完整拆解任务提交、执行、回收的主链路。">核心功能</a>
+        <a class="docs-nav-link" href="/docs/architecture.html" data-search="架构设计 三种部署形态、装配拓扑、两阶段生命周期与关键架构决策。">架构设计</a>
+        <a class="docs-nav-link is-active" href="/docs/decentralization.html" data-search="去中心化架构 对等节点、抢占式消费与无主架构：多节点如何共享队列而不需要调度中心。">去中心化架构</a>
+        <a class="docs-nav-link" href="/docs/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种存储后端的实现差异、数据格式与清理策略。">持久化存储</a>
+        <a class="docs-nav-link" href="/docs/priority-queue.html" data-search="优先级队列 四级优先级在堆与 Redis ZSET 上的双实现，同优先级 FIFO 与延迟迁移。">优先级队列</a>
+        <a class="docs-nav-link" href="/docs/delayed-tasks.html" data-search="延时与定时任务 延时队列、最小堆、可选时间轮，以及周期任务和 Cron 调度的完整链路。">延时与定时任务</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">可靠性与可观测性</p>
+        <a class="docs-nav-link" href="/docs/failure-recovery.html" data-search="故障恢复 任务回收器、僵尸锁扫描与孤儿任务处理，节点宕机后任务如何被重新拾起。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/distributed-lock.html" data-search="分布式锁 Redis + Lua + 看门狗：任务级互斥、锁续期与故障场景下的正确性边界。">分布式锁</a>
+        <a class="docs-nav-link" href="/docs/prefetch.html" data-search="预取机制 批量拉取、高低水位与 HYBRID 自适应策略，以及预取对优先级顺序的影响。">预取机制</a>
+        <a class="docs-nav-link" href="/docs/monitoring.html" data-search="节点监控 事件驱动的指标采集、滑动窗口、健康检查与 Prometheus 集成方式。">节点监控</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">参考</p>
+        <a class="docs-nav-link" href="/docs/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 共 54 个公开方法的签名总表、委托关系与行为说明。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/benchmarks.html" data-search="性能基准 官方基准脚本与实测数据解读：队列吞吐、端到端吞吐、延迟分布与调优建议。">性能基准</a>
+        <a class="docs-nav-link" href="/docs/evolution.html" data-search="版本演进 从 0.1.0 到 1.0.5 的真实发布史，以及每个版本解决的问题。">版本演进</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">路线图</p>
+        <a class="docs-nav-link" href="/docs/dag-workflow.html" data-search="任务编排（规划） DAG 工作流引擎的设计推演：条件分支、并行执行与依赖管理，规划于 v1.5。">任务编排（规划）<span class="nav-soon">规划</span></a>
+      </div>
+      </nav>
+      
+      </details>
       <article class="article">
-        <div class="doc-meta"><span class="tag">NeoTask</span><span class="tag">更新 2026-05-02</span><a href="https://task.helpenx.com" target="_blank" rel="noopener">task.helpenx.com ↗</a></div>
-        <h1>NeoTask 去中心化：对等节点 + 抢占式消费 + 无主架构</h1>
-<p>📚 <a href="index.html">返回首页</a> | 📖 <a href="quickstart.html">快速上手</a> | 📘 <a href="api-reference.html">API 参考</a> | ⚙️ <a href="configuration.html">配置说明</a> | 🐙 <a href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a href="https://task.helpenx.com">NeoTask 官网</a></p>
+        <header class="article-header">
+          <p class="article-eyebrow">核心概念</p>
+          <h1>去中心化架构</h1>
+          <p class="article-lede">对等节点、抢占式消费与无主架构：多节点如何共享队列而不需要调度中心。</p>
+          <div class="article-meta">
+            <span>更新于 2026-05-02</span>
+            <span class="dot"></span>
+            <span>约 14 分钟 读完</span>
+            <span class="dot"></span>
+            <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg></a>
+          </div>
+        </header>
+        <div class="article-body">
 <blockquote>
 <p><strong>文档定位</strong>：这是一篇项目文档。重点是帮助读者快速建立项目能力边界、核心模块和后续阅读路径。<br>
 <strong>事实边界</strong>：实现文档：功能、接口和代码行为以文中标注版本对应的源码为准；仓库后续版本可能发生变化。<br>
@@ -129,7 +166,7 @@ footer a:hover{color:var(--brand)}
 <strong>阅读提示</strong>：去中心化是 NeoTask 分布式体系的&quot;世界观&quot;——共享队列模式（shared）下没有主节点，协调靠 Redis 的原子原语完成。本文会点出两处容易误读的现状：节点管理存在 NodeManager 与 HeartbeatManager 两套实现（现已共用同一份节点注册表），以及 Coordinator 虽被实例化、但提交链路并不经过它。</p>
 </blockquote>
 <hr>
-<h2>目录</h2>
+<h2 id="目录">目录</h2>
 <ol>
 <li class="lvl-3">
 <p><a href="#%E4%B8%80%E4%B8%BA%E4%BB%80%E4%B9%88%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6%E8%A6%81%E9%80%89%E6%97%A0%E4%B8%BB%E6%9E%B6%E6%9E%84">为什么任务调度要选无主架构</a></p>
@@ -175,7 +212,7 @@ footer a:hover{color:var(--brand)}
 </li>
 </ol>
 <hr>
-<h2>一、为什么任务调度要选无主架构</h2>
+<h2 id="一、为什么任务调度要选无主架构">一、为什么任务调度要选无主架构</h2>
 <h3>1.1 主从架构的隐性成本</h3>
 <p>分布式系统控制平面常见的方案是主从（leader-follower）：一个主节点负责任务分配与调度决策，从节点执行。这套模型的概念足够直观，但随之而来一长串经典难题：</p>
 <table>
@@ -258,7 +295,7 @@ footer a:hover{color:var(--brand)}
 </tbody>
 </table>
 <hr>
-<h2>二、整体架构：存储层是唯一的事实中心</h2>
+<h2 id="二、整体架构：存储层是唯一的事实中心">二、整体架构：存储层是唯一的事实中心</h2>
 <p>NeoTask 的去中心化架构在逻辑上分为三层，但必须强调：<strong>节点层之间不存在任何直接通信通道</strong>，所有协调都发生在存储层。</p>
 <pre class="mermaid">graph TB
     subgraph NodeLayer[&quot;节点层（对等，无主）&quot;]
@@ -300,7 +337,7 @@ footer a:hover{color:var(--brand)}
 </blockquote>
 <p><strong>为什么这么设计：任务调度的&quot;状态&quot;必须能被任何节点在任何时刻读取。</strong> 若节点各自维护任务归属，宕机即丢状态；全部放 Redis，任何节点崩溃都只损失&quot;正在跑的协程&quot;，不损失任务的真实状态。观测层（回收器、看门狗）因此得以独立于节点运行——这正是故障恢复的基础。</p>
 <hr>
-<h2>三、对等节点：每个节点都是完整的处理单元</h2>
+<h2 id="三、对等节点：每个节点都是完整的处理单元">三、对等节点：每个节点都是完整的处理单元</h2>
 <p>所有节点进程内跑着同一套组件（v1.0.2 的 <code>TaskPool</code> 即节点的完整化身）。从源码看，一个节点的内部结构如下（组件名为真实类名）：</p>
 <pre class="mermaid">graph TB
     subgraph NodeInternal[&quot;节点（TaskPool 进程）内部&quot;]
@@ -335,7 +372,7 @@ footer a:hover{color:var(--brand)}
 <p><strong>为什么这么设计：节点对等 + 组件齐备 = 任意节点可随时接管任意任务。</strong></p>
 <p>关键洞察：节点之间不是&quot;分工&quot;关系而是&quot;冗余&quot;关系——每个节点都能处理每个任务，重复的危险交给锁与状态机消除，而不是靠&quot;任务只发给特定节点&quot;来回避。这样扩容只是增加冗余度，缩容只是减少冗余度，不需要数据迁移。</p>
 <hr>
-<h2>四、抢占式消费的真实链路</h2>
+<h2 id="四、抢占式消费的真实链路">四、抢占式消费的真实链路</h2>
 <h3>4.1 三个阶段的真实代码路径</h3>
 <p>网上的去中心化教程常画一条&quot;提交→原子抢占（出队+加锁）→执行&quot;的顺滑流水线。v1.0.2 的真实链路要微妙得多：</p>
 <pre class="mermaid">sequenceDiagram
@@ -418,7 +455,7 @@ task = <span class="hljs-keyword">await</span> <span class="hljs-variable langua
 </code></pre>
 <p><strong>&quot;出队&quot;与&quot;加锁&quot;之间隔着一整个网络往返窗口</strong>（从 Lua 返回 → 读任务详情 → 状态检查 → 加锁），这段窗口内任务可以被两个节点同时取出——这正是第六节要展开的核心设计话题。</p>
 <hr>
-<h2>五、出队原子 ≠ 执行原子：核心设计</h2>
+<h2 id="五、出队原子 ≠ 执行原子：核心设计">五、出队原子 ≠ 执行原子：核心设计</h2>
 <h3>5.1 为什么不在 Lua 里顺便加锁？</h3>
 <p>有一种常见误解是把抢占描述为&quot;Lua 原子完成出队 + SET NX 加锁&quot;。v1.0.2 的真实设计<strong>不是这样</strong>，而且这是有意为之的取舍，理由有三：</p>
 <p><strong>1. 出队与执行的语义目标不同。</strong> 出队要保证的是&quot;任务只被取出一次&quot;（队列完整性）；加锁要保证的是&quot;任务只被执行一次&quot;（执行互斥）。把两者焊进一个 Lua 脚本，意味着&quot;取出来&quot;与&quot;锁上&quot;必须同时成功——如果锁 SET NX 失败（锁残留），脚本要么把任务放回队列（多一次往返）、要么返回空（白白出队）。在 Redis 脚本里处理这种分支，脚本会越来越像业务代码，失去&quot;最小原子操作&quot;的可维护性。</p>
@@ -458,7 +495,7 @@ task = <span class="hljs-keyword">await</span> <span class="hljs-variable langua
 </table>
 <p><strong>为什么这么设计（三防线）</strong>：分布式系统里&quot;检查-执行&quot;之间永远存在竞态窗口，与其追求一个覆盖全链路的超级原子操作（复杂、脆弱、难调试），不如接受窗口存在，用<strong>状态机 + 锁 + 幂等</strong>分别堵住窗口的每个出口。代价是极端情况下（进程在置 RUNNING 后、释放锁前崩溃）任务会短暂地&quot;既不在队列也不可执行&quot;——这正是回收器扫描锁 TTL 的用武之地，详见 <a href="failure-recovery.html">故障恢复</a>。</p>
 <hr>
-<h2>六、节点注册、心跳与判活</h2>
+<h2 id="六、节点注册、心跳与判活">六、节点注册、心跳与判活</h2>
 <h3>6.1 真实 key 结构与三态模型</h3>
 <p>🔧 v1.0.2 <code>distributed/node.py</code>（<code>NodeManager</code>）是节点管理的现行实现：</p>
 <pre class="hljs"><code><span class="hljs-comment"># 🔧 distributed/node.py —— 真实源码摘录</span>
@@ -544,7 +581,7 @@ task = <span class="hljs-keyword">await</span> <span class="hljs-variable langua
 </table>
 <p><strong>参数关系</strong>：判死阈值 20s &gt; 锁续期间隔 9s，且任务锁 TTL 30s &gt; 心跳阈值 20s。这不是巧合——它保证&quot;节点心跳还在&quot;时锁一定不会过期（还能续期），而&quot;节点真死了&quot;之后最多 30s 锁就过期、任务可被回收。</p>
 <hr>
-<h2>七、为什么两态就够了：TTL 判活的哲学</h2>
+<h2 id="七、为什么两态就够了：TTL 判活的哲学">七、为什么两态就够了：TTL 判活的哲学</h2>
 <h3>7.1 三态模型：ACTIVE / STOPPED / FAILED</h3>
 <p>v1.0.2 的 <code>NodeStatus</code> 只有 <strong>ACTIVE / STOPPED / FAILED 三态，没有 SUSPECT（可疑）态</strong>；<code>_health_check_loop</code> 里还留着 <code># TODO: 处理故障节点</code>。判活只有一个动作：<strong>读 last_heartbeat 与 now 比大小</strong>。也就是说，运行期虽然区分&quot;优雅停（STOPPED）“与&quot;判死（FAILED）”，但对消费者而言节点只有&quot;活着、能被抢占同一队列&quot;和&quot;死了、任务需回收&quot;两种有效语义——这正是标题所说&quot;两态就够了&quot;的含义。</p>
 <p>为什么可以这么&quot;糙&quot;？因为节点故障检测在这里<strong>不是正确性依赖</strong>：</p>
@@ -588,7 +625,7 @@ task = <span class="hljs-keyword">await</span> <span class="hljs-variable langua
 </table>
 <p>优雅退出的关键在 <code>stop()</code> 中 <code>wait_until_empty</code>——先停止接收新任务并等本地队列清空，再注销。<strong>先断供给、再断身份</strong>，避免&quot;我明明还在收尾，别人却以为我死了&quot;。</p>
 <hr>
-<h2>八、两套节点管理实现：NodeManager 与 HeartbeatManager</h2>
+<h2 id="八、两套节点管理实现：NodeManager 与 HeartbeatManager">八、两套节点管理实现：NodeManager 与 HeartbeatManager</h2>
 <p>v1.0.2 源码里存在<strong>两套节点管理实现</strong>，这是阅读源码时必须知道的现实。二者的关键差别不在&quot;格式之争&quot;，而在职责侧重：</p>
 <table>
 <thead>
@@ -649,7 +686,7 @@ task = <span class="hljs-keyword">await</span> <span class="hljs-variable langua
 </li>
 </ol>
 <hr>
-<h2>九、Coordinator 的真实位置：已预留，未接入主链路</h2>
+<h2 id="九、Coordinator 的真实位置：已预留，未接入主链路">九、Coordinator 的真实位置：已预留，未接入主链路</h2>
 <h3>9.1 共享模式下 Coordinator 的&quot;存在感&quot;很低</h3>
 <p>🔧 v1.0.2 <code>distributed/coordinator.py</code>：Coordinator 依赖 NodeManager + QueueScheduler，支持 shared/partitioned 两种分发模式。共享模式下它的 <code>distribute_task</code> 逻辑是：</p>
 <pre class="hljs"><code><span class="hljs-comment"># 🔧 distributed/coordinator.py —— 真实源码摘录</span>
@@ -690,7 +727,7 @@ task = <span class="hljs-keyword">await</span> <span class="hljs-variable langua
 </ol>
 <p>对读者的提示：<strong>看到架构图里有、而代码主链路没有的组件，先确认它的&quot;接入点&quot;，再看它的&quot;实现&quot;。</strong> Coordinator 属于&quot;已预留、未接入&quot;这一类；<a href="dag-workflow.html">任务编排</a> 一文中的 DAG 引擎则更进一步——它目前仍是路线图规划，源码中尚无对应模块。</p>
 <hr>
-<h2>十、水平扩展：负载如何自然分配</h2>
+<h2 id="十、水平扩展：负载如何自然分配">十、水平扩展：负载如何自然分配</h2>
 <h3>10.1 为什么&quot;谁快谁多干&quot;能自动成立</h3>
 <p>无主系统的负载均衡不靠调度器分配，而靠<strong>队列水位差</strong>自然形成：</p>
 <pre class="mermaid">flowchart TB
@@ -719,7 +756,7 @@ task = <span class="hljs-keyword">await</span> <span class="hljs-variable langua
 </ol>
 <p>实践上，达到这两个边界前更早出现的通常是：锁竞争（热点任务）、心跳风暴（数百节点同时 5s 一次 HSET 尚可，但回收器扫描是全量 <code>smembers</code> + 逐节点 <code>hgetall</code>，节点数上千时单次扫描变慢）。</p>
 <hr>
-<h2>十一、分区容错：什么能扛，什么不能扛</h2>
+<h2 id="十一、分区容错：什么能扛，什么不能扛">十一、分区容错：什么能扛，什么不能扛</h2>
 <pre class="mermaid">graph TB
     subgraph Case1[&quot;情况一：节点 ↔ Redis 断连&quot;]
         N[节点] -.-x|断连| R[(Redis)]
@@ -763,7 +800,7 @@ task = <span class="hljs-keyword">await</span> <span class="hljs-variable langua
 </table>
 <p>Redis 发生 failover 时锁的丢失语义（双主窗口）与对策，见 <a href="distributed-lock.html">分布式锁</a> 故障场景四。</p>
 <hr>
-<h2>十二、故障场景实战</h2>
+<h2 id="十二、故障场景实战">十二、故障场景实战</h2>
 <h3>场景一：节点&quot;假死&quot;——GC 长停顿导致心跳中断</h3>
 <p><strong>现象</strong>：某节点执行大任务时 JVM/Python 进程 GC 或 CPU 打满，心跳 20s 没刷。其他节点判定其死亡，任务锁 30s 过期，正在跑的任务被重新入队并被别的节点抢走执行——<strong>原节点 GC 结束后继续跑旧任务，同一任务双执行</strong>。</p>
 <p><strong>根因</strong>：心跳中断 ≠ 任务停止。锁 TTL 一到，保护就没了。</p>
@@ -818,7 +855,7 @@ task = <span class="hljs-keyword">await</span> <span class="hljs-variable langua
 </ol>
 <p><strong>启示</strong>：以 Redis 为事实中心的系统，<strong>Redis 中的数据要当&quot;数据库&quot;对待</strong>：有备份、有审计、有重建路径。把状态全放 Redis 的便利，代价是 Redis 的每一个误操作都是全局事故。</p>
 <hr>
-<h2>十三、总结</h2>
+<h2 id="十三、总结">十三、总结</h2>
 <table>
 <thead>
 <tr>
@@ -871,7 +908,7 @@ task = <span class="hljs-keyword">await</span> <span class="hljs-variable langua
 </table>
 <p><strong>一句结语</strong>：去中心化不是&quot;没有中心&quot;，而是<strong>把中心从&quot;会选主的节点&quot;换成&quot;不会犯错的存储&quot;</strong>。NeoTask 的架构之美在于承认了这一点——所有节点的行为都退化到最简单：抢队列、拿锁、执行、刷心跳。系统级复杂度没有消失，它被转移到了 Redis 的原子原语与回收器的补偿逻辑里——那才是真正的&quot;分布式系统代码&quot;所在之处。</p>
 <hr>
-<h2>版本与验证说明</h2>
+<h2 id="版本与验证说明">版本与验证说明</h2>
 <p>本文属于项目文档而不是永久不变的 API 契约。以下情况发生时，应重新核对源码或发布说明：</p>
 <ol>
 <li class="lvl-3">
@@ -885,7 +922,7 @@ task = <span class="hljs-keyword">await</span> <span class="hljs-variable langua
 </li>
 </ol>
 <p>如果你要把本文内容用于生产环境，请优先使用仓库当前版本的 README、源码、测试和 Release 记录进行最终确认。</p>
-<h2>相关链接</h2>
+<h2 id="相关链接">相关链接</h2>
 <p><a href="index.html">返回首页</a></p>
 <p><strong>入门与参考</strong></p>
 <ul class="lvl-0">
@@ -954,18 +991,70 @@ task = <span class="hljs-keyword">await</span> <span class="hljs-variable langua
 </li>
 </ul>
 
+        </div>
       </article>
+      <nav class="docs-pager" aria-label="上一篇与下一篇">
+      <a class="pager-prev" href="/docs/architecture.html"><span>上一篇</span><strong>架构设计</strong></a>
+      <a class="pager-next" href="/docs/persistence.html"><span>下一篇</span><strong>持久化存储</strong></a>
+    </nav>
+      <p class="docs-feedback">发现文档问题？欢迎在 <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">GitHub Issues</a> 反馈。</p>
     </main>
+    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#%E7%9B%AE%E5%BD%95">目录</a><a href="#%E4%B8%80%E3%80%81%E4%B8%BA%E4%BB%80%E4%B9%88%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6%E8%A6%81%E9%80%89%E6%97%A0%E4%B8%BB%E6%9E%B6%E6%9E%84">一、为什么任务调度要选无主架构</a><a href="#%E4%BA%8C%E3%80%81%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84%EF%BC%9A%E5%AD%98%E5%82%A8%E5%B1%82%E6%98%AF%E5%94%AF%E4%B8%80%E7%9A%84%E4%BA%8B%E5%AE%9E%E4%B8%AD%E5%BF%83">二、整体架构：存储层是唯一的事实中心</a><a href="#%E4%B8%89%E3%80%81%E5%AF%B9%E7%AD%89%E8%8A%82%E7%82%B9%EF%BC%9A%E6%AF%8F%E4%B8%AA%E8%8A%82%E7%82%B9%E9%83%BD%E6%98%AF%E5%AE%8C%E6%95%B4%E7%9A%84%E5%A4%84%E7%90%86%E5%8D%95%E5%85%83">三、对等节点：每个节点都是完整的处理单元</a><a href="#%E5%9B%9B%E3%80%81%E6%8A%A2%E5%8D%A0%E5%BC%8F%E6%B6%88%E8%B4%B9%E7%9A%84%E7%9C%9F%E5%AE%9E%E9%93%BE%E8%B7%AF">四、抢占式消费的真实链路</a><a href="#%E4%BA%94%E3%80%81%E5%87%BA%E9%98%9F%E5%8E%9F%E5%AD%90%20%E2%89%A0%20%E6%89%A7%E8%A1%8C%E5%8E%9F%E5%AD%90%EF%BC%9A%E6%A0%B8%E5%BF%83%E8%AE%BE%E8%AE%A1">五、出队原子 ≠ 执行原子：核心设计</a><a href="#%E5%85%AD%E3%80%81%E8%8A%82%E7%82%B9%E6%B3%A8%E5%86%8C%E3%80%81%E5%BF%83%E8%B7%B3%E4%B8%8E%E5%88%A4%E6%B4%BB">六、节点注册、心跳与判活</a><a href="#%E4%B8%83%E3%80%81%E4%B8%BA%E4%BB%80%E4%B9%88%E4%B8%A4%E6%80%81%E5%B0%B1%E5%A4%9F%E4%BA%86%EF%BC%9ATTL%20%E5%88%A4%E6%B4%BB%E7%9A%84%E5%93%B2%E5%AD%A6">七、为什么两态就够了：TTL 判活的哲学</a><a href="#%E5%85%AB%E3%80%81%E4%B8%A4%E5%A5%97%E8%8A%82%E7%82%B9%E7%AE%A1%E7%90%86%E5%AE%9E%E7%8E%B0%EF%BC%9ANodeManager%20%E4%B8%8E%20HeartbeatManager">八、两套节点管理实现：NodeManager 与 HeartbeatManager</a><a href="#%E4%B9%9D%E3%80%81Coordinator%20%E7%9A%84%E7%9C%9F%E5%AE%9E%E4%BD%8D%E7%BD%AE%EF%BC%9A%E5%B7%B2%E9%A2%84%E7%95%99%EF%BC%8C%E6%9C%AA%E6%8E%A5%E5%85%A5%E4%B8%BB%E9%93%BE%E8%B7%AF">九、Coordinator 的真实位置：已预留，未接入主链路</a><a href="#%E5%8D%81%E3%80%81%E6%B0%B4%E5%B9%B3%E6%89%A9%E5%B1%95%EF%BC%9A%E8%B4%9F%E8%BD%BD%E5%A6%82%E4%BD%95%E8%87%AA%E7%84%B6%E5%88%86%E9%85%8D">十、水平扩展：负载如何自然分配</a><a href="#%E5%8D%81%E4%B8%80%E3%80%81%E5%88%86%E5%8C%BA%E5%AE%B9%E9%94%99%EF%BC%9A%E4%BB%80%E4%B9%88%E8%83%BD%E6%89%9B%EF%BC%8C%E4%BB%80%E4%B9%88%E4%B8%8D%E8%83%BD%E6%89%9B">十一、分区容错：什么能扛，什么不能扛</a><a href="#%E5%8D%81%E4%BA%8C%E3%80%81%E6%95%85%E9%9A%9C%E5%9C%BA%E6%99%AF%E5%AE%9E%E6%88%98">十二、故障场景实战</a><a href="#%E5%8D%81%E4%B8%89%E3%80%81%E6%80%BB%E7%BB%93">十三、总结</a></nav>
   </div>
-  <footer>
-    <a href="https://task.helpenx.com" target="_blank" rel="noopener">NeoTask 官网</a>·
-    <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>·
-    <a href="index.html">文档中心</a>
-    <div style="margin-top:6px">© 2026 helpenx.com · 文档基线以文中标注版本对应的源码为准</div>
-  </footer>
-  <script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
-  </script>
+  <footer class="site-footer">
+  <div class="container">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a class="brand" href="/" aria-label="NeoTask 首页">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="9" fill="#10211b"/>
+            <path d="M9.5 22.5v-13l13 13v-13" fill="none" stroke="#2dd4bf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
+          </svg>
+          <span class="brand-name">NeoTask</span>
+        </a>
+        <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
+        <div class="footer-status"><span class="status-dot"></span> v1.0.5 · 发布于 2026-10-29</div>
+      </div>
+
+      <div class="footer-col">
+        <h3>产品</h3>
+        <a href="/features.html">产品能力</a>
+        <a href="/docs/">文档中心</a>
+        <a href="/changelog.html">更新日志</a>
+        <a href="https://pypi.org/project/neotask/" target="_blank" rel="noopener">PyPI</a>
+      </div>
+      <div class="footer-col">
+        <h3>文档</h3>
+        <a href="/docs/quickstart.html">快速上手</a>
+        <a href="/docs/architecture.html">架构设计</a>
+        <a href="/docs/api-reference.html">API 参考</a>
+        <a href="/docs/benchmarks.html">性能基准</a>
+      </div>
+      <div class="footer-col">
+        <h3>社区</h3>
+        <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/neopen/neotask/discussions" target="_blank" rel="noopener">Discussions</a>
+        <a href="https://github.com/neopen/neotask/tree/main/examples" target="_blank" rel="noopener">示例代码</a>
+      </div>
+      <div class="footer-col">
+        <h3>资源</h3>
+        <a href="/community.html">参与贡献</a>
+        <a href="https://pengline.cn" target="_blank" rel="noopener">技术博客</a>
+        <a href="https://github.com/neopen/neotask/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+        <a href="https://github.com/neopen/neotask/releases" target="_blank" rel="noopener">Release Notes</a>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p>© 2026 NeoTask · 由 <a href="https://pengline.cn" target="_blank" rel="noopener">NeoTask 作者 NeoPen</a> 维护 · 基于 MIT 协议开源</p>
+      <p class="footer-motto">Embedded by design. Observable by default.</p>
+    </div>
+  </div>
+</footer>
+
+  <script src="/assets/js/site.js" defer></script>
+  <script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'; mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
 </body>
 </html>

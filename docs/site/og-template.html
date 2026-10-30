@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    font-family: "Inter", "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: #07120f;
+    color: #e9f4ef;
+    position: relative;
+  }
+  .grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(45, 212, 191, 0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(45, 212, 191, 0.07) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: linear-gradient(120deg, #000 20%, transparent 75%);
+  }
+  .glow {
+    position: absolute; width: 700px; height: 700px; right: -160px; top: -220px;
+    background: radial-gradient(circle, rgba(45, 212, 191, 0.26), transparent 68%);
+  }
+  .wrap { position: relative; padding: 64px 72px; height: 100%; display: flex; flex-direction: column; }
+  .brand { display: flex; align-items: center; gap: 14px; font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+  .mark { width: 54px; height: 54px; border-radius: 15px; background: #0f221c; border: 1px solid rgba(45, 212, 191, 0.35); display: grid; place-items: center; }
+  .ver { font-family: ui-monospace, Consolas, monospace; font-size: 14px; font-weight: 500; color: #7fe3d3; border: 1px solid rgba(45, 212, 191, 0.3); border-radius: 99px; padding: 4px 12px; }
+  h1 { margin-top: 58px; font-size: 82px; line-height: 1.12; letter-spacing: -0.055em; font-weight: 800; max-width: 760px; }
+  h1 em { font-style: normal; color: #37d6c0; }
+  p { margin-top: 24px; font-size: 24px; line-height: 1.6; color: #a9c4bb; max-width: 560px; }
+  .pills { margin-top: auto; display: flex; align-items: center; gap: 14px; }
+  .pill { font-family: ui-monospace, Consolas, monospace; font-size: 16px; padding: 12px 18px; border-radius: 10px; }
+  .cmd { background: #b7f171; color: #0b1a13; font-weight: 600; }
+  .tag { border: 1px solid rgba(233, 244, 239, 0.2); color: #cfe4dc; }
+  .console {
+    position: absolute; right: 68px; bottom: 74px; width: 380px;
+    background: #0b1a15; border: 1px solid rgba(45, 212, 191, 0.22); border-radius: 16px;
+    padding: 20px 20px 16px; box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.8);
+  }
+  .dots { display: flex; gap: 6px; margin-bottom: 18px; }
+  .dots i { width: 9px; height: 9px; border-radius: 50%; background: #25443a; }
+  .row { display: flex; justify-content: space-between; align-items: center; font-family: ui-monospace, Consolas, monospace; font-size: 13px; padding: 10px 0; border-top: 1px solid rgba(233, 244, 239, 0.07); }
+  .row:first-of-type { border-top: 0; }
+  .nm { color: #d7eee6; }
+  .st { color: #6fd7c6; }
+  .pillst { font-size: 10px; padding: 2px 7px; border-radius: 4px; color: #07120f; background: #b7f171; }
+  .pillst.low { background: #37544a; color: #cfe4dc; }
+  .metric { display: flex; gap: 22px; margin-bottom: 14px; }
+  .metric div { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: #6e8c82; }
+  .metric strong { display: block; font-size: 20px; color: #e9f4ef; margin-top: 2px; font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="grid"></div>
+  <div class="glow"></div>
+  <div class="wrap">
+    <div class="brand">
+      <span class="mark">
+        <svg width="34" height="34" viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M9.5 22.5v-13l13 13v-13" fill="none" stroke="#2dd4bf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
+        </svg>
+      </span>
+      NeoTask
+      <span class="ver">v1.0.5</span>
+    </div>
+    <h1>把耗时任务<br><em>交给后台。</em></h1>
+    <p>纯 Python 实现的嵌入式异步任务队列。零中间件起步，需要时平滑扩展到分布式。</p>
+    <div class="pills">
+      <span class="pill cmd">$ pip install neotask</span>
+      <span class="pill tag">Python 3.8+</span>
+      <span class="pill tag">MIT</span>
+    </div>
+  </div>
+  <div class="console">
+    <div class="dots"><i></i><i></i><i></i></div>
+    <div class="metric">
+      <div>RUNNING<strong>3</strong></div>
+      <div>QUEUED<strong>128</strong></div>
+      <div>DONE<strong>12.4k</strong></div>
+    </div>
+    <div class="row"><span class="nm">generate_image</span><span class="pillst">HIGH</span></div>
+    <div class="row"><span class="nm">transcode_video</span><span class="st">NORMAL</span></div>
+    <div class="row"><span class="nm">send_daily_report</span><span class="pillst low">LOW</span></div>
+    <div class="row"><span class="nm">crawl_prices</span><span class="st">RUNNING</span></div>
+  </div>
+</body>
+</html>

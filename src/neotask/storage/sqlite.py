@@ -7,6 +7,7 @@
 """
 
 import json
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -14,6 +15,10 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from neotask.models.task import Task, TaskPriority, TaskStatus
 from neotask.storage.base import TaskRepository, QueueRepository
 from neotask.utils import sqlite_compat
+
+#: DELETE ... RETURNING 自 SQLite 3.35 起支持；多进程下用它把「取任务 + 出队」
+#: 合并成一条原子语句，避免两个进程 SELECT 到同一批任务后重复执行。
+_HAS_DELETE_RETURNING = sqlite3.sqlite_version_info >= (3, 35, 0)
 
 #: tasks 表允许按字段更新的列
 _TASK_COLUMNS = {
@@ -36,7 +41,7 @@ def _serialize_field(name: str, value: Any) -> Any:
     if name == "data":
         return json.dumps(value) if value is not None else "{}"
     if name == "result":
-        return json.dumps(value) if value else None
+        return json.dumps(value) if value is not None else None
     return value
 
 
@@ -129,7 +134,7 @@ class SQLiteTaskRepository(TaskRepository):
             task.created_at.isoformat(),
             task.started_at.isoformat() if task.started_at else None,
             task.completed_at.isoformat() if task.completed_at else None,
-            json.dumps(task.result) if task.result else None,
+            json.dumps(task.result) if task.result is not None else None,
             task.error,
             getattr(task, 'progress', 0.0),
             getattr(task, 'progress_message', '')
@@ -215,12 +220,18 @@ class SQLiteTaskRepository(TaskRepository):
             "SELECT * FROM tasks WHERE task_id = ?",
             (task_id,)
         )
-        row = await cursor.fetchone()
+        try:
+            row = await cursor.fetchone()
+            columns = [desc[0] for desc in cursor.description]
+        finally:
+            # 必须关闭游标：未耗尽的 SELECT 会持有读事务，随后的写入会被
+            # SQLite 当作「读转写升级」，在 WAL 下直接返回 database is locked
+            # 且不经过 busy_timeout 等待。
+            await cursor.close()
 
         if not row:
             return None
 
-        columns = [desc[0] for desc in cursor.description]
         data = dict(zip(columns, row))
 
         return Task.from_dict({
@@ -265,8 +276,11 @@ class SQLiteTaskRepository(TaskRepository):
             "SELECT * FROM tasks WHERE status = ? LIMIT ? OFFSET ?",
             (status.value, limit, offset)
         )
-        rows = await cursor.fetchall()
-        columns = [desc[0] for desc in cursor.description]
+        try:
+            rows = await cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+        finally:
+            await cursor.close()
 
         tasks = []
         for row in rows:
@@ -345,7 +359,10 @@ class SQLiteTaskRepository(TaskRepository):
             "SELECT 1 FROM tasks WHERE task_id = ? LIMIT 1",
             (task_id,)
         )
-        row = await cursor.fetchone()
+        try:
+            row = await cursor.fetchone()
+        finally:
+            await cursor.close()
         return row is not None
 
     async def close(self) -> None:
@@ -360,8 +377,11 @@ class SQLiteTaskRepository(TaskRepository):
         """List all tasks."""
         await self._ensure_init()
         cursor = await self._conn.execute("SELECT * FROM tasks")
-        rows = await cursor.fetchall()
-        columns = [desc[0] for desc in cursor.description]
+        try:
+            rows = await cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+        finally:
+            await cursor.close()
 
         tasks = []
         for row in rows:
@@ -441,11 +461,32 @@ class SQLiteQueueRepository(QueueRepository):
 
     async def pop(self, count: int = 1) -> List[str]:
         await self._ensure_init()
+
+        if _HAS_DELETE_RETURNING:
+            # 单条语句完成「按优先级取任务 + 删除」，跨进程原子，不会重复认领
+            cursor = await self._conn.execute(
+                "DELETE FROM queue WHERE task_id IN ("
+                "SELECT task_id FROM queue "
+                "ORDER BY priority ASC, created_at ASC LIMIT ?"
+                ") RETURNING task_id",
+                (count,)
+            )
+            try:
+                rows = await cursor.fetchall()
+            finally:
+                await cursor.close()
+            await self._conn.commit()
+            return [row[0] for row in rows]
+
+        # 旧版 SQLite：无 RETURNING，SELECT + DELETE 非原子（仅单进程安全）
         cursor = await self._conn.execute(
             "SELECT task_id FROM queue ORDER BY priority ASC, created_at ASC LIMIT ?",
             (count,)
         )
-        rows = await cursor.fetchall()
+        try:
+            rows = await cursor.fetchall()
+        finally:
+            await cursor.close()
         task_ids = [row[0] for row in rows]
 
         if task_ids:
@@ -470,7 +511,10 @@ class SQLiteQueueRepository(QueueRepository):
     async def size(self) -> int:
         await self._ensure_init()
         cursor = await self._conn.execute("SELECT COUNT(*) FROM queue")
-        row = await cursor.fetchone()
+        try:
+            row = await cursor.fetchone()
+        finally:
+            await cursor.close()
         return row[0] if row else 0
 
     async def peek(self, count: int = 1) -> List[str]:
@@ -479,7 +523,10 @@ class SQLiteQueueRepository(QueueRepository):
             "SELECT task_id FROM queue ORDER BY priority ASC, created_at ASC LIMIT ?",
             (count,)
         )
-        rows = await cursor.fetchall()
+        try:
+            rows = await cursor.fetchall()
+        finally:
+            await cursor.close()
         return [row[0] for row in rows]
 
     async def clear(self) -> None:

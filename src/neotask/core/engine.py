@@ -37,6 +37,7 @@ class EngineConfig:
     storage_type: str = "memory"
     sqlite_path: str = "neotask.db"
     redis_url: Optional[str] = None
+    redis_max_connections: int = 50
     persist_queue: bool = True
 
     # 进度落库节流（时间间隔 或 增量阈值任一满足即写入）
@@ -187,7 +188,10 @@ class TaskEngine:
                 persist_queue=self.config.persist_queue,
             )
         elif self.config.storage_type == "redis":
-            storage_config = StorageConfig.redis(self.config.redis_url)
+            storage_config = StorageConfig.redis(
+                self.config.redis_url,
+                self.config.redis_max_connections,
+            )
         else:
             raise ValueError(f"Unknown storage type: {self.config.storage_type}")
 

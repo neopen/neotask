@@ -32,6 +32,12 @@ DEFAULT_PRAGMAS: Tuple[str, ...] = (
 )
 
 
+def _is_readonly_sql(sql: str) -> bool:
+    """判断语句是否只读（只读语句走读连接）。"""
+    head = sql.lstrip()[:6].upper()
+    return head == "SELECT" or sql.lstrip()[:4].upper() == "WITH"
+
+
 class LoopBoundCursor:
     """代理 ``aiosqlite.Cursor``。
 
@@ -108,47 +114,65 @@ class LoopBoundSQLiteConnection:
         self._row_factory = row_factory
         self._pragmas = tuple(DEFAULT_PRAGMAS if pragmas is None else pragmas)
         self._connect_kwargs = connect_kwargs
-        self._conn: Optional[aiosqlite.Connection] = None
+        # 读写分离：同一进程内用两条连接。
+        # - 写连接只执行 INSERT/UPDATE/DELETE，永远不会持有读事务，写操作直接
+        #   申请写锁，遇到其它进程持锁时由 busy_timeout 正常排队等待；
+        # - 读连接只执行 SELECT，WAL 下读不阻塞写。
+        # 若读写共用一条连接，某个 SELECT 游标未关闭期间（读事务仍在），随后的
+        # 写会走「读转写升级」路径，此时 SQLite 不调用 busy handler，立刻抛
+        # database is locked，多进程并发下会造成任务状态写入失败。
+        self._write_conn: Optional[aiosqlite.Connection] = None
+        self._read_conn: Optional[aiosqlite.Connection] = None
         self._bound_loop: Optional[asyncio.AbstractEventLoop] = None
 
     @property
     def closed(self) -> bool:
         """底层连接是否已关闭。"""
-        return self._conn is None
+        return self._write_conn is None and self._read_conn is None
 
-    async def _ensure_connection(self) -> aiosqlite.Connection:
-        """在专用 loop 内惰性建立连接。
+    async def _ensure_connection(self, readonly: bool = False) -> aiosqlite.Connection:
+        """在专用 loop 内惰性建立读/写连接。
 
         ``aiosqlite.connect`` 是异步的，多个并发命令可能同时走到这里；建立完成后
         再检查一次，若已有其它协程先完成建连，则关闭本次多出来的连接，避免出现
-        两个连接同时写同一个库文件。
+        多条连接同时写同一个库文件。
         """
-        if self._conn is None:
+        attr = "_read_conn" if readonly else "_write_conn"
+        if getattr(self, attr) is None:
             conn = await aiosqlite.connect(self._database, **self._connect_kwargs)
-            if self._conn is not None:  # 并发情况下已有连接，丢弃重复的
+            if getattr(self, attr) is not None:  # 并发情况下已有连接，丢弃重复的
                 await conn.close()
             else:
                 if self._row_factory is not None:
                     conn.row_factory = self._row_factory
-                self._conn = conn
-                # 连接建立后立即应用 PRAGMA（必须在任何业务读写之前）
+                setattr(self, attr, conn)
+                # 连接建立后立即应用 PRAGMA（必须在任何业务读写之前）。
+                # PRAGMA 会返回结果行，游标必须显式关闭：未关闭的语句会一直持有
+                # 读事务，后续写会被当作「读转写升级」而绕过 busy_timeout。
                 for pragma in self._pragmas:
-                    await conn.execute(pragma)
+                    pragma_cursor = await conn.execute(pragma)
+                    await pragma_cursor.close()
                 await conn.commit()
-        return self._conn
+        return getattr(self, attr)
 
-    async def _run(self, factory: Callable[[aiosqlite.Connection], Awaitable[Any]]) -> Any:
+    async def _run(
+            self,
+            factory: Callable[[aiosqlite.Connection], Awaitable[Any]],
+            readonly: bool = False,
+    ) -> Any:
         """把 ``factory(conn)`` 投递到专用 loop 执行。"""
         loop = get_shared_loop()
 
         # 专用 loop 被重建时，旧连接绑定在已关闭的 loop 上，不能继续复用；
         # 丢弃后在新的 loop 中重新建连（与 Redis 代理保持一致的防御逻辑）。
-        if self._conn is not None and self._bound_loop is not loop:
-            self._conn = None
+        if (self._write_conn is not None or self._read_conn is not None) \
+                and self._bound_loop is not loop:
+            self._write_conn = None
+            self._read_conn = None
         self._bound_loop = loop
 
         async def _runner() -> Any:
-            conn = await self._ensure_connection()
+            conn = await self._ensure_connection(readonly)
             return await factory(conn)
 
         return await run_on_loop(_runner, loop=loop)
@@ -162,7 +186,10 @@ class LoopBoundSQLiteConnection:
         return await run_on_loop(fn, loop=loop)
 
     async def execute(self, sql: str, parameters: Optional[Iterable[Any]] = None) -> LoopBoundCursor:
-        """执行 SQL 并返回 loop 安全的游标代理。"""
+        """执行 SQL 并返回 loop 安全的游标代理。
+
+        SELECT / WITH 走只读连接，其余语句走写连接（见 ``__init__`` 注释）。
+        """
 
         async def _factory(conn: aiosqlite.Connection) -> LoopBoundCursor:
             if parameters is None:
@@ -171,7 +198,7 @@ class LoopBoundSQLiteConnection:
                 cursor = await conn.execute(sql, parameters)
             return LoopBoundCursor(self, cursor)
 
-        return await self._run(_factory)
+        return await self._run(_factory, readonly=_is_readonly_sql(sql))
 
     async def executemany(
             self,
@@ -196,41 +223,46 @@ class LoopBoundSQLiteConnection:
         return await self._run(_factory)
 
     async def commit(self) -> None:
-        """提交事务。"""
+        """提交事务（自动提交模式下为安全 no-op，仅作用于写连接）。"""
 
         async def _factory(conn: aiosqlite.Connection) -> None:
             await conn.commit()
 
-        await self._run(_factory)
+        if self._write_conn is not None:
+            await self._run(_factory)
 
     async def rollback(self) -> None:
-        """回滚事务。"""
+        """回滚事务（仅作用于写连接）。"""
 
         async def _factory(conn: aiosqlite.Connection) -> None:
             await conn.rollback()
 
-        await self._run(_factory)
+        if self._write_conn is not None:
+            await self._run(_factory)
 
     async def close(self) -> None:
-        """关闭连接（在专用 loop 中执行）。
+        """关闭读/写连接（在专用 loop 中执行）。
 
         关闭后代理仍可再次使用：下次操作会自动重新建连。
         """
-        conn = self._conn
+        write_conn, read_conn = self._write_conn, self._read_conn
         loop = self._bound_loop
-        self._conn = None
+        self._write_conn = None
+        self._read_conn = None
         self._bound_loop = None
-        if conn is None:
-            return
-
-        async def _close_connection() -> None:
-            await conn.close()
 
         # loop 已不可用时直接放弃：守护线程退出后连接随之释放
         if loop is None or loop.is_closed() or not loop.is_running():
             return
 
-        await run_on_loop(_close_connection, loop=loop)
+        for conn in (write_conn, read_conn):
+            if conn is None:
+                continue
+
+            async def _close_connection(target=conn) -> None:
+                await target.close()
+
+            await run_on_loop(_close_connection, loop=loop)
 
     async def __aenter__(self) -> "LoopBoundSQLiteConnection":
 
@@ -258,6 +290,11 @@ def create_connection(
         pragmas: 建连后执行的 PRAGMA，默认使用 :data:`DEFAULT_PRAGMAS`。
         **connect_kwargs: 透传给 ``sqlite3.connect`` 的参数（如 ``timeout``）。
     """
+    # 使用自动提交模式（isolation_level=None）：每条语句各自成事务。
+    # 多个协程共享同一条连接时，若使用隐式事务，一个协程的 commit() 可能落在
+    # 另一个协程的语句执行中间，触发 "cannot commit transaction - SQL statements
+    # in progress"；自动提交彻底消除了这种跨协程事务边界竞争。
+    connect_kwargs.setdefault("isolation_level", None)
     return LoopBoundSQLiteConnection(
         database,
         row_factory=row_factory,

@@ -51,6 +51,7 @@ class StorageFactory:
             redis_url: Optional[str],
             *,
             persist_queue: bool = True,
+            redis_max_connections: int = 50,
     ) -> Tuple[TaskRepository, QueueRepository]:
         """初始化存储。
 
@@ -59,6 +60,7 @@ class StorageFactory:
             sqlite_path: SQLite 数据库路径
             redis_url: Redis 连接 URL
             persist_queue: SQLite 下是否持久化队列
+            redis_max_connections: Redis 客户端连接池上限
 
         Returns:
             Tuple of (TaskRepository, QueueRepository)
@@ -72,7 +74,7 @@ class StorageFactory:
         elif storage_type == "redis":
             if not redis_url:
                 raise ValueError("Redis URL is required for redis storage")
-            config = StorageConfig.redis(redis_url)
+            config = StorageConfig.redis(redis_url, redis_max_connections)
         else:
             raise ValueError(f"Unknown storage type: {storage_type}")
 
@@ -101,8 +103,8 @@ class StorageFactory:
             if not config.redis_url:
                 raise ValueError("Redis URL is required for Redis storage")
             return (
-                RedisTaskRepository(config.redis_url),
-                RedisQueueRepository(config.redis_url)
+                RedisTaskRepository(config.redis_url, config.redis_max_connections),
+                RedisQueueRepository(config.redis_url, config.redis_max_connections)
             )
 
         elif storage_type == "sqlite":
@@ -201,8 +203,8 @@ class RepositoryFactory:
             if not config.redis_url:
                 raise ValueError("Redis URL is required for redis storage")
             return (
-                RedisTaskRepository(config.redis_url),
-                RedisQueueRepository(config.redis_url)
+                RedisTaskRepository(config.redis_url, config.redis_max_connections),
+                RedisQueueRepository(config.redis_url, config.redis_max_connections)
             )
         else:
             raise ValueError(f"Unknown storage type: {config.type}")

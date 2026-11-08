@@ -24,6 +24,7 @@ class StorageConfig:
 
     type: Literal["memory", "redis", "sqlite"] = "memory"
     redis_url: Optional[str] = None
+    redis_max_connections: int = 50          # 每个仓储客户端连接池上限
     sqlite_path: Optional[str] = None
 
     # SQLite 高并发选项
@@ -38,9 +39,14 @@ class StorageConfig:
         return cls(type="memory")
 
     @classmethod
-    def redis(cls, url: str) -> "StorageConfig":
-        """创建Redis存储配置"""
-        return cls(type="redis", redis_url=url)
+    def redis(cls, url: str, max_connections: int = 50) -> "StorageConfig":
+        """创建Redis存储配置
+
+        Args:
+            url: Redis 连接地址
+            max_connections: 单个仓储客户端连接池上限，需 >= worker 并发数
+        """
+        return cls(type="redis", redis_url=url, redis_max_connections=max_connections)
 
     @classmethod
     def sqlite(
@@ -69,6 +75,7 @@ class LockConfig:
 
     type: Literal["memory", "redis"] = "memory"
     redis_url: Optional[str] = None
+    redis_max_connections: int = 50          # 锁客户端连接池上限
     lock_timeout: int = 30
     heartbeat_interval: int = 10
     watch_dog_enabled: bool = True
@@ -79,9 +86,14 @@ class LockConfig:
         return cls(type="memory")
 
     @classmethod
-    def redis(cls, url: str, timeout: int = 30) -> "LockConfig":
+    def redis(cls, url: str, timeout: int = 30, max_connections: int = 50) -> "LockConfig":
         """创建Redis锁配置"""
-        return cls(type="redis", redis_url=url, lock_timeout=timeout)
+        return cls(
+            type="redis",
+            redis_url=url,
+            lock_timeout=timeout,
+            redis_max_connections=max_connections,
+        )
 
 
 @dataclass
@@ -193,6 +205,7 @@ class TaskPoolConfig:
     storage_type: str = "memory"
     sqlite_path: str = "/data/neotask.db"
     redis_url: Optional[str] = None
+    redis_max_connections: int = 50  # Redis 仓储/锁客户端连接池上限
     persist_queue: bool = True  # SQLite 下是否持久化队列；关闭后重启由任务表重建
 
     # 执行器配置
@@ -302,6 +315,7 @@ class SchedulerConfig:
     storage_type: str = "memory"
     sqlite_path: str = "/data/neotask.db"
     redis_url: Optional[str] = None
+    redis_max_connections: int = 50  # Redis 仓储/锁客户端连接池上限
     persist_queue: bool = True  # SQLite 下是否持久化队列；关闭后重启由任务表重建
 
     # Worker配置

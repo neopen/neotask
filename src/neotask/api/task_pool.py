@@ -258,7 +258,10 @@ class TaskPool:
                 persist_queue=self._config.persist_queue,
             )
         elif self._config.storage_type == "redis":
-            storage_config = StorageConfig.redis(self._config.redis_url)
+            storage_config = StorageConfig.redis(
+                self._config.redis_url,
+                self._config.redis_max_connections,
+            )
         else:
             raise ValueError(f"Unknown storage type: {self._config.storage_type}")
 
@@ -269,7 +272,11 @@ class TaskPool:
         if self._config.lock_type == "memory":
             lock_config = LockConfig.memory()
         elif self._config.lock_type == "redis":
-            lock_config = LockConfig.redis(self._config.redis_url, self._config.lock_timeout)
+            lock_config = LockConfig.redis(
+                self._config.redis_url,
+                self._config.lock_timeout,
+                max_connections=self._config.redis_max_connections,
+            )
         else:
             raise ValueError(f"Unknown lock type: {self._config.lock_type}")
 

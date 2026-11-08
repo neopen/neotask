@@ -73,6 +73,7 @@ class TaskScheduler:
             storage_type=self._config.storage_type,
             sqlite_path=self._config.sqlite_path,
             redis_url=self._config.redis_url,
+            redis_max_connections=self._config.redis_max_connections,
             lock_type="redis" if self._config.storage_type == "redis" else "memory",
             persist_queue=self._config.persist_queue,
             worker_concurrency=self._config.worker_concurrency,

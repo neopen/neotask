@@ -171,7 +171,11 @@ class SQLitePeriodicStore(PeriodicStore):
             "SELECT payload FROM periodic_tasks WHERE task_id = ?",
             (task_id,),
         )
-        row = await cursor.fetchone()
+        try:
+            row = await cursor.fetchone()
+        finally:
+            # 关闭游标以释放读事务（否则后续写入会触发 WAL 读转写升级死锁）
+            await cursor.close()
         return json.loads(row[0]) if row else None
 
     async def delete_task(self, task_id: str) -> None:
@@ -183,7 +187,10 @@ class SQLitePeriodicStore(PeriodicStore):
     async def load_all_tasks(self) -> List[Dict[str, Any]]:
         await self._ensure_init()
         cursor = await self._conn.execute("SELECT payload FROM periodic_tasks")
-        rows = await cursor.fetchall()
+        try:
+            rows = await cursor.fetchall()
+        finally:
+            await cursor.close()
         return [json.loads(r[0]) for r in rows]
 
     async def save_execution(self, execution_id: str, payload: Dict[str, Any]) -> None:
@@ -207,7 +214,10 @@ class SQLitePeriodicStore(PeriodicStore):
             "ORDER BY created_at DESC LIMIT ?",
             (task_id, limit),
         )
-        rows = await cursor.fetchall()
+        try:
+            rows = await cursor.fetchall()
+        finally:
+            await cursor.close()
         return [json.loads(r[0]) for r in rows]
 
     async def close(self) -> None:

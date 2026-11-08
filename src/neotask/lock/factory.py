@@ -46,17 +46,22 @@ class LockFactory:
         return MemoryLock()
 
     @staticmethod
-    def create_redis(redis_url: str, key_prefix: Optional[str] = None) -> RedisLock:
+    def create_redis(
+            redis_url: str,
+            key_prefix: Optional[str] = None,
+            max_connections: int = 50,
+    ) -> RedisLock:
         """创建 Redis 锁实例。
 
         Args:
             redis_url: Redis 连接 URL
             key_prefix: 键前缀，默认 ``neotask:lock:``
+            max_connections: 连接池上限，需 >= worker 并发数
 
         Returns:
             RedisLock 实例
         """
-        return RedisLock(redis_url, key_prefix)
+        return RedisLock(redis_url, key_prefix, max_connections)
 
     @staticmethod
     def create(config) -> TaskLock:
@@ -77,7 +82,10 @@ class LockFactory:
         elif config.type == LockType.REDIS:
             if not config.redis_url:
                 raise ValueError("Redis URL is required for Redis lock")
-            return LockFactory.create_redis(config.redis_url)
+            return LockFactory.create_redis(
+                config.redis_url,
+                max_connections=config.redis_max_connections,
+            )
 
         else:
             raise ValueError(f"Unknown lock type: {config.type}")

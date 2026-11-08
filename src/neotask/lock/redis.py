@@ -82,14 +82,21 @@ class RedisLock(TaskLock):
     return {owner, ttl}
     """
 
-    def __init__(self, redis_url: str, key_prefix: Optional[str] = None):
+    def __init__(
+            self,
+            redis_url: str,
+            key_prefix: Optional[str] = None,
+            max_connections: int = 50,
+    ):
         """初始化Redis锁
 
         Args:
             redis_url: Redis连接URL
             key_prefix: 键前缀，默认 ``neotask:lock:``（传入 None 时使用默认值）
+            max_connections: 连接池上限，需 >= worker 并发数
         """
         self._redis_url = redis_url
+        self._max_connections = max_connections
         self._key_prefix = key_prefix or DEFAULT_KEY_PREFIX
         # loop 安全客户端：命令统一在专用事件循环执行，避免跨 loop 冲突
         self._client: Optional[Any] = None
@@ -104,6 +111,7 @@ class RedisLock(TaskLock):
         if self._client is None:
             self._client = redis_compat.create_client(
                 self._redis_url,
+                max_connections=self._max_connections,
                 decode_responses=True
             )
         return self._client

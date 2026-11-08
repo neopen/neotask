@@ -360,12 +360,19 @@ class TaskLifecycleManager:
             warning(f"Cannot start task {task_id}: status={task.status if task else 'not found'}")
             return False
 
+        previous = (task.status, task.node_id, task.started_at)
         task.start(node_id)
         # 只更新状态相关字段：data 等不可变字段无需重写
-        await self._task_repo.save_fields(
-            task,
-            ("status", "node_id", "started_at")
-        )
+        try:
+            await self._task_repo.save_fields(
+                task,
+                ("status", "node_id", "started_at")
+            )
+        except Exception:
+            # 落库失败必须回滚内存状态：缓存里存的就是同一个对象，若保持 RUNNING，
+            # 任务被重新入队后再次启动会被状态机拒绝，最终永久卡死在 RUNNING。
+            task.status, task.node_id, task.started_at = previous
+            raise
 
         if self._cache_enabled:
             self._cache_put(task_id, task)

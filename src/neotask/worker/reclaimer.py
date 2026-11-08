@@ -306,8 +306,8 @@ class TaskReclaimer:
 
                 # 如果任务不存在，或者任务状态不是 RUNNING，则清理锁
                 if task is None:
-                    # 任务不存在，清理僵尸锁
-                    await self._lock.release(lock_key)
+                    # 任务不存在，清理僵尸锁（锁键统一为相对前缀的 task:<id>）
+                    await self._lock.release(f"task:{task_id}")
                     results.append(ReclaimResult(
                         task_id=task_id,
                         reason=ReclaimReason.STALE_LOCK,
@@ -316,7 +316,7 @@ class TaskReclaimer:
                     ))
                 elif task.status != TaskStatus.RUNNING:
                     # 任务状态不是 RUNNING，清理锁
-                    await self._lock.release(lock_key)
+                    await self._lock.release(f"task:{task_id}")
                     results.append(ReclaimResult(
                         task_id=task_id,
                         reason=ReclaimReason.STALE_LOCK,
@@ -475,13 +475,17 @@ class TaskReclaimer:
         """从锁键中提取任务ID
 
         Args:
-            lock_key: 锁键名，如 "lock:task:abc123" 或 "task:abc123"
+            lock_key: 锁键名，如 "neotask:lock:task:abc123"、"lock:task:abc123" 或 "task:abc123"
 
         Returns:
             任务ID
         """
         # 移除前缀
-        prefixes = ["lock:task:", "lock:", "task:"]
+        prefixes = [
+            "neotask:lock:task:",
+            "neotask:lock:",
+            "neotask:task:"
+        ]
         for prefix in prefixes:
             if lock_key.startswith(prefix):
                 return lock_key[len(prefix):]

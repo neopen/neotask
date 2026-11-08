@@ -33,14 +33,25 @@ class PriorityQueue(BaseQueue):
         self._sequence = 0  # 用于稳定排序（相同优先级时FIFO）
         self._task_index: Dict[str, Tuple[int, float, str]] = {}  # task_id -> item 快速查找
 
-    async def push(self, task_id: str, priority: int, delay: float = 0) -> bool:
-        """入队"""
+    async def push(
+            self,
+            task_id: str,
+            priority: int,
+            delay: float = 0,
+            check_capacity: bool = True,
+    ) -> bool:
+        """入队
+
+        Args:
+            check_capacity: 是否在此处校验容量。调用方（``QueueScheduler.push``）
+                已查过一次时可传 False，避免重复的 ``size()`` 往返。
+        """
         debug(f"[PRIORITY_QUEUE] push: task_id={task_id}, priority={priority}, use_repo={self._use_repository}")
         if delay > 0:
             # 延迟任务不应直接入优先级队列
             return False
 
-        if await self.size() >= self._max_size:
+        if check_capacity and await self.size() >= self._max_size:
             return False
 
         if self._use_repository:
@@ -52,6 +63,26 @@ class PriorityQueue(BaseQueue):
                 heapq.heappush(self._heap, item)
                 self._task_index[task_id] = item
         return True
+
+    async def push_batch(self, items: List[Tuple[str, int]]) -> int:
+        """批量入队。
+
+        调用方（QueueScheduler）已统一校验容量，这里不再逐条查询队列大小；
+        持久化后端一次批量写入，内存模式一次加锁批量入堆。
+        """
+        if not items:
+            return 0
+
+        if self._use_repository:
+            return await self._repository.push_batch(items)
+
+        with self._lock:
+            for task_id, priority in items:
+                self._sequence += 1
+                item = (priority, self._sequence, task_id)
+                heapq.heappush(self._heap, item)
+                self._task_index[task_id] = item
+        return len(items)
 
     async def pop(self, count: int = 1) -> List[str]:
         """出队，返回任务ID列表"""

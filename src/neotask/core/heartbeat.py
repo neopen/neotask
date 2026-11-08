@@ -27,6 +27,7 @@ except ImportError:  # pragma: no cover
     ConnectionPool = None  # type: ignore[assignment]
     HAS_REDIS = False
 
+from neotask.common.constants import REDIS_KEY_PREFIX
 from neotask.common.logger import debug, warning
 from neotask.models.config import HeartbeatConfig
 from neotask.models.task import Task, TaskStatus
@@ -47,8 +48,8 @@ class HeartbeatManager:
     """
 
     # 与 NodeManager 保持一致的键布局
-    NODE_KEY_PREFIX = "neotask:node:"
-    NODES_SET_KEY = "neotask:nodes"
+    NODE_KEY_PREFIX = f"{REDIS_KEY_PREFIX}node:"
+    NODES_SET_KEY = f"{REDIS_KEY_PREFIX}nodes"
 
     STATUS_ACTIVE = "active"
     STATUS_STOPPED = "stopped"

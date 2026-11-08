@@ -22,7 +22,7 @@ from neotask.event.bus import EventBus, TaskEvent
 from neotask.executor.base import TaskExecutor
 from neotask.executor.factory import ExecutorFactory
 from neotask.lock.factory import LockFactory
-from neotask.models.config import StorageConfig, LockConfig, TaskPoolConfig
+from neotask.models.config import StorageConfig, LockConfig, TaskPoolConfig, StorageType
 from neotask.models.task import TaskPriority, TaskStatus
 from neotask.monitor.health import SystemHealthChecker
 from neotask.monitor.metrics import MetricsCollector
@@ -89,7 +89,12 @@ class TaskPool:
         # 初始化生命周期管理器
         self._lifecycle = TaskLifecycleManager(
             task_repo=self._task_repo,
-            event_bus=self._event_bus
+            event_bus=self._event_bus,
+            progress_flush_interval=self._config.progress_flush_interval,
+            progress_flush_delta=self._config.progress_flush_delta,
+            progress_flush_batch_interval=self._config.progress_flush_batch_interval,
+            cache_max_size=self._config.cache_max_size,
+            running_persist_delay=self._config.running_persist_delay,
         )
 
         # 初始化分发器
@@ -131,7 +136,7 @@ class TaskPool:
         self._dead_letter = None
 
         # 仅在 Redis 模式下启用分布式组件
-        if self._config.storage_type == "redis" and self._config.redis_url:
+        if self._config.storage_type == StorageType.REDIS and self._config.redis_url:
             self._init_distributed_components()
 
         # 初始化监控
@@ -246,12 +251,18 @@ class TaskPool:
 
     def _init_storage(self):
         """初始化存储"""
-        if self._config.storage_type == "memory":
+        if self._config.storage_type == StorageType.MEMORY:
             storage_config = StorageConfig.memory()
-        elif self._config.storage_type == "sqlite":
-            storage_config = StorageConfig.sqlite(self._config.sqlite_path)
-        elif self._config.storage_type == "redis":
-            storage_config = StorageConfig.redis(self._config.redis_url)
+        elif self._config.storage_type == StorageType.SQLITE:
+            storage_config = StorageConfig.sqlite(
+                self._config.sqlite_path,
+                persist_queue=self._config.persist_queue,
+            )
+        elif self._config.storage_type == StorageType.REDIS:
+            storage_config = StorageConfig.redis(
+                self._config.redis_url,
+                self._config.redis_max_connections,
+            )
         else:
             raise ValueError(f"Unknown storage type: {self._config.storage_type}")
 
@@ -262,7 +273,11 @@ class TaskPool:
         if self._config.lock_type == "memory":
             lock_config = LockConfig.memory()
         elif self._config.lock_type == "redis":
-            lock_config = LockConfig.redis(self._config.redis_url, self._config.lock_timeout)
+            lock_config = LockConfig.redis(
+                self._config.redis_url,
+                self._config.lock_timeout,
+                max_connections=self._config.redis_max_connections,
+            )
         else:
             raise ValueError(f"Unknown lock type: {self._config.lock_type}")
 
@@ -342,8 +357,14 @@ class TaskPool:
 
             async def start_components():
                 # 启动核心组件
+                self._lifecycle.start_progress_flusher()
                 await self._event_bus.start()
                 await self._queue_scheduler.start()
+                # 队列未持久化时，从任务表重建待执行任务
+                if not getattr(self._queue_repo, "is_persistent", True):
+                    await self._lifecycle.restore_pending_tasks(
+                        self._queue_scheduler.push
+                    )
                 await self._worker_pool.start()
                 await self._supervisor.start()
 
@@ -431,6 +452,12 @@ class TaskPool:
                 await self._metrics.stop()
 
             await self._event_bus.stop()
+
+            # 停止写回任务并落库剩余进度（必须在关闭存储连接之前）
+            try:
+                await self._lifecycle.stop_progress_flusher()
+            except Exception as e:
+                error(f"Error flushing pending progress: {e}")
 
             # 关闭存储连接 - 捕获异常避免循环冲突
             for repo in [self._task_repo, self._queue_repo]:
@@ -526,6 +553,40 @@ class TaskPool:
         self._ensure_running()
         result = await self._dispatcher.dispatch(data, task_id, priority, delay, ttl)
         return result.task_id if hasattr(result, 'task_id') else result
+
+    def submit_many(
+            self,
+            tasks: List[Dict[str, Any]],
+            priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+            ttl: int = 3600
+    ) -> List[str]:
+        """批量提交即时任务（同步）
+
+        任务创建与入队各只做一次批量写入（SQLite 单事务 / Redis pipeline），
+        避免逐条提交时每条任务 3 次跨事件循环往返。
+
+        Args:
+            tasks: 任务数据列表
+            priority: 优先级
+            ttl: 任务超时时间（秒）
+
+        Returns:
+            实际提交成功的 task_id 列表
+        """
+        self._ensure_running()
+        return self._run_coroutine(
+            self._dispatcher.dispatch_many(tasks, priority, ttl)
+        )
+
+    async def submit_many_async(
+            self,
+            tasks: List[Dict[str, Any]],
+            priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+            ttl: int = 3600
+    ) -> List[str]:
+        """批量提交即时任务（异步）"""
+        self._ensure_running()
+        return await self._dispatcher.dispatch_many(tasks, priority, ttl)
 
     def create_pending_task(
             self,

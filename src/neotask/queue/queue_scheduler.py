@@ -96,7 +96,28 @@ class QueueScheduler:
         if delay > 0:
             return await self._delayed_queue.schedule(task_id, priority, delay)
         else:
-            return await self._priority_queue.push(task_id, priority)
+            # 容量已在上面查过，避免 PriorityQueue 再查一次 size()
+            return await self._priority_queue.push(
+                task_id, priority, check_capacity=False
+            )
+
+    async def re_enqueue(self, task_id: str, priority: int) -> bool:
+        """把已出队但尚未执行的任务放回优先队列（停机回滚用）
+
+        与 ``push`` 的区别：停机时队列已 ``disable()``（不再接收新任务），但
+        预取器本地队列里的任务是**已经出队**的，放回属于撤销出队而不是新任务，
+        必须放行；否则这些任务会变成孤儿，只能等 ttl 兜底重排。
+
+        Args:
+            task_id: 任务ID
+            priority: 任务原始优先级
+
+        Returns:
+            是否成功放回
+        """
+        if await self.size() >= self._max_size:
+            return False
+        return await self._priority_queue.push(task_id, priority, check_capacity=False)
 
     async def re_enqueue(self, task_id: str, priority: int) -> bool:
         """把已出队但尚未执行的任务放回优先队列（停机回滚用）
@@ -122,16 +143,37 @@ class QueueScheduler:
     ) -> List[bool]:
         """批量推送任务
 
+        与逐条 ``push`` 的区别：容量只检查一次、即时任务一次批量写入仓储，
+        避免每条任务都做一次 ``size()`` 查询和一次跨事件循环往返。延迟任务
+        仍逐条调度（每个任务有独立的到期时间）。
+
         Args:
             tasks: 任务列表，每个元素为 (task_id, priority, delay)
 
         Returns:
-            成功标志列表
+            成功标志列表（与输入顺序一致）
         """
-        results = []
-        for task_id, priority, delay in tasks:
-            result = await self.push(task_id, priority, delay)
-            results.append(result)
+        results = [False] * len(tasks)
+        if self._disabled or not tasks:
+            return results
+
+        current_size = await self.size()
+        available = max(0, self._max_size - current_size)
+
+        immediate: List[tuple] = []  # (index, task_id, priority)
+        for index, (task_id, priority, delay) in enumerate(tasks):
+            if delay > 0:
+                results[index] = await self._delayed_queue.schedule(task_id, priority, delay)
+            elif len(immediate) < available:
+                immediate.append((index, task_id, priority))
+
+        if immediate:
+            pushed = await self._priority_queue.push_batch(
+                [(task_id, priority) for _, task_id, priority in immediate]
+            )
+            for index, _, _ in immediate[:pushed]:
+                results[index] = True
+
         return results
 
     async def pop(self, count: int = 1) -> List[str]:

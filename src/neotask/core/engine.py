@@ -10,6 +10,13 @@ import asyncio
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
 
+from neotask.common.constants import (
+    DEFAULT_LIFECYCLE_CACHE_MAX_SIZE,
+    DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL,
+    DEFAULT_PROGRESS_FLUSH_DELTA,
+    DEFAULT_PROGRESS_FLUSH_INTERVAL,
+    DEFAULT_RUNNING_PERSIST_DELAY,
+)
 from neotask.common.logger import info
 from neotask.core.dispatcher import TaskDispatcher
 from neotask.core.lifecycle import TaskLifecycleManager
@@ -17,6 +24,7 @@ from neotask.event.bus import EventBus
 from neotask.executor.base import TaskExecutor
 from neotask.executor.factory import ExecutorFactory, ExecutorType
 from neotask.monitor.metrics import MetricsCollector
+from neotask.models.config import StorageType
 from neotask.queue.queue_scheduler import QueueScheduler
 from neotask.storage.base import TaskRepository, QueueRepository
 from neotask.storage.factory import StorageFactory
@@ -28,9 +36,21 @@ from neotask.worker.supervisor import WorkerSupervisor
 class EngineConfig:
     """引擎配置"""
     # 存储配置
-    storage_type: str = "memory"
+    storage_type: StorageType = StorageType.MEMORY
     sqlite_path: str = "neotask.db"
     redis_url: Optional[str] = None
+    redis_max_connections: int = 50
+    persist_queue: bool = True
+
+    # 进度落库节流（时间间隔 或 增量阈值任一满足即写入）
+    progress_flush_interval: float = DEFAULT_PROGRESS_FLUSH_INTERVAL
+    progress_flush_delta: float = DEFAULT_PROGRESS_FLUSH_DELTA
+    # 写回缓存：后台批量落库间隔（<=0 关闭写回）
+    progress_flush_batch_interval: float = DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL
+    # RUNNING 状态延迟落库窗口（秒）：0 立即落库
+    running_persist_delay: float = DEFAULT_RUNNING_PERSIST_DELAY
+    # 生命周期缓存上限
+    cache_max_size: int = DEFAULT_LIFECYCLE_CACHE_MAX_SIZE
 
     # 执行器配置
     executor_func: Optional[Any] = None
@@ -52,6 +72,9 @@ class EngineConfig:
     enable_metrics: bool = True
     metrics_interval: int = 60
 
+    def __post_init__(self) -> None:
+        self.storage_type = StorageType.coerce(self.storage_type)
+
 
 class TaskEngine:
     """任务引擎 - 统一入口
@@ -61,7 +84,7 @@ class TaskEngine:
 
     使用示例：
         >>> engine = TaskEngine()
-        >>> engine.configure(EngineConfig(storage_type="redis", redis_url="redis://..."))
+        >>> engine.configure(EngineConfig(storage_type=StorageType.REDIS, redis_url="redis://..."))
         >>> await engine.start()
         >>> task_id = await engine.submit({"data": "value"})
         >>> result = await engine.wait(task_id)
@@ -118,7 +141,12 @@ class TaskEngine:
         # 5. 初始化生命周期管理器
         self._lifecycle_manager = TaskLifecycleManager(
             task_repo=self._task_repo,
-            event_bus=self._event_bus
+            event_bus=self._event_bus,
+            progress_flush_interval=self.config.progress_flush_interval,
+            progress_flush_delta=self.config.progress_flush_delta,
+            progress_flush_batch_interval=self.config.progress_flush_batch_interval,
+            cache_max_size=self.config.cache_max_size,
+            running_persist_delay=self.config.running_persist_delay,
         )
 
         # 6. 初始化分发器
@@ -160,12 +188,18 @@ class TaskEngine:
         """初始化存储"""
         from neotask.models.config import StorageConfig
 
-        if self.config.storage_type == "memory":
+        if self.config.storage_type == StorageType.MEMORY:
             storage_config = StorageConfig.memory()
-        elif self.config.storage_type == "sqlite":
-            storage_config = StorageConfig.sqlite(self.config.sqlite_path)
-        elif self.config.storage_type == "redis":
-            storage_config = StorageConfig.redis(self.config.redis_url)
+        elif self.config.storage_type == StorageType.SQLITE:
+            storage_config = StorageConfig.sqlite(
+                self.config.sqlite_path,
+                persist_queue=self.config.persist_queue,
+            )
+        elif self.config.storage_type == StorageType.REDIS:
+            storage_config = StorageConfig.redis(
+                self.config.redis_url,
+                self.config.redis_max_connections,
+            )
         else:
             raise ValueError(f"Unknown storage type: {self.config.storage_type}")
 
@@ -196,11 +230,20 @@ class TaskEngine:
 
         self._running = True
 
+        # 启动进度写回任务
+        self._lifecycle_manager.start_progress_flusher()
+
         # 启动事件总线
         await self._event_bus.start()
 
         # 启动队列调度器
         await self._queue_scheduler.start()
+
+        # 队列未持久化时，从任务表重建待执行任务
+        if not getattr(self._queue_repo, "is_persistent", True):
+            await self._lifecycle_manager.restore_pending_tasks(
+                self._queue_scheduler.push
+            )
 
         # 启动Worker池
         await self._worker_pool.start()
@@ -246,6 +289,9 @@ class TaskEngine:
 
         # 停止事件总线
         await self._event_bus.stop()
+
+        # 停止写回任务并落库剩余进度（必须在关闭存储连接之前）
+        await self._lifecycle_manager.stop_progress_flusher()
 
         # 关闭存储连接
         if hasattr(self._task_repo, 'close'):

@@ -14,7 +14,9 @@ import json
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from neotask.common.constants import REDIS_KEY_PREFIX
 from neotask.common.logger import debug
+from neotask.models.config import StorageType
 
 if TYPE_CHECKING:
     import redis.asyncio as redis
@@ -119,24 +121,30 @@ class SQLitePeriodicStore(PeriodicStore):
     def __init__(self, db_path: Optional[str] = None) -> None:
         self.db_path = db_path or "neotask.db"
         self._conn = None
+        self._initialized = False
 
     async def _ensure_init(self) -> None:
+        if self._initialized:
+            return
         if self._conn is None:
             from neotask.utils import sqlite_compat
+            # loop 安全连接；与任务/队列仓储共用同一库文件时复用同一条连接
+            self._conn = sqlite_compat.acquire_shared_connection(self.db_path)
+        conn = self._conn
+        await self._init_db(conn)
+        if self._conn is conn:
+            self._initialized = True
 
-            # loop 安全连接：所有 SQL 操作统一在专用事件循环执行
-            self._conn = sqlite_compat.create_connection(self.db_path)
-            await self._init_db()
 
-    async def _init_db(self) -> None:
-        await self._conn.execute("""
+    async def _init_db(self, conn) -> None:
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS periodic_tasks (
                 task_id TEXT PRIMARY KEY,
                 payload TEXT NOT NULL,
                 updated_at TEXT
             )
         """)
-        await self._conn.execute("""
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS periodic_executions (
                 execution_id TEXT PRIMARY KEY,
                 task_id TEXT NOT NULL,
@@ -144,11 +152,11 @@ class SQLitePeriodicStore(PeriodicStore):
                 payload TEXT NOT NULL
             )
         """)
-        await self._conn.execute("""
+        await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_periodic_exec_task
             ON periodic_executions(task_id)
         """)
-        await self._conn.commit()
+        await conn.commit()
 
     async def save_task(self, task_id: str, payload: Dict[str, Any]) -> None:
         await self._ensure_init()
@@ -164,7 +172,11 @@ class SQLitePeriodicStore(PeriodicStore):
             "SELECT payload FROM periodic_tasks WHERE task_id = ?",
             (task_id,),
         )
-        row = await cursor.fetchone()
+        try:
+            row = await cursor.fetchone()
+        finally:
+            # 关闭游标以释放读事务（否则后续写入会触发 WAL 读转写升级死锁）
+            await cursor.close()
         return json.loads(row[0]) if row else None
 
     async def delete_task(self, task_id: str) -> None:
@@ -176,7 +188,10 @@ class SQLitePeriodicStore(PeriodicStore):
     async def load_all_tasks(self) -> List[Dict[str, Any]]:
         await self._ensure_init()
         cursor = await self._conn.execute("SELECT payload FROM periodic_tasks")
-        rows = await cursor.fetchall()
+        try:
+            rows = await cursor.fetchall()
+        finally:
+            await cursor.close()
         return [json.loads(r[0]) for r in rows]
 
     async def save_execution(self, execution_id: str, payload: Dict[str, Any]) -> None:
@@ -200,13 +215,19 @@ class SQLitePeriodicStore(PeriodicStore):
             "ORDER BY created_at DESC LIMIT ?",
             (task_id, limit),
         )
-        rows = await cursor.fetchall()
+        try:
+            rows = await cursor.fetchall()
+        finally:
+            await cursor.close()
         return [json.loads(r[0]) for r in rows]
 
     async def close(self) -> None:
-        if self._conn is not None:
-            await self._conn.close()
-            self._conn = None
+        conn = self._conn
+        self._conn = None
+        self._initialized = False
+        if conn is not None:
+            from neotask.utils import sqlite_compat
+            await sqlite_compat.release_shared_connection(conn)
 
 
 class RedisPeriodicStore(PeriodicStore):
@@ -218,7 +239,7 @@ class RedisPeriodicStore(PeriodicStore):
     - ``periodic_exec:<id>``  -> 该任务执行记录列表（LPUSH，天然时间倒序）
     """
 
-    def __init__(self, redis_url: str, key_prefix: str = "neotask:", max_connections: int = 10) -> None:
+    def __init__(self, redis_url: str, key_prefix: str = REDIS_KEY_PREFIX, max_connections: int = 10) -> None:
         self.redis_url = redis_url
         self.key_prefix = key_prefix
         self.max_connections = max_connections
@@ -296,14 +317,14 @@ class RedisPeriodicStore(PeriodicStore):
 
 
 def create_periodic_store(
-        storage_type: str,
+        storage_type: StorageType,
         sqlite_path: str = "neotask.db",
         redis_url: Optional[str] = None,
 ) -> PeriodicStore:
     """按存储类型创建周期任务存储
 
     Args:
-        storage_type: "memory" | "sqlite" | "redis"
+        storage_type: 存储类型枚举（``StorageType.MEMORY`` 等）
         sqlite_path: SQLite 数据库路径
         redis_url: Redis 连接 URL
 
@@ -313,12 +334,13 @@ def create_periodic_store(
     Raises:
         ValueError: 未知存储类型或缺少必要参数
     """
-    if storage_type == "memory":
+    storage_type = StorageType.coerce(storage_type)
+    if storage_type == StorageType.MEMORY:
         debug("Periodic persistence using in-memory store (not durable across restart)")
         return MemoryPeriodicStore()
-    if storage_type == "sqlite":
+    if storage_type == StorageType.SQLITE:
         return SQLitePeriodicStore(sqlite_path)
-    if storage_type == "redis":
+    if storage_type == StorageType.REDIS:
         if not redis_url:
             raise ValueError("Redis URL is required for redis periodic store")
         return RedisPeriodicStore(redis_url)

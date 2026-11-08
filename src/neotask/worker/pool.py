@@ -207,6 +207,29 @@ class WorkerPool:
             return TaskPriority.NORMAL.value
         return task.priority.value
 
+    async def _requeue_unstarted_task(self, task_id: str, attempts: int = 5) -> bool:
+        """把已出队但未能开始执行的任务放回队列。
+
+        多进程共享 SQLite 时写锁竞争可能让 ``start_task`` 抛错；此时任务已经从
+        队列移除却仍是 PENDING，若不重新入队就会永久滞留（无人执行也无法等待）。
+        """
+        try:
+            priority = await self._resolve_task_priority(task_id)
+        except Exception:  # noqa: BLE001 - 读失败时退回普通优先级
+            priority = TaskPriority.NORMAL.value
+
+        for attempt in range(1, attempts + 1):
+            try:
+                if await self._queue.push(task_id, priority):
+                    warning(f"Re-queued unstarted task {task_id} (attempt {attempt})")
+                    return True
+                error(f"Re-queue task {task_id} rejected by queue (attempt {attempt}/{attempts})")
+            except Exception as exc:  # noqa: BLE001
+                error(f"Re-queue task {task_id} failed (attempt {attempt}/{attempts}): {exc}")
+            await asyncio.sleep(0.1 * attempt)
+        error(f"Gave up re-queueing task {task_id}; it stays PENDING and requires recovery")
+        return False
+
     def set_retry_config(self, max_retries: int, retry_delay: float) -> None:
         """设置重试配置"""
         self._max_retries = max_retries
@@ -340,7 +363,18 @@ class WorkerPool:
             if not lock_acquired:
                 return
 
-            success = await self._lifecycle.start_task(task_id, self._node_id)
+            try:
+                success = await self._lifecycle.start_task(task_id, self._node_id)
+            except Exception as exc:
+                # 存储暂时不可写（如 SQLite 跨进程写锁竞争）：任务已出队但尚未开始，
+                # 必须放回队列，否则该任务会永久停留在 PENDING 状态而无人执行。
+                error(f"Failed to start task {task_id}: {exc}; re-queueing")
+                await self._requeue_unstarted_task(task_id)
+                if self._lock_manager:
+                    if watchdog:
+                        await watchdog.stop(lock_key)
+                    await self._lock_manager.release(lock_key)
+                return
             if not success:
                 error(f"Failed to start task {task_id}")
                 # 释放锁
@@ -458,12 +492,15 @@ class WorkerPool:
 
             debug(f"Retrying task {task_id} (attempt {new_retry_count}/{self._max_retries})")
 
-            # 更新重试计数，重置状态为 PENDING
+            # 更新重试计数，重置状态为 PENDING（只写变化字段）
             task.retry_count = new_retry_count
             task.error = error_msg
             task.status = TaskStatus.PENDING
             task.node_id = ""
-            await self._task_repo.save(task)
+            await self._task_repo.save_fields(
+                task,
+                ("retry_count", "error", "status", "node_id")
+            )
 
             # 更新缓存
             if self._lifecycle._cache_enabled:

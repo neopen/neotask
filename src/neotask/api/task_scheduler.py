@@ -16,7 +16,7 @@ from typing import Optional, Any, Dict, List, Callable, Union
 
 from neotask.api.task_pool import TaskPool, TaskPoolConfig
 from neotask.common.logger import debug, warning
-from neotask.models.config import SchedulerConfig
+from neotask.models.config import SchedulerConfig, StorageType
 from neotask.models.schedule import PeriodicTask
 from neotask.models.task import TaskPriority
 from neotask.scheduler.cron_parser import CronParser
@@ -73,9 +73,17 @@ class TaskScheduler:
             storage_type=self._config.storage_type,
             sqlite_path=self._config.sqlite_path,
             redis_url=self._config.redis_url,
+            redis_max_connections=self._config.redis_max_connections,
+            lock_type="redis" if self._config.storage_type == StorageType.REDIS else "memory",
+            persist_queue=self._config.persist_queue,
             worker_concurrency=self._config.worker_concurrency,
             max_retries=self._config.max_retries,
-            retry_delay=self._config.retry_delay
+            retry_delay=self._config.retry_delay,
+            progress_flush_interval=self._config.progress_flush_interval,
+            progress_flush_delta=self._config.progress_flush_delta,
+            progress_flush_batch_interval=self._config.progress_flush_batch_interval,
+            cache_max_size=self._config.cache_max_size,
+            running_persist_delay=self._config.running_persist_delay,
         )
 
         self._pool = TaskPool(executor, pool_config)
@@ -360,7 +368,8 @@ class TaskScheduler:
                 "LOST after restart. Set SchedulerConfig(enable_persistence=True) and "
                 "storage_type='sqlite' or 'redis' to persist it."
             )
-        elif self._config.storage_type == "memory":
+
+        elif self._config.storage_type == StorageType.MEMORY:
             message = (
                 "Periodic task registered with storage_type='memory'; it will be "
                 "LOST after restart (in-memory store cannot be recovered). Use "
@@ -827,6 +836,30 @@ class TaskScheduler:
     ) -> str:
         """提交即时任务（异步版本）"""
         return await self._pool.submit_async(data, task_id, priority, delay, ttl)
+
+    def submit_many(
+            self,
+            tasks: List[Dict[str, Any]],
+            priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+            ttl: int = 3600
+    ) -> List[str]:
+        """批量提交即时任务（同步）
+
+        任务创建与入队各只做一次批量写入，适合一次性投递大量任务的场景。
+
+        Returns:
+            实际提交成功的 task_id 列表
+        """
+        return self._pool.submit_many(tasks, priority, ttl)
+
+    async def submit_many_async(
+            self,
+            tasks: List[Dict[str, Any]],
+            priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+            ttl: int = 3600
+    ) -> List[str]:
+        """批量提交即时任务（异步版本）"""
+        return await self._pool.submit_many_async(tasks, priority, ttl)
 
     def wait_for_result(self, task_id: str, timeout: float = 300) -> Any:
         """等待任务完成并返回结果

@@ -14,6 +14,7 @@ from neotask.common.constants import (
     DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL,
     DEFAULT_PROGRESS_FLUSH_DELTA,
     DEFAULT_PROGRESS_FLUSH_INTERVAL,
+    DEFAULT_RUNNING_PERSIST_DELAY,
 )
 from neotask.executor import ExecutorType
 
@@ -239,6 +240,10 @@ class TaskPoolConfig:
     progress_flush_delta: float = DEFAULT_PROGRESS_FLUSH_DELTA
     # 写回缓存：后台批量落库间隔（<=0 关闭写回，进度改为即时写入）
     progress_flush_batch_interval: float = DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL
+    # RUNNING 状态延迟落库窗口（秒）：0 立即落库；>0 时在窗口内完成的任务
+    # 跳过 RUNNING 写入，只写一次终态（含 started_at）。窗口内任务在存储中仍
+    # 显示为 PENDING，回收器/心跳看不到它，请保持窗口远小于 reclaimer_interval。
+    running_persist_delay: float = DEFAULT_RUNNING_PERSIST_DELAY
     # 生命周期缓存上限，超出后优先淘汰已结束任务
     cache_max_size: int = DEFAULT_LIFECYCLE_CACHE_MAX_SIZE
 
@@ -330,6 +335,10 @@ class SchedulerConfig:
     progress_flush_delta: float = DEFAULT_PROGRESS_FLUSH_DELTA
     # 写回缓存：后台批量落库间隔（<=0 关闭写回，进度改为即时写入）
     progress_flush_batch_interval: float = DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL
+    # RUNNING 状态延迟落库窗口（秒）：0 立即落库；>0 时在窗口内完成的任务
+    # 跳过 RUNNING 写入，只写一次终态（含 started_at）。窗口内任务在存储中仍
+    # 显示为 PENDING，回收器/心跳看不到它，请保持窗口远小于 reclaimer_interval。
+    running_persist_delay: float = DEFAULT_RUNNING_PERSIST_DELAY
     # 生命周期缓存上限，超出后优先淘汰已结束任务
     cache_max_size: int = DEFAULT_LIFECYCLE_CACHE_MAX_SIZE
 

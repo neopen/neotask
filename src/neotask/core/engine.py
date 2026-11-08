@@ -15,6 +15,7 @@ from neotask.common.constants import (
     DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL,
     DEFAULT_PROGRESS_FLUSH_DELTA,
     DEFAULT_PROGRESS_FLUSH_INTERVAL,
+    DEFAULT_RUNNING_PERSIST_DELAY,
 )
 from neotask.common.logger import info
 from neotask.core.dispatcher import TaskDispatcher
@@ -45,6 +46,8 @@ class EngineConfig:
     progress_flush_delta: float = DEFAULT_PROGRESS_FLUSH_DELTA
     # 写回缓存：后台批量落库间隔（<=0 关闭写回）
     progress_flush_batch_interval: float = DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL
+    # RUNNING 状态延迟落库窗口（秒）：0 立即落库
+    running_persist_delay: float = DEFAULT_RUNNING_PERSIST_DELAY
     # 生命周期缓存上限
     cache_max_size: int = DEFAULT_LIFECYCLE_CACHE_MAX_SIZE
 
@@ -139,6 +142,7 @@ class TaskEngine:
             progress_flush_delta=self.config.progress_flush_delta,
             progress_flush_batch_interval=self.config.progress_flush_batch_interval,
             cache_max_size=self.config.cache_max_size,
+            running_persist_delay=self.config.running_persist_delay,
         )
 
         # 6. 初始化分发器

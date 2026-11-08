@@ -83,6 +83,7 @@ class TaskScheduler:
             progress_flush_delta=self._config.progress_flush_delta,
             progress_flush_batch_interval=self._config.progress_flush_batch_interval,
             cache_max_size=self._config.cache_max_size,
+            running_persist_delay=self._config.running_persist_delay,
         )
 
         self._pool = TaskPool(executor, pool_config)

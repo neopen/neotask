@@ -19,12 +19,30 @@ from neotask.common.constants import (
     DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL,
     DEFAULT_PROGRESS_FLUSH_DELTA,
     DEFAULT_PROGRESS_FLUSH_INTERVAL,
+    DEFAULT_RUNNING_PERSIST_DELAY,
 )
 from neotask.common.logger import debug, warning, info
 from neotask.core.future import FutureManager
 from neotask.event.bus import EventBus, TaskEvent
 from neotask.models.task import Task, TaskStatus, TaskPriority, TaskStats
 from neotask.storage.base import TaskRepository
+
+
+class _DeferredRunningWrite:
+    """一条延迟落库的 RUNNING 状态句柄
+
+    - ``done``：任务在窗口内完成时置位，后台协程据此跳过这次 RUNNING 写入
+    - ``force``：关闭时置位，即使 ``done`` 已置位也强制落库当前 RUNNING 状态
+    - ``flush_task``：后台协程，终态写入前会先等待它结束，保证写入顺序
+    """
+
+    __slots__ = ("task_obj", "done", "force", "flush_task")
+
+    def __init__(self, task: Task, done: asyncio.Event):
+        self.task_obj = task
+        self.done = done
+        self.force = False
+        self.flush_task: Optional[asyncio.Task] = None
 
 
 class TaskLifecycleManager:
@@ -48,6 +66,7 @@ class TaskLifecycleManager:
             progress_flush_delta: float = DEFAULT_PROGRESS_FLUSH_DELTA,
             progress_flush_batch_interval: float = DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL,
             cache_max_size: int = DEFAULT_LIFECYCLE_CACHE_MAX_SIZE,
+            running_persist_delay: float = DEFAULT_RUNNING_PERSIST_DELAY,
     ):
         self._task_repo = task_repo
         self._event_bus = event_bus
@@ -66,6 +85,9 @@ class TaskLifecycleManager:
         self._pending_progress: Dict[str, Tuple[float, str]] = {}
         self._flusher_task: Optional[asyncio.Task] = None
         self._write_behind_enabled = False
+        # 执行侧写入优化：RUNNING 状态延迟落库窗口（0 = 立即落库）
+        self._running_persist_delay = running_persist_delay
+        self._deferred_running: Dict[str, _DeferredRunningWrite] = {}
 
     async def create_task(
             self,
@@ -353,6 +375,7 @@ class TaskLifecycleManager:
                 # 关闭路径可能跨事件循环，无法等待原 loop 上的任务
                 warning(f"Cancel progress flusher failed: {exc}")
         await self.flush_pending_progress()
+        await self.flush_deferred_running()
 
     async def flush_pending_progress(self) -> int:
         """把待刷进度合并写入存储
@@ -372,6 +395,105 @@ class TaskLifecycleManager:
                 for task_id, value in batch.items():
                     self._pending_progress.setdefault(task_id, value)
             raise
+
+    # ========== RUNNING 状态延迟落库（执行侧写入优化） ==========
+
+    def _defer_running_persist(self, task: Task) -> None:
+        """把 RUNNING 状态放入延迟落库队列（需在事件循环内调用）"""
+        handle = _DeferredRunningWrite(task, asyncio.Event())
+        handle.flush_task = asyncio.ensure_future(self._persist_running_later(handle))
+        with self._lock:
+            self._deferred_running[task.task_id] = handle
+
+    async def _persist_running_later(self, handle: _DeferredRunningWrite) -> None:
+        """等待窗口结束，把仍处于 RUNNING 的任务状态落库
+
+        任务在窗口内结束（``done`` 被置位且未 ``force``）时跳过本次写入，
+        由终态写入一次性补齐 ``started_at``。
+        """
+        task = handle.task_obj
+        try:
+            try:
+                await asyncio.wait_for(handle.done.wait(), timeout=self._running_persist_delay)
+                if not handle.force:
+                    return
+            except asyncio.TimeoutError:
+                pass
+
+            if task.status != TaskStatus.RUNNING:
+                return
+            await self._task_repo.save_fields(task, ("status", "node_id", "started_at"))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            warning(f"Persist running state for {task.task_id} failed: {exc}")
+        finally:
+            with self._lock:
+                if self._deferred_running.get(task.task_id) is handle:
+                    self._deferred_running.pop(task.task_id, None)
+
+    async def _resolve_deferred_running(self, task_id: str) -> None:
+        """终态写入前结束该任务的延迟 RUNNING 落库
+
+        - 仍在窗口内：跳过写入（终态写入包含 ``started_at``）
+        - 已开始落库：等待它结束，避免 RUNNING 写入晚于终态写入
+        """
+        with self._lock:
+            handle = self._deferred_running.get(task_id)
+        if handle is None:
+            return
+
+        handle.done.set()
+        flush_task = handle.flush_task
+        if flush_task is None or flush_task.done():
+            return
+        try:
+            await asyncio.shield(flush_task)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            pass
+
+    async def flush_deferred_running(self) -> int:
+        """把所有仍在等待窗口的 RUNNING 状态立即落库（关闭前调用）
+
+        Returns:
+            成功落库的任务数量
+        """
+        with self._lock:
+            handles = list(self._deferred_running.values())
+            self._deferred_running.clear()
+
+        flushed = 0
+        for handle in handles:
+            handle.force = True
+            handle.done.set()
+            flush_task = handle.flush_task
+            if flush_task is not None and flush_task.done():
+                continue
+            if flush_task is not None:
+                try:
+                    await asyncio.shield(flush_task)
+                    flushed += 1
+                    continue
+                except asyncio.CancelledError:
+                    raise
+                except RuntimeError:
+                    # 跨事件循环无法等待后台协程，退回直接写入
+                    pass
+                except Exception:
+                    continue
+
+            task = handle.task_obj
+            if task.status != TaskStatus.RUNNING:
+                continue
+            try:
+                await self._task_repo.save_fields(task, ("status", "node_id", "started_at"))
+                flushed += 1
+            except Exception as exc:
+                warning(f"Flush running state for {task.task_id} failed: {exc}")
+
+        return flushed
 
     async def restore_pending_tasks(
             self,
@@ -409,17 +531,21 @@ class TaskLifecycleManager:
 
         previous = (task.status, task.node_id, task.started_at)
         task.start(node_id)
-        # 只更新状态相关字段：data 等不可变字段无需重写
-        try:
-            await self._task_repo.save_fields(
-                task,
-                ("status", "node_id", "started_at")
-            )
-        except Exception:
-            # 落库失败必须回滚内存状态：缓存里存的就是同一个对象，若保持 RUNNING，
-            # 任务被重新入队后再次启动会被状态机拒绝，最终永久卡死在 RUNNING。
-            task.status, task.node_id, task.started_at = previous
-            raise
+        if self._running_persist_delay > 0:
+            # 延迟窗口内完成的任务只需写一次终态，先只更新内存
+            self._defer_running_persist(task)
+        else:
+            # 只更新状态相关字段：data 等不可变字段无需重写
+            try:
+                await self._task_repo.save_fields(
+                    task,
+                    ("status", "node_id", "started_at")
+                )
+            except Exception:
+                # 落库失败必须回滚内存状态：缓存里存的就是同一个对象，若保持 RUNNING，
+                # 任务被重新入队后再次启动会被状态机拒绝，最终永久卡死在 RUNNING。
+                task.status, task.node_id, task.started_at = previous
+                raise
 
         if self._cache_enabled:
             self._cache_put(task_id, task)
@@ -447,12 +573,15 @@ class TaskLifecycleManager:
             warning(f"Cannot complete task {task_id}: status={task.status.value}, expected RUNNING")
             return False
 
+        # 先结束延迟的 RUNNING 落库，保证终态写入之后不会再出现 RUNNING 写入
+        await self._resolve_deferred_running(task_id)
+
         task.complete(result)
         # 成功完成即视为 100%，避免 UI 停留在最后一次业务上报的进度上。
         task.progress = 1.0
         await self._task_repo.save_fields(
             task,
-            ("status", "completed_at", "result", "progress")
+            ("status", "started_at", "completed_at", "result", "progress")
         )
         self._clear_progress_flush(task_id)
 
@@ -495,10 +624,12 @@ class TaskLifecycleManager:
 
         debug(f"[DEBUG] Failing task {task_id}: {error}")
 
+        await self._resolve_deferred_running(task_id)
+
         task.fail(error)
         await self._task_repo.save_fields(
             task,
-            ("status", "error", "completed_at")
+            ("status", "started_at", "error", "completed_at")
         )
         self._clear_progress_flush(task_id)
 
@@ -523,10 +654,12 @@ class TaskLifecycleManager:
         if task.status not in (TaskStatus.PENDING, TaskStatus.RUNNING):
             return False
 
+        await self._resolve_deferred_running(task_id)
+
         task.cancel()
         await self._task_repo.save_fields(
             task,
-            ("status", "completed_at")
+            ("status", "started_at", "completed_at")
         )
         self._clear_progress_flush(task_id)
 

@@ -25,6 +25,10 @@ DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL = 1.0
 #: 生命周期缓存默认上限；超出后优先淘汰已结束任务
 DEFAULT_LIFECYCLE_CACHE_MAX_SIZE = 1000
 
+#: RUNNING 状态延迟落库窗口（秒）。0 表示立即落库（默认）；
+#: >0 时短任务在窗口内完成只需写一次终态，减少每任务的跨 loop 写入次数。
+DEFAULT_RUNNING_PERSIST_DELAY = 0.0
+
 
 def redis_key(name: str) -> str:
     """为 Redis 键拼接统一根前缀。

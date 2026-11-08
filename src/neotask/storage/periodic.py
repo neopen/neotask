@@ -128,13 +128,13 @@ class SQLitePeriodicStore(PeriodicStore):
             return
         if self._conn is None:
             from neotask.utils import sqlite_compat
-
             # loop 安全连接；与任务/队列仓储共用同一库文件时复用同一条连接
             self._conn = sqlite_compat.acquire_shared_connection(self.db_path)
         conn = self._conn
         await self._init_db(conn)
         if self._conn is conn:
             self._initialized = True
+
 
     async def _init_db(self, conn) -> None:
         await conn.execute("""

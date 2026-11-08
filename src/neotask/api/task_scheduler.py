@@ -368,6 +368,7 @@ class TaskScheduler:
                 "LOST after restart. Set SchedulerConfig(enable_persistence=True) and "
                 "storage_type='sqlite' or 'redis' to persist it."
             )
+
         elif self._config.storage_type == StorageType.MEMORY:
             message = (
                 "Periodic task registered with storage_type='memory'; it will be "

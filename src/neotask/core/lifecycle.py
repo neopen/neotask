@@ -10,6 +10,7 @@ import asyncio
 import random
 import threading
 import time
+
 from collections import deque
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
@@ -94,6 +95,7 @@ class TaskLifecycleManager:
         # 执行侧写入优化：RUNNING 状态延迟落库窗口（0 = 立即落库）
         self._running_persist_delay = running_persist_delay
         self._deferred_running: Dict[str, _DeferredRunningWrite] = {}
+
 
     async def create_task(
             self,
@@ -317,6 +319,7 @@ class TaskLifecycleManager:
                     task.progress_message
                 )
 
+
         await self._emit_event(
             "task.progress",
             task_id,
@@ -327,6 +330,7 @@ class TaskLifecycleManager:
             }
         )
         return True
+
 
     def _should_flush_progress(self, task_id: str, progress: float) -> bool:
         """判断本次进度是否需要落库
@@ -571,6 +575,7 @@ class TaskLifecycleManager:
             info(f"Restored {restored} pending task(s) into queue")
         return restored
 
+
     async def start_task(self, task_id: str, node_id: str) -> bool:
         """开始执行任务"""
         task = await self.get_task(task_id)
@@ -598,6 +603,7 @@ class TaskLifecycleManager:
 
         if self._cache_enabled:
             self._cache_put(task_id, task)
+
 
         await self._emit_event("task.started", task_id, {"node_id": node_id})
 
@@ -628,6 +634,7 @@ class TaskLifecycleManager:
         task.complete(result)
         # 成功完成即视为 100%，避免 UI 停留在最后一次业务上报的进度上。
         task.progress = 1.0
+
         await self._task_repo.save_fields(
             task,
             ("status", "started_at", "completed_at", "result", "progress")
@@ -636,6 +643,7 @@ class TaskLifecycleManager:
 
         if self._cache_enabled:
             self._cache_put(task_id, task)
+
 
         # 通知等待者
         await self._future_manager.complete(task_id, result=result)
@@ -685,6 +693,7 @@ class TaskLifecycleManager:
         if self._cache_enabled:
             self._cache_put(task_id, task)
 
+
         # 通知等待者 - 确保错误被传递
         await self._future_manager.complete(task_id, error=error)
 
@@ -715,6 +724,7 @@ class TaskLifecycleManager:
         if self._cache_enabled:
             self._cache_put(task_id, task)
 
+
         # 通知等待者
         await self._future_manager.complete(task_id, error="Task cancelled")
 
@@ -737,6 +747,7 @@ class TaskLifecycleManager:
             return False
 
         task.reset_for_retry()
+
         await self._task_repo.save_fields(
             task,
             (
@@ -748,6 +759,7 @@ class TaskLifecycleManager:
 
         if self._cache_enabled:
             self._cache_put(task_id, task)
+
 
         await self._future_manager.remove(task_id)
 
@@ -837,7 +849,9 @@ class TaskLifecycleManager:
         """用仓储中的终态刷新缓存（终态不会回退，覆盖是安全的）"""
         if not self._cache_enabled:
             return
+          
         self._cache_put(task.task_id, task)
+
 
     async def get_task_stats(self) -> TaskStats:
         """获取任务统计
@@ -845,6 +859,7 @@ class TaskLifecycleManager:
         从存储层聚合统计信息，支持内存、SQLite、Redis 后端。
         """
         stats = TaskStats()
+
 
         # 如果缓存启用且有数据，优先使用缓存；缓存发生过淘汰时已不完整，
         # 必须回退到存储层聚合，避免统计结果随着淘汰静默缩水。

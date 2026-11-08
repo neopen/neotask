@@ -6,6 +6,18 @@
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [1.0.5](https://github.com/neopen/neotask/compare/v1.0.4...v1.0.5) (2026-10-29)
+
+
+### 🐛 Bug Fixes (问题修复)
+
+* 修复跨事件循环等待、手动重试、Cron 别名与优雅停机问题 ([#34](https://github.com/neopen/neotask/issues/34)) ([9d85201](https://github.com/neopen/neotask/commit/9d852015191fe1ae1803e5ad51da576fbc1c7fc6))
+
+
+### 💄 Styles (代码样式)
+
+* 格式 ([#32](https://github.com/neopen/neotask/issues/32)) ([fd3f019](https://github.com/neopen/neotask/commit/fd3f019c0844acdc1d983a7e4ee015ef741393ac))
+
 ## [Unreleased]
 
 > 待发布版本：**1.0.5**（GitHub Release 与版本号由 release-please 在 Release PR 中生成）

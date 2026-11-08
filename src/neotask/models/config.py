@@ -90,6 +90,7 @@ class StorageConfig:
             busy_timeout: float = 30.0,
             persist_queue: bool = True,
     ) -> "StorageConfig":
+
         """创建SQLite存储配置"""
         return cls(
             type=StorageType.SQLITE,

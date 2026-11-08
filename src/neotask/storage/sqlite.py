@@ -48,6 +48,7 @@ def _serialize_field(name: str, value: Any) -> Any:
     return value
 
 
+
 class SQLiteTaskRepository(TaskRepository):
     """SQLite-based task repository."""
 
@@ -62,6 +63,7 @@ class SQLiteTaskRepository(TaskRepository):
     ):
         self.db_path = Path(db_path or "/data/tasks.db")
         self._pragmas = pragmas
+
         # 自动创建所有缺失的父目录（如 data 文件夹）
         # parents=True 表示如果父目录不存在一并创建
         # exist_ok=True 表示如果文件夹已存在则不报错
@@ -88,6 +90,7 @@ class SQLiteTaskRepository(TaskRepository):
         await self._init_db(conn)
         if self._conn is conn:
             self._initialized = True
+
 
     async def _init_db(self, conn) -> None:
         """Initialize database tables asynchronously."""
@@ -518,6 +521,7 @@ class SQLiteQueueRepository(QueueRepository):
         await self._init_db(conn)
         if self._conn is conn:
             self._initialized = True
+
 
     async def _init_db(self, conn) -> None:
         """Initialize database tables."""

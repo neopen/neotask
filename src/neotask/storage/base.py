@@ -115,6 +115,7 @@ class TaskRepository(ABC):
         await self.save(task)
         return True
 
+
     async def update_progress_batch(
             self,
             updates: Dict[str, Tuple[float, str]],
@@ -135,6 +136,7 @@ class TaskRepository(ABC):
             if await self.update_progress(task_id, progress, message):
                 updated += 1
         return updated
+
 
     @abstractmethod
     async def update_status_batch(

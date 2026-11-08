@@ -84,6 +84,7 @@ class RedisTaskRepository(TaskRepository):
         self._save_if_absent_script: Optional[Any] = None
         self._submit_script: Optional[Any] = None
 
+
     async def _get_client(self) -> Any:
         """Get Redis client with connection pooling."""
         if not HAS_REDIS:
@@ -459,6 +460,7 @@ class RedisQueueRepository(QueueRepository):
         self._client: Optional[Any] = None
         self._queue_key = _QUEUE_PRIORITY_KEY
         self._delayed_key = _QUEUE_DELAYED_KEY
+
         self._pop_script: Optional[Any] = None
 
     async def _get_client(self) -> Any:

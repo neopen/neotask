@@ -16,7 +16,7 @@ from typing import Optional, Any, Dict, List, Callable, Union
 
 from neotask.api.task_pool import TaskPool, TaskPoolConfig
 from neotask.common.logger import debug, warning
-from neotask.models.config import SchedulerConfig
+from neotask.models.config import SchedulerConfig, StorageType
 from neotask.models.schedule import PeriodicTask
 from neotask.models.task import TaskPriority
 from neotask.scheduler.cron_parser import CronParser
@@ -74,7 +74,7 @@ class TaskScheduler:
             sqlite_path=self._config.sqlite_path,
             redis_url=self._config.redis_url,
             redis_max_connections=self._config.redis_max_connections,
-            lock_type="redis" if self._config.storage_type == "redis" else "memory",
+            lock_type="redis" if self._config.storage_type == StorageType.REDIS else "memory",
             persist_queue=self._config.persist_queue,
             worker_concurrency=self._config.worker_concurrency,
             max_retries=self._config.max_retries,
@@ -368,7 +368,7 @@ class TaskScheduler:
                 "LOST after restart. Set SchedulerConfig(enable_persistence=True) and "
                 "storage_type='sqlite' or 'redis' to persist it."
             )
-        elif self._config.storage_type == "memory":
+        elif self._config.storage_type == StorageType.MEMORY:
             message = (
                 "Periodic task registered with storage_type='memory'; it will be "
                 "LOST after restart (in-memory store cannot be recovered). Use "

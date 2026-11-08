@@ -7,7 +7,7 @@
 """
 
 from typing import Tuple, Optional
-from neotask.models.config import StorageConfig
+from neotask.models.config import StorageConfig, StorageType
 from neotask.storage.base import TaskRepository, QueueRepository
 from neotask.storage.memory import MemoryTaskRepository, MemoryQueueRepository
 from neotask.storage.redis import RedisTaskRepository, RedisQueueRepository
@@ -46,7 +46,7 @@ class StorageFactory:
 
     @staticmethod
     def create_storage(
-            storage_type: str,
+            storage_type: StorageType,
             sqlite_path: str,
             redis_url: Optional[str],
             *,
@@ -56,7 +56,7 @@ class StorageFactory:
         """初始化存储。
 
         Args:
-            storage_type: 存储类型 ("memory", "sqlite", "redis")
+            storage_type: 存储类型枚举（``StorageType.MEMORY`` 等）
             sqlite_path: SQLite 数据库路径
             redis_url: Redis 连接 URL
             persist_queue: SQLite 下是否持久化队列
@@ -67,11 +67,12 @@ class StorageFactory:
         """
         from neotask.models.config import StorageConfig
 
-        if storage_type == "memory":
+        storage_type = StorageType.coerce(storage_type)
+        if storage_type == StorageType.MEMORY:
             config = StorageConfig.memory()
-        elif storage_type == "sqlite":
+        elif storage_type == StorageType.SQLITE:
             config = StorageConfig.sqlite(sqlite_path, persist_queue=persist_queue)
-        elif storage_type == "redis":
+        elif storage_type == StorageType.REDIS:
             if not redis_url:
                 raise ValueError("Redis URL is required for redis storage")
             config = StorageConfig.redis(redis_url, redis_max_connections)
@@ -96,10 +97,10 @@ class StorageFactory:
         """
         storage_type = config.type
 
-        if storage_type == "memory":
+        if storage_type == StorageType.MEMORY:
             return MemoryTaskRepository(), MemoryQueueRepository()
 
-        elif storage_type == "redis":
+        elif storage_type == StorageType.REDIS:
             if not config.redis_url:
                 raise ValueError("Redis URL is required for Redis storage")
             return (
@@ -107,7 +108,7 @@ class StorageFactory:
                 RedisQueueRepository(config.redis_url, config.redis_max_connections)
             )
 
-        elif storage_type == "sqlite":
+        elif storage_type == StorageType.SQLITE:
             pragmas = _sqlite_pragmas(config)
             task_repo = SQLiteTaskRepository(config.sqlite_path, pragmas=pragmas)
             queue_repo: QueueRepository
@@ -186,9 +187,9 @@ class RepositoryFactory:
         Returns:
             (TaskRepository, QueueRepository)
         """
-        if config.type == "memory":
+        if config.type == StorageType.MEMORY:
             return MemoryTaskRepository(), MemoryQueueRepository()
-        elif config.type == "sqlite":
+        elif config.type == StorageType.SQLITE:
             pragmas = _sqlite_pragmas(config)
             queue_repo = (
                 SQLiteQueueRepository(config.sqlite_path, pragmas=pragmas)
@@ -199,7 +200,7 @@ class RepositoryFactory:
                 SQLiteTaskRepository(config.sqlite_path, pragmas=pragmas),
                 queue_repo
             )
-        elif config.type == "redis":
+        elif config.type == StorageType.REDIS:
             if not config.redis_url:
                 raise ValueError("Redis URL is required for redis storage")
             return (

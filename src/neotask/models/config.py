@@ -7,7 +7,8 @@
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Literal
+from enum import Enum
+from typing import Optional, Literal, Union
 
 from neotask.common.constants import (
     DEFAULT_LIFECYCLE_CACHE_MAX_SIZE,
@@ -19,11 +20,34 @@ from neotask.common.constants import (
 from neotask.executor import ExecutorType
 
 
+class StorageType(str, Enum):
+    """存储后端类型枚举
+
+    继承 ``str`` 以兼容历史字符串配置（``"memory"`` / ``"sqlite"`` / ``"redis"``），
+    各配置类的 ``__post_init__`` 会把字符串归一化为枚举成员。
+    """
+
+    MEMORY = "memory"
+    SQLITE = "sqlite"
+    REDIS = "redis"
+
+    def __str__(self) -> str:
+        return self.value
+
+    @classmethod
+    def coerce(cls, value: Union["StorageType", str]) -> "StorageType":
+        """把字符串或枚举统一转换为 :class:`StorageType`"""
+        try:
+            return cls(value)
+        except ValueError as exc:
+            raise ValueError(f"Unknown storage type: {value}") from exc
+
+
 @dataclass
 class StorageConfig:
     """存储配置"""
 
-    type: Literal["memory", "redis", "sqlite"] = "memory"
+    type: StorageType = StorageType.MEMORY
     redis_url: Optional[str] = None
     redis_max_connections: int = 50          # 每个仓储客户端连接池上限
     sqlite_path: Optional[str] = None
@@ -34,10 +58,13 @@ class StorageConfig:
     sqlite_busy_timeout: float = 30.0       # 写锁冲突等待时间（秒）
     persist_queue: bool = True              # 队列是否落盘；关闭后由任务表重建
 
+    def __post_init__(self) -> None:
+        self.type = StorageType.coerce(self.type)
+
     @classmethod
     def memory(cls) -> "StorageConfig":
         """创建内存存储配置"""
-        return cls(type="memory")
+        return cls(type=StorageType.MEMORY)
 
     @classmethod
     def redis(cls, url: str, max_connections: int = 50) -> "StorageConfig":
@@ -47,7 +74,11 @@ class StorageConfig:
             url: Redis 连接地址
             max_connections: 单个仓储客户端连接池上限，需 >= worker 并发数
         """
-        return cls(type="redis", redis_url=url, redis_max_connections=max_connections)
+        return cls(
+            type=StorageType.REDIS,
+            redis_url=url,
+            redis_max_connections=max_connections,
+        )
 
     @classmethod
     def sqlite(
@@ -61,7 +92,7 @@ class StorageConfig:
     ) -> "StorageConfig":
         """创建SQLite存储配置"""
         return cls(
-            type="sqlite",
+            type=StorageType.SQLITE,
             sqlite_path=path,
             sqlite_wal=wal,
             sqlite_synchronous=synchronous,
@@ -203,7 +234,7 @@ class TaskPoolConfig:
     """TaskPool配置 - 专注于即时任务"""
 
     # 存储配置
-    storage_type: str = "memory"
+    storage_type: StorageType = StorageType.MEMORY
     sqlite_path: str = "/data/neotask.db"
     redis_url: Optional[str] = None
     redis_max_connections: int = 50  # Redis 仓储/锁客户端连接池上限
@@ -265,6 +296,7 @@ class TaskPoolConfig:
     node_id: str = ""
 
     def __post_init__(self):
+        self.storage_type = StorageType.coerce(self.storage_type)
         if not self.node_id:
             import os
             import socket
@@ -275,7 +307,7 @@ class TaskPoolConfig:
     @classmethod
     def memory(cls, node_id: Optional[str] = None) -> "TaskPoolConfig":
         """创建内存存储配置"""
-        config = cls(storage_type="memory")
+        config = cls(storage_type=StorageType.MEMORY)
         if node_id:
             config.node_id = node_id
         return config
@@ -283,7 +315,7 @@ class TaskPoolConfig:
     @classmethod
     def sqlite(cls, path: str = "/data/neotask.db", node_id: Optional[str] = None) -> "TaskPoolConfig":
         """创建SQLite存储配置"""
-        config = cls(storage_type="sqlite", sqlite_path=path)
+        config = cls(storage_type=StorageType.SQLITE, sqlite_path=path)
         if node_id:
             config.node_id = node_id
         return config
@@ -301,7 +333,7 @@ class TaskPoolConfig:
         多进程共享同一 Redis 队列时，任务锁也必须使用 Redis 分布式锁，
         否则锁只在进程内生效，回收器可能把其他进程正在执行的任务判为孤儿。
         """
-        config = cls(storage_type="redis", redis_url=url, lock_type="redis")
+        config = cls(storage_type=StorageType.REDIS, redis_url=url, lock_type="redis")
         if node_id:
             config.node_id = node_id
         if enable_prefetch is not None:
@@ -317,7 +349,7 @@ class SchedulerConfig:
     """调度器配置 - 专注于定时任务"""
 
     # 存储配置
-    storage_type: str = "memory"
+    storage_type: StorageType = StorageType.MEMORY
     sqlite_path: str = "/data/neotask.db"
     redis_url: Optional[str] = None
     redis_max_connections: int = 50  # Redis 仓储/锁客户端连接池上限
@@ -358,20 +390,23 @@ class SchedulerConfig:
     default_max_runs: Optional[int] = None  # 默认最大执行次数
     default_missed_policy: str = "skip"  # 默认错过执行策略: ignore, run_once, catch_up, skip
 
+    def __post_init__(self) -> None:
+        self.storage_type = StorageType.coerce(self.storage_type)
+
     @classmethod
     def memory(cls) -> "SchedulerConfig":
         """创建内存存储配置"""
-        return cls(storage_type="memory")
+        return cls(storage_type=StorageType.MEMORY)
 
     @classmethod
     def sqlite(cls, path: str = "/data/neotask.db") -> "SchedulerConfig":
         """创建SQLite存储配置"""
-        return cls(storage_type="sqlite", sqlite_path=path)
+        return cls(storage_type=StorageType.SQLITE, sqlite_path=path)
 
     @classmethod
     def redis(cls, url: str) -> "SchedulerConfig":
         """创建Redis存储配置"""
-        return cls(storage_type="redis", redis_url=url)
+        return cls(storage_type=StorageType.REDIS, redis_url=url)
 
     @classmethod
     def high_performance(cls) -> "SchedulerConfig":

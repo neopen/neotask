@@ -22,7 +22,7 @@ from neotask.event.bus import EventBus, TaskEvent
 from neotask.executor.base import TaskExecutor
 from neotask.executor.factory import ExecutorFactory
 from neotask.lock.factory import LockFactory
-from neotask.models.config import StorageConfig, LockConfig, TaskPoolConfig
+from neotask.models.config import StorageConfig, LockConfig, TaskPoolConfig, StorageType
 from neotask.models.task import TaskPriority, TaskStatus
 from neotask.monitor.health import SystemHealthChecker
 from neotask.monitor.metrics import MetricsCollector
@@ -136,7 +136,7 @@ class TaskPool:
         self._dead_letter = None
 
         # 仅在 Redis 模式下启用分布式组件
-        if self._config.storage_type == "redis" and self._config.redis_url:
+        if self._config.storage_type == StorageType.REDIS and self._config.redis_url:
             self._init_distributed_components()
 
         # 初始化监控
@@ -251,14 +251,14 @@ class TaskPool:
 
     def _init_storage(self):
         """初始化存储"""
-        if self._config.storage_type == "memory":
+        if self._config.storage_type == StorageType.MEMORY:
             storage_config = StorageConfig.memory()
-        elif self._config.storage_type == "sqlite":
+        elif self._config.storage_type == StorageType.SQLITE:
             storage_config = StorageConfig.sqlite(
                 self._config.sqlite_path,
                 persist_queue=self._config.persist_queue,
             )
-        elif self._config.storage_type == "redis":
+        elif self._config.storage_type == StorageType.REDIS:
             storage_config = StorageConfig.redis(
                 self._config.redis_url,
                 self._config.redis_max_connections,

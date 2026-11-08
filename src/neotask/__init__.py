@@ -6,7 +6,7 @@
 @Time: 2026/4/8 00:00
 """
 
-__version__ = "1.0.4"
+__version__ = "1.0.6"
 __author__ = "neopen"
 
 # API 入口
@@ -69,7 +69,7 @@ from neotask.monitor.reporter import (
 # 模型
 from neotask.models.task import Task, TaskStatus, TaskPriority
 from neotask.models.config import (
-    StorageConfig, LockConfig, WorkerConfig,
+    StorageConfig, StorageType, LockConfig, WorkerConfig,
     QueueConfig, ExecutorConfig, SchedulerConfig
 )
 
@@ -167,6 +167,7 @@ __all__ = [
     "TaskStatus",
     "TaskPriority",
     "StorageConfig",
+    "StorageType",
     "LockConfig",
     "WorkerConfig",
     "QueueConfig",

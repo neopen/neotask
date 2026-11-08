@@ -10,10 +10,10 @@ import asyncio
 import random
 import threading
 import time
+from collections import deque
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 
-from neotask.common.exceptions import TaskNotFoundError, TaskAlreadyExistsError
 from neotask.common.constants import (
     DEFAULT_LIFECYCLE_CACHE_MAX_SIZE,
     DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL,
@@ -21,10 +21,11 @@ from neotask.common.constants import (
     DEFAULT_PROGRESS_FLUSH_INTERVAL,
     DEFAULT_RUNNING_PERSIST_DELAY,
 )
-from neotask.common.logger import debug, warning, info
+from neotask.common.exceptions import TaskAlreadyExistsError, TaskNotFoundError
+from neotask.common.logger import debug, info, warning
 from neotask.core.future import FutureManager
 from neotask.event.bus import EventBus, TaskEvent
-from neotask.models.task import Task, TaskStatus, TaskPriority, TaskStats
+from neotask.models.task import Task, TaskPriority, TaskStats, TaskStatus
 from neotask.storage.base import TaskRepository
 
 
@@ -74,6 +75,11 @@ class TaskLifecycleManager:
         self._cache: Dict[str, Task] = {}
         self._cache_enabled = cache_enabled
         self._cache_max_size = cache_max_size
+        # 一旦发生过淘汰，缓存不再完整，统计需回退到存储层
+        self._cache_evicted = False
+        # 终态任务按进入缓存的时间排队，淘汰时直接取队首，避免全量扫描
+        self._terminal_cache_ids: "deque[str]" = deque()
+        self._terminal_cache_set: set = set()
         # 缓存可能被 TaskPool 内部循环与调用方循环同时访问，使用线程锁保护
         self._lock = threading.Lock()
         # 进度写入节流：task_id -> (最近落库时间, 最近落库进度)
@@ -351,22 +357,27 @@ class TaskLifecycleManager:
             self._pending_progress.pop(task_id, None)
 
     def _cache_put(self, task_id: str, task: Task) -> None:
-        """写入缓存，并在超出上限时优先淘汰已结束任务"""
+        """写入缓存，并在超出上限时优先淘汰已结束任务
+
+        终态任务按入缓存顺序维护在 ``_terminal_cache_ids`` 队列中，超限时
+        直接从队首回收，单次写入的开销均摊为 O(1)。
+
+        只淘汰终态任务：RUNNING/PENDING 可能仍被 Worker 使用；因此当活跃
+        任务本身超过上限时，缓存会短暂超出上限，等待任务结束后再回收。
+        """
         with self._lock:
             self._cache[task_id] = task
-            overflow = len(self._cache) - self._cache_max_size
-            if overflow > 0:
-                # 只淘汰终态任务：RUNNING/PENDING 可能仍被 Worker 使用
-                terminal = sorted(
-                    (
-                        (item.completed_at or item.created_at, item.task_id)
-                        for item in self._cache.values()
-                        if item.status.is_terminal()
-                    ),
-                    key=lambda pair: pair[0],
-                )
-                for _, cached_id in terminal[:overflow]:
-                    self._cache.pop(cached_id, None)
+            if task.status.is_terminal() and task_id not in self._terminal_cache_set:
+                self._terminal_cache_set.add(task_id)
+                self._terminal_cache_ids.append(task_id)
+            limit = max(1, self._cache_max_size)
+            while self._terminal_cache_ids and len(self._cache) > limit:
+                evict_id = self._terminal_cache_ids.popleft()
+                self._terminal_cache_set.discard(evict_id)
+                cached = self._cache.get(evict_id)
+                if cached is not None and cached.status.is_terminal():
+                    self._cache.pop(evict_id, None)
+                    self._cache_evicted = True
 
     def start_progress_flusher(self) -> None:
         """启动后台进度写回任务（需在事件循环内调用）
@@ -757,6 +768,7 @@ class TaskLifecycleManager:
         if self._cache_enabled:
             with self._lock:
                 self._cache.pop(task_id, None)
+                self._terminal_cache_set.discard(task_id)
 
         await self._future_manager.remove(task_id)
 
@@ -834,8 +846,9 @@ class TaskLifecycleManager:
         """
         stats = TaskStats()
 
-        # 如果缓存启用且有数据，优先使用缓存
-        if self._cache_enabled and self._cache:
+        # 如果缓存启用且有数据，优先使用缓存；缓存发生过淘汰时已不完整，
+        # 必须回退到存储层聚合，避免统计结果随着淘汰静默缩水。
+        if self._cache_enabled and self._cache and not self._cache_evicted:
             with self._lock:
                 for task in self._cache.values():
                     stats.total += 1
@@ -924,6 +937,7 @@ class TaskLifecycleManager:
                     if self._cache_enabled:
                         with self._lock:
                             self._cache.pop(task.task_id, None)
+                            self._terminal_cache_set.discard(task.task_id)
                     self._clear_progress_flush(task.task_id)
 
                     # 清理 future
@@ -966,6 +980,7 @@ class TaskLifecycleManager:
                         if self._cache_enabled:
                             with self._lock:
                                 self._cache.pop(task.task_id, None)
+                                self._terminal_cache_set.discard(task.task_id)
                         self._clear_progress_flush(task.task_id)
 
                         await self._future_manager.remove(task.task_id)
@@ -1018,4 +1033,7 @@ class TaskLifecycleManager:
         """异步清空缓存"""
         with self._lock:
             self._cache.clear()
+            self._cache_evicted = False
+            self._terminal_cache_ids.clear()
+            self._terminal_cache_set.clear()
         self._progress_flush_state.clear()

@@ -24,6 +24,7 @@ from neotask.event.bus import EventBus
 from neotask.executor.base import TaskExecutor
 from neotask.executor.factory import ExecutorFactory, ExecutorType
 from neotask.monitor.metrics import MetricsCollector
+from neotask.models.config import StorageType
 from neotask.queue.queue_scheduler import QueueScheduler
 from neotask.storage.base import TaskRepository, QueueRepository
 from neotask.storage.factory import StorageFactory
@@ -35,7 +36,7 @@ from neotask.worker.supervisor import WorkerSupervisor
 class EngineConfig:
     """引擎配置"""
     # 存储配置
-    storage_type: str = "memory"
+    storage_type: StorageType = StorageType.MEMORY
     sqlite_path: str = "neotask.db"
     redis_url: Optional[str] = None
     redis_max_connections: int = 50
@@ -71,6 +72,9 @@ class EngineConfig:
     enable_metrics: bool = True
     metrics_interval: int = 60
 
+    def __post_init__(self) -> None:
+        self.storage_type = StorageType.coerce(self.storage_type)
+
 
 class TaskEngine:
     """任务引擎 - 统一入口
@@ -80,7 +84,7 @@ class TaskEngine:
 
     使用示例：
         >>> engine = TaskEngine()
-        >>> engine.configure(EngineConfig(storage_type="redis", redis_url="redis://..."))
+        >>> engine.configure(EngineConfig(storage_type=StorageType.REDIS, redis_url="redis://..."))
         >>> await engine.start()
         >>> task_id = await engine.submit({"data": "value"})
         >>> result = await engine.wait(task_id)
@@ -184,14 +188,14 @@ class TaskEngine:
         """初始化存储"""
         from neotask.models.config import StorageConfig
 
-        if self.config.storage_type == "memory":
+        if self.config.storage_type == StorageType.MEMORY:
             storage_config = StorageConfig.memory()
-        elif self.config.storage_type == "sqlite":
+        elif self.config.storage_type == StorageType.SQLITE:
             storage_config = StorageConfig.sqlite(
                 self.config.sqlite_path,
                 persist_queue=self.config.persist_queue,
             )
-        elif self.config.storage_type == "redis":
+        elif self.config.storage_type == StorageType.REDIS:
             storage_config = StorageConfig.redis(
                 self.config.redis_url,
                 self.config.redis_max_connections,

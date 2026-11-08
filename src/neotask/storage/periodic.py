@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from neotask.common.constants import REDIS_KEY_PREFIX
 from neotask.common.logger import debug
+from neotask.models.config import StorageType
 
 if TYPE_CHECKING:
     import redis.asyncio as redis
@@ -316,14 +317,14 @@ class RedisPeriodicStore(PeriodicStore):
 
 
 def create_periodic_store(
-        storage_type: str,
+        storage_type: StorageType,
         sqlite_path: str = "neotask.db",
         redis_url: Optional[str] = None,
 ) -> PeriodicStore:
     """按存储类型创建周期任务存储
 
     Args:
-        storage_type: "memory" | "sqlite" | "redis"
+        storage_type: 存储类型枚举（``StorageType.MEMORY`` 等）
         sqlite_path: SQLite 数据库路径
         redis_url: Redis 连接 URL
 
@@ -333,12 +334,13 @@ def create_periodic_store(
     Raises:
         ValueError: 未知存储类型或缺少必要参数
     """
-    if storage_type == "memory":
+    storage_type = StorageType.coerce(storage_type)
+    if storage_type == StorageType.MEMORY:
         debug("Periodic persistence using in-memory store (not durable across restart)")
         return MemoryPeriodicStore()
-    if storage_type == "sqlite":
+    if storage_type == StorageType.SQLITE:
         return SQLitePeriodicStore(sqlite_path)
-    if storage_type == "redis":
+    if storage_type == StorageType.REDIS:
         if not redis_url:
             raise ValueError("Redis URL is required for redis periodic store")
         return RedisPeriodicStore(redis_url)

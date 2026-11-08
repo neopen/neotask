@@ -13,9 +13,8 @@ import pytest
 
 from neotask.core.lifecycle import TaskLifecycleManager
 from neotask.event.bus import EventBus
-from neotask.models.task import TaskStatus, TaskPriority
+from neotask.models.task import TaskPriority, TaskStatus
 from neotask.storage.memory import MemoryTaskRepository
-
 
 # ========== 测试辅助函数 ==========
 
@@ -511,6 +510,41 @@ class TestLifecycleCache:
         assert retrieved1 is not retrieved2
         assert retrieved1.task_id == retrieved2.task_id
         assert retrieved1.data == retrieved2.data
+
+    @pytest.fixture
+    async def lifecycle_small_cache(self):
+        """创建缓存上限极小的生命周期管理器，便于触发淘汰"""
+        repo = MemoryTaskRepository()
+        event_bus = EventBus()
+        await event_bus.start()
+        manager = TaskLifecycleManager(
+            repo,
+            event_bus,
+            cache_enabled=True,
+            cache_max_size=2,
+        )
+        yield manager
+        await event_bus.stop()
+        await asyncio.sleep(0.1)
+
+    @pytest.mark.asyncio
+    async def test_cache_eviction_is_bounded_and_stats_complete(self, lifecycle_small_cache):
+        """缓存超限时批量淘汰终态任务，统计仍以存储为准"""
+        manager = lifecycle_small_cache
+
+        for i in range(6):
+            task = await manager.create_task(data={"i": i})
+            await manager.start_task(task.task_id, "test-node")
+            await manager.complete_task(task.task_id, {"i": i})
+
+        # 高水位 = 上限 * 2：超过后一次性回收到上限附近
+        assert len(manager._cache) <= 4
+        assert manager._cache_evicted is True
+
+        # 缓存不完整时必须回退到存储聚合，避免统计随淘汰缩水
+        stats = await manager.get_task_stats()
+        assert stats.total == 6
+        assert stats.completed == 6
 
 
 # ========== 独立运行测试 ==========

@@ -803,6 +803,7 @@ class PeriodicTaskManager:
             return
 
         loaded = 0
+        
         with self._lock:
             for payload in payloads:
                 instance = self._deserialize_instance(payload)

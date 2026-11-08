@@ -106,10 +106,46 @@ class TaskLifecycleManager:
         else:
             priority_enum = priority
 
-        # 检查是否已存在
-        existing = await self._task_repo.get(task_id)
-        if existing:
+        # 先创建任务，再由存储判定是否重复：Redis 用单条 Lua、SQLite 用
+        # INSERT OR IGNORE 原子完成「查重 + 写入」，避免额外的查询往返
+        task = Task(
+            task_id=task_id,
+            data=data,
+            priority=priority_enum,
+            node_id=node_id,
+            ttl=ttl
+        )
+
+        if not await self._task_repo.save_if_absent(task):
             raise TaskAlreadyExistsError(task_id)
+
+        if self._cache_enabled:
+            self._cache_put(task_id, task)
+
+        await self._emit_event("task.created", task_id, task.to_dict())
+
+        return task
+
+    async def create_task_and_enqueue(
+            self,
+            data: Dict[str, Any],
+            max_size: int,
+            task_id: Optional[str] = None,
+            priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+            node_id: str = "default",
+            ttl: int = 3600,
+    ) -> Tuple[Task, Optional[bool]]:
+        """创建任务并尝试一次原子入队（提交快路径）
+
+        Returns:
+            ``(task, queued)``:
+            - ``queued=True``：存储层已原子完成「创建 + 入队」
+            - ``queued=False``：任务已创建，但队列已满
+            - ``queued=None``：后端不支持合并，调用方需自行 ``push``
+        """
+        task_id = task_id or self._generate_task_id()
+
+        priority_enum = TaskPriority(priority) if isinstance(priority, int) else priority
 
         task = Task(
             task_id=task_id,
@@ -119,14 +155,16 @@ class TaskLifecycleManager:
             ttl=ttl
         )
 
-        await self._task_repo.save(task)
+        queued = await self._task_repo.save_if_absent_and_enqueue(task, max_size)
+        if queued is None and not await self._task_repo.save_if_absent(task):
+            raise TaskAlreadyExistsError(task_id)
 
         if self._cache_enabled:
             self._cache_put(task_id, task)
 
         await self._emit_event("task.created", task_id, task.to_dict())
 
-        return task
+        return task, queued
 
     async def create_tasks(
             self,

@@ -49,6 +49,14 @@ class MemoryTaskRepository(TaskRepository):
                 saved.append(task.task_id)
         return saved
 
+    async def save_if_absent(self, task: Task) -> bool:
+        """保存新任务（已存在则跳过），一次加锁完成查重与写入"""
+        with self._lock:
+            if task.task_id in self._tasks:
+                return False
+            self._tasks[task.task_id] = copy.deepcopy(task)
+        return True
+
     async def get(self, task_id: str) -> Optional[Task]:
         """获取任务（返回深拷贝）
 

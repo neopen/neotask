@@ -33,14 +33,25 @@ class PriorityQueue(BaseQueue):
         self._sequence = 0  # 用于稳定排序（相同优先级时FIFO）
         self._task_index: Dict[str, Tuple[int, float, str]] = {}  # task_id -> item 快速查找
 
-    async def push(self, task_id: str, priority: int, delay: float = 0) -> bool:
-        """入队"""
+    async def push(
+            self,
+            task_id: str,
+            priority: int,
+            delay: float = 0,
+            check_capacity: bool = True,
+    ) -> bool:
+        """入队
+
+        Args:
+            check_capacity: 是否在此处校验容量。调用方（``QueueScheduler.push``）
+                已查过一次时可传 False，避免重复的 ``size()`` 往返。
+        """
         debug(f"[PRIORITY_QUEUE] push: task_id={task_id}, priority={priority}, use_repo={self._use_repository}")
         if delay > 0:
             # 延迟任务不应直接入优先级队列
             return False
 
-        if await self.size() >= self._max_size:
+        if check_capacity and await self.size() >= self._max_size:
             return False
 
         if self._use_repository:

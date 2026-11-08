@@ -96,7 +96,10 @@ class QueueScheduler:
         if delay > 0:
             return await self._delayed_queue.schedule(task_id, priority, delay)
         else:
-            return await self._priority_queue.push(task_id, priority)
+            # 容量已在上面查过，避免 PriorityQueue 再查一次 size()
+            return await self._priority_queue.push(
+                task_id, priority, check_capacity=False
+            )
 
     async def re_enqueue(self, task_id: str, priority: int) -> bool:
         """把已出队但尚未执行的任务放回优先队列（停机回滚用）
@@ -114,7 +117,7 @@ class QueueScheduler:
         """
         if await self.size() >= self._max_size:
             return False
-        return await self._priority_queue.push(task_id, priority)
+        return await self._priority_queue.push(task_id, priority, check_capacity=False)
 
     async def push_batch(
             self,

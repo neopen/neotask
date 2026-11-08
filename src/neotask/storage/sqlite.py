@@ -119,14 +119,10 @@ class SQLiteTaskRepository(TaskRepository):
         """)
         await conn.commit()
 
-    async def save(self, task: Task) -> None:
-        await self._ensure_init()
-        await self._conn.execute("""
-            INSERT OR REPLACE INTO tasks 
-            (task_id, data, status, priority, node_id, retry_count, ttl,
-             created_at, started_at, completed_at, result, error, progress, progress_message)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+    @staticmethod
+    def _task_values(task: Task) -> tuple:
+        """任务行的绑定参数（与 INSERT 列顺序一致）"""
+        return (
             task.task_id,
             json.dumps(task.data),
             task.status.value,
@@ -141,8 +137,31 @@ class SQLiteTaskRepository(TaskRepository):
             task.error,
             getattr(task, 'progress', 0.0),
             getattr(task, 'progress_message', '')
-        ))
+        )
+
+    async def save(self, task: Task) -> None:
+        await self._ensure_init()
+        await self._conn.execute("""
+            INSERT OR REPLACE INTO tasks 
+            (task_id, data, status, priority, node_id, retry_count, ttl,
+             created_at, started_at, completed_at, result, error, progress, progress_message)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, self._task_values(task))
         await self._conn.commit()
+
+    async def save_if_absent(self, task: Task) -> bool:
+        """插入新任务；主键已存在则跳过（单条语句完成查重 + 写入）"""
+        await self._ensure_init()
+        cursor = await self._conn.execute("""
+            INSERT OR IGNORE INTO tasks 
+            (task_id, data, status, priority, node_id, retry_count, ttl,
+             created_at, started_at, completed_at, result, error, progress, progress_message)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, self._task_values(task))
+        inserted = cursor.rowcount > 0
+        await cursor.close()
+        await self._conn.commit()
+        return inserted
 
     async def save_batch(self, tasks: List[Task]) -> List[str]:
         """批量保存任务：一次查重 + 一次 ``executemany``，整批单事务提交。

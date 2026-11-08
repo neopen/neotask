@@ -64,24 +64,42 @@ class TaskDispatcher:
 
         debug(f"Dispatching task: task_id={task_id}, priority={priority_enum.value}, delay={delay}")
 
-        # 创建任务
-        task = await self._lifecycle.create_task(
-            data=data,
-            task_id=task_id,
-            priority=priority_enum,
-            node_id=self._node_id,
-            ttl=ttl
-        )
-
-        # 获取优先级整数值用于队列
-        priority_value = task.priority.value
-
-        # 如果是延迟任务，使用延迟队列
+        # 创建任务并入队：即时任务优先走「存储层原子创建 + 入队」快路径
+        # （Redis 用单条 Lua，提交只需 1 次跨 loop 往返）
         if delay > 0:
-            queued = await self._queue.schedule_delayed(task.task_id, priority_value, delay)
+            task = await self._lifecycle.create_task(
+                data=data,
+                task_id=task_id,
+                priority=priority_enum,
+                node_id=self._node_id,
+                ttl=ttl
+            )
+            queued = await self._queue.schedule_delayed(
+                task.task_id, task.priority.value, delay
+            )
         else:
-            # 立即入队
-            queued = await self._queue.push(task.task_id, priority_value)
+            if self._queue.is_disabled:
+                # 队列已禁用：Redis 原子脚本无法感知该状态，走普通创建后统一失败处理
+                task = await self._lifecycle.create_task(
+                    data=data,
+                    task_id=task_id,
+                    priority=priority_enum,
+                    node_id=self._node_id,
+                    ttl=ttl
+                )
+                queued = False
+            else:
+                task, queued = await self._lifecycle.create_task_and_enqueue(
+                    data=data,
+                    max_size=self._queue.max_size,
+                    task_id=task_id,
+                    priority=priority_enum,
+                    node_id=self._node_id,
+                    ttl=ttl
+                )
+                if queued is None:
+                    # 后端不支持合并（memory / SQLite）：按原两步流程入队
+                    queued = await self._queue.push(task.task_id, task.priority.value)
 
         if not queued:
             reason = "queue is disabled" if self._queue.is_disabled else "queue is full"

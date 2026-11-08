@@ -53,6 +53,84 @@ class TestRepositoryBatch:
         await repo.close()
 
     @pytest.mark.asyncio
+    async def test_memory_save_if_absent(self):
+        repo = MemoryTaskRepository()
+        assert await repo.save_if_absent(Task(task_id="m-absent", data={"i": 1})) is True
+        # 重复创建：返回 False 且不覆盖已有数据
+        assert await repo.save_if_absent(Task(task_id="m-absent", data={"i": 2})) is False
+        stored = await repo.get("m-absent")
+        assert stored is not None and stored.data == {"i": 1}
+
+    @pytest.mark.asyncio
+    async def test_sqlite_save_if_absent(self, tmp_path):
+        repo = SQLiteTaskRepository(str(tmp_path / "absent.db"))
+        assert await repo.save_if_absent(Task(task_id="s-absent", data={"i": 1})) is True
+        assert await repo.save_if_absent(Task(task_id="s-absent", data={"i": 2})) is False
+        stored = await repo.get("s-absent")
+        assert stored is not None and stored.data == {"i": 1}
+        await repo.close()
+
+    @pytest.mark.asyncio
+    async def test_redis_save_if_absent(self):
+        pytest.importorskip("redis")
+        import redis as redis_lib
+
+        from neotask.storage.redis import RedisTaskRepository
+
+        redis_url = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/14")
+        try:
+            redis_lib.Redis.from_url(redis_url, decode_responses=True).ping()
+        except Exception as exc:  # noqa: BLE001
+            pytest.skip(f"redis unavailable: {exc}")
+
+        repo = RedisTaskRepository(redis_url)
+        try:
+            assert await repo.save_if_absent(Task(task_id="r-absent", data={"i": 1})) is True
+            assert await repo.save_if_absent(Task(task_id="r-absent", data={"i": 2})) is False
+            stored = await repo.get("r-absent")
+            assert stored is not None and stored.data == {"i": 1}
+        finally:
+            await repo.delete("r-absent")
+
+    @pytest.mark.asyncio
+    async def test_redis_submit_fast_path(self):
+        """Redis 单条 Lua：查重 + 写任务 + 入队一次完成"""
+        pytest.importorskip("redis")
+        import redis as redis_lib
+
+        from neotask.common.exceptions import TaskAlreadyExistsError
+        from neotask.storage.redis import RedisQueueRepository, RedisTaskRepository
+
+        redis_url = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/15")
+        try:
+            client = redis_lib.Redis.from_url(redis_url, decode_responses=True)
+            client.ping()
+            client.flushdb()
+        except Exception as exc:  # noqa: BLE001
+            pytest.skip(f"redis unavailable: {exc}")
+
+        task_repo = RedisTaskRepository(redis_url)
+        queue_repo = RedisQueueRepository(redis_url)
+
+        task = Task(task_id="r-fast", data={"i": 1}, priority=TaskPriority.HIGH)
+        assert await task_repo.save_if_absent_and_enqueue(task, 100) is True
+        assert await queue_repo.pop(10) == ["r-fast"]
+
+        # 重复 task_id：不覆盖、不入队
+        clone = Task(task_id="r-fast", data={"i": 2})
+        with pytest.raises(TaskAlreadyExistsError):
+            await task_repo.save_if_absent_and_enqueue(clone, 100)
+        stored = await task_repo.get("r-fast")
+        assert stored is not None and stored.data == {"i": 1}
+
+        # 队列已满：任务仍写入存储，但返回 False（由调用方标记失败）
+        full = Task(task_id="r-full", data={"i": 3})
+        assert await task_repo.save_if_absent_and_enqueue(full, 0) is False
+        assert await queue_repo.pop(10) == []
+        await task_repo.delete("r-fast")
+        await task_repo.delete("r-full")
+
+    @pytest.mark.asyncio
     async def test_sqlite_push_batch(self, tmp_path):
         repo = SQLiteQueueRepository(str(tmp_path / "batch.db"))
         items = [(f"sq-{i}", TaskPriority.HIGH.value) for i in range(3)]

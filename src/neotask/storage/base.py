@@ -35,6 +35,34 @@ class TaskRepository(ABC):
             saved.append(task.task_id)
         return saved
 
+    async def save_if_absent(self, task: Task) -> bool:
+        """保存新任务；若 ``task_id`` 已存在则跳过并返回 False。
+
+        Returns:
+            是否实际写入（True = 新建，False = 已存在）
+
+        默认实现先查存在性再写入（两次往返）；支持原子写入的后端应覆盖：
+        SQLite 用 ``INSERT OR IGNORE`` + ``rowcount``，Redis 用单条 Lua。
+        """
+        if await self.exists(task.task_id):
+            return False
+        await self.save(task)
+        return True
+
+    async def save_if_absent_and_enqueue(
+            self, task: Task, max_size: int
+    ) -> Optional[bool]:
+        """（可选能力）原子创建任务并入队。
+
+        Returns:
+            None: 后端不支持合并，调用方应分两步（``save_if_absent`` + 队列 push）
+            True/False: 已由后端完成入队 / 队列已满
+
+        支持合并的后端（Redis）用单条 Lua 把「查重 → 容量校验 → 写任务 →
+        状态索引 → 入队」压成 1 次往返，避免提交路径上的多次跨 loop 通信。
+        """
+        return None
+
     async def save_fields(self, task: Task, fields: Iterable[str]) -> bool:
         """只持久化指定字段。
 

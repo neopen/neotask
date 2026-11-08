@@ -20,6 +20,9 @@ from neotask.utils import sqlite_compat
 #: 合并成一条原子语句，避免两个进程 SELECT 到同一批任务后重复执行。
 _HAS_DELETE_RETURNING = sqlite3.sqlite_version_info >= (3, 35, 0)
 
+#: 批量写入的分块大小（避免 IN 子句参数个数超出 SQLite 上限）
+_BATCH_CHUNK = 500
+
 #: tasks 表允许按字段更新的列
 _TASK_COLUMNS = {
     "data", "status", "priority", "node_id", "retry_count", "ttl",
@@ -140,6 +143,64 @@ class SQLiteTaskRepository(TaskRepository):
             getattr(task, 'progress_message', '')
         ))
         await self._conn.commit()
+
+    async def save_batch(self, tasks: List[Task]) -> List[str]:
+        """批量保存任务：一次查重 + 一次 ``executemany``，整批单事务提交。
+
+        返回实际新增的 task_id（已存在的会被跳过，不覆盖已有任务）。
+        """
+        if not tasks:
+            return []
+
+        await self._ensure_init()
+
+        # 先按块查重，避免 IN 子句参数个数超过 SQLite 上限
+        existing: set = set()
+        task_ids = [task.task_id for task in tasks]
+        for start in range(0, len(task_ids), _BATCH_CHUNK):
+            chunk = task_ids[start:start + _BATCH_CHUNK]
+            placeholders = ",".join("?" * len(chunk))
+            cursor = await self._conn.execute(
+                f"SELECT task_id FROM tasks WHERE task_id IN ({placeholders})",
+                chunk
+            )
+            try:
+                rows = await cursor.fetchall()
+            finally:
+                await cursor.close()
+            existing.update(row[0] for row in rows)
+
+        new_tasks = [task for task in tasks if task.task_id not in existing]
+        if not new_tasks:
+            return []
+
+        params = [
+            (
+                task.task_id,
+                json.dumps(task.data),
+                task.status.value,
+                task.priority.value,
+                task.node_id,
+                task.retry_count,
+                getattr(task, 'ttl', 3600),
+                task.created_at.isoformat(),
+                task.started_at.isoformat() if task.started_at else None,
+                task.completed_at.isoformat() if task.completed_at else None,
+                json.dumps(task.result) if task.result is not None else None,
+                task.error,
+                getattr(task, 'progress', 0.0),
+                getattr(task, 'progress_message', ''),
+            )
+            for task in new_tasks
+        ]
+        await self._conn.executemany("""
+            INSERT OR IGNORE INTO tasks
+            (task_id, data, status, priority, node_id, retry_count, ttl,
+             created_at, started_at, completed_at, result, error, progress, progress_message)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, params)
+        await self._conn.commit()
+        return [task.task_id for task in new_tasks]
 
     async def save_fields(self, task: Task, fields: Iterable[str]) -> bool:
         """只更新指定字段，避免高频状态变更重写整行（含 data/result JSON）"""
@@ -458,6 +519,21 @@ class SQLiteQueueRepository(QueueRepository):
             (task_id, priority, datetime.now().isoformat())
         )
         await self._conn.commit()
+
+    async def push_batch(self, items: List[Tuple[str, int]]) -> int:
+        """批量入队：一次 ``executemany`` + 单事务提交"""
+        if not items:
+            return 0
+
+        await self._ensure_init()
+        from datetime import datetime
+        now = datetime.now().isoformat()
+        await self._conn.executemany(
+            "INSERT OR REPLACE INTO queue (task_id, priority, created_at) VALUES (?, ?, ?)",
+            [(task_id, priority, now) for task_id, priority in items]
+        )
+        await self._conn.commit()
+        return len(items)
 
     async def pop(self, count: int = 1) -> List[str]:
         await self._ensure_init()

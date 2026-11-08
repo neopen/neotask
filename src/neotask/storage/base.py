@@ -19,6 +19,22 @@ class TaskRepository(ABC):
         """Save task to storage."""
         pass
 
+    async def save_batch(self, tasks: List[Task]) -> List[str]:
+        """批量保存任务，返回**实际新增**的 task_id 列表。
+
+        默认实现退化为逐条 ``save``；支持事务/pipeline 的后端应覆盖为一次
+        往返写入（SQLite 单事务 ``executemany``、Redis ``pipeline``），这是
+        提交侧批量接口 ``submit_many`` 的性能基础。
+
+        已存在的 task_id 会被跳过（不覆盖已有任务），因此返回值可能小于
+        ``tasks`` 的长度。
+        """
+        saved: List[str] = []
+        for task in tasks:
+            await self.save(task)
+            saved.append(task.task_id)
+        return saved
+
     async def save_fields(self, task: Task, fields: Iterable[str]) -> bool:
         """只持久化指定字段。
 
@@ -132,6 +148,19 @@ class QueueRepository(ABC):
     async def push(self, task_id: str, priority: int) -> None:
         """Push task to queue with priority."""
         pass
+
+    async def push_batch(self, items: List[Tuple[str, int]]) -> int:
+        """批量入队，返回成功入队的数量。
+
+        默认实现退化为逐条 ``push``；支持批量写入的后端应覆盖为一次往返
+        （SQLite ``executemany``、Redis ``pipeline``）。
+
+        Args:
+            items: ``[(task_id, priority), ...]``
+        """
+        for task_id, priority in items:
+            await self.push(task_id, priority)
+        return len(items)
 
     @abstractmethod
     async def pop(self, count: int = 1) -> List[str]:

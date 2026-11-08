@@ -92,6 +92,37 @@ class RedisTaskRepository(TaskRepository):
         # 添加到状态索引
         await client.sadd(self._status_key(task.status.value), task.task_id)
 
+    async def save_batch(self, tasks: List[Task]) -> List[str]:
+        """批量保存任务：一次 ``MGET`` 查重 + 一个 pipeline 写入。
+
+        返回实际新增的 task_id（已存在的会被跳过，不覆盖已有任务）。
+        """
+        if not tasks:
+            return []
+
+        client = await self._get_client()
+        keys = [self._task_key(task.task_id) for task in tasks]
+        existing_values = await client.mget(keys)
+
+        pipe = client.pipeline()
+        saved: List[str] = []
+        status_ids: Dict[str, List[str]] = {}
+        for task, old_value in zip(tasks, existing_values):
+            if old_value:
+                continue
+            saved.append(task.task_id)
+            pipe.set(
+                self._task_key(task.task_id),
+                json.dumps(task.to_dict(), default=str),
+            )
+            status_ids.setdefault(task.status.value, []).append(task.task_id)
+
+        for status, task_ids in status_ids.items():
+            pipe.sadd(self._status_key(status), *task_ids)
+
+        await pipe.execute()
+        return saved
+
     async def get(self, task_id: str) -> Optional[Task]:
         """获取任务"""
         client = await self._get_client()
@@ -375,6 +406,18 @@ class RedisQueueRepository(QueueRepository):
             await client.zadd(self._delayed_key, {task_id: execute_at})
         else:
             await client.zadd(self._queue_key, {task_id: priority})
+
+    async def push_batch(self, items: List[Tuple[str, int]]) -> int:
+        """批量入队：一个 pipeline 完成全部 ZADD"""
+        if not items:
+            return 0
+
+        client = await self._get_client()
+        pipe = client.pipeline()
+        for task_id, priority in items:
+            pipe.zadd(self._queue_key, {task_id: priority})
+        await pipe.execute()
+        return len(items)
 
     async def pop(self, count: int = 1) -> List[str]:
         """弹出任务（先处理延迟队列，再弹出优先级队列）"""

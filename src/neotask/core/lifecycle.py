@@ -106,6 +106,53 @@ class TaskLifecycleManager:
 
         return task
 
+    async def create_tasks(
+            self,
+            data_list: List[Dict[str, Any]],
+            priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+            node_id: str = "default",
+            ttl: int = 3600,
+    ) -> List[str]:
+        """批量创建任务，返回实际创建成功的 task_id 列表。
+
+        与逐条 :meth:`create_task` 的区别：落库只做一次批量写入（SQLite 单事务
+        / Redis pipeline），且不逐条查询是否存在；已存在的 task_id 会被跳过。
+        """
+        if not data_list:
+            return []
+
+        priority_enum = TaskPriority(priority) if isinstance(priority, int) else priority
+
+        # 批内去重：任务 ID 精度到微秒 + 随机后缀，批量生成时仍可能撞车
+        tasks: List[Task] = []
+        generated: set = set()
+        for data in data_list:
+            task_id = self._generate_task_id()
+            while task_id in generated:
+                task_id = self._generate_task_id()
+            generated.add(task_id)
+            tasks.append(Task(
+                task_id=task_id,
+                data=data,
+                priority=priority_enum,
+                node_id=node_id,
+                ttl=ttl,
+            ))
+
+        saved_ids = await self._task_repo.save_batch(tasks)
+        saved_set = set(saved_ids)
+
+        created: List[str] = []
+        for task in tasks:
+            if task.task_id not in saved_set:
+                continue
+            if self._cache_enabled:
+                self._cache_put(task.task_id, task)
+            await self._emit_event("task.created", task.task_id, task.to_dict())
+            created.append(task.task_id)
+
+        return created
+
     async def get_task(self, task_id: str) -> Optional[Task]:
         """获取任务
 

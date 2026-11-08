@@ -100,12 +100,66 @@ class TaskDispatcher:
         tasks: List[Dict[str, Any]],
         priority: Union[int, TaskPriority] = TaskPriority.NORMAL
     ) -> List[str]:
-        """批量分发任务"""
-        task_ids = []
-        for task_data in tasks:
-            task_id = await self.dispatch(task_data, priority=priority)
-            task_ids.append(task_id)
-        return task_ids
+        """批量分发任务（等价于 :meth:`dispatch_many`）"""
+        return await self.dispatch_many(tasks, priority=priority)
+
+    async def dispatch_many(
+        self,
+        items: List[Dict[str, Any]],
+        priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+        ttl: int = 3600,
+    ) -> List[str]:
+        """批量分发即时任务。
+
+        与逐条 :meth:`dispatch` 的关键区别：任务创建与入队各只做一次批量写入，
+        避免每条任务 3 次跨事件循环往返（SELECT 查重 + 2 次写事务）。
+
+        Args:
+            items: 任务数据列表
+            priority: 优先级
+            ttl: 任务超时时间（秒）
+
+        Returns:
+            实际提交成功的 task_id 列表；若队列容量不足，未能入队的任务会被
+            标记为 FAILED 并记录 warning（不抛异常，批量接口按可用容量尽力提交）。
+        """
+        if not items:
+            return []
+
+        priority_enum = TaskPriority(priority) if isinstance(priority, int) else priority
+
+        # 先按容量预检，避免写完库才发现入不了队（队列在并发下仍可能被占满，
+        # 故下面仍按 push_batch 的返回值做最终判定）
+        remaining = self._queue.max_size - await self._queue.size()
+        if remaining < len(items):
+            raise QueueFullError(self._queue.max_size)
+
+        task_ids = await self._lifecycle.create_tasks(
+            data_list=items,
+            priority=priority_enum,
+            node_id=self._node_id,
+            ttl=ttl,
+        )
+        if not task_ids:
+            return []
+
+        results = await self._queue.push_batch(
+            [(task_id, priority_enum.value, 0) for task_id in task_ids]
+        )
+
+        accepted = [tid for tid, ok in zip(task_ids, results) if ok]
+        rejected = [tid for tid, ok in zip(task_ids, results) if not ok]
+        if rejected:
+            reason = "queue is disabled" if self._queue.is_disabled else "queue is full"
+            warning(f"{len(rejected)} task(s) rejected by queue: {reason}")
+            for task_id in rejected:
+                await self._lifecycle.fail_task(
+                    task_id,
+                    f"Failed to enqueue task: {reason}",
+                    allow_pending=True
+                )
+
+        return accepted
 
     async def redispatch(self, task_id: str, delay: float = 0) -> bool:
         """重新分发任务（用于手动重试）

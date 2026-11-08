@@ -53,6 +53,26 @@ class PriorityQueue(BaseQueue):
                 self._task_index[task_id] = item
         return True
 
+    async def push_batch(self, items: List[Tuple[str, int]]) -> int:
+        """批量入队。
+
+        调用方（QueueScheduler）已统一校验容量，这里不再逐条查询队列大小；
+        持久化后端一次批量写入，内存模式一次加锁批量入堆。
+        """
+        if not items:
+            return 0
+
+        if self._use_repository:
+            return await self._repository.push_batch(items)
+
+        with self._lock:
+            for task_id, priority in items:
+                self._sequence += 1
+                item = (priority, self._sequence, task_id)
+                heapq.heappush(self._heap, item)
+                self._task_index[task_id] = item
+        return len(items)
+
     async def pop(self, count: int = 1) -> List[str]:
         """出队，返回任务ID列表"""
         debug(f"[PRIORITY_QUEUE] pop: use_repo={self._use_repository}")

@@ -38,6 +38,17 @@ class MemoryTaskRepository(TaskRepository):
             self._tasks[task.task_id] = copy.deepcopy(task)
             debug(f"Task {task.task_id} saved to memory repository")
 
+    async def save_batch(self, tasks: List[Task]) -> List[str]:
+        """批量保存任务（跳过已存在的 task_id）"""
+        saved: List[str] = []
+        with self._lock:
+            for task in tasks:
+                if task.task_id in self._tasks:
+                    continue
+                self._tasks[task.task_id] = copy.deepcopy(task)
+                saved.append(task.task_id)
+        return saved
+
     async def get(self, task_id: str) -> Optional[Task]:
         """获取任务（返回深拷贝）
 
@@ -200,6 +211,14 @@ class MemoryQueueRepository(QueueRepository):
             self._sequence += 1
             heapq.heappush(self._heap, (priority, self._sequence, task_id))
             debug(f"Queue push: task_id={task_id}, priority={priority}, seq={self._sequence}")
+
+    async def push_batch(self, items: List[Tuple[str, int]]) -> int:
+        """批量入队"""
+        with self._lock:
+            for task_id, priority in items:
+                self._sequence += 1
+                heapq.heappush(self._heap, (priority, self._sequence, task_id))
+        return len(items)
 
     async def pop(self, count: int = 1) -> List[str]:
         """出队

@@ -553,6 +553,40 @@ class TaskPool:
         result = await self._dispatcher.dispatch(data, task_id, priority, delay, ttl)
         return result.task_id if hasattr(result, 'task_id') else result
 
+    def submit_many(
+            self,
+            tasks: List[Dict[str, Any]],
+            priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+            ttl: int = 3600
+    ) -> List[str]:
+        """批量提交即时任务（同步）
+
+        任务创建与入队各只做一次批量写入（SQLite 单事务 / Redis pipeline），
+        避免逐条提交时每条任务 3 次跨事件循环往返。
+
+        Args:
+            tasks: 任务数据列表
+            priority: 优先级
+            ttl: 任务超时时间（秒）
+
+        Returns:
+            实际提交成功的 task_id 列表
+        """
+        self._ensure_running()
+        return self._run_coroutine(
+            self._dispatcher.dispatch_many(tasks, priority, ttl)
+        )
+
+    async def submit_many_async(
+            self,
+            tasks: List[Dict[str, Any]],
+            priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+            ttl: int = 3600
+    ) -> List[str]:
+        """批量提交即时任务（异步）"""
+        self._ensure_running()
+        return await self._dispatcher.dispatch_many(tasks, priority, ttl)
+
     def create_pending_task(
             self,
             data: Dict[str, Any],

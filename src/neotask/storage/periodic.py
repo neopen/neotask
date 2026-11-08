@@ -120,24 +120,30 @@ class SQLitePeriodicStore(PeriodicStore):
     def __init__(self, db_path: Optional[str] = None) -> None:
         self.db_path = db_path or "neotask.db"
         self._conn = None
+        self._initialized = False
 
     async def _ensure_init(self) -> None:
+        if self._initialized:
+            return
         if self._conn is None:
             from neotask.utils import sqlite_compat
 
-            # loop 安全连接：所有 SQL 操作统一在专用事件循环执行
-            self._conn = sqlite_compat.create_connection(self.db_path)
-            await self._init_db()
+            # loop 安全连接；与任务/队列仓储共用同一库文件时复用同一条连接
+            self._conn = sqlite_compat.acquire_shared_connection(self.db_path)
+        conn = self._conn
+        await self._init_db(conn)
+        if self._conn is conn:
+            self._initialized = True
 
-    async def _init_db(self) -> None:
-        await self._conn.execute("""
+    async def _init_db(self, conn) -> None:
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS periodic_tasks (
                 task_id TEXT PRIMARY KEY,
                 payload TEXT NOT NULL,
                 updated_at TEXT
             )
         """)
-        await self._conn.execute("""
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS periodic_executions (
                 execution_id TEXT PRIMARY KEY,
                 task_id TEXT NOT NULL,
@@ -145,11 +151,11 @@ class SQLitePeriodicStore(PeriodicStore):
                 payload TEXT NOT NULL
             )
         """)
-        await self._conn.execute("""
+        await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_periodic_exec_task
             ON periodic_executions(task_id)
         """)
-        await self._conn.commit()
+        await conn.commit()
 
     async def save_task(self, task_id: str, payload: Dict[str, Any]) -> None:
         await self._ensure_init()
@@ -205,9 +211,12 @@ class SQLitePeriodicStore(PeriodicStore):
         return [json.loads(r[0]) for r in rows]
 
     async def close(self) -> None:
-        if self._conn is not None:
-            await self._conn.close()
-            self._conn = None
+        conn = self._conn
+        self._conn = None
+        self._initialized = False
+        if conn is not None:
+            from neotask.utils import sqlite_compat
+            await sqlite_compat.release_shared_connection(conn)
 
 
 class RedisPeriodicStore(PeriodicStore):

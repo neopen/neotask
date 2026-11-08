@@ -9,6 +9,12 @@
 from dataclasses import dataclass, field
 from typing import Optional, Literal
 
+from neotask.common.constants import (
+    DEFAULT_LIFECYCLE_CACHE_MAX_SIZE,
+    DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL,
+    DEFAULT_PROGRESS_FLUSH_DELTA,
+    DEFAULT_PROGRESS_FLUSH_INTERVAL,
+)
 from neotask.executor import ExecutorType
 
 
@@ -19,6 +25,12 @@ class StorageConfig:
     type: Literal["memory", "redis", "sqlite"] = "memory"
     redis_url: Optional[str] = None
     sqlite_path: Optional[str] = None
+
+    # SQLite 高并发选项
+    sqlite_wal: bool = True                 # 启用 WAL，读写并发
+    sqlite_synchronous: str = "NORMAL"      # WAL 下避免每次提交 fsync
+    sqlite_busy_timeout: float = 30.0       # 写锁冲突等待时间（秒）
+    persist_queue: bool = True              # 队列是否落盘；关闭后由任务表重建
 
     @classmethod
     def memory(cls) -> "StorageConfig":
@@ -31,9 +43,24 @@ class StorageConfig:
         return cls(type="redis", redis_url=url)
 
     @classmethod
-    def sqlite(cls, path: str = "/data/neotask.db") -> "StorageConfig":
+    def sqlite(
+            cls,
+            path: str = "/data/neotask.db",
+            *,
+            wal: bool = True,
+            synchronous: str = "NORMAL",
+            busy_timeout: float = 30.0,
+            persist_queue: bool = True,
+    ) -> "StorageConfig":
         """创建SQLite存储配置"""
-        return cls(type="sqlite", sqlite_path=path)
+        return cls(
+            type="sqlite",
+            sqlite_path=path,
+            sqlite_wal=wal,
+            sqlite_synchronous=synchronous,
+            sqlite_busy_timeout=busy_timeout,
+            persist_queue=persist_queue,
+        )
 
 
 @dataclass
@@ -166,6 +193,7 @@ class TaskPoolConfig:
     storage_type: str = "memory"
     sqlite_path: str = "/data/neotask.db"
     redis_url: Optional[str] = None
+    persist_queue: bool = True  # SQLite 下是否持久化队列；关闭后重启由任务表重建
 
     # 执行器配置
     executor_type: ExecutorType = ExecutorType.ASYNC
@@ -193,6 +221,14 @@ class TaskPoolConfig:
     max_retries: int = 3
     retry_delay: float = 1.0
 
+    # 进度落库节流（时间间隔 或 增量阈值任一满足即写入）
+    progress_flush_interval: float = DEFAULT_PROGRESS_FLUSH_INTERVAL
+    progress_flush_delta: float = DEFAULT_PROGRESS_FLUSH_DELTA
+    # 写回缓存：后台批量落库间隔（<=0 关闭写回，进度改为即时写入）
+    progress_flush_batch_interval: float = DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL
+    # 生命周期缓存上限，超出后优先淘汰已结束任务
+    cache_max_size: int = DEFAULT_LIFECYCLE_CACHE_MAX_SIZE
+
     # 预取配置
     enable_prefetch: bool = True
     prefetch_min_threshold: int = 5
@@ -212,8 +248,11 @@ class TaskPoolConfig:
 
     def __post_init__(self):
         if not self.node_id:
+            import os
             import socket
-            self.node_id = socket.gethostname()
+            # 多进程部署时同一台机器的 hostname 相同，追加 pid 保证每个进程
+            # 在 Redis 节点注册表中是独立节点，避免心跳/回收器把它们当成同一个节点
+            self.node_id = f"{socket.gethostname()}-{os.getpid()}"
 
     @classmethod
     def memory(cls, node_id: Optional[str] = None) -> "TaskPoolConfig":
@@ -232,14 +271,24 @@ class TaskPoolConfig:
         return config
 
     @classmethod
-    def redis(cls, url: str, node_id: Optional[str] = None, enable_prefetch: bool = None, prefetch_size: int = None) -> "TaskPoolConfig":
-        """创建Redis存储配置"""
-        config = cls(storage_type="redis", redis_url=url)
+    def redis(
+            cls,
+            url: str,
+            node_id: Optional[str] = None,
+            enable_prefetch: Optional[bool] = None,
+            prefetch_size: Optional[int] = None,
+    ) -> "TaskPoolConfig":
+        """创建Redis存储配置
+
+        多进程共享同一 Redis 队列时，任务锁也必须使用 Redis 分布式锁，
+        否则锁只在进程内生效，回收器可能把其他进程正在执行的任务判为孤儿。
+        """
+        config = cls(storage_type="redis", redis_url=url, lock_type="redis")
         if node_id:
             config.node_id = node_id
-        if enable_prefetch:
+        if enable_prefetch is not None:
             config.enable_prefetch = enable_prefetch
-        if prefetch_size:
+        if prefetch_size is not None:
             config.prefetch_size = prefetch_size
 
         return config
@@ -253,6 +302,7 @@ class SchedulerConfig:
     storage_type: str = "memory"
     sqlite_path: str = "/data/neotask.db"
     redis_url: Optional[str] = None
+    persist_queue: bool = True  # SQLite 下是否持久化队列；关闭后重启由任务表重建
 
     # Worker配置
     worker_concurrency: int = 10
@@ -260,6 +310,14 @@ class SchedulerConfig:
     # 重试配置
     max_retries: int = 3
     retry_delay: float = 1.0
+
+    # 进度落库节流（时间间隔 或 增量阈值任一满足即写入）
+    progress_flush_interval: float = DEFAULT_PROGRESS_FLUSH_INTERVAL
+    progress_flush_delta: float = DEFAULT_PROGRESS_FLUSH_DELTA
+    # 写回缓存：后台批量落库间隔（<=0 关闭写回，进度改为即时写入）
+    progress_flush_batch_interval: float = DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL
+    # 生命周期缓存上限，超出后优先淘汰已结束任务
+    cache_max_size: int = DEFAULT_LIFECYCLE_CACHE_MAX_SIZE
 
     # 持久化配置
     # 默认开启：sqlite/redis 下周期任务会跨重启恢复；memory 模式下仍只存在内存中，

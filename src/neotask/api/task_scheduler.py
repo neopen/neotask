@@ -73,9 +73,15 @@ class TaskScheduler:
             storage_type=self._config.storage_type,
             sqlite_path=self._config.sqlite_path,
             redis_url=self._config.redis_url,
+            lock_type="redis" if self._config.storage_type == "redis" else "memory",
+            persist_queue=self._config.persist_queue,
             worker_concurrency=self._config.worker_concurrency,
             max_retries=self._config.max_retries,
-            retry_delay=self._config.retry_delay
+            retry_delay=self._config.retry_delay,
+            progress_flush_interval=self._config.progress_flush_interval,
+            progress_flush_delta=self._config.progress_flush_delta,
+            progress_flush_batch_interval=self._config.progress_flush_batch_interval,
+            cache_max_size=self._config.cache_max_size,
         )
 
         self._pool = TaskPool(executor, pool_config)

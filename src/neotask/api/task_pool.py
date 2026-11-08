@@ -89,7 +89,11 @@ class TaskPool:
         # 初始化生命周期管理器
         self._lifecycle = TaskLifecycleManager(
             task_repo=self._task_repo,
-            event_bus=self._event_bus
+            event_bus=self._event_bus,
+            progress_flush_interval=self._config.progress_flush_interval,
+            progress_flush_delta=self._config.progress_flush_delta,
+            progress_flush_batch_interval=self._config.progress_flush_batch_interval,
+            cache_max_size=self._config.cache_max_size,
         )
 
         # 初始化分发器
@@ -249,7 +253,10 @@ class TaskPool:
         if self._config.storage_type == "memory":
             storage_config = StorageConfig.memory()
         elif self._config.storage_type == "sqlite":
-            storage_config = StorageConfig.sqlite(self._config.sqlite_path)
+            storage_config = StorageConfig.sqlite(
+                self._config.sqlite_path,
+                persist_queue=self._config.persist_queue,
+            )
         elif self._config.storage_type == "redis":
             storage_config = StorageConfig.redis(self._config.redis_url)
         else:
@@ -342,8 +349,14 @@ class TaskPool:
 
             async def start_components():
                 # 启动核心组件
+                self._lifecycle.start_progress_flusher()
                 await self._event_bus.start()
                 await self._queue_scheduler.start()
+                # 队列未持久化时，从任务表重建待执行任务
+                if not getattr(self._queue_repo, "is_persistent", True):
+                    await self._lifecycle.restore_pending_tasks(
+                        self._queue_scheduler.push
+                    )
                 await self._worker_pool.start()
                 await self._supervisor.start()
 
@@ -431,6 +444,12 @@ class TaskPool:
                 await self._metrics.stop()
 
             await self._event_bus.stop()
+
+            # 停止写回任务并落库剩余进度（必须在关闭存储连接之前）
+            try:
+                await self._lifecycle.stop_progress_flusher()
+            except Exception as e:
+                error(f"Error flushing pending progress: {e}")
 
             # 关闭存储连接 - 捕获异常避免循环冲突
             for repo in [self._task_repo, self._queue_repo]:

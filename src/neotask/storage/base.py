@@ -7,7 +7,7 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 from neotask.models.task import Task, TaskStatus
 
 
@@ -18,6 +18,22 @@ class TaskRepository(ABC):
     async def save(self, task: Task) -> None:
         """Save task to storage."""
         pass
+
+    async def save_fields(self, task: Task, fields: Iterable[str]) -> bool:
+        """只持久化指定字段。
+
+        默认实现退化为整条记录重写，保证所有后端行为一致；SQLite 等后端可以
+        覆盖为单条 ``UPDATE``，避免高频状态变更时反复重写整行。
+
+        Args:
+            task: 已更新完字段的任务对象
+            fields: 需要落库的字段名
+
+        Returns:
+            是否成功写入
+        """
+        await self.save(task)
+        return True
 
     @abstractmethod
     async def get(self, task_id: str) -> Optional[Task]:
@@ -54,6 +70,27 @@ class TaskRepository(ABC):
         task.update_progress(progress, message)
         await self.save(task)
         return True
+
+    async def update_progress_batch(
+            self,
+            updates: Dict[str, Tuple[float, str]],
+    ) -> int:
+        """批量落库进度。
+
+        默认逐条调用 :meth:`update_progress`；SQLite 可覆盖为单事务批量更新，
+        把同一批任务的多次进度写入合并成一次提交。
+
+        Args:
+            updates: ``{task_id: (progress, message)}``
+
+        Returns:
+            成功更新的数量
+        """
+        updated = 0
+        for task_id, (progress, message) in updates.items():
+            if await self.update_progress(task_id, progress, message):
+                updated += 1
+        return updated
 
     @abstractmethod
     async def update_status_batch(

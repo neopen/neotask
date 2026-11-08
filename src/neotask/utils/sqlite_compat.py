@@ -10,8 +10,9 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Iterable, Optional, Union
+from typing import Any, Awaitable, Callable, Dict, Iterable, Optional, Tuple, Union
 
 import aiosqlite
 
@@ -19,6 +20,16 @@ from neotask.utils.dedicated_loop import get_shared_loop, run_on_loop
 
 # 数据库路径类型（与 aiosqlite.connect 保持一致）
 DatabasePath = Union[str, Path]
+
+#: 连接级默认 PRAGMA。
+#: - ``journal_mode=WAL``：允许读写并发，避免写事务阻塞读取；
+#: - ``synchronous=NORMAL``：WAL 下不再每次提交都 fsync，写入吞吐提升一个量级；
+#: - ``busy_timeout``：并发写遇到锁时等待而不是立刻抛 ``database is locked``。
+DEFAULT_PRAGMAS: Tuple[str, ...] = (
+    "PRAGMA journal_mode=WAL",
+    "PRAGMA synchronous=NORMAL",
+    "PRAGMA busy_timeout=30000",
+)
 
 
 class LoopBoundCursor:
@@ -90,10 +101,12 @@ class LoopBoundSQLiteConnection:
             database: DatabasePath,
             *,
             row_factory: Optional[Callable[..., Any]] = None,
+            pragmas: Optional[Iterable[str]] = None,
             **connect_kwargs: Any,
     ) -> None:
         self._database = database
         self._row_factory = row_factory
+        self._pragmas = tuple(DEFAULT_PRAGMAS if pragmas is None else pragmas)
         self._connect_kwargs = connect_kwargs
         self._conn: Optional[aiosqlite.Connection] = None
         self._bound_loop: Optional[asyncio.AbstractEventLoop] = None
@@ -118,6 +131,10 @@ class LoopBoundSQLiteConnection:
                 if self._row_factory is not None:
                     conn.row_factory = self._row_factory
                 self._conn = conn
+                # 连接建立后立即应用 PRAGMA（必须在任何业务读写之前）
+                for pragma in self._pragmas:
+                    await conn.execute(pragma)
+                await conn.commit()
         return self._conn
 
     async def _run(self, factory: Callable[[aiosqlite.Connection], Awaitable[Any]]) -> Any:
@@ -230,6 +247,7 @@ def create_connection(
         database: DatabasePath,
         *,
         row_factory: Optional[Callable[..., Any]] = None,
+        pragmas: Optional[Iterable[str]] = None,
         **connect_kwargs: Any,
 ) -> LoopBoundSQLiteConnection:
     """创建跨事件循环安全的异步 SQLite 连接代理。
@@ -237,6 +255,74 @@ def create_connection(
     Args:
         database: 数据库文件路径（``str`` 或 ``Path``）。
         row_factory: 行工厂（如 ``aiosqlite.Row``），连接建立后自动设置。
+        pragmas: 建连后执行的 PRAGMA，默认使用 :data:`DEFAULT_PRAGMAS`。
         **connect_kwargs: 透传给 ``sqlite3.connect`` 的参数（如 ``timeout``）。
     """
-    return LoopBoundSQLiteConnection(database, row_factory=row_factory, **connect_kwargs)
+    return LoopBoundSQLiteConnection(
+        database,
+        row_factory=row_factory,
+        pragmas=pragmas,
+        **connect_kwargs,
+    )
+
+
+#: 同进程内按数据库路径共享的连接与引用计数。
+_SHARED_CONNECTIONS: Dict[str, LoopBoundSQLiteConnection] = {}
+_SHARED_REFS: Dict[str, int] = {}
+_SHARED_LOCK = threading.Lock()
+
+
+def _connection_key(database: DatabasePath) -> str:
+    """把数据库路径归一化，作为共享连接的键。"""
+    return str(Path(database).expanduser().resolve())
+
+
+def acquire_shared_connection(
+        database: DatabasePath,
+        *,
+        row_factory: Optional[Callable[..., Any]] = None,
+        pragmas: Optional[Iterable[str]] = None,
+        **connect_kwargs: Any,
+) -> LoopBoundSQLiteConnection:
+    """获取（必要时创建）同路径的共享连接，引用计数 +1。
+
+    TaskRepository / QueueRepository / PeriodicStore 访问同一个库文件时共用一条
+    连接，避免多个连接互抢写锁而出现 ``database is locked``，同时让并发写入
+    自然合并到更少的提交批次。
+    """
+    key = _connection_key(database)
+    with _SHARED_LOCK:
+        conn = _SHARED_CONNECTIONS.get(key)
+        if conn is None:
+            conn = create_connection(
+                database,
+                row_factory=row_factory,
+                pragmas=pragmas,
+                **connect_kwargs,
+            )
+            _SHARED_CONNECTIONS[key] = conn
+        _SHARED_REFS[key] = _SHARED_REFS.get(key, 0) + 1
+        return conn
+
+
+async def release_shared_connection(connection: LoopBoundSQLiteConnection) -> None:
+    """释放共享连接，引用计数归零时真正关闭。
+
+    非共享连接（由 :func:`create_connection` 直接创建）同样会被关闭，方便调用方
+    统一使用。
+    """
+    should_close = True
+    with _SHARED_LOCK:
+        for key, candidate in _SHARED_CONNECTIONS.items():
+            if candidate is connection:
+                refs = _SHARED_REFS[key] - 1
+                if refs > 0:
+                    _SHARED_REFS[key] = refs
+                    should_close = False
+                else:
+                    _SHARED_CONNECTIONS.pop(key, None)
+                    _SHARED_REFS.pop(key, None)
+                break
+
+    if should_close:
+        await connection.close()

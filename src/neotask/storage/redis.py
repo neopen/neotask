@@ -8,7 +8,7 @@
 
 import time
 import json
-from typing import TYPE_CHECKING, List, Optional, Any, Tuple
+from typing import TYPE_CHECKING, List, Optional, Any, Tuple, Dict
 
 from neotask.utils import redis_compat
 
@@ -29,6 +29,13 @@ except ImportError:  # pragma: no cover
 from neotask.common.constants import redis_key
 from neotask.models.task import Task, TaskPriority, TaskStatus
 from neotask.storage.base import TaskRepository, QueueRepository
+
+#: 终态任务不再接受进度更新（与 SQLite 后端保持一致）
+_TERMINAL_STATUS_VALUES = {
+    TaskStatus.SUCCESS.value,
+    TaskStatus.FAILED.value,
+    TaskStatus.CANCELLED.value,
+}
 
 
 class RedisTaskRepository(TaskRepository):
@@ -235,6 +242,75 @@ class RedisTaskRepository(TaskRepository):
 
         await pipe.execute()
         return success_count
+
+    async def update_progress(self, task_id: str, progress: float, message: str = "") -> bool:
+        """单条更新进度：GET + SET，避免走基类 get+save 的重复读取"""
+        client = await self._get_client()
+        key = self._task_key(task_id)
+
+        data = await client.get(key)
+        if not data:
+            return False
+        try:
+            task_dict = json.loads(data)
+        except (ValueError, TypeError):
+            return False
+
+        if task_dict.get("status") in _TERMINAL_STATUS_VALUES:
+            return False
+
+        task_dict["progress"] = progress
+        task_dict["progress_message"] = message
+        await client.set(key, json.dumps(task_dict, default=str))
+        return True
+
+    async def update_progress_batch(
+            self,
+            updates: Dict[str, Tuple[float, str]],
+    ) -> int:
+        """批量更新进度：一次 pipeline 读 + 一次 pipeline 写
+
+        写回缓存每秒会把多个任务的进度合并到这一批里，逐条 GET/SET 会产生
+        O(任务数) 次往返；用 pipeline 后整批只占 2 次往返，多进程高并发时
+        不会把 Redis 连接压满。
+        """
+        if not updates:
+            return 0
+
+        client = await self._get_client()
+        task_ids = list(updates)
+
+        # 1. 批量读取现有任务 JSON
+        read_pipe = client.pipeline()
+        for task_id in task_ids:
+            read_pipe.get(self._task_key(task_id))
+        raws = await read_pipe.execute()
+
+        # 2. 合并进度后批量写回
+        write_pipe = client.pipeline()
+        updated = 0
+        for task_id, raw in zip(task_ids, raws):
+            if not raw:
+                continue
+            try:
+                task_dict = json.loads(raw)
+            except (ValueError, TypeError):
+                continue
+            if task_dict.get("status") in _TERMINAL_STATUS_VALUES:
+                continue
+
+            progress, message = updates[task_id]
+            task_dict["progress"] = progress
+            task_dict["progress_message"] = message
+            write_pipe.set(
+                self._task_key(task_id),
+                json.dumps(task_dict, default=str),
+            )
+            updated += 1
+
+        if updated:
+            await write_pipe.execute()
+        return updated
 
     async def exists(self, task_id: str) -> bool:
         """检查任务是否存在"""

@@ -458,12 +458,15 @@ class WorkerPool:
 
             debug(f"Retrying task {task_id} (attempt {new_retry_count}/{self._max_retries})")
 
-            # 更新重试计数，重置状态为 PENDING
+            # 更新重试计数，重置状态为 PENDING（只写变化字段）
             task.retry_count = new_retry_count
             task.error = error_msg
             task.status = TaskStatus.PENDING
             task.node_id = ""
-            await self._task_repo.save(task)
+            await self._task_repo.save_fields(
+                task,
+                ("retry_count", "error", "status", "node_id")
+            )
 
             # 更新缓存
             if self._lifecycle._cache_enabled:

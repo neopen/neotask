@@ -13,6 +13,22 @@ from neotask.storage.memory import MemoryTaskRepository, MemoryQueueRepository
 from neotask.storage.redis import RedisTaskRepository, RedisQueueRepository
 from neotask.storage.sqlite import SQLiteTaskRepository, SQLiteQueueRepository
 
+#: synchronous 允许的取值，避免配置值直接拼进 PRAGMA
+_VALID_SYNCHRONOUS = {"OFF", "NORMAL", "FULL", "EXTRA"}
+
+
+def _sqlite_pragmas(config: StorageConfig) -> Tuple[str, ...]:
+    """根据存储配置生成 SQLite 连接 PRAGMA"""
+    synchronous = str(config.sqlite_synchronous).upper()
+    if synchronous not in _VALID_SYNCHRONOUS:
+        synchronous = "NORMAL"
+    busy_timeout_ms = max(0, int(config.sqlite_busy_timeout * 1000))
+    return (
+        "PRAGMA journal_mode=WAL" if config.sqlite_wal else "PRAGMA journal_mode=DELETE",
+        f"PRAGMA synchronous={synchronous}",
+        f"PRAGMA busy_timeout={busy_timeout_ms}",
+    )
+
 
 class StorageFactory:
     """Factory for creating storage repositories.
@@ -29,13 +45,20 @@ class StorageFactory:
     """
 
     @staticmethod
-    def create_storage(storage_type: str, sqlite_path: str, redis_url: Optional[str]) -> Tuple[TaskRepository, QueueRepository]:
+    def create_storage(
+            storage_type: str,
+            sqlite_path: str,
+            redis_url: Optional[str],
+            *,
+            persist_queue: bool = True,
+    ) -> Tuple[TaskRepository, QueueRepository]:
         """初始化存储。
 
         Args:
             storage_type: 存储类型 ("memory", "sqlite", "redis")
             sqlite_path: SQLite 数据库路径
             redis_url: Redis 连接 URL
+            persist_queue: SQLite 下是否持久化队列
 
         Returns:
             Tuple of (TaskRepository, QueueRepository)
@@ -45,7 +68,7 @@ class StorageFactory:
         if storage_type == "memory":
             config = StorageConfig.memory()
         elif storage_type == "sqlite":
-            config = StorageConfig.sqlite(sqlite_path)
+            config = StorageConfig.sqlite(sqlite_path, persist_queue=persist_queue)
         elif storage_type == "redis":
             if not redis_url:
                 raise ValueError("Redis URL is required for redis storage")
@@ -83,10 +106,15 @@ class StorageFactory:
             )
 
         elif storage_type == "sqlite":
-            return (
-                SQLiteTaskRepository(config.sqlite_path),
-                SQLiteQueueRepository(config.sqlite_path)
-            )
+            pragmas = _sqlite_pragmas(config)
+            task_repo = SQLiteTaskRepository(config.sqlite_path, pragmas=pragmas)
+            queue_repo: QueueRepository
+            if config.persist_queue:
+                queue_repo = SQLiteQueueRepository(config.sqlite_path, pragmas=pragmas)
+            else:
+                # 队列不落盘：重启后由任务表的 PENDING 任务重建队列
+                queue_repo = MemoryQueueRepository()
+            return task_repo, queue_repo
 
         else:
             raise ValueError(f"Unsupported storage type: {storage_type}")
@@ -159,9 +187,15 @@ class RepositoryFactory:
         if config.type == "memory":
             return MemoryTaskRepository(), MemoryQueueRepository()
         elif config.type == "sqlite":
+            pragmas = _sqlite_pragmas(config)
+            queue_repo = (
+                SQLiteQueueRepository(config.sqlite_path, pragmas=pragmas)
+                if config.persist_queue
+                else MemoryQueueRepository()
+            )
             return (
-                SQLiteTaskRepository(config.sqlite_path),
-                SQLiteQueueRepository(config.sqlite_path)
+                SQLiteTaskRepository(config.sqlite_path, pragmas=pragmas),
+                queue_repo
             )
         elif config.type == "redis":
             if not config.redis_url:

@@ -13,6 +13,18 @@ from __future__ import annotations
 #: 均由该前缀派生，便于与业务方共用同一个 Redis 实例时隔离命名空间。
 REDIS_KEY_PREFIX = "neotask:"
 
+#: 进度落库的最小时间间隔（秒），避免高频上报放大 SQLite 写入
+DEFAULT_PROGRESS_FLUSH_INTERVAL = 0.2
+
+#: 进度落库的最小增量阈值（0-1），与时间间隔取“或”关系
+DEFAULT_PROGRESS_FLUSH_DELTA = 0.05
+
+#: 写回缓存的批量落库间隔（秒），多个任务的进度合并到一个事务提交
+DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL = 1.0
+
+#: 生命周期缓存默认上限；超出后优先淘汰已结束任务
+DEFAULT_LIFECYCLE_CACHE_MAX_SIZE = 1000
+
 
 def redis_key(name: str) -> str:
     """为 Redis 键拼接统一根前缀。

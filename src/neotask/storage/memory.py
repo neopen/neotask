@@ -176,6 +176,9 @@ class MemoryQueueRepository(QueueRepository):
     设计模式：Repository Pattern - 队列数据访问
     """
 
+    #: 队列只存在内存中，进程重启后未执行的任务需要由任务表重建
+    is_persistent = False
+
     def __init__(self):
         self._heap: List[Tuple[int, int, str]] = []  # (priority, sequence, task_id)
         # 队列可能被任务池内部循环与调用方循环同时访问，使用线程锁

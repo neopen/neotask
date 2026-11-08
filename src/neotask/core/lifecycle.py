@@ -11,9 +11,15 @@ import random
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 
 from neotask.common.exceptions import TaskNotFoundError, TaskAlreadyExistsError
+from neotask.common.constants import (
+    DEFAULT_LIFECYCLE_CACHE_MAX_SIZE,
+    DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL,
+    DEFAULT_PROGRESS_FLUSH_DELTA,
+    DEFAULT_PROGRESS_FLUSH_INTERVAL,
+)
 from neotask.common.logger import debug, warning, info
 from neotask.core.future import FutureManager
 from neotask.event.bus import EventBus, TaskEvent
@@ -37,15 +43,29 @@ class TaskLifecycleManager:
             self,
             task_repo: TaskRepository,
             event_bus: Optional[EventBus] = None,
-            cache_enabled: bool = True
+            cache_enabled: bool = True,
+            progress_flush_interval: float = DEFAULT_PROGRESS_FLUSH_INTERVAL,
+            progress_flush_delta: float = DEFAULT_PROGRESS_FLUSH_DELTA,
+            progress_flush_batch_interval: float = DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL,
+            cache_max_size: int = DEFAULT_LIFECYCLE_CACHE_MAX_SIZE,
     ):
         self._task_repo = task_repo
         self._event_bus = event_bus
         self._future_manager = FutureManager()
         self._cache: Dict[str, Task] = {}
         self._cache_enabled = cache_enabled
+        self._cache_max_size = cache_max_size
         # 缓存可能被 TaskPool 内部循环与调用方循环同时访问，使用线程锁保护
         self._lock = threading.Lock()
+        # 进度写入节流：task_id -> (最近落库时间, 最近落库进度)
+        self._progress_flush_interval = progress_flush_interval
+        self._progress_flush_delta = progress_flush_delta
+        self._progress_flush_state: Dict[str, tuple] = {}
+        # 写回缓存：待批量落库的进度，task_id -> (progress, message)
+        self._progress_flush_batch_interval = progress_flush_batch_interval
+        self._pending_progress: Dict[str, Tuple[float, str]] = {}
+        self._flusher_task: Optional[asyncio.Task] = None
+        self._write_behind_enabled = False
 
     async def create_task(
             self,
@@ -80,8 +100,7 @@ class TaskLifecycleManager:
         await self._task_repo.save(task)
 
         if self._cache_enabled:
-            with self._lock:
-                self._cache[task_id] = task
+            self._cache_put(task_id, task)
 
         await self._emit_event("task.created", task_id, task.to_dict())
 
@@ -127,11 +146,14 @@ class TaskLifecycleManager:
             if hasattr(task, key):
                 setattr(task, key, value)
 
-        await self._task_repo.save(task)
+        # 只落库发生变化的字段，避免重写整条任务记录
+        await self._task_repo.save_fields(
+            task,
+            {"status", *(key for key in kwargs if hasattr(task, key))}
+        )
 
         if self._cache_enabled:
-            with self._lock:
-                self._cache[task_id] = task
+            self._cache_put(task_id, task)
 
         await self._emit_event(
             "task.status_changed",
@@ -149,8 +171,11 @@ class TaskLifecycleManager:
     ) -> bool:
         """更新任务进度并发布 ``task.progress`` 事件
 
-        仅对未结束的任务生效；进度值会被收敛到 0.0 - 1.0。存储或事件发布失败
-        由调用方（Worker）降级为 debug 日志，不影响任务执行。
+        仅对未结束的任务生效；进度值会被收敛到 0.0 - 1.0。
+
+        内存中的任务对象每次都更新，但落库按「时间间隔 / 增量阈值」节流，
+        避免业务代码高频上报把 SQLite 写入放大。终态由 ``complete_task`` 等
+        方法强制写入，不会停留在旧进度。
 
         Returns:
             是否成功更新（任务不存在或已处于终态时返回 False）
@@ -160,15 +185,24 @@ class TaskLifecycleManager:
             return False
 
         task.update_progress(progress, message)
-        await self._task_repo.update_progress(
-            task_id,
-            task.progress,
-            task.progress_message
-        )
 
         if self._cache_enabled:
-            with self._lock:
-                self._cache[task_id] = task
+            self._cache_put(task_id, task)
+
+        if self._should_flush_progress(task_id, task.progress):
+            if self._write_behind_enabled:
+                # 写回模式：只记入待刷队列，由后台 flusher 合并落库
+                with self._lock:
+                    self._pending_progress[task_id] = (
+                        task.progress,
+                        task.progress_message,
+                    )
+            else:
+                await self._task_repo.update_progress(
+                    task_id,
+                    task.progress,
+                    task.progress_message
+                )
 
         await self._emit_event(
             "task.progress",
@@ -181,6 +215,144 @@ class TaskLifecycleManager:
         )
         return True
 
+    def _should_flush_progress(self, task_id: str, progress: float) -> bool:
+        """判断本次进度是否需要落库
+
+        三个条件任一满足即写入：
+        - 进度到达 100%（终态前的最后一次进度）
+        - 距上次落库超过 ``progress_flush_interval``
+        - 进度增量达到 ``progress_flush_delta``
+        """
+        last = self._progress_flush_state.get(task_id)
+        if progress >= 1.0 or last is None:
+            self._progress_flush_state[task_id] = (time.monotonic(), progress)
+            return True
+
+        last_time, last_progress = last
+        now = time.monotonic()
+        if now - last_time >= self._progress_flush_interval or \
+                progress - last_progress >= self._progress_flush_delta:
+            self._progress_flush_state[task_id] = (now, progress)
+            return True
+
+        return False
+
+    def _clear_progress_flush(self, task_id: str) -> None:
+        """任务结束时清理进度节流与待刷状态"""
+        self._progress_flush_state.pop(task_id, None)
+        with self._lock:
+            self._pending_progress.pop(task_id, None)
+
+    def _cache_put(self, task_id: str, task: Task) -> None:
+        """写入缓存，并在超出上限时优先淘汰已结束任务"""
+        with self._lock:
+            self._cache[task_id] = task
+            overflow = len(self._cache) - self._cache_max_size
+            if overflow > 0:
+                # 只淘汰终态任务：RUNNING/PENDING 可能仍被 Worker 使用
+                terminal = sorted(
+                    (
+                        (item.completed_at or item.created_at, item.task_id)
+                        for item in self._cache.values()
+                        if item.status.is_terminal()
+                    ),
+                    key=lambda pair: pair[0],
+                )
+                for _, cached_id in terminal[:overflow]:
+                    self._cache.pop(cached_id, None)
+
+    def start_progress_flusher(self) -> None:
+        """启动后台进度写回任务（需在事件循环内调用）
+
+        启用后 ``update_progress`` 只更新内存并把进度放入待刷队列，由后台任务
+        每隔 ``progress_flush_batch_interval`` 秒合并写入一次，显著减少提交次数。
+        """
+        if self._progress_flush_batch_interval <= 0:
+            return
+        self._write_behind_enabled = True
+        if self._flusher_task is not None and not self._flusher_task.done():
+            return
+        self._flusher_task = asyncio.create_task(self._progress_flush_loop())
+
+    async def _progress_flush_loop(self) -> None:
+        """后台批量落库循环"""
+        try:
+            while True:
+                await asyncio.sleep(self._progress_flush_batch_interval)
+                try:
+                    await self.flush_pending_progress()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    warning(f"Flush pending progress failed: {exc}")
+        except asyncio.CancelledError:
+            pass
+
+    async def stop_progress_flusher(self) -> None:
+        """停止后台任务并把剩余进度全部落库"""
+        self._write_behind_enabled = False
+        task = self._flusher_task
+        self._flusher_task = None
+        if task is not None and not task.done():
+            try:
+                task.cancel()
+            except RuntimeError:
+                pass
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except RuntimeError as exc:
+                # 关闭路径可能跨事件循环，无法等待原 loop 上的任务
+                warning(f"Cancel progress flusher failed: {exc}")
+        await self.flush_pending_progress()
+
+    async def flush_pending_progress(self) -> int:
+        """把待刷进度合并写入存储
+
+        失败时把这一批进度放回待刷队列，避免静默丢失。
+        """
+        with self._lock:
+            if not self._pending_progress:
+                return 0
+            batch = self._pending_progress
+            self._pending_progress = {}
+
+        try:
+            return await self._task_repo.update_progress_batch(batch)
+        except Exception:
+            with self._lock:
+                for task_id, value in batch.items():
+                    self._pending_progress.setdefault(task_id, value)
+            raise
+
+    async def restore_pending_tasks(
+            self,
+            push: Callable[[str, int], Awaitable[bool]],
+            limit: int = 1000,
+    ) -> int:
+        """把任务表中仍为 PENDING 的任务重新入队
+
+        队列未持久化（``persist_queue=False``）时，进程重启后由任务表恢复待执行
+        任务，避免队列从内存清空导致任务静默丢失。
+
+        Args:
+            push: 入队函数，签名为 ``(task_id, priority) -> Awaitable[bool]``
+            limit: 单次最多恢复的任务数量
+
+        Returns:
+            成功恢复的任务数量
+        """
+        tasks = await self._task_repo.list_by_status(TaskStatus.PENDING, limit=limit)
+        restored = 0
+        for task in tasks:
+            if await push(task.task_id, task.priority.value):
+                restored += 1
+
+        if restored:
+            info(f"Restored {restored} pending task(s) into queue")
+        return restored
+
     async def start_task(self, task_id: str, node_id: str) -> bool:
         """开始执行任务"""
         task = await self.get_task(task_id)
@@ -189,11 +361,14 @@ class TaskLifecycleManager:
             return False
 
         task.start(node_id)
-        await self._task_repo.save(task)
+        # 只更新状态相关字段：data 等不可变字段无需重写
+        await self._task_repo.save_fields(
+            task,
+            ("status", "node_id", "started_at")
+        )
 
         if self._cache_enabled:
-            with self._lock:
-                self._cache[task_id] = task
+            self._cache_put(task_id, task)
 
         await self._emit_event("task.started", task_id, {"node_id": node_id})
 
@@ -221,11 +396,14 @@ class TaskLifecycleManager:
         task.complete(result)
         # 成功完成即视为 100%，避免 UI 停留在最后一次业务上报的进度上。
         task.progress = 1.0
-        await self._task_repo.save(task)
+        await self._task_repo.save_fields(
+            task,
+            ("status", "completed_at", "result", "progress")
+        )
+        self._clear_progress_flush(task_id)
 
         if self._cache_enabled:
-            with self._lock:
-                self._cache[task_id] = task
+            self._cache_put(task_id, task)
 
         # 通知等待者
         await self._future_manager.complete(task_id, result=result)
@@ -264,11 +442,14 @@ class TaskLifecycleManager:
         debug(f"[DEBUG] Failing task {task_id}: {error}")
 
         task.fail(error)
-        await self._task_repo.save(task)
+        await self._task_repo.save_fields(
+            task,
+            ("status", "error", "completed_at")
+        )
+        self._clear_progress_flush(task_id)
 
         if self._cache_enabled:
-            with self._lock:
-                self._cache[task_id] = task
+            self._cache_put(task_id, task)
 
         # 通知等待者 - 确保错误被传递
         await self._future_manager.complete(task_id, error=error)
@@ -289,11 +470,14 @@ class TaskLifecycleManager:
             return False
 
         task.cancel()
-        await self._task_repo.save(task)
+        await self._task_repo.save_fields(
+            task,
+            ("status", "completed_at")
+        )
+        self._clear_progress_flush(task_id)
 
         if self._cache_enabled:
-            with self._lock:
-                self._cache[task_id] = task
+            self._cache_put(task_id, task)
 
         # 通知等待者
         await self._future_manager.complete(task_id, error="Task cancelled")
@@ -317,11 +501,17 @@ class TaskLifecycleManager:
             return False
 
         task.reset_for_retry()
-        await self._task_repo.save(task)
+        await self._task_repo.save_fields(
+            task,
+            (
+                "status", "started_at", "completed_at", "result", "error",
+                "node_id", "progress", "progress_message",
+            )
+        )
+        self._clear_progress_flush(task_id)
 
         if self._cache_enabled:
-            with self._lock:
-                self._cache[task_id] = task
+            self._cache_put(task_id, task)
 
         await self._future_manager.remove(task_id)
 
@@ -337,6 +527,7 @@ class TaskLifecycleManager:
     async def delete_task(self, task_id: str) -> bool:
         """删除任务"""
         await self._task_repo.delete(task_id)
+        self._clear_progress_flush(task_id)
 
         if self._cache_enabled:
             with self._lock:
@@ -409,8 +600,7 @@ class TaskLifecycleManager:
         """用仓储中的终态刷新缓存（终态不会回退，覆盖是安全的）"""
         if not self._cache_enabled:
             return
-        with self._lock:
-            self._cache[task.task_id] = task
+        self._cache_put(task.task_id, task)
 
     async def get_task_stats(self) -> TaskStats:
         """获取任务统计
@@ -509,6 +699,7 @@ class TaskLifecycleManager:
                     if self._cache_enabled:
                         with self._lock:
                             self._cache.pop(task.task_id, None)
+                    self._clear_progress_flush(task.task_id)
 
                     # 清理 future
                     await self._future_manager.remove(task.task_id)
@@ -550,6 +741,7 @@ class TaskLifecycleManager:
                         if self._cache_enabled:
                             with self._lock:
                                 self._cache.pop(task.task_id, None)
+                        self._clear_progress_flush(task.task_id)
 
                         await self._future_manager.remove(task.task_id)
                         cleaned_count += 1
@@ -601,3 +793,4 @@ class TaskLifecycleManager:
         """异步清空缓存"""
         with self._lock:
             self._cache.clear()
+        self._progress_flush_state.clear()

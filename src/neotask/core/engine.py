@@ -10,6 +10,12 @@ import asyncio
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
 
+from neotask.common.constants import (
+    DEFAULT_LIFECYCLE_CACHE_MAX_SIZE,
+    DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL,
+    DEFAULT_PROGRESS_FLUSH_DELTA,
+    DEFAULT_PROGRESS_FLUSH_INTERVAL,
+)
 from neotask.common.logger import info
 from neotask.core.dispatcher import TaskDispatcher
 from neotask.core.lifecycle import TaskLifecycleManager
@@ -31,6 +37,15 @@ class EngineConfig:
     storage_type: str = "memory"
     sqlite_path: str = "neotask.db"
     redis_url: Optional[str] = None
+    persist_queue: bool = True
+
+    # 进度落库节流（时间间隔 或 增量阈值任一满足即写入）
+    progress_flush_interval: float = DEFAULT_PROGRESS_FLUSH_INTERVAL
+    progress_flush_delta: float = DEFAULT_PROGRESS_FLUSH_DELTA
+    # 写回缓存：后台批量落库间隔（<=0 关闭写回）
+    progress_flush_batch_interval: float = DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL
+    # 生命周期缓存上限
+    cache_max_size: int = DEFAULT_LIFECYCLE_CACHE_MAX_SIZE
 
     # 执行器配置
     executor_func: Optional[Any] = None
@@ -118,7 +133,11 @@ class TaskEngine:
         # 5. 初始化生命周期管理器
         self._lifecycle_manager = TaskLifecycleManager(
             task_repo=self._task_repo,
-            event_bus=self._event_bus
+            event_bus=self._event_bus,
+            progress_flush_interval=self.config.progress_flush_interval,
+            progress_flush_delta=self.config.progress_flush_delta,
+            progress_flush_batch_interval=self.config.progress_flush_batch_interval,
+            cache_max_size=self.config.cache_max_size,
         )
 
         # 6. 初始化分发器
@@ -163,7 +182,10 @@ class TaskEngine:
         if self.config.storage_type == "memory":
             storage_config = StorageConfig.memory()
         elif self.config.storage_type == "sqlite":
-            storage_config = StorageConfig.sqlite(self.config.sqlite_path)
+            storage_config = StorageConfig.sqlite(
+                self.config.sqlite_path,
+                persist_queue=self.config.persist_queue,
+            )
         elif self.config.storage_type == "redis":
             storage_config = StorageConfig.redis(self.config.redis_url)
         else:
@@ -196,11 +218,20 @@ class TaskEngine:
 
         self._running = True
 
+        # 启动进度写回任务
+        self._lifecycle_manager.start_progress_flusher()
+
         # 启动事件总线
         await self._event_bus.start()
 
         # 启动队列调度器
         await self._queue_scheduler.start()
+
+        # 队列未持久化时，从任务表重建待执行任务
+        if not getattr(self._queue_repo, "is_persistent", True):
+            await self._lifecycle_manager.restore_pending_tasks(
+                self._queue_scheduler.push
+            )
 
         # 启动Worker池
         await self._worker_pool.start()
@@ -246,6 +277,9 @@ class TaskEngine:
 
         # 停止事件总线
         await self._event_bus.stop()
+
+        # 停止写回任务并落库剩余进度（必须在关闭存储连接之前）
+        await self._lifecycle_manager.stop_progress_flusher()
 
         # 关闭存储连接
         if hasattr(self._task_repo, 'close'):

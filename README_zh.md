@@ -8,17 +8,19 @@
     <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License"></a>
   </p>
   <p align="center">
-    <a href="https://pypi.org/project/neotask/"><img src="https://img.shields.io/pypi/v/neotask.svg?style=flat-square&logo=pypi&logoColor=white" alt="PyPI"></a>
-    <a href="https://pepy.tech/project/neotask"><img src="https://img.shields.io/pepy/dt/neotask?style=flat-square&color=blue" alt="PyPI Downloads"></a>
-    <a href="https://github.com/neopen/neotask"><img src="https://img.shields.io/github/stars/neopen/neotask?style=flat-square&logo=github" alt="GitHub Stars"></a>
+    <a href="https://pypi.org/project/neotask/" target="_blank"><img src="https://img.shields.io/pypi/v/neotask.svg?style=flat-square&logo=pypi&logoColor=white" alt="PyPI"></a>
+    <a href="https://pepy.tech/project/neotask" target="_blank"><img src="https://img.shields.io/pepy/dt/neotask?style=flat-square&color=blue" alt="PyPI Downloads"></a>
+    <a href="https://github.com/neopen/neotask" target="_blank"><img src="https://img.shields.io/github/stars/neopen/neotask?style=flat-square&logo=github" alt="GitHub Stars"></a>
   </p>
   <p align="center">
-    <a href="https://github.com/neopen/neotask/blob/main/README.md">English</a> •
-    <a href="https://task.helpenx.com">官网演示</a> •
-    <a href="https://task.helpenx.com/docs/">官方文档</a> •
-    <a href="https://pypi.org/project/neotask/">PyPI</a> 
+    <a href="https://github.com/neopen/neotask/blob/main/README.md" target="_blank">English</a> •
+    <a href="https://task.helpenx.com" target="_blank">官网</a> •
+    <a href="https://task.helpenx.com/docs/" target="_blank">文档</a> •
+    <a href="https://task.helpenx.com/community.html" target="_blank">社区</a> •
+    <a href="https://github.com/neopen/neotask/issues/" target="_blank">反馈</a>
   </p>
 </p>
+
 
 
 

@@ -4,21 +4,24 @@
     <strong>Distributed Task Scheduling System / 轻量级 Python 异步分布式任务队列管理器</strong>
   </p>
   <p align="center">
-    <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.8+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
+    <a href="https://www.python.org/" target="_blank"><img src="https://img.shields.io/badge/python-3.8+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
     <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License"></a>
   </p>
   <p align="center">
-    <a href="https://pypi.org/project/neotask/"><img src="https://img.shields.io/pypi/v/neotask.svg?style=flat-square&logo=pypi&logoColor=white" alt="PyPI"></a>
-    <a href="https://pepy.tech/project/neotask"><img src="https://img.shields.io/pepy/dt/neotask?style=flat-square&color=blue" alt="Downloads"></a>
-    <a href="https://github.com/neopen/neotask"><img src="https://img.shields.io/github/stars/neopen/neotask?style=flat-square&logo=github" alt="GitHub Stars"></a>
+    <a href="https://pypi.org/project/neotask/" target="_blank"><img src="https://img.shields.io/pypi/v/neotask.svg?style=flat-square&logo=pypi&logoColor=white" alt="PyPI"></a>
+    <a href="https://pepy.tech/project/neotask" target="_blank"><img src="https://img.shields.io/pepy/dt/neotask?style=flat-square&color=blue" alt="Downloads"></a>
+    <a href="https://github.com/neopen/neotask" target="_blank"><img src="https://img.shields.io/github/stars/neopen/neotask?style=flat-square&logo=github" alt="GitHub Stars"></a>
   </p>
   <p align="center">
-    <a href="https://github.com/neopen/neotask/blob/main/README_zh.md">中文</a> •
-    <a href="https://task.helpenx.com">Website</a> •
-    <a href="https://task.helpenx.com/docs/">Documentation</a> •
-    <a href="https://pypi.org/project/neotask/">PyPI</a>
+    <a href="https://github.com/neopen/neotask/blob/main/README_zh.md" target="_blank">中文文档</a> •
+    <a href="https://task.helpenx.com" target="_blank">Website</a> •
+    <a href="https://task.helpenx.com/docs/" target="_blank">Documentation</a> •
+    <a href="https://task.helpenx.com/community.html" target="_blank">Community</a> •
+    <a href="https://github.com/neopen/neotask/issues/" target="_blank">Issues</a>
   </p>
 </p>
+
+
 
 > 🚀 **Lightweight & Async**: Pure Python task queue manager designed for time-consuming jobs (AI generation, video processing, data scraping, etc.)  
 > 📦 **No External Services**: No extra deployment required (no Redis/PostgreSQL needed). and distributed multi-node environment requires Redis support  

@@ -519,24 +519,24 @@ logger = Logger(name="NeoTask")
 
 # 方便使用的函数
 
-def debug(message: str):
-    logger.debug(message)
+def debug(message: str, *args, **kwargs):
+    logger.debug(message, *args, **kwargs)
 
 
-def info(message: str):
-    logger.info(message)
+def info(message: str, *args, **kwargs):
+    logger.info(message, *args, **kwargs)
 
 
-def warning(message: str):
-    logger.warning(message)
+def warning(message: str, *args, **kwargs):
+    logger.warning(message, *args, **kwargs)
 
 
-def error(message: str):
-    logger.error(message)
+def error(message: str, *args, **kwargs):
+    logger.error(message, *args, **kwargs)
 
 
-def critical(message: str):
-    logger.critical(message)
+def critical(message: str, *args, **kwargs):
+    logger.critical(message, *args, **kwargs)
 
 
 def log_with_context(level: str, message: str, context: dict = None) -> None:

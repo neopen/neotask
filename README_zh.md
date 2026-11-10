@@ -290,7 +290,7 @@ pool.wait_for_result(task_id)
 | 方法                                         | 说明              |
 | :------------------------------------------- | :---------------- |
 | `pool.submit(data, priority=2, delay=0)`     | 提交任务          |
-| `pool.submit_batch(tasks, priority=2)`       | 批量提交任务      |
+| `pool.submit_batch(tasks, priority=2, partial_on_error=False)` | 批量提交任务（默认全有或全无） |
 | `pool.wait_for_result(task_id, timeout=300)` | 等待结果          |
 | `pool.get_status(task_id)`                   | 获取状态          |
 | `pool.cancel(task_id)`                       | 取消任务          |
@@ -300,6 +300,21 @@ pool.wait_for_result(task_id)
 | `scheduler.submit_cron(data, cron_expr)`     | Cron 任务         |
 
 详细 API 请参阅 [文档](https://task.helpenx.com/docs/api-reference.html)
+
+### 批量提交语义
+
+`submit_batch` 默认是**全有或全无**：只要任意一条任务序列化、落库或入队失败，
+整批任务都会回滚，并抛出 `BatchSubmitError`（包含失败位置与底层原因）。
+
+需要容忍部分失败时传入 `partial_on_error=True`：
+
+```python
+result = pool.submit_batch(tasks, partial_on_error=True)
+print(result.succeeded)  # 实际提交成功的 task_id 列表
+print(result.failed)     # [{"index": 3, "data": {...}, "error": "queue is full"}]
+```
+
+`BatchSubmitResult` 本身可迭代、可 `len()`，行为等价于 `succeeded` 列表。
 
 
 
@@ -315,7 +330,9 @@ pool.wait_for_result(task_id)
   建议直接使用 `pool.on_completed(...)` 等便捷方法。
 - **优雅关闭的范围**：`shutdown(graceful=True)` 只会把已入队的任务（pending + running）
   排空后返回。未到期的延时任务、周期/Cron 调度在关闭期间**不会**被触发——请先
-  `cancel_periodic` 取消周期调度，或用 `graceful=False` 立即返回。
+  `cancel_periodic` 取消周期调度，或用 `graceful=False` 立即返回。停机时会输出摘要，
+  明确告知未触发的延时任务数与未入队的 pending 记录数；若希望停机前立即执行未到期
+  的延时任务，可设置 `drain_delayed_on_shutdown=True`（默认 `False`，保持兼容）。
 - **崩溃/重启恢复**：自动恢复只针对已**入队**的任务（其 id 存在于持久化队列中）。
   仅通过 `create_pending_task()` 落库、从未调用 `enqueue_task()` 入队的记录不属于队列，
   重启后**不会**自动执行——需显式入队。

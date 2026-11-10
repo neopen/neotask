@@ -299,7 +299,7 @@ a safe no-op (returns `False`).
 | Method | Description |
 | :------------------------------------------- | :-------- |
 | `pool.submit(data, priority=2, delay=0)` | Submit task |
-| `pool.submit_batch(tasks, priority=2)` | Submit a batch of tasks |
+| `pool.submit_batch(tasks, priority=2, partial_on_error=False)` | Submit a batch of tasks (all-or-nothing by default) |
 | `pool.wait_for_result(task_id, timeout=300)` | Wait for result |
 | `pool.get_status(task_id)` | Get status |
 | `pool.cancel(task_id)` | Cancel task |
@@ -309,6 +309,22 @@ a safe no-op (returns `False`).
 | `scheduler.submit_cron(data, cron_expr)` | Cron task |
 
 Detailed API documentation can be found [here](https://task.helpenx.com/docs/api-reference.html)
+
+### Batch submission semantics
+
+`submit_batch` is **all-or-nothing** by default: if any task fails to serialize,
+persist, or enqueue, the whole batch is rolled back and `BatchSubmitError` is
+raised with the failing index and root cause.
+
+Pass `partial_on_error=True` to tolerate partial failures:
+
+```python
+result = pool.submit_batch(tasks, partial_on_error=True)
+print(result.succeeded)  # task_ids that were actually submitted
+print(result.failed)     # [{"index": 3, "data": {...}, "error": "queue is full"}]
+```
+
+`BatchSubmitResult` is iterable and sized like `succeeded` for backward compatibility.
 
 
 

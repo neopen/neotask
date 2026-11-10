@@ -418,7 +418,7 @@ result = pool.wait_for_result(task_id)
 | :---------------------------------------------------------- | :------------------------- |
 | `submit(data, task_id=None, priority=2, delay=0, ttl=3600)` | 提交即时任务，返回 task_id |
 | `submit_async(...)`                                         | 异步提交任务               |
-| `submit_batch(tasks, priority=2)`                           | 批量提交任务               |
+| `submit_batch(tasks, priority=2, partial_on_error=False)`   | 批量提交任务（默认全有或全无，失败抛 `BatchSubmitError`） |
 | `wait_for_result(task_id, timeout=300)`                     | 同步等待任务完成           |
 | `wait_for_result_async(task_id, timeout)`                   | 异步等待任务完成           |
 | `wait_all(task_ids, timeout)`                               | 等待所有任务完成           |
@@ -558,7 +558,6 @@ config = SchedulerConfig(
 
 
 ## 版本与展望
-
 
 ### 当前版本：v1.0.5
 

@@ -19,8 +19,8 @@ TaskPool(executor=None, config=None)
 |---|---|---|
 | `submit(data, task_id=None, priority=NORMAL, delay=0, ttl=3600)` | `str` | Submit task, returns task_id |
 | `submit_async(data, ...)` | `str` | Async submit |
-| `submit_batch(tasks, priority=NORMAL)` | `List[str]` | Batch submit |
-| `submit_batch_async(tasks, ...)` | `List[str]` | Async batch submit |
+| `submit_batch(tasks, priority=NORMAL, partial_on_error=False)` | `List[str]` / `BatchSubmitResult` | Batch submit (all-or-nothing by default) |
+| `submit_batch_async(tasks, priority=NORMAL, partial_on_error=False)` | `List[str]` / `BatchSubmitResult` | Async batch submit (all-or-nothing by default) |
 
 ### Waiting & Results
 

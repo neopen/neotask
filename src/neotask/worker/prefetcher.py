@@ -119,6 +119,9 @@ class TaskPrefetcher:
         if self._running:
             return
 
+        # 本地队列必须在每次启动时重建：asyncio.Queue 会绑定首次等待时的
+        # 事件循环，复用旧队列会让重启后的 Worker 在别的循环上抛 RuntimeError。
+        self._local_queue = asyncio.Queue(maxsize=self._config.local_queue_size)
         self._running = True
         self._prefetch_task = asyncio.create_task(self._prefetch_loop())
         self._last_activity = time.time()

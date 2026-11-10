@@ -8,7 +8,7 @@
 
 import asyncio
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 
 from neotask.common.constants import (
     DEFAULT_LIFECYCLE_CACHE_MAX_SIZE,
@@ -25,6 +25,7 @@ from neotask.executor.base import TaskExecutor
 from neotask.executor.factory import ExecutorFactory, ExecutorType
 from neotask.monitor.metrics import MetricsCollector
 from neotask.models.config import StorageType
+from neotask.models.task import TaskPriority
 from neotask.queue.queue_scheduler import QueueScheduler
 from neotask.storage.base import TaskRepository, QueueRepository
 from neotask.storage.factory import StorageFactory
@@ -312,7 +313,7 @@ class TaskEngine:
             self,
             data: Dict[str, Any],
             task_id: Optional[str] = None,
-            priority: int = 5,
+            priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
             delay: float = 0,
             ttl: int = 3600
     ) -> str:
@@ -321,7 +322,7 @@ class TaskEngine:
         Args:
             data: 任务数据
             task_id: 任务ID（可选）
-            priority: 优先级（1-10，数字越小优先级越高）
+            priority: 优先级（0-3，数字越小优先级越高，默认 NORMAL=2）
             delay: 延迟执行时间（秒）
             ttl: 任务超时时间（秒）
 
@@ -375,7 +376,7 @@ class TaskEngine:
     async def submit_batch(
             self,
             tasks: List[Dict[str, Any]],
-            priority: int = 5
+            priority: Union[int, TaskPriority] = TaskPriority.NORMAL
     ) -> List[str]:
         """批量提交任务"""
         task_ids = []

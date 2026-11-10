@@ -238,7 +238,13 @@ class TaskScheduler:
             # 创建新的事件循环用于调度线程
             thread_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(thread_loop)
-            thread_loop.run_until_complete(self._scheduler_loop())
+            try:
+                thread_loop.run_until_complete(self._scheduler_loop())
+            finally:
+                try:
+                    thread_loop.close()
+                except Exception:
+                    pass
 
         self._scheduler_thread = threading.Thread(
             target=run_scheduler,

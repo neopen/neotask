@@ -54,6 +54,8 @@ class QueueScheduler:
         if self._started:
             return
         self._started = True
+        # 上一次 shutdown 会 disable 队列，重启时需要恢复接收新任务
+        self._disabled = False
 
         # 包装回调以匹配 delayed_queue 期望的签名 (task_id, priority, data)
         async def wrapped_callback(task_id: str, priority: int, data: Dict = None):

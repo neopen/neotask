@@ -11,6 +11,8 @@ import threading
 from dataclasses import dataclass
 from typing import Dict, List, Callable, Any, Optional
 
+from neotask.common.logger import error
+
 
 @dataclass
 class TaskEvent:
@@ -214,6 +216,9 @@ class EventBus:
         if self._running:
             return
         self._running = True
+        # 队列必须在每次启动时重建：asyncio.Queue 首次 await 时会绑定到当时的
+        # 事件循环，复用旧队列会让重启后的消费任务在别的循环上抛 RuntimeError。
+        self._queue = asyncio.Queue()
         # 记录消费队列的事件循环，供 emit 判断是否需要跨循环投递
         self._loop = asyncio.get_running_loop()
         self._worker_task = asyncio.create_task(self._worker_loop())
@@ -241,7 +246,14 @@ class EventBus:
                 continue
             except asyncio.CancelledError:
                 break
-            except Exception:
+            except RuntimeError as exc:
+                # 事件循环绑定异常无法通过重试恢复，直接退出避免忙旋卡死循环
+                error(f"EventBus worker stopped: {exc}")
+                break
+            except Exception as exc:
+                error(f"EventBus worker error: {exc}")
+                # 避免持续异常时空转占满事件循环
+                await asyncio.sleep(0.05)
                 continue
 
     def clear(self) -> None:

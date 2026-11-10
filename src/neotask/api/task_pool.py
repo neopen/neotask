@@ -447,8 +447,15 @@ class TaskPool:
 
                 info(f"TaskPool started with node_id: {self._config.node_id}")
 
-            loop.run_until_complete(start_components())
-            loop.run_forever()
+            try:
+                loop.run_until_complete(start_components())
+                loop.run_forever()
+            finally:
+                # 关闭循环，避免每次 start/shutdown 残留一个常驻循环线程
+                try:
+                    loop.close()
+                except Exception:
+                    pass
 
         self._loop_thread = threading.Thread(target=run_loop, daemon=True)
         self._loop_thread.start()
@@ -571,7 +578,23 @@ class TaskPool:
                 error(f"Shutdown error: {e}")
 
         self._started = False
+
+        # 停止并回收事件循环线程，避免线程泄漏以及重启时残留旧循环
+        loop = self._loop
+        thread = self._loop_thread
         self._loop = None
+        self._loop_thread = None
+        if loop is not None and loop.is_running():
+            try:
+                loop.call_soon_threadsafe(loop.stop)
+            except RuntimeError:
+                pass
+        if (
+            thread is not None
+            and thread is not threading.current_thread()
+            and thread.is_alive()
+        ):
+            thread.join(timeout=5)
 
     def __enter__(self):
         """同步上下文管理器入口"""
@@ -857,13 +880,21 @@ class TaskPool:
         """取消任务（同步）"""
         self._ensure_running()
         self._forget_unenqueued(task_id)
-        self._run_coroutine(self._queue_scheduler.remove(task_id))
+        if self._run_coroutine(self._queue_scheduler.remove(task_id)):
+            return self._run_coroutine(self._lifecycle.cancel_task(task_id))
+        # 队列中不存在说明任务可能已在执行：先真正中断执行，再标记状态
+        if self._run_coroutine(self._worker_pool.cancel_task(task_id)):
+            return True
         return self._run_coroutine(self._lifecycle.cancel_task(task_id))
 
     async def cancel_async(self, task_id: str) -> bool:
         """取消任务（异步）"""
         self._forget_unenqueued(task_id)
-        await self._queue_scheduler.remove(task_id)
+        if await self._queue_scheduler.remove(task_id):
+            return await self._lifecycle.cancel_task(task_id)
+        # 队列中不存在说明任务可能已在执行：先真正中断执行，再标记状态
+        if await self._worker_pool.cancel_task(task_id):
+            return True
         return await self._lifecycle.cancel_task(task_id)
 
     def delete(self, task_id: str) -> bool:

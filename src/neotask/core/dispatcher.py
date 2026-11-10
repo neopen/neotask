@@ -56,9 +56,9 @@ class TaskDispatcher:
         Returns:
             task_id
         """
-        # 确保 priority 是 TaskPriority 枚举
+        # 确保 priority 是 TaskPriority 枚举（越界整数按 NORMAL 处理，不抛异常）
         if isinstance(priority, int):
-            priority_enum = TaskPriority(priority)
+            priority_enum = TaskPriority.from_value(priority)
         else:
             priority_enum = priority
 

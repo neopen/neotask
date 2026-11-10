@@ -62,8 +62,11 @@ class TestIntegration:
             task_ids.append(task_id)
 
         # 4. 验证任务已入队
+        # 预取器先于分发启动，会把部分任务移入本地队列，共享队列 size() 不包含这部分，
+        # 因此按「共享队列 + 预取本地队列」合计校验总数
         size = await queue_scheduler.size()
-        assert size == 20
+        prefetched = await prefetcher.size()
+        assert size + prefetched == 20
 
         # 5. 预取器应获取任务
         await asyncio.sleep(0.5)

@@ -6,13 +6,12 @@
 @Time: 2026/4/8 00:00
 """
 
-import logging
 import time
 from typing import Callable, Awaitable, List
 
 from neotask.event.bus import TaskEvent
 
-logger = logging.getLogger(__name__)
+from neotask.common.logger import debug, error
 
 
 class EventMiddleware:
@@ -32,15 +31,15 @@ class LoggingMiddleware(EventMiddleware):
     """日志中间件"""
 
     async def process(self, event: TaskEvent, next_handler: Callable[[TaskEvent], Awaitable[None]]) -> None:
-        logger.debug(f"Processing event: {event.event_type}")
+        debug(f"Processing event: {event.event_type}")
         start = time.time()
 
         try:
             await next_handler(event)
             duration = time.time() - start
-            logger.debug(f"Event {event.event_type} processed in {duration:.3f}s")
+            debug(f"Event {event.event_type} processed in {duration:.3f}s")
         except Exception as e:
-            logger.error(f"Error processing event {event.event_type}: {e}")
+            error(f"Error processing event {event.event_type}: {e}")
             raise
 
 
@@ -79,12 +78,12 @@ class FilterMiddleware(EventMiddleware):
     async def process(self, event: TaskEvent, next_handler: Callable[[TaskEvent], Awaitable[None]]) -> None:
         # 检查是否被阻止
         if event.event_type in self.blocked_types:
-            logger.debug(f"Event {event.event_type} blocked by filter")
+            debug(f"Event {event.event_type} blocked by filter")
             return
 
         # 检查是否允许
         if self.allowed_types and event.event_type not in self.allowed_types:
-            logger.debug(f"Event {event.event_type} not in allowed list")
+            debug(f"Event {event.event_type} not in allowed list")
             return
 
         await next_handler(event)

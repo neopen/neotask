@@ -8,12 +8,11 @@
 
 import asyncio
 import json
-import logging
 import time
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
 
-logger = logging.getLogger(__name__)
+from neotask.common.logger import error
 
 
 class MetricsReporter(ABC):
@@ -76,9 +75,9 @@ class PrometheusReporter(MetricsReporter):
         try:
             async with session.post(url, data=data) as resp:
                 if resp.status not in (200, 202):
-                    logger.error(f"Failed to push metrics: {resp.status}")
+                    error(f"Failed to push metrics: {resp.status}")
         except Exception as e:
-            logger.error(f"Error pushing metrics to Prometheus: {e}")
+            error(f"Error pushing metrics to Prometheus: {e}")
 
     def _convert_to_prometheus(self, metrics: Dict[str, Any]) -> str:
         """转换为Prometheus格式"""
@@ -166,7 +165,7 @@ class ReporterManager:
             try:
                 await reporter.report(metrics)
             except Exception as e:
-                logger.error(f"Failed to report metrics: {e}")
+                error(f"Failed to report metrics: {e}")
 
     async def report_batch(self, metrics_list: List[Dict[str, Any]]) -> None:
         """批量上报指标"""
@@ -183,7 +182,7 @@ class ReporterManager:
                     for metrics in metrics_list:
                         await reporter.report(metrics)
             except Exception as e:
-                logger.error(f"Failed to report batch metrics: {e}")
+                error(f"Failed to report batch metrics: {e}")
 
     async def _report_loop(self) -> None:
         """上报循环（支持批量聚合）"""
@@ -213,5 +212,5 @@ class ReporterManager:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Error in report loop: {e}")
+                error(f"Error in report loop: {e}")
                 await asyncio.sleep(5)

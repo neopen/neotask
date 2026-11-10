@@ -4,9 +4,7 @@ on:
   push:
     branches: ["main"]
     paths-ignore:
-      - 'docs/**'
       - 'assets/**'
-      - '**.md'
       - '.gitignore'
       - '.claude/**'
       - '.qoder/**'
@@ -18,9 +16,7 @@ on:
   pull_request:
     branches: ["main"]
     paths-ignore:
-      - 'docs/**'
       - 'assets/**'
-      - '**.md'
       - '.gitignore'
       - '.claude/**'
       - '.qoder/**'

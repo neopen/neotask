@@ -543,6 +543,12 @@ class SQLiteQueueRepository(QueueRepository):
                 created_at TEXT NOT NULL
             )
         """)
+        # 出队查询为 ORDER BY priority ASC, created_at ASC LIMIT ?，
+        # 复合索引让取队首走索引有序扫描，避免每次出队全表扫描 + 排序
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_queue_order
+            ON queue (priority ASC, created_at ASC)
+        """)
         await conn.commit()
 
     async def push(self, task_id: str, priority: int) -> None:

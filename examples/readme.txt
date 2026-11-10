@@ -18,6 +18,7 @@ NeoTask 示例索引（examples/）
 10_task_query.py         任务查询        状态/结果/完整信息/统计/健康状态
 11_sqlite_persistence.py SQLite 持久化   进程重启后仍能查到历史任务
 12_timeout.py            任务超时        task_timeout 超时失败与错误信息
+13_benchmark.py          性能自测        用自己的 executor 对比并发度下的吞吐/延迟
 99_all_features.py       完整演示        即时+优先级+批量+事件+进度+统计+定时（约 7 秒）
 
 说明：

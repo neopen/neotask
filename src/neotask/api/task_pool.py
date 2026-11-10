@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Callable, Union
 
-from neotask.common.logger import error, debug, info
+from neotask.common.logger import error, debug, info, warning
 from neotask.core.dispatcher import TaskDispatcher
 from neotask.core.future import FutureManager
 from neotask.core.lifecycle import TaskLifecycleManager
@@ -23,7 +23,7 @@ from neotask.executor.base import TaskExecutor
 from neotask.executor.factory import ExecutorFactory
 from neotask.lock.factory import LockFactory
 from neotask.models.config import StorageConfig, LockConfig, TaskPoolConfig, StorageType
-from neotask.models.task import TaskPriority, TaskStatus
+from neotask.models.task import TaskPriority, TaskStatus, BatchSubmitResult
 from neotask.monitor.health import SystemHealthChecker
 from neotask.monitor.metrics import MetricsCollector
 from neotask.monitor.reporter import ReporterManager, ConsoleReporter
@@ -146,6 +146,15 @@ class TaskPool:
             queue=self._queue_scheduler
         ) if self._config.enable_health_check else None
         self._reporter_manager = None
+
+        # 内部计数器（事件驱动维护，供 get_stats / 监控使用）
+        self._counter_lock = threading.Lock()
+        self._pending_count = 0
+        self._running_count = 0
+        self._failed_count = 0
+
+        # 已创建但尚未入队的 PENDING 任务，停机时用于提示“重启后不会自动执行”
+        self._unenqueued_pending: set = set()
 
         # 设置事件处理器
         self._setup_event_handlers()
@@ -309,6 +318,29 @@ class TaskPool:
                         event.task_id, data.get("retry_count", 1)
                     )
 
+        # 内部计数器：pending / running / failed
+        @self._event_bus.subscribe_global
+        async def counter_handler(event: TaskEvent):
+            data = event.data if isinstance(event.data, dict) else {}
+            old_status = str(data.get("old_status", "")).lower()
+
+            with self._counter_lock:
+                if event.event_type == "task.created":
+                    self._pending_count += 1
+                elif event.event_type == "task.started":
+                    self._pending_count = max(0, self._pending_count - 1)
+                    self._running_count += 1
+                elif event.event_type == "task.completed":
+                    self._running_count = max(0, self._running_count - 1)
+                elif event.event_type == "task.failed":
+                    self._decrement_counter_locked(old_status or "running")
+                    self._failed_count += 1
+                elif event.event_type == "task.cancelled":
+                    self._decrement_counter_locked(old_status or "pending")
+                elif event.event_type == "task.retry":
+                    self._decrement_counter_locked(old_status or "running")
+                    self._pending_count += 1
+
         # 未来管理器完成
         @self._event_bus.subscribe("task.completed")
         async def complete_future_handler(event: TaskEvent):
@@ -328,6 +360,27 @@ class TaskPool:
         @self._event_bus.subscribe("task.reclaimed")
         async def reclaim_handler(event: TaskEvent):
             debug(f"Task reclaimed: {event.task_id}, reason: {event.data}")
+
+    def _decrement_counter_locked(self, status: str) -> None:
+        """按任务原状态递减计数器（调用方需持有 ``_counter_lock``）"""
+        if status == TaskStatus.PENDING.value:
+            self._pending_count = max(0, self._pending_count - 1)
+        elif status == TaskStatus.RUNNING.value:
+            self._running_count = max(0, self._running_count - 1)
+        elif status == TaskStatus.FAILED.value:
+            self._failed_count = max(0, self._failed_count - 1)
+
+    def _remember_unenqueued(self, task_id: str) -> None:
+        with self._counter_lock:
+            self._unenqueued_pending.add(task_id)
+
+    def _forget_unenqueued(self, task_id: str) -> None:
+        with self._counter_lock:
+            self._unenqueued_pending.discard(task_id)
+
+    def _unenqueued_count(self) -> int:
+        with self._counter_lock:
+            return len(self._unenqueued_pending)
 
     def _ensure_running(self):
         """确保服务正在运行"""
@@ -425,6 +478,16 @@ class TaskPool:
             # 停止接收新任务
             await self._queue_scheduler.disable()
 
+            # 可选：把未到期的延迟任务立即转入优先队列，避免停机后它们永远停在
+            # PENDING（内存模式尤其明显）。默认关闭以保持兼容。
+            if self._config.drain_delayed_on_shutdown:
+                drained = await self._queue_scheduler.drain_delayed()
+                if drained:
+                    info(f"Drained {drained} delayed task(s) for immediate execution")
+
+            delayed_pending = await self._queue_scheduler.delayed_size()
+            unenqueued_pending = self._unenqueued_count()
+
             # 等待队列清空
             if graceful:
                 await self._queue_scheduler.wait_until_empty(timeout)
@@ -474,6 +537,19 @@ class TaskPool:
                         error(f"Error closing repo: {e}")
 
             info("TaskPool shutdown complete")
+
+            # 停机摘要：明确告知哪些任务不会被本次停机执行/自动恢复
+            if unenqueued_pending:
+                warning(
+                    f"Shutdown summary: {unenqueued_pending} pending task(s) were created "
+                    "but never enqueued; they will NOT be executed automatically after restart"
+                )
+            if delayed_pending:
+                warning(
+                    f"Shutdown summary: {delayed_pending} delayed task(s) were not triggered"
+                    + ("; enable drain_delayed_on_shutdown to run them immediately"
+                       if not self._config.drain_delayed_on_shutdown else "")
+                )
 
         # 执行关闭
         try:
@@ -621,6 +697,7 @@ class TaskPool:
             node_id=self._config.node_id,
             ttl=ttl
         )
+        self._remember_unenqueued(task.task_id)
         return task.task_id
 
     def enqueue_task(self, task_id: str) -> bool:
@@ -635,34 +712,46 @@ class TaskPool:
         """将已创建的任务放入队列（异步）"""
         task = await self._lifecycle.get_task(task_id)
         if not task or task.status != TaskStatus.PENDING:
+            self._forget_unenqueued(task_id)
             return False
-        return await self._queue_scheduler.push(task_id, task.priority.value)
+        queued = await self._queue_scheduler.push(task_id, task.priority.value)
+        if queued:
+            self._forget_unenqueued(task_id)
+        return queued
 
     def submit_batch(
             self,
             tasks: List[Dict[str, Any]],
-            priority: Union[int, TaskPriority] = TaskPriority.NORMAL
-    ) -> List[str]:
-        """批量提交任务（同步）"""
+            priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+            ttl: int = 3600,
+            partial_on_error: bool = False
+    ) -> Union[List[str], BatchSubmitResult]:
+        """批量提交任务（同步）
+
+        默认「全有或全无」：任一条任务写入或入队失败都会回滚整批并抛出
+        :class:`BatchSubmitError`。传入 ``partial_on_error=True`` 时允许部分
+        成功，返回包含 ``succeeded`` / ``failed`` 的
+        :class:`BatchSubmitResult`。
+        """
         self._ensure_running()
-        task_ids = []
-        for task_data in tasks:
-            task_id = self.submit(task_data, priority=priority)
-            task_ids.append(task_id)
-        return task_ids
+        return self._run_coroutine(
+            self.submit_batch_async(
+                tasks, priority=priority, ttl=ttl, partial_on_error=partial_on_error
+            )
+        )
 
     async def submit_batch_async(
             self,
             tasks: List[Dict[str, Any]],
-            priority: Union[int, TaskPriority] = TaskPriority.NORMAL
-    ) -> List[str]:
-        """批量提交任务（异步）"""
+            priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+            ttl: int = 3600,
+            partial_on_error: bool = False
+    ) -> Union[List[str], BatchSubmitResult]:
+        """批量提交任务（异步，默认全有或全无）"""
         self._ensure_running()
-        task_ids = []
-        for task_data in tasks:
-            task_id = await self.submit_async(task_data, priority=priority)
-            task_ids.append(task_id)
-        return task_ids
+        return await self._dispatcher.dispatch_batch_atomic(
+            tasks, priority=priority, ttl=ttl, partial_on_error=partial_on_error
+        )
 
     # ========== 任务等待 API ==========
 
@@ -767,11 +856,13 @@ class TaskPool:
     def cancel(self, task_id: str) -> bool:
         """取消任务（同步）"""
         self._ensure_running()
+        self._forget_unenqueued(task_id)
         self._run_coroutine(self._queue_scheduler.remove(task_id))
         return self._run_coroutine(self._lifecycle.cancel_task(task_id))
 
     async def cancel_async(self, task_id: str) -> bool:
         """取消任务（异步）"""
+        self._forget_unenqueued(task_id)
         await self._queue_scheduler.remove(task_id)
         return await self._lifecycle.cancel_task(task_id)
 
@@ -781,6 +872,7 @@ class TaskPool:
 
     async def delete_async(self, task_id: str) -> bool:
         """删除任务（异步）"""
+        self._forget_unenqueued(task_id)
         return await self._lifecycle.delete_task(task_id)
 
     def retry(self, task_id: str, delay: float = 0) -> bool:
@@ -793,6 +885,14 @@ class TaskPool:
         return await self._dispatcher.redispatch(task_id, delay)
 
     # ========== 统计信息 API ==========
+
+    def _counter_snapshot(self) -> Dict[str, int]:
+        with self._counter_lock:
+            return {
+                "pending_count": self._pending_count,
+                "running_count": self._running_count,
+                "failed_count": self._failed_count,
+            }
 
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息（同步）"""
@@ -809,6 +909,7 @@ class TaskPool:
             "cancelled": stats.cancelled,
             "success_rate": stats.success_rate if stats.total > 0 else 1.0,
             "node_id": self._config.node_id,
+            **self._counter_snapshot(),
         }
 
         if self._metrics:
@@ -841,6 +942,7 @@ class TaskPool:
             "cancelled": stats.cancelled,
             "success_rate": stats.success_rate if stats.total > 0 else 1.0,
             "node_id": self._config.node_id,
+            **self._counter_snapshot(),
         }
 
         if self._metrics:

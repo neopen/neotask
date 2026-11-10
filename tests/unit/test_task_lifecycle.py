@@ -472,7 +472,10 @@ class TestTaskLifecycleWithEvents:
 
         assert len(events_received) == 1
         assert events_received[0].event_type == "task.failed"
-        assert events_received[0].data == {"error": "Something went wrong"}
+        assert events_received[0].data == {
+            "error": "Something went wrong",
+            "old_status": "running",
+        }
 
     @pytest.mark.asyncio
     async def test_cancel_task_emits_event(self, lifecycle_manager, event_bus):

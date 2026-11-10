@@ -8,9 +8,10 @@ import os
 import pytest
 
 from neotask.api.task_pool import TaskPool, TaskPoolConfig
-from neotask.common.exceptions import QueueFullError
-from neotask.models.task import Task, TaskPriority
+from neotask.common.exceptions import BatchSubmitError, QueueFullError
+from neotask.models.task import BatchSubmitResult, Task, TaskPriority, TaskStatus
 from neotask.queue.queue_scheduler import QueueScheduler
+from neotask.storage import memory as memory_storage
 from neotask.storage.memory import MemoryQueueRepository, MemoryTaskRepository
 from neotask.storage.sqlite import SQLiteQueueRepository, SQLiteTaskRepository
 
@@ -50,6 +51,33 @@ class TestRepositoryBatch:
         assert await repo.save_batch(tasks) == []
         stored = await repo.get("s-0")
         assert stored is not None and stored.data == {"i": 0}
+        await repo.close()
+
+    @pytest.mark.asyncio
+    async def test_sqlite_save_batch_rolls_back_on_write_failure(self, tmp_path):
+        """单事务：中途写入失败时整批回滚，不留下已写入的半批任务"""
+        repo = SQLiteTaskRepository(str(tmp_path / "batch_rollback.db"))
+        await repo._ensure_init()
+        await repo._conn.execute("""
+            CREATE TRIGGER fail_on_bad BEFORE INSERT ON tasks
+            WHEN NEW.task_id = 'bad'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced failure');
+            END
+        """)
+        await repo._conn.commit()
+
+        tasks = [
+            Task(task_id="ok-1", data={"i": 1}),
+            Task(task_id="ok-2", data={"i": 2}),
+            Task(task_id="bad", data={"i": 3}),
+        ]
+        with pytest.raises(Exception):
+            await repo.save_batch(tasks)
+
+        assert await repo.get("ok-1") is None
+        assert await repo.get("ok-2") is None
+        assert await repo.get("bad") is None
         await repo.close()
 
     @pytest.mark.asyncio
@@ -217,3 +245,168 @@ class TestSubmitMany:
                 assert pool.wait_for_result(task_id, timeout=30) == {"i": index}
         finally:
             pool.shutdown()
+
+
+class TestSubmitBatchAtomic:
+    """submit_batch 默认全有或全无语义"""
+
+    def test_empty_batch(self):
+        pool = TaskPool(executor=echo_executor, config=TaskPoolConfig.memory())
+        pool.start()
+        pool.pause()
+        try:
+            assert pool.submit_batch([]) == []
+            partial = pool.submit_batch([], partial_on_error=True)
+            assert isinstance(partial, BatchSubmitResult)
+            assert len(partial) == 0 and partial.failed == []
+        finally:
+            pool.shutdown(graceful=False)
+
+    def test_sqlite_serialization_failure_leaves_nothing(self, tmp_path):
+        config = TaskPoolConfig.sqlite(str(tmp_path / "batch_atomic.db"))
+        pool = TaskPool(executor=echo_executor, config=config)
+        pool.start()
+        pool.pause()
+        try:
+            with pytest.raises(BatchSubmitError):
+                pool.submit_batch([{"i": 1}, {"bad": object()}])
+
+            pending = pool._run_coroutine(
+                pool._task_repo.list_by_status(TaskStatus.PENDING, limit=10)
+            )
+            assert pending == []
+            assert pool._run_coroutine(pool._queue_scheduler.size()) == 0
+        finally:
+            pool.shutdown(graceful=False)
+
+    def test_storage_failure_raises_without_partial_batch(self, monkeypatch):
+        pool = TaskPool(executor=echo_executor, config=TaskPoolConfig.memory())
+        pool.start()
+        pool.pause()
+
+        async def fail_persist(tasks):
+            raise RuntimeError("disk unavailable")
+
+        monkeypatch.setattr(pool._lifecycle, "persist_tasks", fail_persist)
+        try:
+            with pytest.raises(BatchSubmitError):
+                pool.submit_batch([{"i": 1}, {"i": 2}])
+            assert pool._run_coroutine(pool._queue_scheduler.size()) == 0
+        finally:
+            pool.shutdown(graceful=False)
+
+    @pytest.mark.parametrize("storage", ["memory", "sqlite"])
+    def test_large_batch(self, storage, tmp_path):
+        if storage == "sqlite":
+            config = TaskPoolConfig.sqlite(str(tmp_path / "batch_large.db"))
+        else:
+            config = TaskPoolConfig.memory()
+        pool = TaskPool(executor=echo_executor, config=config)
+        pool.start()
+        pool.pause()
+        try:
+            task_ids = pool.submit_batch([{"i": i} for i in range(1200)])
+            assert len(task_ids) == 1200
+            assert pool._run_coroutine(pool._queue_scheduler.size()) == 1200
+        finally:
+            pool.shutdown(graceful=False)
+
+    def test_partial_on_error_returns_succeeded_and_failed(self):
+        config = TaskPoolConfig.memory()
+        config.queue_max_size = 2
+        pool = TaskPool(executor=echo_executor, config=config)
+        pool.start()
+        pool.pause()
+        try:
+            result = pool.submit_batch(
+                [{"i": 0}, {"i": 1}, {"i": 2}], partial_on_error=True
+            )
+            assert isinstance(result, BatchSubmitResult)
+            assert len(result.succeeded) == 2
+            assert len(result) == 2
+            assert [item["index"] for item in result.failed] == [2]
+            assert pool._run_coroutine(pool._queue_scheduler.size()) == 2
+        finally:
+            pool.shutdown(graceful=False)
+
+    def test_atomic_batch_rolls_back_on_capacity_rejection(self):
+        config = TaskPoolConfig.memory()
+        config.queue_max_size = 1
+        pool = TaskPool(executor=echo_executor, config=config)
+        pool.start()
+        pool.pause()
+        try:
+            with pytest.raises(BatchSubmitError):
+                pool.submit_batch([{"i": 0}, {"i": 1}])
+            assert pool._run_coroutine(pool._queue_scheduler.size()) == 0
+            assert pool._run_coroutine(
+                pool._task_repo.list_by_status(TaskStatus.PENDING, limit=10)
+            ) == []
+        finally:
+            pool.shutdown(graceful=False)
+
+
+class TestMemoryBatchAtomic:
+    """Memory 仓储批量写入失败不留下半批数据"""
+
+    @pytest.mark.asyncio
+    async def test_save_batch_deepcopy_failure_leaves_nothing(self, monkeypatch):
+        repo = MemoryTaskRepository()
+        tasks = [Task(task_id=f"m-a-{i}", data={"i": i}) for i in range(3)]
+
+        original = memory_storage.copy.deepcopy
+        calls = {"count": 0}
+
+        def flaky_deepcopy(obj):
+            calls["count"] += 1
+            if calls["count"] == 2:
+                raise RuntimeError("deepcopy failed")
+            return original(obj)
+
+        class CopyShim:
+            deepcopy = staticmethod(flaky_deepcopy)
+
+        monkeypatch.setattr(memory_storage, "copy", CopyShim)
+        with pytest.raises(RuntimeError):
+            await repo.save_batch(tasks)
+
+        for task in tasks:
+            assert await repo.get(task.task_id) is None
+
+
+class TestTaskPoolCounters:
+    """TaskPool 内部计数器与未入队记录跟踪"""
+
+    def test_counters_track_success_and_failure(self):
+        async def flaky_executor(data):
+            if data.get("fail"):
+                raise ValueError("boom")
+            return data
+
+        config = TaskPoolConfig.memory()
+        config.max_retries = 0
+        pool = TaskPool(executor=flaky_executor, config=config)
+        pool.start()
+        try:
+            ok_id = pool.submit({"i": 1})
+            bad_id = pool.submit({"fail": True})
+            pool.wait_all([ok_id, bad_id], timeout=30)
+
+            stats = pool.get_stats()
+            assert stats["pending_count"] == 0
+            assert stats["running_count"] == 0
+            assert stats["failed_count"] == 1
+        finally:
+            pool.shutdown()
+
+    def test_unenqueued_pending_is_cleared_after_enqueue(self):
+        pool = TaskPool(executor=echo_executor, config=TaskPoolConfig.memory())
+        pool.start()
+        pool.pause()
+        try:
+            task_id = pool.create_pending_task({"i": 1})
+            assert pool._unenqueued_count() == 1
+            assert pool.enqueue_task(task_id) is True
+            assert pool._unenqueued_count() == 0
+        finally:
+            pool.shutdown(graceful=False)

@@ -39,14 +39,24 @@ class MemoryTaskRepository(TaskRepository):
             debug(f"Task {task.task_id} saved to memory repository")
 
     async def save_batch(self, tasks: List[Task]) -> List[str]:
-        """批量保存任务（跳过已存在的 task_id）"""
+        """批量保存任务（跳过已存在的 task_id）
+
+        先完成整批深拷贝，再一次性写入字典；任一任务拷贝失败都不会留下
+        半批数据。
+        """
+        if not tasks:
+            return []
+
+        # 深拷贝可能因不可拷贝字段失败，放在加锁与写入之前完成
+        snapshots = [(task.task_id, copy.deepcopy(task)) for task in tasks]
+
         saved: List[str] = []
         with self._lock:
-            for task in tasks:
-                if task.task_id in self._tasks:
+            for task_id, snapshot in snapshots:
+                if task_id in self._tasks:
                     continue
-                self._tasks[task.task_id] = copy.deepcopy(task)
-                saved.append(task.task_id)
+                self._tasks[task_id] = snapshot
+                saved.append(task_id)
         return saved
 
     async def save_if_absent(self, task: Task) -> bool:
@@ -221,11 +231,23 @@ class MemoryQueueRepository(QueueRepository):
             debug(f"Queue push: task_id={task_id}, priority={priority}, seq={self._sequence}")
 
     async def push_batch(self, items: List[Tuple[str, int]]) -> int:
-        """批量入队"""
+        """批量入队
+
+        先在临时堆上完成全部插入，成功后再整体替换；中途异常不会影响
+        已存在的队列内容。
+        """
+        if not items:
+            return 0
+
         with self._lock:
+            sequence = self._sequence
+            new_heap = list(self._heap)
             for task_id, priority in items:
-                self._sequence += 1
-                heapq.heappush(self._heap, (priority, self._sequence, task_id))
+                sequence += 1
+                new_heap.append((priority, sequence, task_id))
+            heapq.heapify(new_heap)
+            self._heap = new_heap
+            self._sequence = sequence
         return len(items)
 
     async def pop(self, count: int = 1) -> List[str]:

@@ -9,7 +9,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 import json
 
 
@@ -170,6 +170,33 @@ class Task:
     def is_retriable(self) -> bool:
         """Check if task can be retried."""
         return self.status == TaskStatus.FAILED and self.retry_count < 3
+
+
+@dataclass
+class BatchSubmitResult:
+    """批量提交结果（``partial_on_error=True`` 时返回）
+
+    - ``succeeded``：实际创建并成功入队的 task_id 列表
+    - ``failed``：失败条目，每项包含 ``index``（批内下标）、``data`` 与 ``error``
+
+    为兼容按列表使用的调用方，实例本身可迭代、可 ``len()``、可按下标访问，
+    行为等价于 ``succeeded`` 列表。
+    """
+
+    succeeded: List[str] = field(default_factory=list)
+    failed: List[Dict[str, Any]] = field(default_factory=list)
+
+    def __iter__(self):
+        return iter(self.succeeded)
+
+    def __len__(self) -> int:
+        return len(self.succeeded)
+
+    def __getitem__(self, index):
+        return self.succeeded[index]
+
+    def __bool__(self) -> bool:
+        return bool(self.succeeded)
 
 
 class TaskStats:

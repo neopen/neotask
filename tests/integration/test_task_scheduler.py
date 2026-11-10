@@ -310,5 +310,30 @@ class TestTaskSchedulerIntegration:
         scheduler.shutdown()
 
 
+async def test_drain_delayed_on_shutdown_executes_pending_delayed_task():
+    """drain_delayed_on_shutdown=True 时，未到期延时任务在停机前被执行"""
+    async def executor(data):
+        return {"result": "done", "data": data}
+
+    config = SchedulerConfig(
+        storage_type="memory",
+        scan_interval=0.05,
+        enable_periodic_manager=False,
+        enable_time_wheel=False,
+        drain_delayed_on_shutdown=True,
+    )
+    scheduler = TaskScheduler(executor=executor, config=config)
+    scheduler.start()
+    try:
+        task_id = scheduler.submit_delayed({"i": 1}, delay_seconds=60)
+        scheduler.shutdown(graceful=True, timeout=10)
+        stored = await scheduler._pool._task_repo.get(task_id)
+        assert stored is not None
+        assert stored.status.value == "success"
+    finally:
+        if scheduler._running:
+            scheduler.shutdown(graceful=False)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--asyncio-mode=auto"])

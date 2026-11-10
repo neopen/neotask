@@ -9,8 +9,8 @@
 from typing import Dict, Any, Optional, Union, List
 from neotask.core.lifecycle import TaskLifecycleManager
 from neotask.queue.queue_scheduler import QueueScheduler
-from neotask.models.task import TaskPriority, TaskStatus
-from neotask.common.exceptions import QueueFullError
+from neotask.models.task import TaskPriority, TaskStatus, BatchSubmitResult
+from neotask.common.exceptions import QueueFullError, BatchSubmitError
 from neotask.common.logger import debug, warning
 
 
@@ -116,10 +116,122 @@ class TaskDispatcher:
     async def dispatch_batch(
         self,
         tasks: List[Dict[str, Any]],
-        priority: Union[int, TaskPriority] = TaskPriority.NORMAL
-    ) -> List[str]:
-        """批量分发任务（等价于 :meth:`dispatch_many`）"""
-        return await self.dispatch_many(tasks, priority=priority)
+        priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+        partial_on_error: bool = False
+    ) -> Union[List[str], BatchSubmitResult]:
+        """批量分发任务（默认全有或全无）
+
+        Args:
+            tasks: 任务数据列表
+            priority: 优先级
+            partial_on_error: ``False``（默认）时任一任务创建或入队失败都会
+                回滚整批并抛出 :class:`BatchSubmitError`；``True`` 时允许部分
+                成功，返回 :class:`BatchSubmitResult`。
+
+        Returns:
+            ``partial_on_error=False`` 时返回全部成功的 task_id 列表；
+            ``True`` 时返回包含成功/失败明细的 :class:`BatchSubmitResult`。
+        """
+        return await self.dispatch_batch_atomic(
+            tasks, priority=priority, partial_on_error=partial_on_error
+        )
+
+    async def dispatch_batch_atomic(
+        self,
+        items: List[Dict[str, Any]],
+        priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+        ttl: int = 3600,
+        partial_on_error: bool = False,
+    ) -> Union[List[str], BatchSubmitResult]:
+        """批量分发即时任务，默认整批原子提交。
+
+        实现要点：
+        1. 先按队列剩余容量预检（``partial_on_error=True`` 时只提交容量允许的部分）
+        2. 任务记录一次性写入（SQLite 单事务 / Memory 全量构造后一次写入）
+        3. 入队同样批量写入；默认模式下若仍有任务被拒，则撤销已入队任务并
+           删除已写入记录，保证调用方看不到半批数据
+        """
+        if not items:
+            return BatchSubmitResult() if partial_on_error else []
+
+        priority_enum = TaskPriority(priority) if isinstance(priority, int) else priority
+        reason = "queue is disabled" if self._queue.is_disabled else "queue is full"
+
+        result = BatchSubmitResult()
+        remaining = self._queue.max_size - await self._queue.size()
+        allowed_items = items
+        if remaining < len(items):
+            if not partial_on_error:
+                raise BatchSubmitError(
+                    f"Batch submit aborted: {len(items)} task(s) requested, "
+                    f"only {max(remaining, 0)} slot(s) available ({reason})",
+                    index=-1,
+                    cause=QueueFullError(self._queue.max_size),
+                )
+            allowed_items = items[:max(remaining, 0)]
+            result.failed.extend(
+                {"index": index, "data": items[index], "error": reason}
+                for index in range(len(allowed_items), len(items))
+            )
+
+        if not allowed_items:
+            return result
+
+        try:
+            tasks = self._lifecycle.build_tasks(
+                data_list=allowed_items,
+                priority=priority_enum,
+                node_id=self._node_id,
+                ttl=ttl,
+            )
+            task_ids = await self._lifecycle.persist_tasks(tasks)
+        except Exception as exc:
+            if partial_on_error:
+                result.failed = [
+                    {"index": index, "data": data, "error": str(exc)}
+                    for index, data in enumerate(allowed_items)
+                ] + result.failed
+                return result
+            raise BatchSubmitError(
+                f"Batch submit aborted while persisting tasks: {exc}",
+                index=-1,
+                cause=exc,
+            ) from exc
+
+        queue_results = await self._queue.push_batch(
+            [(task_id, priority_enum.value, 0) for task_id in task_ids]
+        )
+        accepted = [tid for tid, ok in zip(task_ids, queue_results) if ok]
+        rejected = [tid for tid, ok in zip(task_ids, queue_results) if not ok]
+
+        if rejected and not partial_on_error:
+            # 回滚：撤销已入队任务，再删除整批任务记录，确保“全无”
+            for task_id in accepted:
+                await self._queue.remove(task_id)
+            await self._lifecycle.delete_tasks(task_ids)
+            raise BatchSubmitError(
+                f"Batch submit aborted: {len(rejected)} task(s) rejected by queue "
+                f"({reason}); the whole batch was rolled back",
+                index=len(accepted),
+                cause=QueueFullError(self._queue.max_size),
+            )
+
+        if rejected:
+            # 部分成功：未入队的记录直接删除，不留下“库里存在但永不执行”的任务
+            rejected_set = set(rejected)
+            await self._lifecycle.delete_tasks(rejected)
+            for index, (task_id, data) in enumerate(zip(task_ids, allowed_items)):
+                if task_id in rejected_set:
+                    result.failed.append(
+                        {"index": index, "data": data, "error": reason}
+                    )
+
+        result.succeeded = accepted
+        if partial_on_error:
+            # 容量溢出部分保持失败明细，与已创建任务的失败合并
+            result.failed.sort(key=lambda item: item.get("index", 0))
+            return result
+        return accepted
 
     async def dispatch_many(
         self,

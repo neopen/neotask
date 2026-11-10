@@ -66,7 +66,7 @@ ui = [
 
 # Redis 分布式支持
 redis = [
-    "redis>=4.5.0",
+    "redis>=4.5.0,<6",
 ]
 
 # SQLite 支持

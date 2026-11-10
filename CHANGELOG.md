@@ -6,6 +6,13 @@
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [1.0.6](https://github.com/neopen/neotask/compare/v1.0.5...v1.0.6) (2026-11-08)
+
+
+### ⚡ Performance Improvements (性能优化)
+
+* 存储并发、批量提交的性能优化与提交路径优化 ([#36](https://github.com/neopen/neotask/issues/36)) ([2fa8f6b](https://github.com/neopen/neotask/commit/2fa8f6b05fe226f62eda5228e8a3fc63c9b0ba17))
+
 ## [1.0.5](https://github.com/neopen/neotask/compare/v1.0.4...v1.0.5) (2026-10-29)
 
 

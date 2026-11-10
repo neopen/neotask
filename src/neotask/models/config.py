@@ -283,6 +283,10 @@ class TaskPoolConfig:
     enable_prefetch: bool = True
     prefetch_min_threshold: int = 5
 
+    # 停机行为：为 True 时把未到期的延迟任务立即转入优先队列并等待执行；
+    # 默认 False 保持原有“未到期任务留待下次启动”的兼容行为
+    drain_delayed_on_shutdown: bool = False
+
     # 回收配置
     enable_reclaimer: bool = True  # 是否启用任务回收器
     reclaimer_interval: float = 30.0  # 回收器扫描间隔（秒）
@@ -390,6 +394,10 @@ class SchedulerConfig:
     # 周期任务默认配置
     default_max_runs: Optional[int] = None  # 默认最大执行次数
     default_missed_policy: str = "skip"  # 默认错过执行策略: ignore, run_once, catch_up, skip
+
+    # 停机行为：为 True 时把未到期的延迟任务立即转入优先队列并等待执行；
+    # 默认 False 保持原有“未到期任务留待下次启动”的兼容行为
+    drain_delayed_on_shutdown: bool = False
 
     def __post_init__(self) -> None:
         self.storage_type = StorageType.coerce(self.storage_type)

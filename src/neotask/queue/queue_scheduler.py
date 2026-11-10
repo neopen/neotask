@@ -219,6 +219,20 @@ class QueueScheduler:
         """获取延迟队列大小"""
         return await self._delayed_queue.size()
 
+    async def drain_delayed(self) -> int:
+        """把全部未触发的延迟任务立即转入优先队列（停机补偿）
+
+        队列在停机时已 ``disable()``，但这里属于“撤销延迟、立即执行”而不是
+        接收新任务，因此直接写入优先队列并跳过容量检查。
+
+        Returns:
+            被转移的任务数量
+        """
+        drained = await self._delayed_queue.drain()
+        for task_id, priority in drained:
+            await self._priority_queue.push(task_id, priority, check_capacity=False)
+        return len(drained)
+
     async def schedule_delayed(self, task_id: str, priority: int, delay: float) -> bool:
         """调度延迟任务（别名方法）"""
         return await self.push(task_id, priority, delay)

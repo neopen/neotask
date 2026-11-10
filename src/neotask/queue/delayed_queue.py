@@ -154,6 +154,22 @@ class DelayedQueue:
             self._heap.clear()
             self._tasks.clear()
 
+    async def drain(self) -> List[Tuple[str, int]]:
+        """取出全部未触发任务并清空队列（停机补偿用）
+
+        Returns:
+            ``(task_id, priority)`` 列表，按原执行时间升序
+        """
+        with self._lock:
+            drained = []
+            while self._heap:
+                _, priority, task_id = heapq.heappop(self._heap)
+                if self._tasks.pop(task_id, None) is not None:
+                    drained.append((task_id, priority))
+            self._heap = []
+            self._tasks.clear()
+            return drained
+
     async def contains(self, task_id: str) -> bool:
         """检查任务是否在队列中"""
         with self._lock:

@@ -20,6 +20,7 @@ NeoTask 示例索引（examples/）
 12_timeout.py            任务超时        task_timeout 超时失败与错误信息
 13_migrate_memory_to_sqlite.py 存储迁移  memory 停机迁移到 SQLite（任务/队列/延迟/周期）
 14_migrate_memory_to_redis.py  存储迁移  memory 停机迁移到 Redis（延迟任务落盘）
+15_migrate_sqlite_to_redis.py  存储迁移  SQLite 停机迁移到 Redis（延迟/周期任务）
 99_all_features.py       完整演示        即时+优先级+批量+事件+进度+统计+定时（约 7 秒）
 
 说明：

@@ -531,17 +531,16 @@ class TaskPool:
 
             # 关闭存储连接 - 捕获异常避免循环冲突
             for repo in [self._task_repo, self._queue_repo]:
-                if hasattr(repo, 'close'):
-                    try:
-                        await repo.close()
-                    except RuntimeError as e:
-                        if "different loop" in str(e):
-                            # 忽略循环冲突错误
-                            debug(f"Ignored loop conflict when closing {repo}")
-                        else:
-                            error(f"Error closing repo: {e}")
-                    except Exception as e:
+                try:
+                    await repo.close()
+                except RuntimeError as e:
+                    if "different loop" in str(e):
+                        # 忽略循环冲突错误
+                        debug(f"Ignored loop conflict when closing {repo}")
+                    else:
                         error(f"Error closing repo: {e}")
+                except Exception as e:
+                    error(f"Error closing repo: {e}")
 
             info("TaskPool shutdown complete")
 

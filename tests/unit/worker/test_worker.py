@@ -37,7 +37,8 @@ def mock_queue_scheduler():
     """模拟队列调度器"""
     queue = Mock(spec=QueueScheduler)
     queue.push = AsyncMock(return_value=True)
-    queue.pop = AsyncMock(return_value=["task_1", "task_2"])
+    # 默认返回空队列：避免 worker 持续用固定 task_id 覆盖测试手工注入的运行中任务
+    queue.pop = AsyncMock(return_value=[])
     queue.remove = AsyncMock(return_value=True)
     queue.size = AsyncMock(return_value=0)
     queue.clear = AsyncMock()

@@ -22,12 +22,12 @@
 </p>
 
 
+> - 🚀 **轻量异步**：纯 Python 实现的异步任务队列，专为 AI 生成、视频处理、数据爬取等高耗时任务设计  
+> - 📦 **无外部服务依赖**：单节点无需配置 Redis、PostgreSQL 等外部服务，分布式多节点环境需要 Redis 支持  
+> - ⏰ **全场景调度**：原生支持定时任务、周期任务（Cron-like）与延迟任务，开箱即用、自动重试与异常恢复  
+> - ⚡ 5 分钟上手：`pip install neotask`  3行代码集成，即可使用内部接口
 
 
-> 🚀 **轻量异步**：纯 Python 实现的异步任务队列，专为 AI 生成、视频处理、数据爬取等高耗时任务设计  
-> 📦 **无外部服务依赖**：单节点无需配置 Redis、PostgreSQL 等外部服务，分布式多节点环境需要 Redis 支持  
-> ⏰ **全场景调度**：原生支持定时任务、周期任务（Cron-like）与延迟任务，开箱即用、自动重试与异常恢复  
-> ⚡ 5 分钟上手：`pip install neotask`  3行代码集成，即可使用内部接口
 
 
 ---
@@ -45,6 +45,8 @@
 - **高可用** - 看门狗、超时检测、任务回收、死信队列
 - **事件回调** - 支持任务生命周期事件监听
 - **进度上报** - executor 内可发布进度，订阅者收到 `task.progress` 事件
+- **自定义失败原因** *(v1.1)* - executor 可通过 `report_failure(reason=...)` 标记业务级失败（如 `qa_failed`），`task.failed` 事件携带原因，与系统异常区分
+- **父子关联** *(v1.1)* - 任务携带 `parent_task_id` / `child_count` / `completed_children` 元数据，提供 `get_children()` / `get_parent()` 查询；自动汇总交由调用方或编排层，不在 NeoTask 内实现
 
 ------
 
@@ -69,33 +71,39 @@ graph TB
     subgraph User["用户应用层"]
         APP[用户代码]
     end
-    
+
     subgraph NeoTask["NeoTask 核心"]
-        TP[TaskPool<br/>即时任务入口 v0.1]
-        TS[TaskScheduler<br/>定时任务入口 v0.3]
-        
+        TP[TaskPool<br/>即时任务入口]
+        TS[TaskScheduler<br/>定时任务入口]
+
         subgraph Core["共享核心组件"]
-            LM[LifecycleManager<br/>任务生命周期管理]
-            QS[QueueScheduler<br/>优先级+延迟队列]
-            WP[WorkerPool<br/>Worker池/并发控制]
-            FM[FutureManager<br/>异步等待/结果回调]
+            LM[LifecycleManager<br/>任务生命周期管理<br/>含父子关联字段、自定义失败原因]
+            QS[QueueScheduler<br/>优先级 + 延迟队列]
+            WP[WorkerPool<br/>工作池 / 并发控制]
+            FM[FutureManager<br/>异步等待 / 结果回调]
         end
-        
+
+        subgraph Planned["v1.1 规划组件"]
+            CK[CheckpointManager<br/>断点续跑]
+            CT[CostTracker<br/>成本与耗时采集]
+            CS[ContextStore<br/>本地上下文存储]
+        end
+
         subgraph Internal["内部组件"]
-            EB[EventBus<br/>事件总线 v0.2]
-            MC[MetricsCollector<br/>指标收集 v0.2]
-            LF[LockFactory<br/>分布式锁 v0.4]
+            EB[EventBus<br/>事件总线]
+            MC[MetricsCollector<br/>内存指标聚合]
+            LF[LockFactory<br/>分布式锁]
         end
-        
+
         EX[TaskExecutor<br/>用户业务逻辑]
     end
-    
+
     subgraph Storage["存储层"]
         MEM[MemoryStorage]
         SQLITE[(SQLiteStorage)]
-        REDIS[(RedisStorage v0.4)]
+        REDIS[(RedisStorage)]
     end
-    
+
     APP -->|即时任务| TP
     APP -->|定时任务| TS
     TS -->|委托| TP
@@ -103,42 +111,63 @@ graph TB
     TP --> QS
     TP --> WP
     TP --> FM
-    
-    LM --> MEM
-    LM --> SQLITE
-    LM --> REDIS
-    
+
     WP --> EX
     WP --> EB
     WP --> MC
     WP --> LF
+    WP -.->|v1.1 规划| CK
+    WP -.->|v1.1 规划| CT
+    WP -.->|v1.1 规划| CS
+
+    LM --> MEM
+    LM --> SQLITE
+    LM --> REDIS
+
+    QS --> MEM
+    QS --> SQLITE
+    QS --> REDIS
+
+    CK -.-> MEM
+    CK -.-> SQLITE
+    CK -.-> REDIS
+
+    CS -.-> MEM
+    CS -.-> SQLITE
+    CS -.-> REDIS
+
+    MC -.->|仅内存，不持久化| MEM
+
+    LF --> REDIS
 ```
 
-发展路线图
+**发展路线图**
+
+**图注**：v0.1 – v1.0 为已发布版本；v1.1 – v1.3 为规划中的本地能力、性能与监控迭代；v2.0 的编排集成（Orchestration Integration）为**后移项**，待本地能力稳定且有真实多服务需求时再启动。编排能力（DAG、动态路由、插件系统、Web UI）由上层编排服务负责，不在 NeoTask 范围内。
 
 ```mermaid
 timeline
     title NeoTask 架构演进路线图
-    
+
     section v0.1
         基础任务池 : 本地内存队列
                    : 异步执行引擎
                    : 内存/SQLite存储
-                   
+
     section v0.2
         可观测性 : 事件总线
                  : 指标收集
                  : 健康检查
-                 
+
     section v0.3
         定时调度 : 延时队列/时间轮
                  : 周期任务
                  : Cron表达式
-                 
+
     section v0.4
         分布式基础 : Redis共享队列
                    : 分布式锁
-                   
+
     section v0.5
         性能优化 : 预取机制
                  : 批量操作
@@ -149,15 +178,31 @@ timeline
                    : 超时检测
                    : 故障自动恢复
 
-    section v1.5
-        任务编排 : DAG工作流
-                 : 条件分支
-                 : 并行执行
+    section v1.1
+        本地能力补全 : Checkpoint断点续跑
+                     : 成本与耗时采集
+                     : 父子任务关联
+                     : 本地上下文存储
+                     : 自定义失败状态
+
+    section v1.2
+        性能与监控 : 批量写入优化
+                   : 查询索引
+                   : 进度上报节流
+                   : 指标快照接口
+                   : 基准测试套件
+
+    section v1.3
+        导出与可靠性 : Prometheus导出器
+                     : 崩溃恢复边界
+                     : 优雅停机配置
+                     : 重试语义统一
 
     section v2.0
-        企业级特性 : 独立Web UI
-                   : 多租户隔离
-                   : Prometheus集成
+        编排集成 : OrchestratorClient
+                       : Redis Stream消费者
+                       : 心跳与实例注册
+                       : 远程事件上报
 ```
 
 ------
@@ -287,19 +332,35 @@ pool.wait_for_result(task_id)
 
 ## API 参考
 
-| 方法                                         | 说明              |
-| :------------------------------------------- | :---------------- |
-| `pool.submit(data, priority=2, delay=0)`     | 提交任务          |
-| `pool.submit_batch(tasks, priority=2)`       | 批量提交任务      |
-| `pool.wait_for_result(task_id, timeout=300)` | 等待结果          |
-| `pool.get_status(task_id)`                   | 获取状态          |
-| `pool.cancel(task_id)`                       | 取消任务          |
-| `pool.on_progress(handler)`                  | 订阅进度事件      |
-| `scheduler.submit_delayed(data, delay_seconds)`    | 延时任务          |
-| `scheduler.submit_interval(data, interval_seconds)` | 周期任务          |
-| `scheduler.submit_cron(data, cron_expr)`     | Cron 任务         |
 
-详细 API 请参阅 [文档](https://task.helpenx.com/docs/api-reference.html)
+
+## API 参考
+
+| 方法                                                         | 说明                                                         |
+| :----------------------------------------------------------- | :----------------------------------------------------------- |
+| `pool.submit(data, priority=2, delay=0)`                     | 提交任务                                                     |
+| `pool.submit_batch(tasks, priority=2, partial_on_error=False)` | 批量提交任务（默认全有或全无；传 `partial_on_error=True` 可容忍部分失败，详见[批量提交语义](#批量提交语义)） |
+| `pool.wait_for_result(task_id, timeout=300)`                 | 等待任务结果                                                 |
+| `pool.get_status(task_id)`                                   | 获取任务状态                                                 |
+| `pool.cancel(task_id)`                                       | 取消任务                                                     |
+| `pool.on_progress(handler)`                                  | 订阅进度事件                                                 |
+| `scheduler.submit_delayed(data, delay_seconds)`              | 提交延时任务                                                 |
+| `scheduler.submit_interval(data, interval_seconds)`          | 提交周期任务                                                 |
+| `scheduler.submit_cron(data, cron_expr)`                     | 提交 Cron 任务                                               |
+
+详细 API 文档见[这里](https://task.helpenx.com/docs/api-reference.html)
+
+### 批量提交语义
+
+`submit_batch` 默认是**全有或全无**语义：任意一条任务在序列化、持久化或入队时失败，整批回滚，并抛出 `BatchSubmitError`，其中包含失败索引与根因。
+
+传入 `partial_on_error=True` 可容忍部分失败：
+
+```python
+result = pool.submit_batch(tasks, partial_on_error=True)
+print(result.succeeded)  # 实际提交成功的 task_id 列表
+print(result.failed)     # [{"index": 3, "data": {...}, "error": "queue is full"}]
+```
 
 
 
@@ -315,7 +376,9 @@ pool.wait_for_result(task_id)
   建议直接使用 `pool.on_completed(...)` 等便捷方法。
 - **优雅关闭的范围**：`shutdown(graceful=True)` 只会把已入队的任务（pending + running）
   排空后返回。未到期的延时任务、周期/Cron 调度在关闭期间**不会**被触发——请先
-  `cancel_periodic` 取消周期调度，或用 `graceful=False` 立即返回。
+  `cancel_periodic` 取消周期调度，或用 `graceful=False` 立即返回。停机时会输出摘要，
+  明确告知未触发的延时任务数与未入队的 pending 记录数；若希望停机前立即执行未到期
+  的延时任务，可设置 `drain_delayed_on_shutdown=True`（默认 `False`，保持兼容）。
 - **崩溃/重启恢复**：自动恢复只针对已**入队**的任务（其 id 存在于持久化队列中）。
   仅通过 `create_pending_task()` 落库、从未调用 `enqueue_task()` 入队的记录不属于队列，
   重启后**不会**自动执行——需显式入队。
@@ -441,7 +504,7 @@ python examples/05_cron_tasks.py
 
 ## 许可证
 
-MIT License © 2026 NeoPen
+MIT License © 2026 neopen
 
 ------
 
@@ -454,7 +517,7 @@ MIT License © 2026 NeoPen
 ## 联系方式
 
 - 项目主页：https://github.com/neopen/neotask
-- 作者：NeoPen
+- 作者：neopen
 - 邮箱：helpenx@gmail.com
 - 文档：https://task.helpenx.com/docs/
 - 博客: https://pengline.cn/

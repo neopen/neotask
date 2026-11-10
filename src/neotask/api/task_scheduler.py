@@ -84,6 +84,7 @@ class TaskScheduler:
             progress_flush_batch_interval=self._config.progress_flush_batch_interval,
             cache_max_size=self._config.cache_max_size,
             running_persist_delay=self._config.running_persist_delay,
+            drain_delayed_on_shutdown=self._config.drain_delayed_on_shutdown,
         )
 
         self._pool = TaskPool(executor, pool_config)
@@ -237,7 +238,13 @@ class TaskScheduler:
             # 创建新的事件循环用于调度线程
             thread_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(thread_loop)
-            thread_loop.run_until_complete(self._scheduler_loop())
+            try:
+                thread_loop.run_until_complete(self._scheduler_loop())
+            finally:
+                try:
+                    thread_loop.close()
+                except Exception:
+                    pass
 
         self._scheduler_thread = threading.Thread(
             target=run_scheduler,
@@ -310,8 +317,32 @@ class TaskScheduler:
         if self._scheduler_thread and self._scheduler_thread.is_alive():
             self._scheduler_thread.join(timeout=5)
 
+        # 停机摘要所需数据必须在停止组件前采集
+        delayed_pending = 0
+        try:
+            delayed_pending = self._run_async(self._pool._queue_scheduler.delayed_size())
+            if self._time_wheel:
+                delayed_pending += self._run_async(self._time_wheel.size())
+        except Exception:
+            pass
+        if self._config.drain_delayed_on_shutdown:
+            # 配置为停机前立即执行时，这些延迟任务会在下面被转入队列并执行
+            delayed_pending = 0
+
+        periodic_pending = 0
         if self._periodic_manager:
+            try:
+                stats = self._run_async(self._periodic_manager.get_stats())
+                periodic_pending = stats.get("active_tasks", 0)
+            except Exception:
+                pass
             self._run_async(self._periodic_manager.stop())
+
+        if delayed_pending or periodic_pending:
+            warning(
+                f"Shutdown summary: {delayed_pending} delayed task(s) not triggered, "
+                f"{periodic_pending} periodic schedule(s) not executed"
+            )
 
         if self._time_wheel:
             # 未到期的任务交还延时队列：时间轮是纯内存结构，直接 stop 会把它们

@@ -24,3 +24,4 @@ NeoTask 示例索引（examples/）
 - 示例默认使用 memory 存储；需要持久化时参考 11_sqlite_persistence.py。
 - 周期/Cron 任务在 memory 模式下重启会丢失，生产环境请使用 sqlite 或 redis。
 - 延时任务的实际触发时间约为目标时间 +0.1~0.8 秒（延迟队列 0.1s 扫描 + Worker 预取退避）。
+- 存储迁移工具（memory → SQLite/Redis、SQLite → Redis）见 scripts/migrate_*.py。

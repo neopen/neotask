@@ -23,16 +23,18 @@
 
 
 
-> 🚀 **Lightweight & Async**: Pure Python task queue manager designed for time-consuming jobs (AI generation, video processing, data scraping, etc.)  
-> 📦 **No External Services**: No extra deployment required (no Redis/PostgreSQL needed). and distributed multi-node environment requires Redis support  
-> ⏰ **Flexible Scheduling**: Native support for scheduled, periodic (cron-like), and delayed tasks  
-> ⚡ **Quick Integration**: `pip install neotask` + few lines of configuration
+> - 🚀 **Lightweight & Async**: Pure Python task queue manager designed for time-consuming jobs (AI generation, video processing, data scraping, etc.)  
+> - 📦 **No External Services**: No extra deployment required (no Redis/PostgreSQL needed). and distributed multi-node environment requires Redis support  
+> - ⏰ **Flexible Scheduling**: Native support for scheduled, periodic (cron-like), and delayed tasks  
+> - ⚡ **Quick Integration**: `pip install neotask` + few lines of configuration
+
+
 
 ---
 
 ## 💡 Why NeoTask?
 
-**NeoTask** is designed to solve complex task orchestration, async queueing, and priority management for modern distributed systems and AI multi-agent pipelines.
+**NeoTask** is designed to solve async queueing, priority management, and reliable task execution for modern distributed systems and AI pipelines.
 
 | Pain Point | NeoTask Solution |
 | :--- | :--- |
@@ -55,6 +57,10 @@
 - **Distributed Support** - Redis shared queue, distributed lock, node heartbeat, and failed-task reclaim
 - **Event Callbacks** - Supports task lifecycle event listeners
 - **Progress Reporting** - Executors can publish progress updates; subscribers receive `task.progress` events
+- **Custom Failure Reason** *(v1.1)* - Executors can mark business-level failures (e.g. `qa_failed`) via `report_failure(reason=...)`; the `task.failed` event carries the reason, distinct from system exceptions
+- **Parent-Child Association** *(v1.1)* - Tasks carry `parent_task_id` / `child_count` / `completed_children` metadata with `get_children()` / `get_parent()` queries; auto-aggregation is intentionally left to the caller or orchestrator
+
+
 
 ------
 
@@ -70,6 +76,8 @@
 | **Heartbeat Detection** | Check service health status every 30 seconds | `interval_seconds=30` | TaskScheduler |
 | **Background Data Analysis** | Execute data aggregation tasks at night | `cron="0 2 * * *"` | TaskScheduler |
 
+
+
 ---
 
 ## Architecture & Evolution
@@ -79,33 +87,33 @@ graph TB
     subgraph User["User Application Layer"]
         APP[User Code]
     end
-    
+
     subgraph NeoTask["NeoTask Core"]
         TP[TaskPool<br/>Immediate Task Entry]
         TS[TaskScheduler<br/>Scheduled Task Entry]
-        
+
         subgraph Core["Shared Core Components"]
-            LM[LifecycleManager<br/>Task Lifecycle Management]
+            LM[LifecycleManager<br/>Task Lifecycle Management<br/>incl. parent/child fields, custom failure reason]
             QS[QueueScheduler<br/>Priority + Delayed Queue]
-            WP[WorkerPool<br/>Worker Pool/Concurrency Control]
-            FM[FutureManager<br/>Async Wait/Result Callback]
+            WP[WorkerPool<br/>Worker Pool / Concurrency Control]
+            FM[FutureManager<br/>Async Wait / Result Callback]
         end
-        
+
         subgraph Internal["Internal Components"]
             EB[EventBus<br/>Event Bus]
-            MC[MetricsCollector<br/>Metrics Collection]
+            MC[MetricsCollector<br/>In-memory Metrics Aggregation]
             LF[LockFactory<br/>Distributed Lock]
         end
-        
+
         EX[TaskExecutor<br/>User Business Logic]
     end
-    
+
     subgraph Storage["Storage Layer"]
         MEM[MemoryStorage]
         SQLITE[(SQLiteStorage)]
         REDIS[(RedisStorage)]
     end
-    
+
     APP -->|Immediate Task| TP
     APP -->|Scheduled Task| TS
     TS -->|Delegates| TP
@@ -113,42 +121,52 @@ graph TB
     TP --> QS
     TP --> WP
     TP --> FM
-    
-    LM --> MEM
-    LM --> SQLITE
-    LM --> REDIS
-    
+
     WP --> EX
     WP --> EB
     WP --> MC
     WP --> LF
+
+    LM --> MEM
+    LM --> SQLITE
+    LM --> REDIS
+
+    QS --> MEM
+    QS --> SQLITE
+    QS --> REDIS
+
+    MC -.->|in-memory only, not persisted| MEM
+
+    LF --> REDIS
 ```
 
-Development Roadmap
+**Development Roadmap**
+
+> **Note**: v0.1 – v1.0 are released versions; v1.1 – v1.3 are planned iterations covering local capabilities, performance, and monitoring; v2.0 (Orchestration Integration) is **deferred** and will only start once local capabilities are stable and real multi-service demand exists. Orchestration capabilities (DAG, dynamic routing, plugin system, Web UI) are handled by the upper-layer orchestration service and are out of scope for NeoTask.
 
 ```mermaid
 timeline
     title NeoTask Architecture Evolution Roadmap
-    
+
     section v0.1
         Basic Task Pool : Local Memory Queue
                         : Async Execution Engine
                         : Memory/SQLite Storage
-                        
+
     section v0.2
         Observability : Event Bus
                       : Metrics Collection
                       : Health Check
-                      
+
     section v0.3
         Scheduled Tasks : Delayed Queue/Time Wheel
                         : Periodic Tasks
                         : Cron Expression
-                        
+
     section v0.4
         Distributed Base : Redis Shared Queue
                          : Distributed Lock
-                         
+
     section v0.5
         Performance Optimization : Prefetch Mechanism
                                 : Batch Operations
@@ -159,15 +177,31 @@ timeline
                           : Timeout Detection
                           : Automatic Fault Recovery
 
-    section v1.5
-        Task Orchestration : DAG Workflow
-                           : Conditional Branch
-                           : Parallel Execution
+    section v1.1
+        Local Capability : Checkpoint & Resume
+                        : Cost Tracking
+                        : Parent-Child Association
+                        : Local Context Store
+                        : Custom Failure Reason
+
+    section v1.2
+        Performance & Monitoring : Batch Write Optimization
+                                : Query Indexing
+                                : Progress Throttling
+                                : get_metrics Snapshot
+                                : Benchmark Suite
+
+    section v1.3
+        Export & Reliability : Prometheus Exporter (optional)
+                            : Crash Recovery Boundary
+                            : Graceful Shutdown Config
+                            : Retry Semantics Unification
 
     section v2.0
-        Enterprise Features : Independent Web UI
-                            : Multi-Tenancy Isolation
-                            : Prometheus Integration
+        Orchestration Integration (Deferred) : OrchestratorClient
+                                            : Redis Stream Consumer
+                                            : Heartbeat & Instance Registry
+                                            : Remote Event Reporting
 ```
 
 ------
@@ -296,19 +330,35 @@ a safe no-op (returns `False`).
 
 ## API Reference
 
-| Method | Description |
-| :------------------------------------------- | :-------- |
-| `pool.submit(data, priority=2, delay=0)` | Submit task |
-| `pool.submit_batch(tasks, priority=2)` | Submit a batch of tasks |
-| `pool.wait_for_result(task_id, timeout=300)` | Wait for result |
-| `pool.get_status(task_id)` | Get status |
-| `pool.cancel(task_id)` | Cancel task |
-| `pool.on_progress(handler)` | Subscribe to progress events |
-| `scheduler.submit_delayed(data, delay_seconds)` | Delayed task |
-| `scheduler.submit_interval(data, interval_seconds)` | Periodic task |
-| `scheduler.submit_cron(data, cron_expr)` | Cron task |
+| Method                                                       | Description                                                  |
+| :----------------------------------------------------------- | :----------------------------------------------------------- |
+| `pool.submit(data, priority=2, delay=0)`                     | Submit task                                                  |
+| `pool.submit_batch(tasks, priority=2, partial_on_error=False)` | Submit a batch of tasks (all-or-nothing by default; pass `partial_on_error=True` to tolerate partial failures — see [Batch submission semantics](#batch-submission-semantics)) |
+| `pool.wait_for_result(task_id, timeout=300)`                 | Wait for result                                              |
+| `pool.get_status(task_id)`                                   | Get status                                                   |
+| `pool.cancel(task_id)`                                       | Cancel task                                                  |
+| `pool.on_progress(handler)`                                  | Subscribe to progress events                                 |
+| `scheduler.submit_delayed(data, delay_seconds)`              | Delayed task                                                 |
+| `scheduler.submit_interval(data, interval_seconds)`          | Periodic task                                                |
+| `scheduler.submit_cron(data, cron_expr)`                     | Cron task                                                    |
 
 Detailed API documentation can be found [here](https://task.helpenx.com/docs/api-reference.html)
+
+### Batch submission semantics
+
+`submit_batch` is **all-or-nothing** by default: if any task fails to serialize,
+persist, or enqueue, the whole batch is rolled back and `BatchSubmitError` is
+raised with the failing index and root cause.
+
+Pass `partial_on_error=True` to tolerate partial failures:
+
+```python
+result = pool.submit_batch(tasks, partial_on_error=True)
+print(result.succeeded)  # task_ids that were actually submitted
+print(result.failed)     # [{"index": 3, "data": {...}, "error": "queue is full"}]
+```
+
+`BatchSubmitResult` is iterable and sized like `succeeded` for backward compatibility.
 
 
 
@@ -426,7 +476,7 @@ Welcome to submit Issues and Pull Requests
 
 ## License
 
-MIT License © 2026 NeoPen
+MIT License © 2026 neopen
 
 ------
 

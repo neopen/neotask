@@ -6,27 +6,11 @@
 @Time: 2026/4/8 00:00
 """
 
-import logging
 from typing import Dict, Any, Optional
 
+from neotask.common.logger import error
 from neotask.event.bus import TaskEvent, EventBus
 from neotask.models.task import TaskPriority
-
-logger = logging.getLogger(__name__)
-
-
-class LoggingHandler:
-    """日志事件处理器"""
-
-    def __init__(self, level: int = logging.INFO):
-        self.level = level
-
-    async def handle(self, event: TaskEvent) -> None:
-        """处理事件"""
-        logger.log(
-            self.level,
-            f"Event: {event.event_type} | Task: {event.task_id} | Data: {event.data}"
-        )
 
 
 class MetricsHandler:
@@ -87,7 +71,7 @@ class NotificationHandler:
                 try:
                     await notifier.send(event)
                 except Exception as e:
-                    logger.error(f"Failed to send notification via {name}: {e}")
+                    error(f"Failed to send notification via {name}: {e}")
 
 
 def setup_default_handlers(
@@ -97,10 +81,6 @@ def setup_default_handlers(
         notifiers: Optional[Dict[str, Any]] = None
 ) -> None:
     """设置默认事件处理器"""
-
-    # 日志处理器
-    logging_handler = LoggingHandler()
-    event_bus.subscribe_global(logging_handler.handle)
 
     # 指标处理器
     if metrics_collector:

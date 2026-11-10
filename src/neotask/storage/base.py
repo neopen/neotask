@@ -170,6 +170,10 @@ class TaskRepository(ABC):
         """Check if task exists."""
         pass
 
+    async def close(self) -> None:
+        """Release underlying resources; no-op for memory implementations."""
+        return None
+
 
 class QueueRepository(ABC):
     """Repository interface for task queue."""
@@ -216,3 +220,7 @@ class QueueRepository(ABC):
     async def clear(self) -> None:
         """Clear all tasks from queue."""
         pass
+
+    async def close(self) -> None:
+        """Release underlying resources; no-op for memory implementations."""
+        return None

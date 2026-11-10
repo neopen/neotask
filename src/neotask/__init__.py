@@ -67,7 +67,7 @@ from neotask.monitor.reporter import (
 )
 
 # 模型
-from neotask.models.task import Task, TaskStatus, TaskPriority
+from neotask.models.task import Task, TaskStatus, TaskPriority, BatchSubmitResult
 from neotask.models.config import (
     StorageConfig, StorageType, LockConfig, WorkerConfig,
     QueueConfig, ExecutorConfig, SchedulerConfig
@@ -76,7 +76,7 @@ from neotask.models.config import (
 # 异常
 from neotask.common.exceptions import (
     TaskSchedulerError, TaskNotFoundError, TaskError,
-    TaskAlreadyExistsError, QueueFullError, TimeoutError
+    TaskAlreadyExistsError, QueueFullError, BatchSubmitError, TimeoutError
 )
 
 #
@@ -166,6 +166,8 @@ __all__ = [
     "Task",
     "TaskStatus",
     "TaskPriority",
+    "BatchSubmitResult",
+    "BatchSubmitError",
     "StorageConfig",
     "StorageType",
     "LockConfig",

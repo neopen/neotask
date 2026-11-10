@@ -214,10 +214,8 @@ class RepositoryFactory:
     async def close(repositories: Tuple[TaskRepository, QueueRepository]) -> None:
         """关闭存储连接"""
         task_repo, queue_repo = repositories
-        if hasattr(task_repo, 'close'):
-            await task_repo.close()
-        if hasattr(queue_repo, 'close'):
-            await queue_repo.close()
+        await task_repo.close()
+        await queue_repo.close()
 
 
 # Register default repositories

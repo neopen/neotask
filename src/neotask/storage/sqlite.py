@@ -120,6 +120,11 @@ class SQLiteTaskRepository(TaskRepository):
             CREATE INDEX IF NOT EXISTS idx_tasks_priority 
             ON tasks(priority)
         """)
+        # task_id 为主键，无需额外索引；created_at 用于按时间范围统计/清理
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_tasks_created_at
+            ON tasks(created_at)
+        """)
         await conn.commit()
 
     @staticmethod
@@ -215,13 +220,19 @@ class SQLiteTaskRepository(TaskRepository):
             )
             for task in new_tasks
         ]
-        await self._conn.executemany("""
-            INSERT OR IGNORE INTO tasks
-            (task_id, data, status, priority, node_id, retry_count, ttl,
-             created_at, started_at, completed_at, result, error, progress, progress_message)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, params)
-        await self._conn.commit()
+        # 单事务写入：任意一条失败（含磁盘/约束错误）整批回滚
+        await self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            await self._conn.executemany("""
+                INSERT OR IGNORE INTO tasks
+                (task_id, data, status, priority, node_id, retry_count, ttl,
+                 created_at, started_at, completed_at, result, error, progress, progress_message)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, params)
+            await self._conn.commit()
+        except Exception:
+            await self._conn.rollback()
+            raise
         return [task.task_id for task in new_tasks]
 
     async def save_fields(self, task: Task, fields: Iterable[str]) -> bool:
@@ -532,6 +543,12 @@ class SQLiteQueueRepository(QueueRepository):
                 created_at TEXT NOT NULL
             )
         """)
+        # 出队查询为 ORDER BY priority ASC, created_at ASC LIMIT ?，
+        # 复合索引让取队首走索引有序扫描，避免每次出队全表扫描 + 排序
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_queue_order
+            ON queue (priority ASC, created_at ASC)
+        """)
         await conn.commit()
 
     async def push(self, task_id: str, priority: int) -> None:
@@ -551,11 +568,19 @@ class SQLiteQueueRepository(QueueRepository):
         await self._ensure_init()
         from datetime import datetime
         now = datetime.now().isoformat()
-        await self._conn.executemany(
-            "INSERT OR REPLACE INTO queue (task_id, priority, created_at) VALUES (?, ?, ?)",
-            [(task_id, priority, now) for task_id, priority in items]
-        )
-        await self._conn.commit()
+        params = [(task_id, priority, now) for task_id, priority in items]
+
+        # 单事务写入：任意一条失败整批回滚，避免队列里出现半批任务
+        await self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            await self._conn.executemany(
+                "INSERT OR REPLACE INTO queue (task_id, priority, created_at) VALUES (?, ?, ?)",
+                params
+            )
+            await self._conn.commit()
+        except Exception:
+            await self._conn.rollback()
+            raise
         return len(items)
 
     async def pop(self, count: int = 1) -> List[str]:

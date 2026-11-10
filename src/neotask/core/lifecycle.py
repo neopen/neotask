@@ -30,6 +30,12 @@ from neotask.models.task import Task, TaskPriority, TaskStats, TaskStatus
 from neotask.storage.base import TaskRepository
 
 
+#: 进度落库硬性最小间隔（秒）。同一任务两次进度写入间隔小于该值时跳过存储
+#: 写入，但 ``task.progress`` 事件仍会正常推送，保证订阅方实时可见。
+#: 该行为固定、不提供配置项，避免业务方高频上报把存储写放大。
+PROGRESS_MIN_WRITE_INTERVAL = 0.5
+
+
 class _DeferredRunningWrite:
     """一条延迟落库的 RUNNING 状态句柄
 
@@ -186,6 +192,21 @@ class TaskLifecycleManager:
         与逐条 :meth:`create_task` 的区别：落库只做一次批量写入（SQLite 单事务
         / Redis pipeline），且不逐条查询是否存在；已存在的 task_id 会被跳过。
         """
+        tasks = self.build_tasks(data_list, priority, node_id, ttl)
+        return await self.persist_tasks(tasks)
+
+    def build_tasks(
+            self,
+            data_list: List[Dict[str, Any]],
+            priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
+            node_id: str = "default",
+            ttl: int = 3600,
+    ) -> List[Task]:
+        """构造一批任务对象（纯内存操作，不落库）
+
+        供批量提交先完成全部序列化/校验，再一次性写入，避免中途失败留下
+        半批数据。
+        """
         if not data_list:
             return []
 
@@ -206,6 +227,16 @@ class TaskLifecycleManager:
                 node_id=node_id,
                 ttl=ttl,
             ))
+        return tasks
+
+    async def persist_tasks(self, tasks: List[Task]) -> List[str]:
+        """把已构造的任务一次性写入存储，并发布创建事件
+
+        批量写入失败时由存储层整体回滚（SQLite 单事务），调用方不会看到
+        半批任务。返回实际新增的 task_id 列表。
+        """
+        if not tasks:
+            return []
 
         saved_ids = await self._task_repo.save_batch(tasks)
         saved_set = set(saved_ids)
@@ -220,6 +251,22 @@ class TaskLifecycleManager:
             created.append(task.task_id)
 
         return created
+
+    async def delete_tasks(self, task_ids: List[str]) -> int:
+        """批量删除任务（批量提交失败时的回滚手段）"""
+        if not task_ids:
+            return 0
+
+        deleted = await self._task_repo.delete_batch(task_ids)
+        if self._cache_enabled:
+            with self._lock:
+                for task_id in task_ids:
+                    self._cache.pop(task_id, None)
+                    self._terminal_cache_set.discard(task_id)
+        for task_id in task_ids:
+            self._clear_progress_flush(task_id)
+            await self._future_manager.remove(task_id)
+        return deleted
 
     async def get_task(self, task_id: str) -> Optional[Task]:
         """获取任务
@@ -335,7 +382,10 @@ class TaskLifecycleManager:
     def _should_flush_progress(self, task_id: str, progress: float) -> bool:
         """判断本次进度是否需要落库
 
-        三个条件任一满足即写入：
+        硬性节流：同一任务两次写入间隔小于 ``PROGRESS_MIN_WRITE_INTERVAL``
+        时直接跳过存储写入（100% 除外），事件总线仍会收到每次上报。
+
+        其余条件任一满足即写入：
         - 进度到达 100%（终态前的最后一次进度）
         - 距上次落库超过 ``progress_flush_interval``
         - 进度增量达到 ``progress_flush_delta``
@@ -347,6 +397,9 @@ class TaskLifecycleManager:
 
         last_time, last_progress = last
         now = time.monotonic()
+        if now - last_time < PROGRESS_MIN_WRITE_INTERVAL:
+            return False
+
         if now - last_time >= self._progress_flush_interval or \
                 progress - last_progress >= self._progress_flush_delta:
             self._progress_flush_state[task_id] = (now, progress)
@@ -683,6 +736,7 @@ class TaskLifecycleManager:
 
         await self._resolve_deferred_running(task_id)
 
+        old_status = task.status
         task.fail(error)
         await self._task_repo.save_fields(
             task,
@@ -697,7 +751,11 @@ class TaskLifecycleManager:
         # 通知等待者 - 确保错误被传递
         await self._future_manager.complete(task_id, error=error)
 
-        await self._emit_event("task.failed", task_id, {"error": error})
+        await self._emit_event(
+            "task.failed",
+            task_id,
+            {"error": error, "old_status": old_status.value}
+        )
 
         return True
 
@@ -714,6 +772,7 @@ class TaskLifecycleManager:
 
         await self._resolve_deferred_running(task_id)
 
+        old_status = task.status
         task.cancel()
         await self._task_repo.save_fields(
             task,
@@ -728,7 +787,11 @@ class TaskLifecycleManager:
         # 通知等待者
         await self._future_manager.complete(task_id, error="Task cancelled")
 
-        await self._emit_event("task.cancelled", task_id)
+        await self._emit_event(
+            "task.cancelled",
+            task_id,
+            {"old_status": old_status.value}
+        )
 
         return True
 
@@ -746,6 +809,7 @@ class TaskLifecycleManager:
         if not task or not task.status.is_terminal():
             return False
 
+        old_status = task.status
         task.reset_for_retry()
 
         await self._task_repo.save_fields(
@@ -766,7 +830,11 @@ class TaskLifecycleManager:
         await self._emit_event(
             "task.retry",
             task_id,
-            {"retry_count": task.retry_count, "manual": True}
+            {
+                "retry_count": task.retry_count,
+                "manual": True,
+                "old_status": old_status.value,
+            }
         )
 
         debug(f"Task {task_id} reset to PENDING for manual retry")

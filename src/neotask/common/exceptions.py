@@ -5,6 +5,9 @@
 @GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/1 19:02
 """
+from typing import Optional
+
+
 class TaskSchedulerError(Exception):
     """Base exception for task scheduler."""
     pass
@@ -36,6 +39,20 @@ class QueueFullError(TaskSchedulerError):
     def __init__(self, queue_size: int):
         super().__init__(f"Queue is full (max: {queue_size})")
         self.queue_size = queue_size
+
+
+class BatchSubmitError(TaskSchedulerError):
+    """批量提交失败（默认全有或全无语义）
+
+    只要任意一条任务创建或入队失败，整批任务都不会保留，已写入的任务
+    会在抛出前回滚。``index`` 为失败任务在下发批次中的位置，``cause``
+    为底层异常（序列化失败、存储不可写等）。
+    """
+
+    def __init__(self, message: str, index: int = -1, cause: Optional[BaseException] = None):
+        super().__init__(message)
+        self.index = index
+        self.cause = cause
 
 
 class TimeoutError(TaskSchedulerError):

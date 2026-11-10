@@ -484,7 +484,10 @@ class Logger:
     def _check_windows_color(self):
         """检查Windows颜色支持"""
         if IS_WINDOWS and not HAS_COLORAMA:
-            self.warning("在Windows平台上运行，但未安装colorama库，可能无法显示彩色日志。建议安装: pip install colorama")
+            self.warning(
+                "未安装可选依赖 colorama，Windows 控制台可能无法正确显示彩色日志。"
+                "可安装 neotask[color] 启用。"
+            )
 
     # ==================== 日志方法 ====================
 

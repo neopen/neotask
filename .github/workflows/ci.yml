@@ -2,18 +2,34 @@ name: CI Checks
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "dev"]
 
   pull_request:
-    branches: ["main"]
+    branches: ["main", "dev"]
 
 permissions:
   contents: read
 
 jobs:
   ci-checks:
-    name: CI Checks
+    name: CI Checks (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.10"]
+
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout code
@@ -22,7 +38,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: ${{ matrix.python-version }}
           cache: pip
 
       - name: Install dependencies
@@ -48,6 +64,5 @@ jobs:
             --count --exit-zero \
             --max-complexity=10 --statistics
 
-      # 有测试用例后启用
-      # - name: Run tests with pytest
-      #   run: pytest
+      - name: Run unit and integration tests
+        run: pytest tests/unit tests/integration

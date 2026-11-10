@@ -6,6 +6,13 @@
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [1.0.7](https://github.com/neopen/neotask/compare/v1.0.6...v1.0.7) (2026-11-10)
+
+
+### 🐛 Bug Fixes (问题修复)
+
+* v1.0 本地能力与稳定性（停机/批量语义、日志统一、存储迁移与压测） ([#38](https://github.com/neopen/neotask/issues/38)) ([920dde4](https://github.com/neopen/neotask/commit/920dde41edb397fea6d46cc395d4c37c65dfe314))
+
 ## [1.0.6](https://github.com/neopen/neotask/compare/v1.0.5...v1.0.6) (2026-11-08)
 
 

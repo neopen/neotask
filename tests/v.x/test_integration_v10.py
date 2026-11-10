@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_integration_v10_standalone.py
 @Description: NeoTask v1.0 独立集成测试
 完全独立，避免事件循环冲突

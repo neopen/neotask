@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: node.py
 @Description: 节点管理 - 节点注册、心跳、健康检查
 @Author: neopen

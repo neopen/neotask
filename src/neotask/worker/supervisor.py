@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: supervisor.py
 @Description: Worker监督者 - 监控和管理worker健康状态
 @Author: neopen

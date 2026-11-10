@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_redis_compat.py
 @Description: redis_compat 跨事件循环客户端回归测试 - 防止连接池重新绑定到不同 loop。
 @Author: neopen

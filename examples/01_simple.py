@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: 01_simple.py
 @Description: 简单使用示例 - 基础任务提交和等待
 @Author: neopen

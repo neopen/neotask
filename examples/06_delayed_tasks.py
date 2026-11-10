@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: 06_delayed_tasks.py
 @Description: 延时任务示例 - 延迟执行、指定时间执行与取消
 @Author: neopen

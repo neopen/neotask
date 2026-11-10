@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: base.py
 @Description: 锁抽象基类 - 扩展扫描功能
 @Author: neopen

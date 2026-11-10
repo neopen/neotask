@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: strategy.py
 @Description: 负载均衡策略 - 任务分发策略
 @Author: neopen

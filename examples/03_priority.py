@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: 03_priority.py
 @Description: 优先级队列示例 - 演示不同优先级任务的执行顺序
 @Author: neopen

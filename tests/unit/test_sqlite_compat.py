@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_sqlite_compat.py
 @Description: sqlite_compat 跨事件循环连接回归测试 - 防止 aiosqlite 连接与单一 loop 耦合。
 @Author: neopen

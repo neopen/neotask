@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: task_pool.py
 @Description: Function Call接口 - 即时任务入口，专注于立即执行的任务。
 @Author: neopen

@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: handlers.py
 @Description: 事件处理器 - 内置事件处理器
 @Author: neopen

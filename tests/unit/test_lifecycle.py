@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_lifecycle.py
 @Description: 任务生命周期管理器单元测试
 @Author: neopen

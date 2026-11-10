@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_redis_storage.py
 @Description: Redis 存储测试 - 修复事件循环问题
 @Author: neopen

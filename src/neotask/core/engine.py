@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: engine.py
 @Description: 任务引擎 - 统一入口，协调各模块
 @Author: neopen

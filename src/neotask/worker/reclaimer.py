@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: reclaimer.py
 @Description: 任务回收器 - 回收超时、孤儿、僵尸任务和锁
 @Author: neopen

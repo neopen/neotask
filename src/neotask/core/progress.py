@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: progress.py
 @Description: 任务进度上报上下文 - 让 executor 中的业务代码把进度回传给 Worker。
              Task progress reporting context so user task code can publish progress

@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_complete_integration.py
 @Description: NeoTask 完整集成测试 - v0.1 到 v0.5 全功能覆盖
 @Author: neopen

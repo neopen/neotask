@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: process_executor.py
 @Description: 进程执行器 - 在进程池中执行CPU密集型任务（支持 cloudpickle 处理嵌套函数）
 @Author: neopen

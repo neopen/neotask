@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_redis_keys.py
 @Description: Redis 键统一根前缀（neotask:）测试
 @Author: neopen

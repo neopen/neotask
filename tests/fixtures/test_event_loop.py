@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_event_loop.py
 @Description: 事件循环相关 fixtures
 @Author: neopen

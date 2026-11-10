@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: console_colors.py
 @Description: 控制台颜色输出工具，提供带颜色的日志输出功能
 @Author: neopen

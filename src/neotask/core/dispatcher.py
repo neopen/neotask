@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: dispatcher.py
 @Description: 任务分发器 - 负责将任务放入队列
 @Author: neopen

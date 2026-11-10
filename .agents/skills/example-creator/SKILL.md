@@ -39,6 +39,10 @@ examples/
 
 ```python
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: NN_descriptive_name.py
 @Description: 简短中文描述 — 这个示例演示什么
 @Author: neopen
@@ -112,6 +116,10 @@ python examples/NN_feature_name.py
 
 ```python
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: 11_timeout.py
 @Description: 任务超时示例 — 设置超时时间和超时处理
 @Author: neopen

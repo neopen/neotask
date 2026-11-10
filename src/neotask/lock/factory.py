@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: factory.py
 @Description: 锁工厂 - 创建分布式锁实例
 @Author: neopen

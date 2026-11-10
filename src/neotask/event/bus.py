@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: bus.py
 @Description: 事件总线 - 发布订阅模式
 @Author: neopen

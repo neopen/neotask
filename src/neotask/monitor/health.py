@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: health.py
 @Description: 健康检查 - 系统健康状态监控
 @Author: neopen

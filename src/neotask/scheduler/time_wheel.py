@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: time_wheel.py
 @Description: 时间轮实现 - 高性能定时器
 @Author: neopen

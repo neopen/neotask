@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_distributed_lock.py
 @Description: 分布式锁完整测试 - 多节点、故障转移、并发竞争
 @Author: neopen

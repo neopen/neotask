@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_simple.py
 @Description: 最简用法冒烟测试 - TaskPool 即时任务与 TaskScheduler 周期任务
 @Author: neopen

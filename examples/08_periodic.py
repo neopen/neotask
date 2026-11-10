@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: 08_periodic.py
 @Description: 周期任务管理示例 - 暂停、恢复、取消与最大执行次数
 @Author: neopen

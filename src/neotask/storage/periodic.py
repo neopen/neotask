@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: periodic.py
 @Description: 周期任务持久化存储 - 为 PeriodicTaskManager 提供跨重启的任务定义/执行记录存储。
              Periodic task persistence store (task definitions + execution records)

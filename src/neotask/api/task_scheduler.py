@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: task_scheduler.py
 @Description: TaskScheduler - 定时任务入口，专注于延时/周期任务。
 @Author: neopen

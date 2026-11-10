@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_pool.py
 @Description: Worker 池与预取器停机协作测试
 @Author: neopen

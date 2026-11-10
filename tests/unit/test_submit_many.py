@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_submit_many.py
 @Description: 批量提交（submit_many / save_batch / push_batch）测试
 """

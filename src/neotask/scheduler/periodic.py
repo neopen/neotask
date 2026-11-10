@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: periodic.py
 @Description: 周期任务管理器 - 管理周期任务的完整生命周期
 @Author: neopen

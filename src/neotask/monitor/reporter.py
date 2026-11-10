@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: reporter.py
 @Description: 指标上报 - 将指标上报到外部系统
 @Author: neopen

@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: 00_quick_start.py
 @Description: 快速入门 - 最简单的使用示例
 @Author: neopen

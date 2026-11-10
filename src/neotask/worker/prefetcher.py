@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: prefetcher.py
 @Description: 任务预取器 - 批量预取任务到本地队列，减少远程访问
 @Author: neopen

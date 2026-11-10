@@ -1,5 +1,9 @@
 
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: logger.py
 @Description: 自定义日志模块，支持按天创建日志文件、日志文件大小限制、控制台彩色输出等功能
             自定义日志模块，按天创建日志文件，最大10MB

@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: pool.py
 @Description: Worker池 - 管理任务执行器，支持预取器
 @Author: neopen

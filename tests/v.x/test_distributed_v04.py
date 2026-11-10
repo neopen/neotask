@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_distributed_v04.py
 @Description: v0.4 分布式功能 Pytest 测试
 @Author: neopen

@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: 05_cron_tasks.py
 @Description: Cron 定时任务示例 - 表达式解析、注册、查看下次执行时间与取消
 @Author: neopen

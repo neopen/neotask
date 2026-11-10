@@ -3,27 +3,9 @@ name: CI Checks
 on:
   push:
     branches: ["main"]
-    paths-ignore:
-      - 'assets/**'
-      - '.gitignore'
-      - '.claude/**'
-      - '.qoder/**'
-      - '.agents/**'
-      - '.codex/**'
-      - '.github/*.md'
-      - '.github/ISSUE_TEMPLATE/**'
 
   pull_request:
     branches: ["main"]
-    paths-ignore:
-      - 'assets/**'
-      - '.gitignore'
-      - '.claude/**'
-      - '.qoder/**'
-      - '.agents/**'
-      - '.codex/**'
-      - '.github/*.md'
-      - '.github/ISSUE_TEMPLATE/**'
 
 permissions:
   contents: read

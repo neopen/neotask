@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: sqlite_compat.py
 @Description: SQLite 异步连接兼容助手 - 把 aiosqlite 连接绑定到专用事件循环，
              避免 TaskPool 内部 loop 与调用方 loop 共用同一连接时报跨 loop 错误。
@@ -16,7 +20,7 @@ from typing import Any, Awaitable, Callable, Dict, Iterable, Optional, Tuple, Un
 
 import aiosqlite
 
-from neotask.utils.dedicated_loop import get_shared_loop, run_on_loop
+from neotask.utils.dedicated_loop import DedicatedLoopError, get_shared_loop, run_on_loop
 
 # 数据库路径类型（与 aiosqlite.connect 保持一致）
 DatabasePath = Union[str, Path]
@@ -161,21 +165,28 @@ class LoopBoundSQLiteConnection:
             readonly: bool = False,
     ) -> Any:
         """把 ``factory(conn)`` 投递到专用 loop 执行。"""
-        loop = get_shared_loop()
+        for attempt in range(2):
+            loop = get_shared_loop()
 
-        # 专用 loop 被重建时，旧连接绑定在已关闭的 loop 上，不能继续复用；
-        # 丢弃后在新的 loop 中重新建连（与 Redis 代理保持一致的防御逻辑）。
-        if (self._write_conn is not None or self._read_conn is not None) \
-                and self._bound_loop is not loop:
-            self._write_conn = None
-            self._read_conn = None
-        self._bound_loop = loop
+            # 专用 loop 被重建时，旧连接绑定在已关闭的 loop 上，不能继续复用；
+            # 丢弃后在新的 loop 中重新建连（与 Redis 代理保持一致的防御逻辑）。
+            if (self._write_conn is not None or self._read_conn is not None) \
+                    and self._bound_loop is not loop:
+                self._write_conn = None
+                self._read_conn = None
+            self._bound_loop = loop
 
-        async def _runner() -> Any:
-            conn = await self._ensure_connection(readonly)
-            return await factory(conn)
+            async def _runner() -> Any:
+                conn = await self._ensure_connection(readonly)
+                return await factory(conn)
 
-        return await run_on_loop(_runner, loop=loop)
+            try:
+                return await run_on_loop(_runner, loop=loop)
+            except DedicatedLoopError as exc:
+                # 协程尚未开始执行时命令无副作用，换新 loop 重试一次
+                if exc.started or attempt == 1:
+                    raise
+        raise AssertionError("unreachable")
 
     async def _dispatch(self, fn: Callable[[], Awaitable[Any]]) -> Any:
         """在连接所属的专用 loop 中执行一个零参协程工厂（供 Cursor 代理复用）"""

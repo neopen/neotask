@@ -185,10 +185,28 @@ class WorkerPool:
 
     async def cancel_task(self, task_id: str) -> bool:
         """取消运行中的任务"""
-        if task_id in self._running_tasks:
-            self._running_tasks[task_id].cancel()
+        with self._lock:
+            exec_task = self._running_tasks.get(task_id)
+        if exec_task is not None:
+            # 兜底挂接回调：运行表也可能由外部直接登记（如测试/自定义调度），
+            # 不能只依赖 worker 轮询清理（空队列退避最长 0.5s 才清理一次）
+            exec_task.add_done_callback(
+                lambda task: self._on_exec_task_done(task_id, task)
+            )
+            exec_task.cancel()
             return True
         return False
+
+    def _on_exec_task_done(self, task_id: str, exec_task: asyncio.Task) -> None:
+        """任务协程结束后立即从运行表移除
+
+        仅依赖 worker 轮询清理会受空队列指数退避影响（最长 0.5s），导致取消后
+        ``active_count()`` 与 ``_running_tasks`` 长时间不一致。这里用 done 回调
+        保证任务真正结束后登记立即可见地消失。
+        """
+        with self._lock:
+            if self._running_tasks.get(task_id) is exec_task:
+                self._running_tasks.pop(task_id, None)
 
     def active_count(self) -> int:
         """获取活跃worker数量"""
@@ -276,6 +294,9 @@ class WorkerPool:
                             self._running_tasks[task_id] = exec_task
                             self._worker_stats[worker_id].active_tasks += 1
                             self._worker_stats[worker_id].is_busy = True
+                        exec_task.add_done_callback(
+                            lambda task, tid=task_id: self._on_exec_task_done(tid, task)
+                        )
                     else:
                         # 没有任务时，指数退避
                         consecutive_empty += 1
@@ -297,6 +318,9 @@ class WorkerPool:
                                 self._running_tasks[task_id] = exec_task
                                 self._worker_stats[worker_id].active_tasks += 1
                                 self._worker_stats[worker_id].is_busy = True
+                            exec_task.add_done_callback(
+                                lambda task, tid=task_id: self._on_exec_task_done(tid, task)
+                            )
                     else:
                         consecutive_empty += 1
                         sleep_time = min(0.01 * (1 << min(consecutive_empty, 6)), 0.5)
@@ -529,7 +553,12 @@ class WorkerPool:
             await self._event_bus.emit(TaskEvent(
                 "task.retry",
                 task_id,
-                {"error": error_msg, "retry_count": new_retry_count, "max_retries": self._max_retries}
+                {
+                    "error": error_msg,
+                    "retry_count": new_retry_count,
+                    "max_retries": self._max_retries,
+                    "old_status": "running",
+                }
             ))
         else:
             # 超过最大重试次数，标记为失败

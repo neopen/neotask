@@ -12,10 +12,11 @@ See LICENSE File For Details.
 
 import asyncio
 import threading
+import time
 from dataclasses import dataclass
 from typing import Dict, List, Callable, Any, Optional
 
-from neotask.common.logger import error
+from neotask.common.logger import error, warning
 
 
 @dataclass
@@ -48,16 +49,45 @@ class EventBus:
         ...     print(f"Event: {event.event_type}")
     """
 
-    def __init__(self):
+    # 无界队列的堆积告警步长：每多堆积这么多事件就告警一次
+    QUEUE_WARN_STEP = 1000
+
+    def __init__(
+            self,
+            max_queue_size: Optional[int] = None,
+            overflow_policy: str = "drop",
+            slow_handler_threshold: float = 1.0,
+    ):
+        """初始化事件总线
+
+        Args:
+            max_queue_size: 待处理事件队列上限；None 表示不设硬上限（默认，
+                保持向后兼容），仅在水位越线时告警。
+            overflow_policy: 队列满时的策略，目前支持 ``"drop"``：丢弃新事件
+                并计数告警，避免慢回调把发布方一起拖死。
+            slow_handler_threshold: 单个回调耗时超过该秒数时告警并计数。
+        """
+        if overflow_policy != "drop":
+            raise ValueError(f"Unsupported overflow_policy: {overflow_policy}")
         self._handlers: Dict[str, List[Callable]] = {}
         self._global_handlers: List[Callable] = []
         # 订阅关系可能被不同线程修改，使用线程锁（临界区无 await）
         self._lock = threading.Lock()
         self._running = False
+        self._max_queue_size = max_queue_size
+        self._overflow_policy = overflow_policy
+        self._slow_handler_threshold = slow_handler_threshold
         self._queue: asyncio.Queue = asyncio.Queue()
         self._worker_task: Optional[asyncio.Task] = None
         # 消费队列的事件循环（由 start() 记录），用于跨循环投递
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+
+        # 监控计数：丢弃/已处理事件、慢回调次数、水位告警状态
+        self._dropped_events = 0
+        self._processed_events = 0
+        self._slow_handler_calls = 0
+        self._queue_warned = False
+        self._unbounded_warn_at = self.QUEUE_WARN_STEP
 
     def subscribe(self, event_type: str, handler: Optional[Callable] = None):
         """订阅特定类型事件
@@ -186,34 +216,86 @@ class EventBus:
 
         if loop is None or loop.is_closed() or running_loop is loop:
             # 同一事件循环（或尚未记录消费循环）：直接入队即可
-            self._queue.put_nowait(event)
+            self._put_event(event)
             return
 
         try:
-            loop.call_soon_threadsafe(self._queue.put_nowait, event)
+            loop.call_soon_threadsafe(self._put_event, event)
         except RuntimeError:
             # 目标循环已关闭：降级为在当前循环同步处理
             await self._process_event(event)
 
+    def _put_event(self, event: TaskEvent) -> None:
+        """入队事件（调用方须位于消费循环线程）"""
+        if self._max_queue_size is not None and self._queue.full():
+            # 有界队列满：丢弃新事件并限频告警，避免发布方与消费方一起挂死
+            self._dropped_events += 1
+            if self._dropped_events == 1 or self._dropped_events % self.QUEUE_WARN_STEP == 0:
+                warning(
+                    f"EventBus queue full (max={self._max_queue_size}), "
+                    f"dropped {self._dropped_events} event(s) total"
+                )
+            return
+        self._queue.put_nowait(event)
+        self._update_queue_watermark()
+
+    def _update_queue_watermark(self) -> None:
+        """队列水位监控：越线告警，回落后复位"""
+        size = self._queue.qsize()
+        if self._max_queue_size is not None:
+            high = max(1, int(self._max_queue_size * 0.8))
+            low = max(1, int(self._max_queue_size * 0.5))
+            if size >= high and not self._queue_warned:
+                warning(
+                    f"EventBus pending events reached {size}/{self._max_queue_size}; "
+                    f"a slow subscriber is likely backing up event processing"
+                )
+                self._queue_warned = True
+            elif size <= low:
+                self._queue_warned = False
+        elif size >= self._unbounded_warn_at:
+            warning(
+                f"EventBus pending events reached {size}; "
+                f"a slow subscriber is likely backing up event processing"
+            )
+            self._unbounded_warn_at = size + self.QUEUE_WARN_STEP
+        elif size == 0:
+            self._unbounded_warn_at = self.QUEUE_WARN_STEP
+
+    async def _invoke_handler(self, handler: Callable, event: TaskEvent) -> None:
+        """调用单个处理器，隔离异常并统计慢回调"""
+        start = time.perf_counter()
+        try:
+            await handler(event)
+        except Exception:
+            pass
+        finally:
+            elapsed = time.perf_counter() - start
+            if elapsed >= self._slow_handler_threshold:
+                self._slow_handler_calls += 1
+                name = getattr(
+                    getattr(handler, "__wrapped__", handler), "__name__", repr(handler)
+                )
+                warning(
+                    f"EventBus slow handler '{name}' took {elapsed:.3f}s "
+                    f"for event '{event.event_type}'"
+                )
+
     async def _process_event(self, event: TaskEvent) -> None:
-        """处理事件"""
+        """处理事件
+
+        同一事件的各订阅者并发执行：一个慢回调不会拖慢其余订阅者。订阅者之间
+        本就无顺序约定，事件之间的顺序仍由单消费协程保证。
+        """
         with self._lock:
             global_handlers = list(self._global_handlers)
             handlers = list(self._handlers.get(event.event_type, []))
 
-        # 调用全局处理器
-        for handler in global_handlers:
-            try:
-                await handler(event)
-            except Exception:
-                pass
-
-        # 调用特定事件处理器
-        for handler in handlers:
-            try:
-                await handler(event)
-            except Exception:
-                pass
+        handlers_to_run = global_handlers + handlers
+        if handlers_to_run:
+            await asyncio.gather(
+                *(self._invoke_handler(handler, event) for handler in handlers_to_run)
+            )
 
     async def start(self) -> None:
         """启动事件总线"""
@@ -222,7 +304,7 @@ class EventBus:
         self._running = True
         # 队列必须在每次启动时重建：asyncio.Queue 首次 await 时会绑定到当时的
         # 事件循环，复用旧队列会让重启后的消费任务在别的循环上抛 RuntimeError。
-        self._queue = asyncio.Queue()
+        self._queue = asyncio.Queue(maxsize=self._max_queue_size or 0)
         # 记录消费队列的事件循环，供 emit 判断是否需要跨循环投递
         self._loop = asyncio.get_running_loop()
         self._worker_task = asyncio.create_task(self._worker_loop())
@@ -245,7 +327,9 @@ class EventBus:
             try:
                 event = await asyncio.wait_for(self._queue.get(), timeout=1.0)
                 await self._process_event(event)
+                self._processed_events += 1
                 self._queue.task_done()
+                self._update_queue_watermark()
             except asyncio.TimeoutError:
                 continue
             except asyncio.CancelledError:
@@ -259,6 +343,22 @@ class EventBus:
                 # 避免持续异常时空转占满事件循环
                 await asyncio.sleep(0.05)
                 continue
+
+    def get_stats(self) -> Dict[str, Any]:
+        """获取事件处理统计
+
+        用于监控慢订阅者：``queue_size`` 持续上涨说明消费跟不上生产，
+        ``dropped_events`` 非零说明有界队列已开始丢弃事件。
+        """
+        return {
+            "queue_size": self._queue.qsize(),
+            "max_queue_size": self._max_queue_size,
+            "processed_events": self._processed_events,
+            "dropped_events": self._dropped_events,
+            "slow_handler_calls": self._slow_handler_calls,
+            "slow_handler_threshold": self._slow_handler_threshold,
+            "is_running": self._running,
+        }
 
     def clear(self) -> None:
         """清空所有处理器"""

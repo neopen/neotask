@@ -17,7 +17,7 @@ import pytest
 
 from neotask.core.lifecycle import TaskLifecycleManager
 from neotask.event.bus import EventBus
-from neotask.models.task import TaskPriority, TaskStatus
+from neotask.models.task import Task, TaskPriority, TaskStatus
 from neotask.storage.memory import MemoryTaskRepository
 
 # ========== 测试辅助函数 ==========
@@ -257,6 +257,22 @@ class TestLifecycleStats:
 
         # 成功率 = 8 / (8 + 2) = 0.8
         assert stats.success_rate == 0.8
+
+    @pytest.mark.asyncio
+    async def test_get_stats_not_capped_above_ten_thousand(self, lifecycle):
+        """统计超过 1 万任务时不能被内部批量上限截断"""
+        manager = lifecycle
+        total = 10_005
+        tasks = [
+            Task(task_id=f"bulk-{i}", data={}, status=TaskStatus.SUCCESS)
+            for i in range(total)
+        ]
+        await manager._task_repo.save_batch(tasks)
+
+        stats = await manager.get_task_stats()
+
+        assert stats.total == total
+        assert stats.completed == total
 
 
 # ========== 过期清理测试 ==========

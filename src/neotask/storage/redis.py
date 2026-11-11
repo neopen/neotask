@@ -295,6 +295,11 @@ class RedisTaskRepository(TaskRepository):
 
         return tasks
 
+    async def count_by_status(self, status: TaskStatus) -> int:
+        """统计状态索引里的任务数量（一次 SCARD，不读取任务实体）"""
+        client = await self._get_client()
+        return int(await client.scard(self._status_key(status.value)))
+
     async def update_status(self, task_id: str, status: TaskStatus, **kwargs) -> bool:
         """更新任务状态"""
         client = await self._get_client()

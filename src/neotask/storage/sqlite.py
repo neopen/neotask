@@ -402,6 +402,18 @@ class SQLiteTaskRepository(TaskRepository):
 
         return tasks
 
+    async def count_by_status(self, status: TaskStatus) -> int:
+        await self._ensure_init()
+        cursor = await self._conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE status = ?",
+            (status.value,)
+        )
+        try:
+            row = await cursor.fetchone()
+        finally:
+            await cursor.close()
+        return int(row[0]) if row else 0
+
     async def update_status(self, task_id: str, status: TaskStatus, **kwargs) -> bool:
         await self._ensure_init()
 

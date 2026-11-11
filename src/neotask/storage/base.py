@@ -98,6 +98,22 @@ class TaskRepository(ABC):
         """List tasks by status."""
         pass
 
+    async def count_by_status(self, status: TaskStatus) -> int:
+        """统计指定状态的任务数量。
+
+        默认实现分页拉取任务实体后计数，任何后端都能工作；内置后端均覆盖为
+        计数查询，避免为一次统计把全部任务加载成对象。
+        """
+        total = 0
+        offset = 0
+        batch = 1000
+        while True:
+            tasks = await self.list_by_status(status, limit=batch, offset=offset)
+            total += len(tasks)
+            if len(tasks) < batch:
+                return total
+            offset += batch
+
     @abstractmethod
     async def update_status(self, task_id: str, status: TaskStatus) -> None:
         """Update task status."""

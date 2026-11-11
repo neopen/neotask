@@ -958,28 +958,20 @@ class TaskLifecycleManager:
     async def _aggregate_stats_from_storage(self) -> TaskStats:
         """从存储层聚合统计信息
 
-        支持所有存储后端（内存、SQLite、Redis）。
+        支持所有存储后端（内存、SQLite、Redis）。各后端按状态做计数查询，
+        不加载任务实体，任务量增长不会放大单次统计的开销。
         """
-        stats = TaskStats()
-
-        # 遍历所有任务状态，从存储获取计数
+        counts = {}
         for status in TaskStatus:
-            # 获取该状态的任务数量
-            tasks = await self._task_repo.list_by_status(status, limit=10000)
-            count = len(tasks)
+            counts[status] = await self._task_repo.count_by_status(status)
 
-            stats.total += count
-            if status == TaskStatus.PENDING:
-                stats.pending = count
-            elif status == TaskStatus.RUNNING:
-                stats.running = count
-            elif status == TaskStatus.SUCCESS:
-                stats.completed = count
-            elif status == TaskStatus.FAILED:
-                stats.failed = count
-            elif status == TaskStatus.CANCELLED:
-                stats.cancelled = count
-
+        stats = TaskStats()
+        stats.total = sum(counts.values())
+        stats.pending = counts.get(TaskStatus.PENDING, 0)
+        stats.running = counts.get(TaskStatus.RUNNING, 0)
+        stats.completed = counts.get(TaskStatus.SUCCESS, 0)
+        stats.failed = counts.get(TaskStatus.FAILED, 0)
+        stats.cancelled = counts.get(TaskStatus.CANCELLED, 0)
         return stats
 
     async def cleanup_expired(self) -> int:

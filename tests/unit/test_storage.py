@@ -92,6 +92,19 @@ class TestMemoryStorage:
         assert len(running) == 1
 
     @pytest.mark.asyncio
+    async def test_count_by_status(self):
+        """测试按状态计数（不加载任务实体）"""
+        repo = MemoryTaskRepository()
+
+        for i in range(3):
+            await repo.save(Task(task_id=f"count-p-{i}", data={}, status=TaskStatus.PENDING))
+        await repo.save(Task(task_id="count-r-1", data={}, status=TaskStatus.RUNNING))
+
+        assert await repo.count_by_status(TaskStatus.PENDING) == 3
+        assert await repo.count_by_status(TaskStatus.RUNNING) == 1
+        assert await repo.count_by_status(TaskStatus.SUCCESS) == 0
+
+    @pytest.mark.asyncio
     async def test_update_status(self):
         """测试更新状态"""
         repo = MemoryTaskRepository()
@@ -232,6 +245,19 @@ class TestSQLiteStorage:
         assert len(pending) == 2
 
     @pytest.mark.asyncio
+    async def test_count_by_status(self, sqlite_task_repo):
+        """测试按状态计数"""
+        repo = sqlite_task_repo
+
+        for i in range(4):
+            await repo.save(Task(task_id=f"s-count-{i}", data={}, status=TaskStatus.SUCCESS))
+        await repo.save(Task(task_id="s-count-failed", data={}, status=TaskStatus.FAILED))
+
+        assert await repo.count_by_status(TaskStatus.SUCCESS) == 4
+        assert await repo.count_by_status(TaskStatus.FAILED) == 1
+        assert await repo.count_by_status(TaskStatus.PENDING) == 0
+
+    @pytest.mark.asyncio
     async def test_queue_crud(self, sqlite_queue_repo):
         """测试队列 CRUD"""
         repo = sqlite_queue_repo
@@ -313,6 +339,21 @@ class TestRedisStorage:
         await repo.save(task)
 
         assert await repo.exists("redis-exists") is True
+
+    @pytest.mark.asyncio
+    async def test_count_by_status(self, redis_task_repo):
+        """测试按状态计数（SCARD，不读取任务实体）"""
+        repo = redis_task_repo
+        before = await repo.count_by_status(TaskStatus.PENDING)
+        task_ids = [f"redis-count-{i}" for i in range(2)]
+
+        for task_id in task_ids:
+            await repo.save(Task(task_id=task_id, data={}, status=TaskStatus.PENDING))
+
+        assert await repo.count_by_status(TaskStatus.PENDING) == before + 2
+
+        for task_id in task_ids:
+            await repo.delete(task_id)
 
     @pytest.mark.asyncio
     async def test_queue_crud(self, redis_queue_repo):

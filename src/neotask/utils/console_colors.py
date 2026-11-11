@@ -73,7 +73,8 @@ def init_console_colors():
         #     print("[控制台颜色] 建议安装: pip install colorama")
     else:
         # 非Windows平台通常原生支持ANSI颜色代码
-        print("[控制台颜色] 非Windows平台，直接支持ANSI颜色代码")
+        # 保持静默：库导入不应向 stdout 输出，避免污染 CLI 与管道输出
+        pass
 
     console_colors_initialized = True
 

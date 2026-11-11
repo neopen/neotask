@@ -430,6 +430,9 @@ class TestTaskPoolPriority:
         # 清空执行顺序
         execution_order.clear()
 
+        # 暂停后批量提交再恢复：流式提交会被单 worker 即时取走，全部入队后消费优先级排序才生效
+        pool.pause()
+
         # 提交不同优先级的任务（按优先级从低到高提交，验证队列会重新排序）
         # 先提交低优先级
         pool.submit({"priority": "LOW"}, priority=TaskPriority.LOW)  # priority=3
@@ -439,6 +442,8 @@ class TestTaskPoolPriority:
         pool.submit({"priority": "HIGH"}, priority=TaskPriority.HIGH)  # priority=1
 
         pool.submit({"priority": "CRITICAL"}, priority=TaskPriority.CRITICAL)  # priority=0
+
+        pool.resume()
 
         # 等待所有任务完成
         time.sleep(1.5)
@@ -459,12 +464,17 @@ class TestTaskPoolPriority:
         pool, execution_order = task_pool
         execution_order.clear()
 
+        # 暂停后批量提交再恢复：确保 HIGH_INSERT 入队时 NORMAL 任务仍在队列中，插队语义才可验证
+        pool.pause()
+
         # 提交多个相同优先级的任务（应该按 FIFO 顺序执行）
         for i in range(5):
             pool.submit({"priority": f"NORMAL_{i}"}, priority=TaskPriority.NORMAL)
 
         # 提交一个高优先级任务（应该插队到最前面）
         pool.submit({"priority": "HIGH_INSERT"}, priority=TaskPriority.HIGH)
+
+        pool.resume()
 
         # 等待完成
         time.sleep(1.5)
@@ -517,6 +527,9 @@ class TestTaskPoolPriorityCorrected:
         pool, execution_order = task_pool
         execution_order.clear()
 
+        # 暂停后批量提交再恢复：流式提交会被单 worker 即时取走，全部入队后消费优先级排序才生效
+        pool.pause()
+
         # 提交不同优先级的任务
         pool.submit({"priority": "LOW"}, priority=TaskPriority.LOW)
 
@@ -525,6 +538,8 @@ class TestTaskPoolPriorityCorrected:
         pool.submit({"priority": "HIGH"}, priority=TaskPriority.HIGH)
 
         pool.submit({"priority": "CRITICAL"}, priority=TaskPriority.CRITICAL)
+
+        pool.resume()
 
         # 等待所有任务完成
         time.sleep(1.5)

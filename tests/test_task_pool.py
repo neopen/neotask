@@ -225,10 +225,7 @@ class TestTaskPoolWait:
             task_id = await pool.submit_async({"test": "fail"})
             print(f"Submitted task: {task_id}")
 
-            # 初始状态应该是 PENDING
-            initial_status = await pool.get_status_async(task_id)
-            print(f"Initial status: {initial_status}")
-            assert initial_status == TaskStatus.PENDING.value
+            # 快消费下提交返回时任务可能已执行，初始状态不做时序假设
 
             # 等待任务执行完成（轮询状态）
             max_wait = 3.0
@@ -352,9 +349,9 @@ class TestTaskPoolQuery:
         """测试同步获取状态"""
         with TaskPool(executor=slow_executor) as pool:
             # 使用延迟确保任务不会立即执行
-            task_id = pool.submit({"delay": 5}, delay=2.0)
+            task_id = pool.submit({"delay": 0.2}, delay=0.2)
 
-            # 立即检查状态，应该是 PENDING（因为延迟2秒）
+            # 立即检查状态，应该是 PENDING（任务还在延迟队列中）
             status = pool.get_status(task_id)
             assert status == TaskStatus.PENDING.value
 
@@ -421,8 +418,15 @@ class TestTaskPoolManagement:
         cancelled = await pool.cancel_async(task_id)
         assert cancelled is True
 
-        # 检查状态
-        status = await pool.get_status_async(task_id)
+        # 运行中任务的取消是异步生效的，轮询等待终态
+        status = None
+        deadline = asyncio.get_running_loop().time() + 2
+        while asyncio.get_running_loop().time() < deadline:
+            status = await pool.get_status_async(task_id)
+            if status == TaskStatus.CANCELLED.value:
+                break
+            await asyncio.sleep(0.02)
+
         assert status == TaskStatus.CANCELLED.value
 
         pool.shutdown()

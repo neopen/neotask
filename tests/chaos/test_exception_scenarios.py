@@ -122,15 +122,15 @@ class TestTaskExecutionFailures:
 
         pool = TaskPool(
             executor=long_running,
-            config=TaskPoolConfig(task_timeout=1.0)
+            config=TaskPoolConfig(task_timeout=0.2, max_retries=0)
         )
         pool.start()
 
         task_id = await pool.submit_async({})
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(0.4)
 
         with pytest.raises(Exception):
-            await pool.wait_for_result_async(task_id, timeout=2)
+            await pool.wait_for_result_async(task_id, timeout=1)
 
         pool.shutdown()
 

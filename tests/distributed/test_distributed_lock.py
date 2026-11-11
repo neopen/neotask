@@ -340,17 +340,17 @@ class TestWatchDog:
         lock_key = "watchdog_test"
 
         # 获取锁
-        acquired = await lock.acquire(lock_key, ttl=2)
+        acquired = await lock.acquire(lock_key, ttl=1)
         assert acquired
         print(f"\n看门狗自动续期测试:")
         print(f"   锁已获取: {lock_key}")
 
         # 启动看门狗
-        await watchdog.start(lock_key, ttl=2)
+        await watchdog.start(lock_key, ttl=1)
         print(f"   看门狗已启动")
 
-        # 等待超过原始 TTL，让看门狗有机会续期
-        await asyncio.sleep(3)
+        # 等待超过原始 TTL（最小续期间隔 0.5s），让看门狗续期
+        await asyncio.sleep(1.2)
 
         # 锁应该仍然被持有
         is_locked = await lock.is_locked(lock_key)
@@ -381,16 +381,16 @@ class TestWatchDog:
         try:
             # 获取多个锁
             for key in keys:
-                acquired = await lock.acquire(key, ttl=3)  # 增加 TTL 到 3 秒
+                acquired = await lock.acquire(key, ttl=1)
                 assert acquired
                 acquired_locks.append(key)
-                await watchdog.start(key, ttl=3)
+                await watchdog.start(key, ttl=1)
                 print(f"   锁 '{key}' 已获取")
 
             print(f"\n   已启动 {len(acquired_locks)} 个看门狗")
 
             # 等待稍短于 TTL，避免过期
-            await asyncio.sleep(2)
+            await asyncio.sleep(0.6)
 
             # 检查锁状态
             for key in acquired_locks:
@@ -398,8 +398,8 @@ class TestWatchDog:
                 status = " 锁定中" if is_locked else "❌ 已释放"
                 print(f"   '{key}': {status}")
 
-            # 再等待 2 秒（超过 TTL）
-            await asyncio.sleep(2)
+            # 再等待一次（累计超过 TTL）
+            await asyncio.sleep(0.6)
 
             # 再次检查，看门狗应该续期了
             success_count = 0
@@ -435,19 +435,19 @@ class TestWatchDog:
 
         print(f"\n长时间任务看门狗测试:")
 
-        # 获取锁 (TTL=2秒)
-        acquired = await lock.acquire(lock_key, ttl=2)
+        # 获取锁 (TTL=1秒)
+        acquired = await lock.acquire(lock_key, ttl=1)
         assert acquired
-        print(f"   锁已获取 (TTL=2s)")
+        print(f"   锁已获取 (TTL=1s)")
 
         # 启动看门狗
-        await watchdog.start(lock_key, ttl=2)
+        await watchdog.start(lock_key, ttl=1)
         print(f"   看门狗已启动")
 
-        # 模拟长时间运行的任务（6秒）
+        # 模拟长时间运行的任务（累计 1.5 秒 > 原始 TTL）
         print(f"   开始执行长时间任务...")
-        for i in range(6):
-            await asyncio.sleep(1)
+        for i in range(3):
+            await asyncio.sleep(0.5)
             is_locked = await lock.is_locked(lock_key)
             renew_count = watchdog.get_renew_count(lock_key)
             print(f"   第 {i + 1} 秒: 锁状态={'锁定' if is_locked else '已释放'}, 续期次数={renew_count}")
@@ -479,16 +479,16 @@ class TestWatchDog:
 
         try:
             # 获取锁
-            acquired = await lock.acquire(key, ttl=2)
+            acquired = await lock.acquire(key, ttl=1)
             assert acquired
             print(f"\n锁 '{key}' 已获取")
 
             # 启动看门狗
-            await watchdog.start(key, ttl=2)
+            await watchdog.start(key, ttl=1)
             print(f"   看门狗已启动")
 
             # 等待超过 TTL
-            await asyncio.sleep(3)
+            await asyncio.sleep(1.2)
 
             # 检查锁是否仍然被持有
             is_locked = await lock.is_locked(key)

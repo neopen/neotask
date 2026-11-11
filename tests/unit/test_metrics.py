@@ -12,7 +12,6 @@ See LICENSE File For Details.
 
 import pytest
 import asyncio
-import time
 import random
 
 from neotask.monitor.metrics import MetricsCollector, TaskMetrics
@@ -160,8 +159,19 @@ class TestMetricsCollector:
         assert summary["success_rate"] == 0.78
 
     @pytest.mark.asyncio
-    async def test_p95_execution_time(self, metrics_collector):
+    async def test_p95_execution_time(self, metrics_collector, monkeypatch):
         """测试 P95 执行时间"""
+        import neotask.monitor.metrics as metrics_module
+
+        class _FakeClock:
+            now = 1000.0
+
+            @classmethod
+            def time(cls):
+                return cls.now
+
+        # 用假时钟推进执行耗时，避免 100 次真实 sleep
+        monkeypatch.setattr(metrics_module, "time", _FakeClock)
         random.seed(42)
 
         for i in range(100):
@@ -169,8 +179,7 @@ class TestMetricsCollector:
             await metrics_collector.record_task_submit(task_id, priority=2)
             await metrics_collector.record_task_start(task_id)
 
-            exec_time = random.uniform(0.01, 0.2)
-            await asyncio.sleep(exec_time)
+            _FakeClock.now += random.uniform(0.01, 0.2)
 
             await metrics_collector.record_task_complete(task_id)
 

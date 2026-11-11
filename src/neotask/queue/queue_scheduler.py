@@ -217,7 +217,9 @@ class QueueScheduler:
             self._task_event = asyncio.Event()
         event = self._task_event
         event.clear()
-        if await self._priority_queue.size() > 0:
+        # 暂停时 pop() 恒返回空，不能以 size>0 判定「有任务」并立即返回，
+        # 否则消费者陷入 pop→空→wait→True 的忙等，独占事件循环饿死其它协程。
+        if not self._paused and await self._priority_queue.size() > 0:
             return True
         try:
             await asyncio.wait_for(event.wait(), timeout=timeout)
@@ -310,6 +312,8 @@ class QueueScheduler:
     async def resume(self) -> None:
         """恢复出队"""
         self._paused = False
+        # 唤醒暂停期间等待的消费者，避免恢复后仍要等退避超时才取走任务
+        self._notify_tasks_available()
 
     async def disable(self) -> None:
         """禁用入队"""

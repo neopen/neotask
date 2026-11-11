@@ -150,6 +150,7 @@ class TaskPool:
             queue=self._queue_scheduler
         ) if self._config.enable_health_check else None
         self._reporter_manager = None
+        self._cleanup_task: Optional[asyncio.Task] = None
 
         # 内部计数器（事件驱动维护，供 get_stats / 监控使用）
         self._counter_lock = threading.Lock()
@@ -206,34 +207,36 @@ class TaskPool:
                 self._worker_pool.set_dead_letter_queue(self._dead_letter)
 
             # 4. 任务回收器
-            reclaimer_config = ReclaimerConfig(
-                interval=self._config.reclaimer_interval,
-                task_timeout=self._config.task_timeout or 300,
-                max_retries=self._config.max_retries,
-                enable_timeout_reclaim=True,
-                enable_orphan_reclaim=True,
-                enable_stale_lock_reclaim=True
-            )
-            self._reclaimer = TaskReclaimer(
-                task_repo=self._task_repo,
-                queue_scheduler=self._queue_scheduler,
-                lock=self._lock_manager,
-                event_bus=self._event_bus,
-                config=reclaimer_config,
-                node_manager=self._node_manager,
-                dead_letter=self._dead_letter
-            )
+            if self._config.enable_reclaimer:
+                reclaimer_config = ReclaimerConfig(
+                    interval=self._config.reclaimer_interval,
+                    task_timeout=self._config.task_timeout or 300,
+                    max_retries=self._config.max_retries,
+                    enable_timeout_reclaim=True,
+                    enable_orphan_reclaim=True,
+                    enable_stale_lock_reclaim=True
+                )
+                self._reclaimer = TaskReclaimer(
+                    task_repo=self._task_repo,
+                    queue_scheduler=self._queue_scheduler,
+                    lock=self._lock_manager,
+                    event_bus=self._event_bus,
+                    config=reclaimer_config,
+                    node_manager=self._node_manager,
+                    dead_letter=self._dead_letter
+                )
 
             # 5. 协调器
-            coordinator_config = CoordinatorConfig(
-                load_balance_strategy="round_robin",
-                distribution_mode="shared"
-            )
-            self._coordinator = Coordinator(
-                node_manager=self._node_manager,
-                queue_scheduler=self._queue_scheduler,
-                config=coordinator_config
-            )
+            if self._node_manager:
+                coordinator_config = CoordinatorConfig(
+                    load_balance_strategy="round_robin",
+                    distribution_mode="shared"
+                )
+                self._coordinator = Coordinator(
+                    node_manager=self._node_manager,
+                    queue_scheduler=self._queue_scheduler,
+                    config=coordinator_config
+                )
 
             info(f"Distributed components initialized for node: {self._config.node_id}")
 
@@ -449,6 +452,12 @@ class TaskPool:
                     self._reporter_manager.set_metrics_callback(self.get_stats)
                     await self._reporter_manager.start()
 
+                # 周期清理终态任务，避免内存与存储随任务量无限增长
+                if self._config.enable_terminal_cleanup:
+                    self._cleanup_task = asyncio.create_task(
+                        self._terminal_cleanup_loop()
+                    )
+
                 info(f"TaskPool started with node_id: {self._config.node_id}")
 
             try:
@@ -488,6 +497,15 @@ class TaskPool:
         async def shutdown_components():
             # 停止接收新任务
             await self._queue_scheduler.disable()
+
+            # 停止终态清理循环
+            if self._cleanup_task:
+                self._cleanup_task.cancel()
+                try:
+                    await self._cleanup_task
+                except asyncio.CancelledError:
+                    pass
+                self._cleanup_task = None
 
             # 可选：把未到期的延迟任务立即转入优先队列，避免停机后它们永远停在
             # PENDING（内存模式尤其明显）。默认关闭以保持兼容。
@@ -917,6 +935,39 @@ class TaskPool:
     async def retry_async(self, task_id: str, delay: float = 0) -> bool:
         """重试失败的任务（异步）"""
         return await self._dispatcher.redispatch(task_id, delay)
+
+    # ========== 终态清理 API ==========
+
+    def cleanup_terminal_tasks(self) -> int:
+        """立即清理已过保留期的终态任务（同步）
+
+        返回清理数量。保留时长取 ``terminal_retention_seconds``，为 0 时
+        按任务自身 ttl。
+        """
+        self._ensure_running()
+        return self._run_coroutine(self.cleanup_terminal_tasks_async())
+
+    async def cleanup_terminal_tasks_async(self) -> int:
+        """立即清理已过保留期的终态任务（异步）"""
+        self._ensure_running()
+        retention = self._config.terminal_retention_seconds or None
+        return await self._lifecycle.cleanup_terminal(retention)
+
+    async def _terminal_cleanup_loop(self) -> None:
+        """周期清理终态任务"""
+        interval = self._config.terminal_cleanup_interval
+        if interval <= 0:
+            return
+        while True:
+            try:
+                await asyncio.sleep(interval)
+                await self._lifecycle.cleanup_terminal(
+                    self._config.terminal_retention_seconds or None
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                warning(f"Terminal task cleanup failed: {e}")
 
     # ========== 统计信息 API ==========
 

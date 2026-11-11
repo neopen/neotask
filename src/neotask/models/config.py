@@ -287,6 +287,12 @@ class TaskPoolConfig:
     enable_prefetch: bool = True
     prefetch_min_threshold: int = 5
 
+    # 终态任务保留：周期清理 SUCCESS/FAILED/CANCELLED，避免内存与存储
+    # （尤其 Redis 键）随任务量无限增长。默认按任务自身 ttl 清理。
+    enable_terminal_cleanup: bool = True
+    terminal_cleanup_interval: float = 60.0  # 扫描间隔（秒）
+    terminal_retention_seconds: int = 0      # 0 = 使用任务自身 ttl
+
     # 停机行为：为 True 时把未到期的延迟任务立即转入优先队列并等待执行；
     # 默认 False 保持原有“未到期任务留待下次启动”的兼容行为
     drain_delayed_on_shutdown: bool = False

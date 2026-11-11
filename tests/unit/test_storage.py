@@ -13,6 +13,7 @@ See LICENSE File For Details.
 import os
 import tempfile
 import asyncio
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -103,6 +104,38 @@ class TestMemoryStorage:
         assert await repo.count_by_status(TaskStatus.PENDING) == 3
         assert await repo.count_by_status(TaskStatus.RUNNING) == 1
         assert await repo.count_by_status(TaskStatus.SUCCESS) == 0
+
+    @pytest.mark.asyncio
+    async def test_delete_expired_terminal(self):
+        """测试按 ttl 与统一保留时长清理终态任务"""
+        repo = MemoryTaskRepository()
+        now = datetime.now(timezone.utc)
+
+        await repo.save(Task(
+            task_id="exp-ttl", data={}, status=TaskStatus.SUCCESS,
+            ttl=1, completed_at=now - timedelta(seconds=10),
+        ))
+        await repo.save(Task(
+            task_id="fresh", data={}, status=TaskStatus.SUCCESS,
+            ttl=3600, completed_at=now,
+        ))
+        await repo.save(Task(
+            task_id="active", data={}, status=TaskStatus.PENDING,
+            ttl=1, created_at=now - timedelta(seconds=10),
+        ))
+
+        deleted = await repo.delete_expired_terminal()
+
+        assert deleted == ["exp-ttl"]
+        assert await repo.get("fresh") is not None
+        assert await repo.get("active") is not None
+
+        await repo.save(Task(
+            task_id="exp-time", data={}, status=TaskStatus.FAILED,
+            ttl=3600, completed_at=now - timedelta(seconds=10),
+        ))
+        deleted = await repo.delete_expired_terminal(max_age_seconds=5)
+        assert deleted == ["exp-time"]
 
     @pytest.mark.asyncio
     async def test_update_status(self):
@@ -258,6 +291,31 @@ class TestSQLiteStorage:
         assert await repo.count_by_status(TaskStatus.PENDING) == 0
 
     @pytest.mark.asyncio
+    async def test_delete_expired_terminal(self, sqlite_task_repo):
+        """测试 SQLite 终态任务清理"""
+        repo = sqlite_task_repo
+        now = datetime.now(timezone.utc)
+
+        await repo.save(Task(
+            task_id="s-exp-ttl", data={}, status=TaskStatus.SUCCESS,
+            ttl=1, completed_at=now - timedelta(seconds=10),
+        ))
+        await repo.save(Task(
+            task_id="s-fresh", data={}, status=TaskStatus.SUCCESS,
+            ttl=3600, completed_at=now,
+        ))
+        await repo.save(Task(
+            task_id="s-active", data={}, status=TaskStatus.RUNNING,
+            ttl=1, created_at=now - timedelta(seconds=10),
+        ))
+
+        deleted = await repo.delete_expired_terminal()
+
+        assert deleted == ["s-exp-ttl"]
+        assert await repo.get("s-fresh") is not None
+        assert await repo.get("s-active") is not None
+
+    @pytest.mark.asyncio
     async def test_queue_crud(self, sqlite_queue_repo):
         """测试队列 CRUD"""
         repo = sqlite_queue_repo
@@ -339,6 +397,7 @@ class TestRedisStorage:
         await repo.save(task)
 
         assert await repo.exists("redis-exists") is True
+        await repo.delete("redis-exists")
 
     @pytest.mark.asyncio
     async def test_count_by_status(self, redis_task_repo):
@@ -354,6 +413,31 @@ class TestRedisStorage:
 
         for task_id in task_ids:
             await repo.delete(task_id)
+
+    @pytest.mark.asyncio
+    async def test_delete_expired_terminal(self, redis_task_repo):
+        """测试 Redis 终态过期索引清理"""
+        repo = redis_task_repo
+        now = datetime.now(timezone.utc)
+        expired_id = "redis-exp-ttl"
+        fresh_id = "redis-fresh"
+
+        await repo.save(Task(
+            task_id=expired_id, data={}, status=TaskStatus.SUCCESS,
+            ttl=1, completed_at=now - timedelta(seconds=10),
+        ))
+        await repo.save(Task(
+            task_id=fresh_id, data={}, status=TaskStatus.SUCCESS,
+            ttl=3600, completed_at=now,
+        ))
+
+        deleted = await repo.delete_expired_terminal()
+
+        assert expired_id in deleted
+        assert await repo.get(expired_id) is None
+        assert await repo.get(fresh_id) is not None
+
+        await repo.delete(fresh_id)
 
     @pytest.mark.asyncio
     async def test_queue_crud(self, redis_queue_repo):

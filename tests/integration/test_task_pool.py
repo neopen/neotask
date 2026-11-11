@@ -203,6 +203,34 @@ class TestTaskPoolMemory:
         # 旧实现被 20 / 0.1s 限制在约 182/s（3000 条需 16s 以上）
         assert elapsed < 8
 
+    def test_terminal_cleanup_removes_expired_tasks(self):
+        """周期清理会删除超过任务 ttl 的终态任务"""
+        async def executor(data):
+            return {"ok": True}
+
+        config = TaskPoolConfig(
+            storage_type="memory",
+            worker_concurrency=4,
+            enable_terminal_cleanup=True,
+            terminal_cleanup_interval=0.1,
+            enable_metrics=False,
+            enable_health_check=False,
+        )
+        pool = TaskPool(executor, config)
+        pool.start()
+        try:
+            task_ids = pool.submit_batch([{"i": i} for i in range(20)], ttl=1)
+            for task_id in task_ids:
+                pool.wait_for_result(task_id, timeout=10)
+            assert pool.get_stats()["total"] == 20
+
+            time.sleep(1.5)
+
+            assert pool.get_stats()["total"] == 0
+            assert all(pool.get_task(task_id) is None for task_id in task_ids)
+        finally:
+            pool.shutdown()
+
     def test_cancel_task(self):
         """测试取消任务"""
         # 提交一个长时间运行的任务

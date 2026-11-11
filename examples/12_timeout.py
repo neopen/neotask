@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: 12_timeout.py
 @Description: 任务超时示例 - task_timeout 触发超时失败及统计
 @Author: neopen

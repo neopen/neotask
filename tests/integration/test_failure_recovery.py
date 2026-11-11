@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_failure_recovery.py
 @Description: 失败恢复集成测试 - 重试与最终失败语义
 @Author: neopen

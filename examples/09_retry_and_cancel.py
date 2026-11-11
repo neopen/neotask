@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: 09_retry_and_cancel.py
 @Description: 重试和取消示例 - 自动重试、手动重试与排队任务取消
 @Author: neopen

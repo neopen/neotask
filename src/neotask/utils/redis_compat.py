@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: redis_compat.py
 @Description: Redis 建连兼容助手 - 统一 RESP 协议选择，并把异步客户端绑定到专用事件循环，
              避免 TaskPool 内部 loop 与调用方 loop 并发使用同一连接池导致跨 loop 报错。
@@ -11,9 +15,11 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Any, Awaitable, Callable, List, Optional, Tuple
+import threading
+import time
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
-from neotask.utils.dedicated_loop import get_shared_loop, run_on_loop
+from neotask.utils.dedicated_loop import DedicatedLoopError, run_on_loop
 
 # 默认使用 RESP2（protocol=2）。
 # redis-py 高版本可能默认以 RESP3 握手（连接时发送 HELLO 命令），而 Redis < 6.0
@@ -23,6 +29,10 @@ DEFAULT_PROTOCOL = 2
 
 # 允许通过环境变量覆盖协议版本（如确需 RESP3：NEOTASK_REDIS_PROTOCOL=3）
 _PROTOCOL_ENV = "NEOTASK_REDIS_PROTOCOL"
+
+# 关闭客户端前等待在途命令完成的上限（秒）。Windows Proactor 下若仍有重叠 I/O
+# 就关闭 socket，会触发 WinError 995 并把共享 I/O loop 打死，因此宁可不关也不抢跑。
+_CLOSE_DRAIN_TIMEOUT = 10.0
 
 
 def resolve_protocol(protocol: Optional[int] = None) -> int:
@@ -179,6 +189,11 @@ class LoopBoundRedisClient:
         self._pool_kwargs = pool_kwargs
         self._client: Optional[Any] = None
         self._bound_loop: Optional[asyncio.AbstractEventLoop] = None
+        # 在途命令计数：按客户端「代」统计，close() 只等关闭前已开始的命令，
+        # 关闭后新建的命令（新连接池）不会拖住本次关闭。
+        self._inflight_lock = threading.Lock()
+        self._inflight: Dict[int, int] = {}
+        self._generation = 0
 
     @property
     def closed(self) -> bool:
@@ -186,30 +201,57 @@ class LoopBoundRedisClient:
         return self._client is None
 
     async def _ensure_client(self) -> Any:
-        """在专用 loop 内惰性创建连接池与客户端。"""
+        """在专用 loop 内惰性创建连接池与客户端。
+
+        在 loop 内记录 ``_bound_loop``：专用 loop 被重建后，旧客户端及其连接池
+        持有的 asyncio 原语仍绑定在已关闭的 loop 上，必须丢弃并重新建池。
+        """
+        loop = asyncio.get_running_loop()
+        if self._client is not None and self._bound_loop is not loop:
+            self._client = None
         if self._client is None:
             from redis.asyncio import Redis
 
             pool = from_url(self._redis_url, protocol=self._protocol, **self._pool_kwargs)
             self._client = Redis(connection_pool=pool)
+        self._bound_loop = loop
         return self._client
 
     async def _execute(self, factory: _ClientFactory) -> Any:
-        """把 ``factory(client)`` 投递到专用 loop 执行，并等待结果。"""
-        loop = get_shared_loop()
+        """把 ``factory(client)`` 投递到专用 loop 执行，并等待结果。
 
-        # 专用 loop 曾被重建（守护线程异常退出）时，旧客户端及其连接池内部持有的
-        # asyncio 原语仍绑定在已关闭的 loop 上，继续复用会报跨 loop 错误。
-        # 这里直接丢弃旧客户端，交由 ``_ensure_client`` 在新 loop 中重新建池。
-        if self._client is not None and self._bound_loop is not loop:
-            self._client = None
-        self._bound_loop = loop
+        loop 尚未执行命令就死亡时（``DedicatedLoopError.started == False``），
+        命令没有副作用，换新 loop 重试一次；已开始执行的命令不重试，避免重复写。
+        """
+        generation = self._begin_command()
+        try:
+            for attempt in range(2):
+                async def _runner() -> Any:
+                    client = await self._ensure_client()
+                    return await factory(client)
 
-        async def _runner() -> Any:
-            client = await self._ensure_client()
-            return await factory(client)
+                try:
+                    return await run_on_loop(_runner)
+                except DedicatedLoopError as exc:
+                    if exc.started or attempt == 1:
+                        raise
+            raise AssertionError("unreachable")
+        finally:
+            self._end_command(generation)
 
-        return await run_on_loop(_runner, loop=loop)
+    def _begin_command(self) -> int:
+        with self._inflight_lock:
+            generation = self._generation
+            self._inflight[generation] = self._inflight.get(generation, 0) + 1
+            return generation
+
+    def _end_command(self, generation: int) -> None:
+        with self._inflight_lock:
+            remaining = self._inflight.get(generation, 0) - 1
+            if remaining > 0:
+                self._inflight[generation] = remaining
+            else:
+                self._inflight.pop(generation, None)
 
     def __getattr__(self, name: str):
         """动态转发任意 Redis 命令方法（如 get/set/hset/zadd/scan/...）。"""
@@ -236,13 +278,25 @@ class LoopBoundRedisClient:
         """关闭底层客户端与连接池（在专用 loop 中执行）。
 
         关闭后代理仍可再次使用：下次命令会重新建连（与 redis-py 语义一致）。
+        关闭前会等待本次客户端上已开始的命令全部结束，避免在 Windows Proactor
+        下带着未完成的重叠 I/O 关闭 socket（WinError 995）。
         """
-        client = self._client
-        loop = self._bound_loop
-        self._client = None
-        self._bound_loop = None
+        with self._inflight_lock:
+            client = self._client
+            loop = self._bound_loop
+            generation = self._generation
+            self._client = None
+            self._bound_loop = None
+            self._generation += 1
+
         if client is None:
             return
+
+        # loop 已不可用时直接放弃：守护线程退出后连接随之释放
+        if loop is None or loop.is_closed() or not loop.is_running():
+            return
+
+        await self._await_drained(generation)
 
         async def _close_client() -> None:
             closer = getattr(client, "aclose", None)
@@ -251,11 +305,22 @@ class LoopBoundRedisClient:
             else:  # pragma: no cover - 兼容 redis-py < 5.0
                 await client.close()
 
-        # loop 已不可用时直接放弃：守护线程退出后连接随之释放
-        if loop is None or loop.is_closed() or not loop.is_running():
-            return
-
         await run_on_loop(_close_client, loop=loop)
+
+    async def _await_drained(self, generation: int) -> None:
+        """等待指定代次的在途命令全部完成，超时则报错而不是带病关闭。"""
+        deadline = time.monotonic() + _CLOSE_DRAIN_TIMEOUT
+        while True:
+            with self._inflight_lock:
+                remaining = self._inflight.get(generation, 0)
+            if remaining <= 0:
+                return
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    f"Redis 客户端关闭超时：仍有 {remaining} 条在途命令未完成"
+                    f"（已等待 {_CLOSE_DRAIN_TIMEOUT:.1f}s）"
+                )
+            await asyncio.sleep(0.005)
 
     async def aclose(self, close_connection_pool: Optional[bool] = None) -> None:
         """``close()`` 的别名，兼容 redis-py 5.x 命名。"""

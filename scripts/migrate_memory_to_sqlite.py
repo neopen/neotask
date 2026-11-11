@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: migrate_memory_to_sqlite.py
 @Description: 存储迁移工具 — 把 memory 任务池的任务/队列/延迟/周期任务迁移到 SQLite
 @Author: neopen

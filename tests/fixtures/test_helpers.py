@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_helpers.py
 @Description: 辅助 fixtures
 @Author: neopen
@@ -14,6 +18,11 @@ import pytest
 def close_loop_after_test():
     """确保每个测试后正确关闭事件循环"""
     yield
-    loop = asyncio.get_event_loop()
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        # 测试内调用 asyncio.run() 后，当前线程的事件循环会被清空；
+        # 这是合法状态，不应让 teardown 反向污染测试结果。
+        return
     if loop.is_running():
         pass

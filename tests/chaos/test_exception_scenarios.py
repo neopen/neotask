@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_exception_scenarios.py
 @Description: 异常场景测试 - 故障注入、恢复测试
 @Author: neopen
@@ -118,15 +122,15 @@ class TestTaskExecutionFailures:
 
         pool = TaskPool(
             executor=long_running,
-            config=TaskPoolConfig(task_timeout=1.0)
+            config=TaskPoolConfig(task_timeout=0.2, max_retries=0)
         )
         pool.start()
 
         task_id = await pool.submit_async({})
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(0.4)
 
         with pytest.raises(Exception):
-            await pool.wait_for_result_async(task_id, timeout=2)
+            await pool.wait_for_result_async(task_id, timeout=1)
 
         pool.shutdown()
 

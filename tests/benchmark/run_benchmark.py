@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: run_benchmarks.py
 @Description: NeoTask 性能基准测试独立运行脚本（支持结果自动导出为 JSON）
 @Author: neopen

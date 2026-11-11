@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: lifecycle.py
 @Description: 任务生命周期管理 - 单一职责原则
 @Author: neopen
@@ -12,7 +16,7 @@ import threading
 import time
 
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 
 from neotask.common.constants import (
@@ -954,88 +958,52 @@ class TaskLifecycleManager:
     async def _aggregate_stats_from_storage(self) -> TaskStats:
         """从存储层聚合统计信息
 
-        支持所有存储后端（内存、SQLite、Redis）。
+        支持所有存储后端（内存、SQLite、Redis）。各后端按状态做计数查询，
+        不加载任务实体，任务量增长不会放大单次统计的开销。
         """
-        stats = TaskStats()
-
-        # 遍历所有任务状态，从存储获取计数
+        counts = {}
         for status in TaskStatus:
-            # 获取该状态的任务数量
-            tasks = await self._task_repo.list_by_status(status, limit=10000)
-            count = len(tasks)
+            counts[status] = await self._task_repo.count_by_status(status)
 
-            stats.total += count
-            if status == TaskStatus.PENDING:
-                stats.pending = count
-            elif status == TaskStatus.RUNNING:
-                stats.running = count
-            elif status == TaskStatus.SUCCESS:
-                stats.completed = count
-            elif status == TaskStatus.FAILED:
-                stats.failed = count
-            elif status == TaskStatus.CANCELLED:
-                stats.cancelled = count
-
+        stats = TaskStats()
+        stats.total = sum(counts.values())
+        stats.pending = counts.get(TaskStatus.PENDING, 0)
+        stats.running = counts.get(TaskStatus.RUNNING, 0)
+        stats.completed = counts.get(TaskStatus.SUCCESS, 0)
+        stats.failed = counts.get(TaskStatus.FAILED, 0)
+        stats.cancelled = counts.get(TaskStatus.CANCELLED, 0)
         return stats
 
-    async def cleanup_expired(self) -> int:
-        """清理过期任务
+    async def cleanup_terminal(self, max_age_seconds: Optional[int] = None) -> int:
+        """删除已过保留期的终态任务并同步本地缓存与等待器
 
-        删除超过 TTL 且处于终端状态（SUCCESS/FAILED/CANCELLED）的任务。
+        Args:
+            max_age_seconds: None/0 时按任务自身 ttl；大于 0 时使用统一保留时长
 
         Returns:
             清理的任务数量
         """
-        cleaned_count = 0
-        now = datetime.now(timezone.utc)
+        deleted_ids = await self._task_repo.delete_expired_terminal(max_age_seconds)
 
-        # 获取所有终端状态的任务
-        terminal_statuses = [TaskStatus.SUCCESS, TaskStatus.FAILED, TaskStatus.CANCELLED]
+        for task_id in deleted_ids:
+            if self._cache_enabled:
+                with self._lock:
+                    self._cache.pop(task_id, None)
+                    self._terminal_cache_set.discard(task_id)
+            self._clear_progress_flush(task_id)
+            await self._future_manager.remove(task_id)
 
-        for status in terminal_statuses:
-            tasks = await self._task_repo.list_by_status(status, limit=1000)
+        if deleted_ids:
+            info(f"Cleaned {len(deleted_ids)} expired tasks")
 
-            for task in tasks:
-                # 检查是否过期
-                is_expired = False
-                age_seconds = 0
+        return len(deleted_ids)
 
-                # 根据任务的 completed_at 或 created_at 判断
-                if task.completed_at:
-                    # 任务已完成，检查是否超过 TTL
-                    age_seconds = (now - task.completed_at).total_seconds()
-                    if age_seconds > task.ttl:
-                        is_expired = True
-                elif task.created_at:
-                    # 任务未完成但处于终端状态（异常情况）
-                    age_seconds = (now - task.created_at).total_seconds()
-                    if age_seconds > task.ttl * 2:  # 给予双倍时间
-                        is_expired = True
-
-                if is_expired:
-                    # 删除过期任务
-                    await self._task_repo.delete(task.task_id)
-
-                    # 从缓存中移除
-                    if self._cache_enabled:
-                        with self._lock:
-                            self._cache.pop(task.task_id, None)
-                            self._terminal_cache_set.discard(task.task_id)
-                    self._clear_progress_flush(task.task_id)
-
-                    # 清理 future
-                    await self._future_manager.remove(task.task_id)
-
-                    cleaned_count += 1
-                    debug(f"Cleaned expired task: {task.task_id}, status={task.status.value}, age={age_seconds:.0f}s")
-
-        if cleaned_count > 0:
-            info(f"Cleaned {cleaned_count} expired tasks")
-
-        return cleaned_count
+    async def cleanup_expired(self) -> int:
+        """清理超过任务自身 ttl 的终态任务（兼容旧接口）"""
+        return await self.cleanup_terminal(None)
 
     async def cleanup_expired_by_time(self, max_age_seconds: int = 86400) -> int:
-        """按时间清理过期任务
+        """按统一保留时长清理终态任务（兼容旧接口）
 
         Args:
             max_age_seconds: 最大存活时间（秒），默认 24 小时
@@ -1043,37 +1011,7 @@ class TaskLifecycleManager:
         Returns:
             清理的任务数量
         """
-        cleaned_count = 0
-        now = datetime.now(timezone.utc)
-        cutoff_time = now.timestamp() - max_age_seconds
-
-        # 获取所有终端状态的任务
-        terminal_statuses = [TaskStatus.SUCCESS, TaskStatus.FAILED, TaskStatus.CANCELLED]
-
-        for status in terminal_statuses:
-            tasks = await self._task_repo.list_by_status(status, limit=1000)
-
-            for task in tasks:
-                # 检查是否超过最大存活时间
-                check_time = task.completed_at or task.created_at
-                if check_time:
-                    if check_time.timestamp() < cutoff_time:
-                        await self._task_repo.delete(task.task_id)
-
-                        if self._cache_enabled:
-                            with self._lock:
-                                self._cache.pop(task.task_id, None)
-                                self._terminal_cache_set.discard(task.task_id)
-                        self._clear_progress_flush(task.task_id)
-
-                        await self._future_manager.remove(task.task_id)
-                        cleaned_count += 1
-                        debug(f"Cleaned old task: {task.task_id}, age={(now - check_time).total_seconds():.0f}s")
-
-        if cleaned_count > 0:
-            info(f"Cleaned {cleaned_count} old tasks by time")
-
-        return cleaned_count
+        return await self.cleanup_terminal(max_age_seconds)
 
     async def list_tasks(
             self,

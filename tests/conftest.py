@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: conftest.py
 @Description: pytest 配置 - 导入所有 fixtures
 @Author: neopen

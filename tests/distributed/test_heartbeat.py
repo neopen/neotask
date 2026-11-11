@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_heartbeat.py
 @Description: 节点心跳和故障检测测试
 @Author: neopen
@@ -38,7 +42,7 @@ class TestNodeManagerBasic:
     @pytest.mark.asyncio
     async def test_heartbeat_update(self, node_manager):
         """测试心跳更新"""
-        await asyncio.sleep(2)
+        await node_manager.heartbeat()
 
         active_nodes = await node_manager.get_active_nodes()
         node_info = next((n for n in active_nodes if n.node_id == node_manager.node_id), None)
@@ -52,7 +56,6 @@ class TestNodeManagerBasic:
         """测试节点注销"""
         node_id = node_manager.node_id
         await node_manager.stop()
-        await asyncio.sleep(1)
 
         is_alive = await node_manager.is_node_alive(node_id)
         assert not is_alive
@@ -94,8 +97,6 @@ class TestMultiNode:
         failed_node_id = failed_node.node_id
         await failed_node.stop()
 
-        await asyncio.sleep(5)
-
         active_nodes = await multi_nodes[0].get_active_nodes()
         node_ids = [n.node_id for n in active_nodes]
 
@@ -109,9 +110,7 @@ class TestMultiNode:
         rejoined_node_id = rejoined_node.node_id
         await rejoined_node.stop()
 
-        await asyncio.sleep(5)
         await rejoined_node.start()
-        await asyncio.sleep(2)
 
         active_nodes = await multi_nodes[0].get_active_nodes()
         node_ids = [n.node_id for n in active_nodes]
@@ -142,8 +141,19 @@ class TestHeartbeatTimeout:
             active = await node1.get_active_nodes()
             assert len(active) >= 2
 
-            await node2.stop()
-            await asyncio.sleep(22)
+            # 模拟进程崩溃：停掉心跳但保留注册信息，只靠心跳超时判定失活
+            if node2._heartbeat_task:
+                node2._heartbeat_task.cancel()
+                try:
+                    await node2._heartbeat_task
+                except asyncio.CancelledError:
+                    pass
+            key = f"{NodeManager.NODE_KEY_PREFIX}{node2.node_id}"
+            await node2._client.hset(
+                key,
+                "last_heartbeat",
+                str(time.time() - NodeManager.HEARTBEAT_TIMEOUT - 1),
+            )
 
             active = await node1.get_active_nodes()
             node_ids = [n.node_id for n in active]

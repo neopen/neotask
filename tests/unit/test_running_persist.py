@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_running_persist.py
 @Description: RUNNING 状态延迟落库（执行侧写入优化）单元测试
 @Author: neopen

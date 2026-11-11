@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: 99_all_features.py
 @Description: 完整功能演示 - 展示即时任务、优先级、批量、事件、进度、统计与定时调度
 @Author: neopen

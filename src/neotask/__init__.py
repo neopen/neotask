@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: __init__.py
 @Description: NeoTask - 通用分布式任务池
 @Author: neopen

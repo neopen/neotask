@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_integration_v01_v04.py
 @Description: NeoTask v0.1 ~ v0.4 完整集成测试
 @Author: neopen
@@ -336,14 +340,22 @@ async def test_v03_scheduled_tasks(reporter: TestReporter):
             message=f"执行次数: {periodic_executions} (预期3+次)"
         ))
 
-        # 3. Cron 表达式
+        # 3. Cron 表达式：不空等真实分钟边界，注册后把 next_run 推到期，
+        # 验证扫描器会按 Cron 定义触发任务（Cron 时间计算由单测覆盖）
         print("\n📌 测试 3.3: Cron表达式")
+        from datetime import datetime
+
         cron_id = scheduler.submit_cron(
             {"action": "cron", "task_id": "cron-001"},
             cron_expr="* * * * *"
         )
 
-        await asyncio.sleep(65)
+        await asyncio.sleep(0.3)
+        cron_instance = scheduler._periodic_manager._tasks.get(cron_id)
+        assert cron_instance is not None and cron_instance.next_run is not None
+        cron_instance.next_run = datetime.now()
+
+        await asyncio.sleep(0.8)
         cron_executions = sum(1 for r in execution_records if r["data"].get("task_id") == "cron-001")
         scheduler.cancel_periodic(cron_id)
 

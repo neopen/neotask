@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: 11_sqlite_persistence.py
 @Description: SQLite 持久化示例 - 进程重启后仍可查询任务状态和结果
 @Author: neopen

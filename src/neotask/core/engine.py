@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: engine.py
 @Description: 任务引擎 - 统一入口，协调各模块
 @Author: neopen
@@ -66,6 +70,11 @@ class EngineConfig:
     # 队列配置
     queue_max_size: int = 10000
 
+    # 事件总线背压：默认无界队列保持向后兼容；有界队列满时丢弃新事件并计数告警
+    event_queue_max_size: Optional[int] = None  # 待处理事件队列上限；None 不设硬上限
+    event_overflow_policy: str = "drop"  # 队列满时策略，目前仅支持 drop
+    event_slow_handler_threshold: float = 1.0  # 单回调耗时告警阈值（秒）
+
     # 锁配置
     lock_type: str = "memory"
 
@@ -128,7 +137,11 @@ class TaskEngine:
         await self._init_storage()
 
         # 2. 初始化事件总线
-        self._event_bus = EventBus()
+        self._event_bus = EventBus(
+            max_queue_size=self.config.event_queue_max_size,
+            overflow_policy=self.config.event_overflow_policy,
+            slow_handler_threshold=self.config.event_slow_handler_threshold,
+        )
 
         # 3. 初始化执行器
         await self._init_executor()
@@ -422,6 +435,11 @@ class TaskEngine:
     async def resume(self) -> None:
         """恢复处理新任务"""
         await self._queue_scheduler.resume()
+
+    @property
+    def event_bus(self) -> Optional[EventBus]:
+        """事件总线（只读），initialize() 之前为 None；可读 get_stats() 背压统计"""
+        return self._event_bus
 
     @property
     def is_running(self) -> bool:

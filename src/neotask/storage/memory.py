@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: memory.py
 @Description: 内存存储实现
 @Author: neopen
@@ -137,6 +141,11 @@ class MemoryTaskRepository(TaskRepository):
             result = tasks[offset:offset + limit]
             debug(f"Listed {len(result)} tasks with status {status.value}")
             return result
+
+    async def count_by_status(self, status: TaskStatus) -> int:
+        """统计指定状态的任务数量（不拷贝任务对象）"""
+        with self._lock:
+            return sum(1 for task in self._tasks.values() if task.status == status)
 
     async def update_status(
             self,

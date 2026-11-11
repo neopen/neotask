@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_redis.py
 @Description: Redis分布式锁实现 - 添加扫描和清理功能
 @Author: neopen

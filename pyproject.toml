@@ -25,7 +25,7 @@ keywords = [
 ]
 classifiers = [
     # 开发状态
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     # 目标受众
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
@@ -52,7 +52,6 @@ requires-python = ">=3.8"
 dependencies = [
     "aiosqlite>=0.19.0",  # SQLite 存储支持
     "croniter>=1.0.0",    # Cron 表达式支持
-    "colorama",
 ]
 
 [project.optional-dependencies]
@@ -79,9 +78,14 @@ monitor = [
     "psutil>=5.9.0",
 ]
 
+# Windows 控制台颜色支持（缺失时自动回退 ANSI 转义）
+color = [
+    "colorama>=0.4.6",
+]
+
 # 完整功能
 full = [
-    "neotask[ui,redis,sqlite,monitor]",
+    "neotask[ui,redis,sqlite,monitor,color]",
 ]
 
 # 开发依赖
@@ -89,6 +93,7 @@ dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.0.0",
+    "pytest-timeout>=2.1.0",
     "black>=23.0.0",
     "isort>=5.12.0",
     "mypy>=1.0.0",
@@ -164,7 +169,7 @@ sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
 # ========== 类型检查配置 ==========
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.8"
 warn_return_any = true
 warn_unused_configs = true
 warn_unused_ignores = true
@@ -182,7 +187,18 @@ exclude = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py38"
+exclude = [
+    "tests/",
+    "examples/",
+    "docs/",
+    "build/",
+    "dist/",
+    "venv/",
+    ".venv/",
+]
+
+[tool.ruff.lint]
 select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings
@@ -194,18 +210,12 @@ select = [
     "RUF", # ruff specific rules
 ]
 ignore = [
-    "E501",  # line too long (handled by black)
-    "B008",  # do not perform function calls in argument defaults
-    "C901",  # too complex
-]
-exclude = [
-    "tests/",
-    "examples/",
-    "docs/",
-    "build/",
-    "dist/",
-    "venv/",
-    ".venv/",
+    "E501",   # line too long (handled by black)
+    "B008",   # do not perform function calls in argument defaults
+    "C901",   # too complex
+    "RUF001", # 中文字符串中的全角标点
+    "RUF002", # 中文 docstring 中的全角标点
+    "RUF003", # 中文注释中的全角标点
 ]
 
 # ========== 测试配置 ==========
@@ -259,27 +269,9 @@ exclude_lines = [
 precision = 2
 show_missing = true
 
-# ========== 构建配置 ==========
-
-[tool.build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
 # ========== 版本管理 ==========
-
-[tool.bumpversion]
-current_version = "1.0.4"
-commit = true
-tag = true
-tag_name = "v{new_version}"
-commit_message = "chore: bump version to {new_version}"
-allow_dirty = false
-
-[[tool.bumpversion.files]]
-filename = "src/neotask/__init__.py"
-
-[[tool.bumpversion.files]]
-filename = "pyproject.toml"
+# 版本号由 release-please 在 main 分支发布时统一更新，
+# 保持 pyproject.toml 与 src/neotask/__init__.py 一致即可。
 
 # ========== 发布配置 ==========
 

@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: sqlite.py
 @Description: SQLite storage implementation.
 @Author: neopen
@@ -220,19 +224,14 @@ class SQLiteTaskRepository(TaskRepository):
             )
             for task in new_tasks
         ]
-        # 单事务写入：任意一条失败（含磁盘/约束错误）整批回滚
-        await self._conn.execute("BEGIN IMMEDIATE")
-        try:
-            await self._conn.executemany("""
-                INSERT OR IGNORE INTO tasks
-                (task_id, data, status, priority, node_id, retry_count, ttl,
-                 created_at, started_at, completed_at, result, error, progress, progress_message)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, params)
-            await self._conn.commit()
-        except Exception:
-            await self._conn.rollback()
-            raise
+        # 单事务写入：整批原子提交。事务在专用 loop 内一次执行并全程持写锁，
+        # 避免并发批量/单条写在共享连接上交错触发 BEGIN/COMMIT 竞态。
+        await self._conn.executemany_transaction("""
+            INSERT OR IGNORE INTO tasks
+            (task_id, data, status, priority, node_id, retry_count, ttl,
+             created_at, started_at, completed_at, result, error, progress, progress_message)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, params)
         return [task.task_id for task in new_tasks]
 
     async def save_fields(self, task: Task, fields: Iterable[str]) -> bool:
@@ -397,6 +396,18 @@ class SQLiteTaskRepository(TaskRepository):
             }))
 
         return tasks
+
+    async def count_by_status(self, status: TaskStatus) -> int:
+        await self._ensure_init()
+        cursor = await self._conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE status = ?",
+            (status.value,)
+        )
+        try:
+            row = await cursor.fetchone()
+        finally:
+            await cursor.close()
+        return int(row[0]) if row else 0
 
     async def update_status(self, task_id: str, status: TaskStatus, **kwargs) -> bool:
         await self._ensure_init()
@@ -570,17 +581,11 @@ class SQLiteQueueRepository(QueueRepository):
         now = datetime.now().isoformat()
         params = [(task_id, priority, now) for task_id, priority in items]
 
-        # 单事务写入：任意一条失败整批回滚，避免队列里出现半批任务
-        await self._conn.execute("BEGIN IMMEDIATE")
-        try:
-            await self._conn.executemany(
-                "INSERT OR REPLACE INTO queue (task_id, priority, created_at) VALUES (?, ?, ?)",
-                params
-            )
-            await self._conn.commit()
-        except Exception:
-            await self._conn.rollback()
-            raise
+        # 单事务写入：整批原子提交，避免队列里出现半批任务；写锁串行化避免竞态
+        await self._conn.executemany_transaction(
+            "INSERT OR REPLACE INTO queue (task_id, priority, created_at) VALUES (?, ?, ?)",
+            params
+        )
         return len(items)
 
     async def pop(self, count: int = 1) -> List[str]:

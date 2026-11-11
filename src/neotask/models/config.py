@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: config.py
 @Description: 配置 - 包含所有模块的配置类
 @Author: neopen
@@ -254,6 +258,11 @@ class TaskPoolConfig:
     queue_max_size: int = 10000
     priority_levels: int = 4
 
+    # 事件总线背压：默认无界队列保持向后兼容；有界队列满时丢弃新事件并计数告警
+    event_queue_max_size: Optional[int] = None  # 待处理事件队列上限；None 不设硬上限
+    event_overflow_policy: str = "drop"  # 队列满时策略，目前仅支持 drop
+    event_slow_handler_threshold: float = 1.0  # 单回调耗时告警阈值（秒）
+
     # 锁配置
     lock_type: str = "memory"
     lock_timeout: int = 30
@@ -282,6 +291,12 @@ class TaskPoolConfig:
     # 预取配置
     enable_prefetch: bool = True
     prefetch_min_threshold: int = 5
+
+    # 终态任务保留：周期清理 SUCCESS/FAILED/CANCELLED，避免内存与存储
+    # （尤其 Redis 键）随任务量无限增长。默认按任务自身 ttl 清理。
+    enable_terminal_cleanup: bool = True
+    terminal_cleanup_interval: float = 60.0  # 扫描间隔（秒）
+    terminal_retention_seconds: int = 0      # 0 = 使用任务自身 ttl
 
     # 停机行为：为 True 时把未到期的延迟任务立即转入优先队列并等待执行；
     # 默认 False 保持原有“未到期任务留待下次启动”的兼容行为
@@ -366,6 +381,11 @@ class SchedulerConfig:
     # 重试配置
     max_retries: int = 3
     retry_delay: float = 1.0
+
+    # 事件总线背压：默认无界队列保持向后兼容；有界队列满时丢弃新事件并计数告警
+    event_queue_max_size: Optional[int] = None  # 待处理事件队列上限；None 不设硬上限
+    event_overflow_policy: str = "drop"  # 队列满时策略，目前仅支持 drop
+    event_slow_handler_threshold: float = 1.0  # 单回调耗时告警阈值（秒）
 
     # 进度落库节流（时间间隔 或 增量阈值任一满足即写入）
     progress_flush_interval: float = DEFAULT_PROGRESS_FLUSH_INTERVAL

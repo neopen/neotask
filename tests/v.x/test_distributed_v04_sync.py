@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_distributed_v04_sync.py
 @Description: v0.4 分布式功能测试 - 使用同步 API（推荐）
 @Author: neopen

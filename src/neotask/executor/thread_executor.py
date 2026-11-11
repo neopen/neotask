@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: thread_executor.py
 @Description: 线程执行器 - 在线程池中执行同步函数
 @Author: neopen

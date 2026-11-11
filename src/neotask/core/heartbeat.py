@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: heartbeat.py
 @Description: 节点心跳管理
 @Author: neopen

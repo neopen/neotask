@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: console_colors.py
 @Description: 控制台颜色输出工具，提供带颜色的日志输出功能
 @Author: neopen
@@ -10,26 +14,30 @@ import logging
 import os
 import sys
 
-import colorama
-from colorama import Fore, Style
+# colorama 是可选依赖，仅用于在 Windows 旧控制台启用 ANSI
+try:
+    import colorama
+    from colorama import Fore, Style
+
+    HAS_COLORAMA = True
+except ImportError:
+    colorama = None
+    HAS_COLORAMA = False
 
 # 全局变量存储控制台颜色状态
 console_colors_initialized = False
 
-# 尝试导入colorama库
-try:
-    HAS_COLORAMA = True
-    # 定义颜色常量
+if HAS_COLORAMA:
     COLORS = {
         logging.DEBUG: Fore.BLUE,
         logging.INFO: Fore.GREEN,
         logging.WARNING: Fore.YELLOW,
         logging.ERROR: Fore.RED,
-        logging.CRITICAL: Fore.MAGENTA
+        logging.CRITICAL: Fore.MAGENTA,
     }
-except ImportError:
-    HAS_COLORAMA = False
-    # 定义ANSI颜色代码作为备选
+    RESET = Style.RESET_ALL
+else:
+    # 未安装 colorama 时直接使用 ANSI 转义
     COLORS = {
         logging.DEBUG: '\033[94m',  # 蓝色
         logging.INFO: '\033[92m',  # 绿色
@@ -37,7 +45,6 @@ except ImportError:
         logging.ERROR: '\033[91m',  # 红色
         logging.CRITICAL: '\033[95m',  # 紫色
     }
-    # 重置颜色代码
     RESET = '\033[0m'
 
 # 检查操作系统
@@ -66,7 +73,8 @@ def init_console_colors():
         #     print("[控制台颜色] 建议安装: pip install colorama")
     else:
         # 非Windows平台通常原生支持ANSI颜色代码
-        print("[控制台颜色] 非Windows平台，直接支持ANSI颜色代码")
+        # 保持静默：库导入不应向 stdout 输出，避免污染 CLI 与管道输出
+        pass
 
     console_colors_initialized = True
 
@@ -88,10 +96,7 @@ def get_reset_code():
     """
     获取重置颜色的代码
     """
-    if HAS_COLORAMA:
-        return Style.RESET_ALL
-    else:
-        return RESET
+    return RESET
 
 
 def colored_log_formatter_factory(fmt=None, datefmt=None, style='%'):

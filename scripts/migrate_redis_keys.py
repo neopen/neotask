@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: migrate_redis_keys.py
 @Description: 为存量 Redis 键补充统一根前缀 neotask:（生产环境迁移脚本）
 @Author: neopen

@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_redis.py
 @Description: Redis storage implementation with connection pooling.
 @Author: neopen
@@ -8,6 +12,7 @@
 
 import time
 import json
+from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional, Any, Tuple, Dict
 
 from neotask.utils import redis_compat
@@ -41,6 +46,45 @@ _TERMINAL_STATUS_VALUES = {
     TaskStatus.FAILED.value,
     TaskStatus.CANCELLED.value,
 }
+
+#: 终态过期索引：score = 完成时间 + ttl（无完成时间时用创建时间 + 2*ttl）。
+#: 清理时按 score 范围取到期任务，避免全量读取任务实体。
+_TERMINAL_EXPIRY_KEY = redis_key("terminal:expiry")
+
+
+def _parse_timestamp(value: Any) -> Optional[float]:
+    """把存储里的时间值解析为 Unix 时间戳"""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value.timestamp()
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return datetime.fromisoformat(str(value)).timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
+def _expiry_score(task_dict: Dict[str, Any]) -> Optional[float]:
+    """计算终态任务的过期时间戳；非终态返回 None"""
+    if task_dict.get("status") not in _TERMINAL_STATUS_VALUES:
+        return None
+
+    try:
+        ttl = int(task_dict.get("ttl") or 3600)
+    except (TypeError, ValueError):
+        ttl = 3600
+
+    completed_at = _parse_timestamp(task_dict.get("completed_at"))
+    if completed_at is not None:
+        return completed_at + ttl
+
+    created_at = _parse_timestamp(task_dict.get("created_at"))
+    if created_at is not None:
+        return created_at + ttl * 2
+
+    return time.time() + ttl
 
 #: 新任务写入脚本：任务键不存在时写 JSON 并加入状态索引（原子，1 次往返）
 _SAVE_IF_ABSENT_LUA = """
@@ -83,6 +127,7 @@ class RedisTaskRepository(TaskRepository):
         self._client: Optional[Any] = None
         self._save_if_absent_script: Optional[Any] = None
         self._submit_script: Optional[Any] = None
+        self._expiry_key = _TERMINAL_EXPIRY_KEY
 
 
     async def _get_client(self) -> Any:
@@ -128,6 +173,13 @@ class RedisTaskRepository(TaskRepository):
 
         # 添加到状态索引
         await client.sadd(self._status_key(task.status.value), task.task_id)
+
+        # 同步终态过期索引
+        score = _expiry_score(task_dict)
+        if score is None:
+            await client.zrem(self._expiry_key, task.task_id)
+        else:
+            await client.zadd(self._expiry_key, {task.task_id: score})
 
     async def save_if_absent(self, task: Task) -> bool:
         """单条 Lua 完成「查重 + SET + SADD」，把新任务提交压到 1 次往返"""
@@ -205,11 +257,16 @@ class RedisTaskRepository(TaskRepository):
             if old_value:
                 continue
             saved.append(task.task_id)
+            task_dict = task.to_dict()
             pipe.set(
                 self._task_key(task.task_id),
-                json.dumps(task.to_dict(), default=str),
+                json.dumps(task_dict, default=str),
             )
             status_ids.setdefault(task.status.value, []).append(task.task_id)
+
+            score = _expiry_score(task_dict)
+            if score is not None:
+                pipe.zadd(self._expiry_key, {task.task_id: score})
 
         for status, task_ids in status_ids.items():
             pipe.sadd(self._status_key(status), *task_ids)
@@ -237,6 +294,7 @@ class RedisTaskRepository(TaskRepository):
             await client.srem(self._status_key(task.status.value), task_id)
         key = self._task_key(task_id)
         result = await client.delete(key)
+        await client.zrem(self._expiry_key, task_id)
         return result > 0
 
     async def delete_batch(self, task_ids: List[str]) -> int:
@@ -252,29 +310,68 @@ class RedisTaskRepository(TaskRepository):
             return 0
 
         client = await self._get_client()
-        pipe = client.pipeline()
+        keys = [self._task_key(task_id) for task_id in task_ids]
+        raws = await client.mget(keys)
 
+        pipe = client.pipeline()
         deleted_count = 0
 
-        for task_id in task_ids:
-            key = self._task_key(task_id)
-            data = await client.get(key)
-
-            if data:
-                task_dict = json.loads(data)
-                status = task_dict.get("status")
+        for task_id, raw in zip(task_ids, raws):
+            if raw:
+                try:
+                    status = json.loads(raw).get("status")
+                except (ValueError, TypeError):
+                    status = None
                 if status:
                     # 从状态索引中移除
                     pipe.srem(self._status_key(status), task_id)
-                # 删除任务
-                pipe.delete(key)
                 deleted_count += 1
-            else:
-                # 任务不存在，直接尝试删除键
-                pipe.delete(key)
+            # 删除任务键与终态过期索引
+            pipe.delete(self._task_key(task_id))
+            pipe.zrem(self._expiry_key, task_id)
 
         await pipe.execute()
         return deleted_count
+
+    async def delete_expired_terminal(
+            self,
+            max_age_seconds: Optional[int] = None,
+    ) -> List[str]:
+        """按终态过期索引清理，避免全量读取任务实体。
+
+        统一保留时长（``max_age_seconds > 0``）无法直接复用按 ttl 计算的
+        score，退化为基类分页扫描。
+        """
+        if max_age_seconds and max_age_seconds > 0:
+            return await super().delete_expired_terminal(max_age_seconds)
+
+        client = await self._get_client()
+        candidates = await client.zrangebyscore(self._expiry_key, "-inf", time.time())
+        if not candidates:
+            return []
+
+        raws = await client.mget([self._task_key(task_id) for task_id in candidates])
+        expired: List[str] = []
+        stale: List[str] = []
+        for task_id, raw in zip(candidates, raws):
+            if not raw:
+                stale.append(task_id)
+                continue
+            try:
+                status = json.loads(raw).get("status")
+            except (ValueError, TypeError):
+                status = None
+            if status not in _TERMINAL_STATUS_VALUES:
+                # 状态已被改回非终态（如手动重试）或数据损坏：清理索引即可
+                stale.append(task_id)
+                continue
+            expired.append(task_id)
+
+        if expired:
+            await self.delete_batch(expired)
+        if stale:
+            await client.zrem(self._expiry_key, *stale)
+        return expired
 
     async def list_by_status(self, status: TaskStatus, limit: int = 100, offset: int = 0) -> List[Task]:
         """按状态列出任务"""
@@ -290,6 +387,11 @@ class RedisTaskRepository(TaskRepository):
                 tasks.append(task)
 
         return tasks
+
+    async def count_by_status(self, status: TaskStatus) -> int:
+        """统计状态索引里的任务数量（一次 SCARD，不读取任务实体）"""
+        client = await self._get_client()
+        return int(await client.scard(self._status_key(status.value)))
 
     async def update_status(self, task_id: str, status: TaskStatus, **kwargs) -> bool:
         """更新任务状态"""
@@ -317,6 +419,13 @@ class RedisTaskRepository(TaskRepository):
         if old_status:
             await client.srem(self._status_key(old_status), task_id)
         await client.sadd(self._status_key(status.value), task_id)
+
+        # 同步终态过期索引
+        score = _expiry_score(task_dict)
+        if score is None:
+            await client.zrem(self._expiry_key, task_id)
+        else:
+            await client.zadd(self._expiry_key, {task_id: score})
 
         return True
 
@@ -362,6 +471,13 @@ class RedisTaskRepository(TaskRepository):
                     self._status_key(status.value if hasattr(status, "value") else status),
                     task_id,
                 )
+
+                # 同步终态过期索引
+                score = _expiry_score(task_dict)
+                if score is None:
+                    pipe.zrem(self._expiry_key, task_id)
+                else:
+                    pipe.zadd(self._expiry_key, {task_id: score})
 
                 success_count += 1
 

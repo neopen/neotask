@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: 04_events.py
 @Description: 事件回调示例 - 监听任务生命周期事件（含进度、失败、取消）
 @Author: neopen

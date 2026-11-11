@@ -23,6 +23,7 @@ __pycache__/
 .project
 .coverage
 .DS_Store
+.screenshots/
 db.json
 *.log
 *.iml

@@ -1,11 +1,14 @@
 
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: logger.py
 @Description: 自定义日志模块，支持按天创建日志文件、日志文件大小限制、控制台彩色输出等功能
             自定义日志模块，按天创建日志文件，最大10MB
 @Author: neopen
 @GitHub: https://github.com/neopen/neotask
-@Github: https://github.com/neopen/video-shot-agent
 @Time: 2025/08 - 2025/11
 """
 
@@ -480,7 +483,10 @@ class Logger:
     def _check_windows_color(self):
         """检查Windows颜色支持"""
         if IS_WINDOWS and not HAS_COLORAMA:
-            self.warning("在Windows平台上运行，但未安装colorama库，可能无法显示彩色日志。建议安装: pip install colorama")
+            self.warning(
+                "未安装可选依赖 colorama，Windows 控制台可能无法正确显示彩色日志。"
+                "可安装 neotask[color] 启用。"
+            )
 
     # ==================== 日志方法 ====================
 

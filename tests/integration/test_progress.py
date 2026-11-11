@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_progress.py
 @Description: 任务进度上报集成测试 - 验证 on_progress 订阅侧能被真正触发
 @Author: neopen

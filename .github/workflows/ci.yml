@@ -2,18 +2,40 @@ name: CI Checks
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "dev"]
 
   pull_request:
-    branches: ["main"]
+    branches: ["main", "dev"]
 
 permissions:
   contents: read
 
 jobs:
   ci-checks:
-    name: CI Checks
-    runs-on: ubuntu-latest
+    name: CI Checks (Python ${{ matrix.python-version }})
+    # Python 3.8 在 ubuntu-24.04+ 上已无法安装（setup-python 报版本不存在），
+    # 因此固定到仍提供 3.8 构建的 ubuntu-22.04。
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-version: "3.8"
+            os: ubuntu-22.04
+          - python-version: "3.10"
+            os: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout code
@@ -22,7 +44,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: ${{ matrix.python-version }}
           cache: pip
 
       - name: Install dependencies
@@ -48,6 +70,5 @@ jobs:
             --count --exit-zero \
             --max-complexity=10 --statistics
 
-      # 有测试用例后启用
-      # - name: Run tests with pytest
-      #   run: pytest
+      - name: Run unit and integration tests
+        run: pytest tests/unit tests/integration

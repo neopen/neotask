@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: 06_delayed_tasks.py
 @Description: 延时任务示例 - 延迟执行、指定时间执行与取消
 @Author: neopen
@@ -60,8 +64,8 @@ def main():
         elapsed2 = time.perf_counter() - base
 
         print(f"\n实测: 目标 1.5s -> 实际 {elapsed1:.2f}s；目标 3.0s -> 实际 {elapsed2:.2f}s")
-        print("延时精度说明: 延迟队列每 0.1s 扫描一次，Worker 空队列预取有 ≤0.5s 退避，")
-        print("             因此实际触发通常比目标时间晚 0.1~0.8s（可缩短 scan_interval 优化）。")
+        print("延时精度说明: 延迟队列按截止时间提升，入队事件即时唤醒 Worker，")
+        print("             触发开销通常在几十毫秒内（精度对比见 15_low_jitter_delay.py）。")
 
         print(f"\n实际执行过的任务: {EXECUTED}")
         print(f"被取消的任务是否执行: {'是（异常）' if 'cancelled' in EXECUTED else '否（符合预期）'}")

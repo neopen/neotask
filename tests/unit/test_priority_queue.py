@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_priority_queue.py
 @Description: 优先级队列单元测试
 @Author: neopen

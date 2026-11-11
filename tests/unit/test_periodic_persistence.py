@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_periodic_persistence.py
 @Description: 周期任务持久化测试（存储层往返 + 序列化 + 跨实例恢复）
 @Author: neopen

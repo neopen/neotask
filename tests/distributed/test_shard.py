@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_shard.py
 @Description: 任务分片测试 - 一致性哈希、取模、范围分片
 @Author: neopen

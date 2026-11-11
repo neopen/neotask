@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_prefetcher.py
 @Description: 预取器测试
 @Author: neopen
@@ -44,7 +48,7 @@ class TestTaskPrefetcher:
         prefetcher = TaskPrefetcher(queue_scheduler, config)
         await prefetcher.start()
         yield prefetcher
-        await prefetcher.stop()
+        await prefetcher.stop(graceful=False)
 
     @pytest.mark.asyncio
     async def test_start_stop(self, prefetcher):
@@ -161,7 +165,7 @@ class TestTaskPrefetcher:
         size = await prefetcher.size()
         assert size < config.max_threshold
 
-        await prefetcher.stop()
+        await prefetcher.stop(graceful=False)
 
     @pytest.mark.asyncio
     async def test_graceful_stop(self, queue_scheduler):
@@ -177,8 +181,17 @@ class TestTaskPrefetcher:
 
         await asyncio.sleep(0.5)
 
-        # 优雅停止（等待本地队列清空）
-        await prefetcher.stop(graceful=True, timeout=5.0)
+        async def drain():
+            while await prefetcher.size() > 0:
+                if await prefetcher.get(timeout=0.1) is None:
+                    break
+
+        drain_task = asyncio.create_task(drain())
+        try:
+            # 优雅停止：等待消费端把本地队列清空，而不是空等到超时
+            await prefetcher.stop(graceful=True, timeout=2.0)
+        finally:
+            await drain_task
 
         stats = prefetcher.get_stats()
         assert stats["is_running"] is False

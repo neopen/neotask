@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_task_pool.py
 @Description: TaskPool 集成测试
 @Author: neopen
@@ -118,6 +122,140 @@ class TestTaskPoolMemory:
         for task_id in task_ids:
             result = task_pool.wait_for_result(task_id)
             assert result["result"] == "processed"
+
+    def test_burst_submit_keeps_running_table_bounded(self):
+        """突发批量提交时，worker 逐个执行任务，运行表不随队列深度膨胀"""
+        observed = {"max": 0}
+        pool = None
+
+        async def executor(data):
+            with pool._worker_pool._lock:
+                observed["max"] = max(
+                    observed["max"], len(pool._worker_pool._running_tasks)
+                )
+            return {"ok": True}
+
+        config = TaskPoolConfig(
+            storage_type="memory",
+            worker_concurrency=1,
+            enable_prefetch=False,
+        )
+        pool = TaskPool(executor, config)
+        pool.start()
+        try:
+            task_ids = pool.submit_batch([{"i": i} for i in range(50)])
+            for task_id in task_ids:
+                pool.wait_for_result(task_id, timeout=10)
+        finally:
+            pool.shutdown()
+
+        assert observed["max"] <= 5
+
+    def test_direct_mode_runs_tasks_concurrently(self):
+        """关闭预取时，任务仍按 worker 数量并发执行（不能被单个 worker 独占）"""
+        async def executor(data):
+            await asyncio.sleep(0.1)
+            return {"ok": True}
+
+        config = TaskPoolConfig(
+            storage_type="memory",
+            worker_concurrency=4,
+            enable_prefetch=False,
+        )
+        pool = TaskPool(executor, config)
+        pool.start()
+        try:
+            start = time.perf_counter()
+            task_ids = pool.submit_batch([{"i": i} for i in range(8)])
+            for task_id in task_ids:
+                pool.wait_for_result(task_id, timeout=10)
+            elapsed = time.perf_counter() - start
+        finally:
+            pool.shutdown()
+
+        # 串行执行约 0.8s，4 个 worker 并发约 0.2s
+        assert elapsed < 0.7
+
+    def test_prefetch_is_not_rate_limited_by_interval(self):
+        """预取模式吞吐不受 prefetch_size / prefetch_interval 固定上限限制"""
+        async def executor(data):
+            return {"ok": True}
+
+        config = TaskPoolConfig(
+            storage_type="memory",
+            worker_concurrency=10,
+            enable_prefetch=True,
+            prefetch_size=20,
+            enable_metrics=False,
+            enable_health_check=False,
+        )
+        pool = TaskPool(executor, config)
+        pool.start()
+        try:
+            start = time.perf_counter()
+            task_ids = pool.submit_batch([{"i": i} for i in range(3000)])
+            for task_id in task_ids:
+                pool.wait_for_result(task_id, timeout=60)
+            elapsed = time.perf_counter() - start
+        finally:
+            pool.shutdown()
+
+        # 旧实现被 20 / 0.1s 限制在约 182/s（3000 条需 16s 以上）
+        assert elapsed < 8
+
+    def test_terminal_cleanup_removes_expired_tasks(self):
+        """周期清理会删除超过任务 ttl 的终态任务"""
+        async def executor(data):
+            return {"ok": True}
+
+        config = TaskPoolConfig(
+            storage_type="memory",
+            worker_concurrency=4,
+            enable_terminal_cleanup=True,
+            terminal_cleanup_interval=0.1,
+            enable_metrics=False,
+            enable_health_check=False,
+        )
+        pool = TaskPool(executor, config)
+        pool.start()
+        try:
+            task_ids = pool.submit_batch([{"i": i} for i in range(20)], ttl=1)
+            for task_id in task_ids:
+                pool.wait_for_result(task_id, timeout=10)
+            assert pool.get_stats()["total"] == 20
+
+            time.sleep(1.5)
+
+            assert pool.get_stats()["total"] == 0
+            assert all(pool.get_task(task_id) is None for task_id in task_ids)
+        finally:
+            pool.shutdown()
+
+    def test_redis_flags_disable_distributed_components(self):
+        """关闭 heartbeat/reclaimer 时不再创建或启动分布式组件"""
+        config = TaskPoolConfig(
+            storage_type="redis",
+            redis_url="redis://127.0.0.1:6379/15",
+            enable_heartbeat=False,
+            enable_reclaimer=False,
+            enable_dead_letter=False,
+        )
+        pool = TaskPool(lambda data: None, config)
+        assert pool._node_manager is None
+        assert pool._heartbeat_manager is None
+        assert pool._reclaimer is None
+
+        enabled = TaskPoolConfig(
+            storage_type="redis",
+            redis_url="redis://127.0.0.1:6379/15",
+            enable_heartbeat=True,
+            enable_reclaimer=True,
+            enable_dead_letter=False,
+        )
+        enabled_pool = TaskPool(lambda data: None, enabled)
+        assert enabled_pool._node_manager is not None
+        assert enabled_pool._heartbeat_manager is not None
+        assert enabled_pool._reclaimer is not None
 
     def test_cancel_task(self):
         """测试取消任务"""
@@ -292,6 +430,9 @@ class TestTaskPoolPriority:
         # 清空执行顺序
         execution_order.clear()
 
+        # 暂停后批量提交再恢复：流式提交会被单 worker 即时取走，全部入队后消费优先级排序才生效
+        pool.pause()
+
         # 提交不同优先级的任务（按优先级从低到高提交，验证队列会重新排序）
         # 先提交低优先级
         pool.submit({"priority": "LOW"}, priority=TaskPriority.LOW)  # priority=3
@@ -301,6 +442,8 @@ class TestTaskPoolPriority:
         pool.submit({"priority": "HIGH"}, priority=TaskPriority.HIGH)  # priority=1
 
         pool.submit({"priority": "CRITICAL"}, priority=TaskPriority.CRITICAL)  # priority=0
+
+        pool.resume()
 
         # 等待所有任务完成
         time.sleep(1.5)
@@ -321,12 +464,17 @@ class TestTaskPoolPriority:
         pool, execution_order = task_pool
         execution_order.clear()
 
+        # 暂停后批量提交再恢复：确保 HIGH_INSERT 入队时 NORMAL 任务仍在队列中，插队语义才可验证
+        pool.pause()
+
         # 提交多个相同优先级的任务（应该按 FIFO 顺序执行）
         for i in range(5):
             pool.submit({"priority": f"NORMAL_{i}"}, priority=TaskPriority.NORMAL)
 
         # 提交一个高优先级任务（应该插队到最前面）
         pool.submit({"priority": "HIGH_INSERT"}, priority=TaskPriority.HIGH)
+
+        pool.resume()
 
         # 等待完成
         time.sleep(1.5)
@@ -379,6 +527,9 @@ class TestTaskPoolPriorityCorrected:
         pool, execution_order = task_pool
         execution_order.clear()
 
+        # 暂停后批量提交再恢复：流式提交会被单 worker 即时取走，全部入队后消费优先级排序才生效
+        pool.pause()
+
         # 提交不同优先级的任务
         pool.submit({"priority": "LOW"}, priority=TaskPriority.LOW)
 
@@ -387,6 +538,8 @@ class TestTaskPoolPriorityCorrected:
         pool.submit({"priority": "HIGH"}, priority=TaskPriority.HIGH)
 
         pool.submit({"priority": "CRITICAL"}, priority=TaskPriority.CRITICAL)
+
+        pool.resume()
 
         # 等待所有任务完成
         time.sleep(1.5)
@@ -567,6 +720,56 @@ class TestTaskPoolAsyncAPI:
             # 取消后的状态可能是 CANCELLED 或 RUNNING
             assert status in [TaskStatus.CANCELLED.value, TaskStatus.RUNNING.value]
         finally:
+            pool.shutdown()
+
+
+class TestTaskPoolEventBackpressure:
+    """事件总线背压集成测试：慢订阅者触发事件丢弃，但不影响任务执行"""
+
+    def test_bounded_bus_drops_events_not_tasks(self):
+        import threading
+
+        completed = []
+        handler_started = threading.Event()
+        release = threading.Event()
+
+        async def executor(data):
+            completed.append(data["i"])
+            return {"ok": True}
+
+        async def slow_handler(event):
+            handler_started.set()
+            # 阻塞事件总线消费协程，让后续事件在队列中堆积直至溢出
+            while not release.is_set():
+                await asyncio.sleep(0.01)
+
+        config = TaskPoolConfig(
+            storage_type="memory",
+            worker_concurrency=4,
+            event_queue_max_size=2,
+            enable_metrics=False,
+            enable_health_check=False,
+            enable_reclaimer=False,
+            enable_heartbeat=False,
+        )
+        pool = TaskPool(executor, config)
+        pool.on_completed(slow_handler)
+        pool.start()
+        try:
+            for i in range(20):
+                pool.submit({"i": i})
+
+            assert handler_started.wait(timeout=5)
+            deadline = time.time() + 10
+            while len(completed) < 20 and time.time() < deadline:
+                time.sleep(0.02)
+
+            # 任务全部执行完成，事件背压不拖垮任务通路
+            assert len(completed) == 20
+            stats = pool.event_bus.get_stats()
+            assert stats["dropped_events"] > 0
+        finally:
+            release.set()
             pool.shutdown()
 
 

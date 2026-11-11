@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: task_scheduler.py
 @Description: TaskScheduler - 定时任务入口，专注于延时/周期任务。
 @Author: neopen
@@ -16,6 +20,7 @@ from typing import Optional, Any, Dict, List, Callable, Union
 
 from neotask.api.task_pool import TaskPool, TaskPoolConfig
 from neotask.common.logger import debug, warning
+from neotask.event.bus import EventBus
 from neotask.models.config import SchedulerConfig, StorageType
 from neotask.models.schedule import PeriodicTask
 from neotask.models.task import TaskPriority
@@ -85,6 +90,9 @@ class TaskScheduler:
             cache_max_size=self._config.cache_max_size,
             running_persist_delay=self._config.running_persist_delay,
             drain_delayed_on_shutdown=self._config.drain_delayed_on_shutdown,
+            event_queue_max_size=self._config.event_queue_max_size,
+            event_overflow_policy=self._config.event_overflow_policy,
+            event_slow_handler_threshold=self._config.event_slow_handler_threshold,
         )
 
         self._pool = TaskPool(executor, pool_config)
@@ -1055,6 +1063,11 @@ class TaskScheduler:
     def clear_queue(self) -> None:
         """清空队列"""
         self._pool.clear_queue()
+
+    @property
+    def event_bus(self) -> EventBus:
+        """事件总线（只读），可订阅自定义事件或通过 get_stats() 读取背压统计"""
+        return self._pool.event_bus
 
     def on_created(self, handler: Callable) -> None:
         """注册任务创建回调

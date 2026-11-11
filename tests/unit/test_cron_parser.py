@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_cron_parser.py
 @Description: Cron表达式解析器单元测试
 @Author: neopen

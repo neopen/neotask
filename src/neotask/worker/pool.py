@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: pool.py
 @Description: Worker池 - 管理任务执行器，支持预取器
 @Author: neopen
@@ -10,7 +14,7 @@ import asyncio
 import threading
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from neotask.common.logger import debug, warning, error
 from neotask.core.lifecycle import TaskLifecycleManager
@@ -81,7 +85,9 @@ class WorkerPool:
         self._workers: Dict[int, asyncio.Task] = {}
         self._running_tasks: Dict[str, asyncio.Task] = {}
         self._worker_stats: Dict[int, WorkerStats] = {}
-        self._semaphore = asyncio.Semaphore(concurrency)
+        # 信号量延迟到 start() 中创建：Python 3.8 的 asyncio.Semaphore 在构造时
+        # 就会绑定当前线程的事件循环，在无循环的调用方线程里构造会抛 RuntimeError。
+        self._semaphore: asyncio.Semaphore = cast(asyncio.Semaphore, None)
         self._running = False
         # Worker 统计可能被调用方循环读取，使用线程锁
         self._lock = threading.Lock()
@@ -109,6 +115,9 @@ class WorkerPool:
             return
 
         self._running = True
+
+        # 信号量必须按当前事件循环重建（Python 3.8 构造时即绑定循环）
+        self._semaphore = asyncio.Semaphore(self._concurrency)
 
         # 启动预取器
         if self._prefetcher:
@@ -272,6 +281,14 @@ class WorkerPool:
         except Exception as e:
             warning(f"Failed to send task {task.task_id} to dead letter queue: {e}")
 
+    async def _wait_for_queue(self, timeout: float) -> None:
+        """空队列时等待新任务通知（超时兜底）"""
+        waiter = getattr(self._queue, "wait_for_task", None)
+        if waiter is None:
+            await asyncio.sleep(timeout)
+            return
+        await waiter(timeout)
+
     async def _worker_loop(self, worker_id: int) -> None:
         """Worker主循环（支持预取器）"""
         debug(f"Worker {worker_id} started (prefetch={self._enable_prefetch})")
@@ -297,6 +314,13 @@ class WorkerPool:
                         exec_task.add_done_callback(
                             lambda task, tid=task_id: self._on_exec_task_done(tid, task)
                         )
+                        # 保持每个 worker 只有一个在途执行任务：并发度由 worker
+                        # 数量决定，运行表不会被整批调度撑大。
+                        try:
+                            await exec_task
+                        except asyncio.CancelledError:
+                            if not self._running:
+                                raise
                     else:
                         # 没有任务时，指数退避
                         consecutive_empty += 1
@@ -306,7 +330,9 @@ class WorkerPool:
 
                 else:
                     # ========== 直接模式（原有逻辑）==========
-                    task_ids = await self._queue.pop(self._prefetch_size)
+                    # 每次只取一个：任务均摊到各 worker，并发度由 worker 数量
+                    # 决定；取整批会让单个 worker 独占队列、任务只能串行执行。
+                    task_ids = await self._queue.pop(1)
 
                     if task_ids:
                         consecutive_empty = 0
@@ -321,14 +347,20 @@ class WorkerPool:
                             exec_task.add_done_callback(
                                 lambda task, tid=task_id: self._on_exec_task_done(tid, task)
                             )
+                            # 逐个等待：批内任务执行完再取下一个，避免把整批
+                            # 协程一次性压进运行表。
+                            try:
+                                await exec_task
+                            except asyncio.CancelledError:
+                                if not self._running:
+                                    raise
                     else:
                         consecutive_empty += 1
                         sleep_time = min(0.01 * (1 << min(consecutive_empty, 6)), 0.5)
-                        await asyncio.sleep(sleep_time)
+                        # 等待入队通知而不是纯睡眠：否则延时任务到期入队后，
+                        # 最坏要等退避上限（0.5s）才会被取走。
+                        await self._wait_for_queue(sleep_time)
                         continue
-
-                # 清理已完成的任务
-                await self._cleanup_completed_tasks()
 
             except asyncio.CancelledError:
                 break
@@ -571,17 +603,6 @@ class WorkerPool:
                 error_msg,
                 metadata={"node_id": self._node_id, "worker_id": worker_id}
             )
-
-    async def _cleanup_completed_tasks(self) -> None:
-        """清理已完成的任务"""
-        with self._lock:
-            completed = [
-                (tid, t) for tid, t in self._running_tasks.items()
-                if t.done()
-            ]
-
-            for task_id, task in completed:
-                self._running_tasks.pop(task_id, None)
 
     # ========== 预取器管理方法 ==========
 

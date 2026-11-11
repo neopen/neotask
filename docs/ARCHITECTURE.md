@@ -508,6 +508,11 @@ config = TaskPoolConfig(
     queue_max_size=10000,       # 队列最大长度
     priority_levels=4,          # 优先级级别数
 
+    # 事件总线背压（默认无界，保持向后兼容）
+    event_queue_max_size=None,  # 待处理事件队列上限；None 不设硬上限
+    event_overflow_policy="drop",  # 队列满时策略，目前仅支持 drop（丢弃并计数告警）
+    event_slow_handler_threshold=1.0,  # 单回调耗时告警阈值（秒）
+
     # 锁配置
     lock_type="memory",         # memory / redis
     lock_timeout=30,            # 锁超时时间
@@ -552,6 +557,9 @@ config = SchedulerConfig(
     time_wheel_tick=1.0,        # 时间轮滴答间隔（秒）
     default_max_runs=None,      # 周期任务默认最大执行次数
     default_missed_policy="skip",  # ignore / run_once / catch_up / skip
+    event_queue_max_size=None,  # 事件队列上限（透传至内部 TaskPool，None 无界）
+    event_overflow_policy="drop",  # 事件队列满时策略
+    event_slow_handler_threshold=1.0,  # 事件慢回调告警阈值（秒）
 )
 ```
 
@@ -694,6 +702,7 @@ pytest tests/test_task_scheduler.py -v
 neotask/
 ├── __init__.py            # 包入口，导出公共 API
 ├── api/                   # TaskPool / TaskScheduler
+├── benchmark.py           # 轻量性能自测入口（python -m neotask.benchmark）
 ├── cli/                   # 命令行入口
 ├── common/                # 日志、异常、常量
 ├── config/                # 配置加载

@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: dead_letter.py
 @Description: 死信队列 - 处理最终失败的任务
 @Author: neopen

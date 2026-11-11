@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: cron_parser.py
 @Description: Cron表达式解析器 - 基于 croniter 实现
 @Author: neopen

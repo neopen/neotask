@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_executor.py
 @Description: 执行器相关 fixtures
 @Author: neopen

@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: base.py
 @Description: 数据存储。Storage abstraction using Repository pattern.
 @Author: neopen
@@ -7,8 +11,33 @@
 """
 
 from abc import ABC, abstractmethod
+import time
 from typing import Dict, Iterable, List, Optional, Tuple
 from neotask.models.task import Task, TaskStatus
+
+
+def _is_terminal_expired(
+        task: Task,
+        max_age_seconds: Optional[int],
+        now_timestamp: float,
+) -> bool:
+    """判断终态任务是否超过保留期。
+
+    ``max_age_seconds`` 为 None/0 时按任务自身 ttl（完成时间 + ttl）；
+    大于 0 时统一按该时长计算。
+    """
+    if not task.status.is_terminal():
+        return False
+
+    check_time = task.completed_at or task.created_at
+    if check_time is None:
+        return False
+
+    if max_age_seconds and max_age_seconds > 0:
+        return check_time.timestamp() < now_timestamp - max_age_seconds
+
+    ttl = task.ttl if task.completed_at else task.ttl * 2
+    return check_time.timestamp() + ttl < now_timestamp
 
 
 class TaskRepository(ABC):
@@ -94,6 +123,22 @@ class TaskRepository(ABC):
         """List tasks by status."""
         pass
 
+    async def count_by_status(self, status: TaskStatus) -> int:
+        """统计指定状态的任务数量。
+
+        默认实现分页拉取任务实体后计数，任何后端都能工作；内置后端均覆盖为
+        计数查询，避免为一次统计把全部任务加载成对象。
+        """
+        total = 0
+        offset = 0
+        batch = 1000
+        while True:
+            tasks = await self.list_by_status(status, limit=batch, offset=offset)
+            total += len(tasks)
+            if len(tasks) < batch:
+                return total
+            offset += batch
+
     @abstractmethod
     async def update_status(self, task_id: str, status: TaskStatus) -> None:
         """Update task status."""
@@ -164,6 +209,45 @@ class TaskRepository(ABC):
             成功删除的数量
         """
         pass
+
+    async def delete_expired_terminal(
+            self,
+            max_age_seconds: Optional[int] = None,
+    ) -> List[str]:
+        """删除已过保留期的终态任务，返回被删除的 task_id 列表。
+
+        ``max_age_seconds`` 为 None/0 时按任务自身 ttl（完成时间 + ttl）；
+        大于 0 时使用统一保留时长。默认实现按状态分页扫描，所有后端行为
+        一致；支持过期索引的后端（Redis）应覆盖为一次范围查询，避免全量
+        读取任务实体。
+        """
+        now = time.time()
+        deleted: List[str] = []
+        batch = 1000
+
+        for status in (TaskStatus.SUCCESS, TaskStatus.FAILED, TaskStatus.CANCELLED):
+            offset = 0
+            while True:
+                tasks = await self.list_by_status(status, limit=batch, offset=offset)
+                if not tasks:
+                    break
+
+                expired = [
+                    task for task in tasks
+                    if _is_terminal_expired(task, max_age_seconds, now)
+                ]
+                if expired:
+                    expired_ids = [task.task_id for task in expired]
+                    await self.delete_batch(expired_ids)
+                    deleted.extend(expired_ids)
+                    # 删除后同一偏移位置由后续任务填补，保持 offset 继续扫描
+                    continue
+
+                offset += len(tasks)
+                if len(tasks) < batch:
+                    break
+
+        return deleted
 
     @abstractmethod
     async def exists(self, task_id: str) -> bool:

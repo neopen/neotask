@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_event_bus.py
 @Description: 事件总线单元测试
 @Author: neopen
@@ -10,7 +14,7 @@ import asyncio
 
 import pytest
 
-from neotask.event.bus import TaskEvent
+from neotask.event.bus import EventBus, TaskEvent
 
 
 class TestEventBus:
@@ -189,6 +193,143 @@ class TestEventBus:
             await asyncio.sleep(0.2)
 
             assert received_count == 10
+
+    @pytest.mark.asyncio
+    async def test_bounded_queue_drops_overflow(self):
+        """有界队列满时丢弃新事件，并在统计中体现"""
+        bus = EventBus(max_queue_size=2)
+        await bus.start()
+
+        release = asyncio.Event()
+        started = asyncio.Event()
+
+        async def blocking_handler(event: TaskEvent):
+            started.set()
+            await release.wait()
+
+        bus.subscribe("test.event", blocking_handler)
+
+        try:
+            # 第一条事件被 worker 取走后阻塞在回调里，后续事件只能排队
+            await bus.emit(TaskEvent("test.event", "task_0"))
+            await asyncio.wait_for(started.wait(), timeout=1.0)
+
+            for i in range(1, 5):
+                await bus.emit(TaskEvent("test.event", f"task_{i}"))
+            await asyncio.sleep(0.05)
+
+            stats = bus.get_stats()
+            assert stats["queue_size"] == 2
+            assert stats["dropped_events"] == 2
+            assert stats["processed_events"] == 0
+        finally:
+            release.set()
+            await bus.stop()
+
+    @pytest.mark.asyncio
+    async def test_slow_handler_counted(self):
+        """回调耗时超阈值时计入 slow_handler_calls"""
+        bus = EventBus(slow_handler_threshold=0.01)
+
+        async def slow_handler(event: TaskEvent):
+            await asyncio.sleep(0.05)
+
+        bus.subscribe("test.event", slow_handler)
+
+        # 未启动时 emit 走同步处理路径，便于直接断言耗时统计
+        await bus.emit(TaskEvent("test.event", "task_001"))
+
+        stats = bus.get_stats()
+        assert stats["slow_handler_calls"] == 1
+        assert stats["slow_handler_threshold"] == 0.01
+
+    @pytest.mark.asyncio
+    async def test_slow_handler_does_not_block_fast_handler(self):
+        """同一事件的订阅者并发执行，慢回调不阻塞快回调"""
+        bus = EventBus()
+        await bus.start()
+
+        fast_called = asyncio.Event()
+
+        async def slow_handler(event: TaskEvent):
+            await asyncio.sleep(0.5)
+
+        async def fast_handler(event: TaskEvent):
+            fast_called.set()
+
+        bus.subscribe("test.event", slow_handler)
+        bus.subscribe("test.event", fast_handler)
+
+        try:
+            await bus.emit(TaskEvent("test.event", "task_001"))
+            # 若串行执行，快回调要等慢回调 0.5s 才会被调用
+            await asyncio.wait_for(fast_called.wait(), timeout=0.2)
+        finally:
+            await bus.stop()
+
+
+class TestEventBusConfigPassthrough:
+    """背压配置透传测试：三个入口 Config 的背压字段须到达池内 EventBus"""
+
+    def test_task_pool_config_passthrough(self):
+        from neotask.api.task_pool import TaskPool
+        from neotask.models.config import TaskPoolConfig
+
+        config = TaskPoolConfig(
+            event_queue_max_size=5,
+            event_slow_handler_threshold=0.5,
+        )
+        pool = TaskPool(config=config)
+        stats = pool.event_bus.get_stats()
+        assert stats["max_queue_size"] == 5
+        assert stats["slow_handler_threshold"] == 0.5
+
+    def test_scheduler_config_passthrough(self):
+        from neotask.api.task_scheduler import TaskScheduler
+        from neotask.models.config import SchedulerConfig
+
+        config = SchedulerConfig(
+            event_queue_max_size=7,
+            event_slow_handler_threshold=0.25,
+        )
+        scheduler = TaskScheduler(config=config)
+        assert scheduler.event_bus is scheduler._pool.event_bus
+        stats = scheduler.event_bus.get_stats()
+        assert stats["max_queue_size"] == 7
+        assert stats["slow_handler_threshold"] == 0.25
+
+    @pytest.mark.asyncio
+    async def test_engine_config_passthrough(self):
+        from neotask.core.engine import TaskEngine, EngineConfig
+
+        config = EngineConfig(
+            event_queue_max_size=9,
+            event_slow_handler_threshold=0.75,
+            enable_metrics=False,
+        )
+        engine = TaskEngine(config)
+        await engine.initialize()
+        stats = engine.event_bus.get_stats()
+        assert stats["max_queue_size"] == 9
+        assert stats["slow_handler_threshold"] == 0.75
+
+    def test_default_config_keeps_unbounded(self):
+        """默认配置保持无界队列与默认阈值（向后兼容）"""
+        from neotask.api.task_pool import TaskPool
+
+        pool = TaskPool()
+        stats = pool.event_bus.get_stats()
+        assert stats["max_queue_size"] is None
+        assert stats["slow_handler_threshold"] == 1.0
+
+    def test_invalid_overflow_policy_raises(self):
+        """非法溢出策略在构造期即失败"""
+        from neotask.api.task_pool import TaskPool
+        from neotask.models.config import TaskPoolConfig
+
+        config = TaskPoolConfig(event_overflow_policy="block")
+        with pytest.raises(ValueError):
+            TaskPool(config=config)
 
 
 if __name__ == "__main__":

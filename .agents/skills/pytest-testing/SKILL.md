@@ -211,6 +211,10 @@ class TestQueue:
 
 ```python
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_xxx.py
 @Description: 简要描述
 @Author: neopen

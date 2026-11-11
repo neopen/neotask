@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: delayed_queue.py
 @Description: 延迟队列实现 - 支持延时任务调度
 @Author: neopen

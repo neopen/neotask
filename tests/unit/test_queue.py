@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_queue.py
 @Description: 队列模块单元测试
 @Author: neopen
@@ -7,6 +11,7 @@
 """
 
 import asyncio
+import time
 
 import pytest
 
@@ -250,6 +255,64 @@ class TestQueueScheduler:
 
             # 但普通 push 仍然被拒绝
             assert await scheduler.push("task-2", 5) is False
+        finally:
+            await scheduler.stop()
+
+    @pytest.mark.asyncio
+    async def test_wait_for_task_wakes_on_immediate_push(self):
+        """空队列等待时应被入队通知立即唤醒"""
+        scheduler = QueueScheduler()
+        await scheduler.start()
+
+        try:
+            async def push_later():
+                await asyncio.sleep(0.05)
+                await scheduler.push("task-1", 5)
+
+            start = time.perf_counter()
+            pusher = asyncio.create_task(push_later())
+            woke = await scheduler.wait_for_task(timeout=1.0)
+            elapsed = time.perf_counter() - start
+            await pusher
+
+            assert woke is True
+            assert elapsed < 0.5
+            assert await scheduler.pop(1) == ["task-1"]
+        finally:
+            await scheduler.stop()
+
+    @pytest.mark.asyncio
+    async def test_wait_for_task_wakes_on_delayed_promotion(self):
+        """延迟任务到期转入优先队列时也应唤醒等待者"""
+        scheduler = QueueScheduler()
+        await scheduler.start()
+
+        try:
+            await scheduler.push("task-delayed", 5, delay=0.1)
+
+            start = time.perf_counter()
+            woke = await scheduler.wait_for_task(timeout=1.0)
+            elapsed = time.perf_counter() - start
+
+            assert woke is True
+            assert elapsed < 0.5
+            assert await scheduler.pop(1) == ["task-delayed"]
+        finally:
+            await scheduler.stop()
+
+    @pytest.mark.asyncio
+    async def test_wait_for_task_times_out(self):
+        """队列持续为空时按超时返回"""
+        scheduler = QueueScheduler()
+        await scheduler.start()
+
+        try:
+            start = time.perf_counter()
+            woke = await scheduler.wait_for_task(timeout=0.05)
+            elapsed = time.perf_counter() - start
+
+            assert woke is False
+            assert elapsed >= 0.04
         finally:
             await scheduler.stop()
 

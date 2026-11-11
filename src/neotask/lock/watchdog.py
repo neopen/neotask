@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: watchdog.py
 @Description: 看门狗 - 自动续期锁
 @Author: neopen

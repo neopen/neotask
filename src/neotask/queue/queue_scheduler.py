@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: queue_scheduler.py
 @Description: 队列调度器 - 整合优先级队列和延迟队列
 @Author: neopen
@@ -48,6 +52,10 @@ class QueueScheduler:
         self._paused = False
         self._disabled = False
         self._started = False
+        # 入队唤醒信号：worker/预取器空转退避时据此立即恢复，而不是等
+        # 退避超时（最长 0.5s）。None 表示尚无消费者等待，首次 wait 时创建，
+        # 避免在消费循环之外构造 asyncio.Event（3.8 会在构造时绑定循环）。
+        self._task_event: Optional[asyncio.Event] = None
 
     async def start(self) -> None:
         """启动调度器"""
@@ -56,6 +64,8 @@ class QueueScheduler:
         self._started = True
         # 上一次 shutdown 会 disable 队列，重启时需要恢复接收新任务
         self._disabled = False
+        # 事件可能绑定在旧事件循环上，重启时丢弃，等待侧会重新创建
+        self._task_event = None
 
         # 包装回调以匹配 delayed_queue 期望的签名 (task_id, priority, data)
         async def wrapped_callback(task_id: str, priority: int, data: Dict = None):
@@ -70,6 +80,8 @@ class QueueScheduler:
             return
         if not await self._priority_queue.push(task_id, priority):
             error(f"Delayed task {task_id} could not be promoted: priority queue is full")
+        else:
+            self._notify_tasks_available()
 
     async def stop(self) -> None:
         """停止调度器"""
@@ -99,9 +111,12 @@ class QueueScheduler:
             return await self._delayed_queue.schedule(task_id, priority, delay)
         else:
             # 容量已在上面查过，避免 PriorityQueue 再查一次 size()
-            return await self._priority_queue.push(
+            pushed = await self._priority_queue.push(
                 task_id, priority, check_capacity=False
             )
+            if pushed:
+                self._notify_tasks_available()
+            return pushed
 
     async def re_enqueue(self, task_id: str, priority: int) -> bool:
         """把已出队但尚未执行的任务放回优先队列（停机回滚用）
@@ -119,25 +134,10 @@ class QueueScheduler:
         """
         if await self.size() >= self._max_size:
             return False
-        return await self._priority_queue.push(task_id, priority, check_capacity=False)
-
-    async def re_enqueue(self, task_id: str, priority: int) -> bool:
-        """把已出队但尚未执行的任务放回优先队列（停机回滚用）
-
-        与 ``push`` 的区别：停机时队列已 ``disable()``（不再接收新任务），但
-        预取器本地队列里的任务是**已经出队**的，放回属于撤销出队而不是新任务，
-        必须放行；否则这些任务会变成孤儿，只能等 ttl 兜底重排。
-
-        Args:
-            task_id: 任务ID
-            priority: 任务原始优先级
-
-        Returns:
-            是否成功放回
-        """
-        if await self.size() >= self._max_size:
-            return False
-        return await self._priority_queue.push(task_id, priority)
+        pushed = await self._priority_queue.push(task_id, priority)
+        if pushed:
+            self._notify_tasks_available()
+        return pushed
 
     async def push_batch(
             self,
@@ -175,8 +175,39 @@ class QueueScheduler:
             )
             for index, _, _ in immediate[:pushed]:
                 results[index] = True
+            if pushed:
+                self._notify_tasks_available()
 
         return results
+
+    def _notify_tasks_available(self) -> None:
+        """有新任务进入优先队列时唤醒等待中的消费者
+
+        仅在已有消费者创建了事件时置位；事件保持置位直到某个等待者开始下一轮
+        等待，避免唤醒丢失。
+        """
+        if self._task_event is not None:
+            self._task_event.set()
+
+    async def wait_for_task(self, timeout: float) -> bool:
+        """等待新任务出现（替代空队列时的固定退避睡眠）
+
+        调用方必须在消费事件循环中等待。返回 True 表示有新任务或等待被唤醒，
+        返回 False 表示超时。等待前先检查队列，避免通知与等待之间的竞态。
+        """
+        if self._task_event is None:
+            self._task_event = asyncio.Event()
+        event = self._task_event
+        event.clear()
+        # 暂停时 pop() 恒返回空，不能以 size>0 判定「有任务」并立即返回，
+        # 否则消费者陷入 pop→空→wait→True 的忙等，独占事件循环饿死其它协程。
+        if not self._paused and await self._priority_queue.size() > 0:
+            return True
+        try:
+            await asyncio.wait_for(event.wait(), timeout=timeout)
+            return True
+        except asyncio.TimeoutError:
+            return False
 
     async def pop(self, count: int = 1) -> List[str]:
         """弹出任务
@@ -233,6 +264,8 @@ class QueueScheduler:
         drained = await self._delayed_queue.drain()
         for task_id, priority in drained:
             await self._priority_queue.push(task_id, priority, check_capacity=False)
+        if drained:
+            self._notify_tasks_available()
         return len(drained)
 
     async def schedule_delayed(self, task_id: str, priority: int, delay: float) -> bool:
@@ -261,6 +294,8 @@ class QueueScheduler:
     async def resume(self) -> None:
         """恢复出队"""
         self._paused = False
+        # 唤醒暂停期间等待的消费者，避免恢复后仍要等退避超时才取走任务
+        self._notify_tasks_available()
 
     async def disable(self) -> None:
         """禁用入队"""

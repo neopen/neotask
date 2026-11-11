@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: 10_task_query.py
 @Description: 任务查询示例 - 查询状态、结果、完整信息、统计与健康状态
 @Author: neopen

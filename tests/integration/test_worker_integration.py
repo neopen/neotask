@@ -1,4 +1,8 @@
 """
+Copyright (c) 2025 neopen
+Licensed under the MIT License.
+See LICENSE File For Details.
+
 @FileName: test_worker_integration.py
 @Description: Worker 集成测试（预取器、回收器）
 @Author: neopen
@@ -53,7 +57,7 @@ class TestPrefetcherIntegration:
         size = await prefetcher.size()
         assert size >= 0
 
-        await prefetcher.stop()
+        await prefetcher.stop(graceful=False)
 
     @pytest.mark.asyncio
     async def test_prefetch_batch(self, queue_with_tasks):
@@ -71,7 +75,7 @@ class TestPrefetcherIntegration:
         tasks = await prefetcher.get_batch(max_count=15, timeout=1.0)
         assert len(tasks) > 0
 
-        await prefetcher.stop()
+        await prefetcher.stop(graceful=False)
 
     @pytest.mark.asyncio
     async def test_prefetch_stats(self, queue_with_tasks):
@@ -96,7 +100,7 @@ class TestPrefetcherIntegration:
         assert "total_fetched" in stats
         assert "avg_batch_size" in stats
 
-        await prefetcher.stop()
+        await prefetcher.stop(graceful=False)
 
     @pytest.mark.asyncio
     async def test_prefetch_strategies(self, queue_with_tasks):
@@ -120,7 +124,7 @@ class TestPrefetcherIntegration:
             task_id = await prefetcher.get(timeout=0.5)
             assert task_id is not None or True  # 至少不报错
 
-            await prefetcher.stop()
+            await prefetcher.stop(graceful=False)
 
 
 class TestReclaimerIntegration:
@@ -141,12 +145,13 @@ class TestReclaimerIntegration:
 
         await event_bus.start()
 
-        return {
+        yield {
             "task_repo": task_repo,
             "queue_scheduler": queue_scheduler,
             "lock": lock,
             "event_bus": event_bus
         }
+        await event_bus.stop()
 
     @pytest.mark.asyncio
     async def test_reclaimer_timeout(self, setup_reclaimer):

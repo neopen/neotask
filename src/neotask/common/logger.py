@@ -9,7 +9,6 @@ See LICENSE File For Details.
             自定义日志模块，按天创建日志文件，最大10MB
 @Author: neopen
 @GitHub: https://github.com/neopen/neotask
-@Github: https://github.com/neopen/video-shot-agent
 @Time: 2025/08 - 2025/11
 """
 

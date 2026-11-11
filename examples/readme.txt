@@ -19,10 +19,12 @@ NeoTask 示例索引（examples/）
 11_sqlite_persistence.py SQLite 持久化   进程重启后仍能查到历史任务
 12_timeout.py            任务超时        task_timeout 超时失败与错误信息
 13_benchmark.py          性能自测        用自己的 executor 对比并发度下的吞吐/延迟
+14_event_backpressure.py EventBus 背压   有界队列丢弃策略、慢回调监控与隔离（约 2 秒）
+15_low_jitter_delay.py   低抖动延时      延迟队列 vs 时间轮的触发精度对比（约 3 秒）
 99_all_features.py       完整演示        即时+优先级+批量+事件+进度+统计+定时（约 7 秒）
 
 说明：
 - 示例默认使用 memory 存储；需要持久化时参考 11_sqlite_persistence.py。
 - 周期/Cron 任务在 memory 模式下重启会丢失，生产环境请使用 sqlite 或 redis。
-- 延时任务的实际触发时间约为目标时间 +0.1~0.8 秒（延迟队列 0.1s 扫描 + Worker 预取退避）。
+- 延时任务按截止时间提升、入队事件即时唤醒 Worker，触发开销通常在几十毫秒内（精度对比见 15_low_jitter_delay.py）。
 - 存储迁移工具（memory → SQLite/Redis、SQLite → Redis）见 scripts/migrate_*.py。

@@ -176,28 +176,29 @@ class TaskPool:
     def _init_distributed_components(self) -> None:
         """初始化分布式组件（去中心化架构）"""
         try:
-            # 1. 节点管理器
-            self._node_manager = NodeManager(
-                redis_url=self._config.redis_url,
-                node_id=self._config.node_id
-            )
+            # 1. 节点管理器：仅心跳/回收需要分布式节点视图时才创建
+            if self._config.enable_heartbeat or self._config.enable_reclaimer:
+                self._node_manager = NodeManager(
+                    redis_url=self._config.redis_url,
+                    node_id=self._config.node_id
+                )
 
-            # 2. 心跳管理器 - 直接传递 Redis URL
-            heartbeat_config = HeartbeatConfig(
-                interval=self._config.heartbeat_interval,
-                timeout=self._config.heartbeat_timeout,
-                cleanup_interval=self._config.reclaimer_interval
-            )
-            self._heartbeat_manager = HeartbeatManager(
-                node_id=self._config.node_id,
-                redis_url=self._config.redis_url,  # 直接传 URL
-                task_repo=self._task_repo,
-                config=heartbeat_config,
-                queue_scheduler=self._queue_scheduler
-            )
+            # 2. 心跳管理器
+            if self._config.enable_heartbeat:
+                heartbeat_config = HeartbeatConfig(
+                    interval=self._config.heartbeat_interval,
+                    timeout=self._config.heartbeat_timeout,
+                    cleanup_interval=self._config.reclaimer_interval
+                )
+                self._heartbeat_manager = HeartbeatManager(
+                    node_id=self._config.node_id,
+                    redis_url=self._config.redis_url,  # 直接传 URL
+                    task_repo=self._task_repo,
+                    config=heartbeat_config,
+                    queue_scheduler=self._queue_scheduler
+                )
 
             # 3. 死信队列，供回收器和 Worker 池投递最终失败的任务
-            self._dead_letter = None
             if self._config.enable_dead_letter:
                 self._dead_letter = DeadLetterQueue(
                     redis_url=self._config.redis_url,

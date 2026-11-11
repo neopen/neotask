@@ -231,6 +231,32 @@ class TestTaskPoolMemory:
         finally:
             pool.shutdown()
 
+    def test_redis_flags_disable_distributed_components(self):
+        """关闭 heartbeat/reclaimer 时不再创建或启动分布式组件"""
+        config = TaskPoolConfig(
+            storage_type="redis",
+            redis_url="redis://127.0.0.1:6379/15",
+            enable_heartbeat=False,
+            enable_reclaimer=False,
+            enable_dead_letter=False,
+        )
+        pool = TaskPool(lambda data: None, config)
+        assert pool._node_manager is None
+        assert pool._heartbeat_manager is None
+        assert pool._reclaimer is None
+
+        enabled = TaskPoolConfig(
+            storage_type="redis",
+            redis_url="redis://127.0.0.1:6379/15",
+            enable_heartbeat=True,
+            enable_reclaimer=True,
+            enable_dead_letter=False,
+        )
+        enabled_pool = TaskPool(lambda data: None, enabled)
+        assert enabled_pool._node_manager is not None
+        assert enabled_pool._heartbeat_manager is not None
+        assert enabled_pool._reclaimer is not None
+
     def test_cancel_task(self):
         """测试取消任务"""
         # 提交一个长时间运行的任务

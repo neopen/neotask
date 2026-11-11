@@ -6,6 +6,13 @@
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [1.0.8](https://github.com/neopen/neotask/compare/v1.0.7...v1.0.8) (2026-11-11)
+
+
+### 🐛 Bug Fixes (问题修复)
+
+* 事件驱动调度、EventBus 背压与万级任务性能可靠性提升（v1.0.8） ([#40](https://github.com/neopen/neotask/issues/40)) ([c486c02](https://github.com/neopen/neotask/commit/c486c02981dba2074f11377ea90e3c445dc8ed41))
+
 ## [1.0.7](https://github.com/neopen/neotask/compare/v1.0.6...v1.0.7) (2026-11-10)
 
 

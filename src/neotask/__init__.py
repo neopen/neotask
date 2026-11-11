@@ -10,7 +10,7 @@ See LICENSE File For Details.
 @Time: 2026/4/8 00:00
 """
 
-__version__ = "1.0.7"
+__version__ = "1.0.8"
 __author__ = "neopen"
 
 # API 入口

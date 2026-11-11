@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>版本路线图 · NeoTask v1.0 文档</title>
-  <meta name="description" content="v1.0 的能力边界，以及 v1.5、v2.0 的规划项。">
+  <meta name="description" content="1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。">
   <meta name="keywords" content="版本路线图, 版本路线图 教程, 版本路线图 文档, 路线图, NeoTask v1.0 文档, NeoTask 1.0.x, Python 任务队列">
   <meta name="author" content="NeoPen">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
@@ -13,7 +13,7 @@
   <meta property="og:locale" content="zh_CN">
   <meta property="og:type" content="article">
   <meta property="og:title" content="版本路线图 · NeoTask v1.0 文档">
-  <meta property="og:description" content="v1.0 的能力边界，以及 v1.5、v2.0 的规划项。">
+  <meta property="og:description" content="1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。">
   <meta property="og:url" content="https://task.helpenx.com/docs/v1.0/roadmap.html">
   <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
   <meta property="og:image:type" content="image/png">
@@ -25,7 +25,7 @@
   <meta property="article:section" content="路线图">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="版本路线图 · NeoTask v1.0 文档">
-  <meta name="twitter:description" content="v1.0 的能力边界，以及 v1.5、v2.0 的规划项。">
+  <meta name="twitter:description" content="1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。">
   <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
   <meta name="twitter:image:alt" content="版本路线图 · NeoTask 文档">
   <meta name="theme-color" content="#0b1713">
@@ -44,7 +44,7 @@
         "@id": "https://task.helpenx.com/docs/v1.0/roadmap.html#article",
         "headline": "版本路线图",
         "name": "版本路线图 · NeoTask v1.0 文档",
-        "description": "v1.0 的能力边界，以及 v1.5、v2.0 的规划项。",
+        "description": "1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。",
         "image": "https://task.helpenx.com/assets/img/og.png",
         "url": "https://task.helpenx.com/docs/v1.0/roadmap.html",
         "mainEntityOfPage": "https://task.helpenx.com/docs/v1.0/roadmap.html",
@@ -192,7 +192,7 @@
         <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
         <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
-        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
@@ -201,7 +201,7 @@
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link is-active" href="/docs/v1.0/roadmap.html" data-search="版本路线图 v1.0 的能力边界，以及 v1.5、v2.0 的规划项。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       <p class="docs-nav-empty" id="docsNavEmpty" hidden>没有匹配的文档</p>
@@ -244,7 +244,7 @@
         <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
         <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
-        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
@@ -253,7 +253,7 @@
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link is-active" href="/docs/v1.0/roadmap.html" data-search="版本路线图 v1.0 的能力边界，以及 v1.5、v2.0 的规划项。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       
@@ -262,7 +262,7 @@
         <header class="article-header">
           <p class="article-eyebrow">路线图</p>
           <h1>版本路线图</h1>
-          <p class="article-lede">v1.0 的能力边界，以及 v1.5、v2.0 的规划项。</p>
+          <p class="article-lede">1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。</p>
           <div class="article-meta">
             <span class="article-version">v1.0 · NeoTask 1.0.x</span>
             <span class="dot"></span>
@@ -274,7 +274,7 @@
           </div>
         </header>
         <div class="article-body">
-<p>本页区分“1.0 已交付”与“后续规划”。规划项来自仓库公开路线图，尚未实现，接口与行为以最终发布为准。</p>
+<p>NeoTask 的定位是轻量、可嵌入、可被编排的执行层。复杂任务编排不再由本库承担：DAG、条件分支、动态路由与插件系统交给上层编排服务，NeoTask 只负责可靠地执行单个任务，并提供轻量监控指标。</p>
 
 <h2 id="1.0 能力边界">1.0 能力边界</h2>
 <table>
@@ -289,14 +289,15 @@
 <tr><td>生命周期事件与背压</td><td>已支持</td><td>EventBus 异步投递，可配置队列上限与溢出策略</td></tr>
 <tr><td>终态任务自动清理</td><td>已支持</td><td>默认开启，保留期可配置</td></tr>
 <tr><td>命令行与轻量基准</td><td>已支持</td><td><code>neotask --benchmark</code>、<code>--version</code>、<code>--help</code></td></tr>
-<tr><td>DAG 工作流</td><td>未支持</td><td>规划于 v1.5</td></tr>
-<tr><td>多租户隔离</td><td>未支持</td><td>规划于 v2.0</td></tr>
-<tr><td>独立 Web UI</td><td>未提供公开入口</td><td><code>neotask[ui]</code> 扩展需自行装配，未作为独立产品发布</td></tr>
+<tr><td>轻量监控指标</td><td>基础能力已支持</td><td><code>get_stats()</code>、健康检查与事件总线统计；标准化快照与 UI 指标规划于 v1.2</td></tr>
+<tr><td>DAG 工作流与条件分支</td><td>不在范围内</td><td>由上层编排服务负责，NeoTask 只执行单个任务</td></tr>
+<tr><td>多租户与独立管理后台</td><td>不在范围内</td><td>由上层平台或编排服务提供</td></tr>
+<tr><td>Web UI</td><td>可选轻量入口</td><td><code>neotask[ui]</code> 的 <code>WebUIServer</code> 提供 <code>/api/stats</code>，不是独立编排后台</td></tr>
 </tbody>
 </table>
 
 <h2 id="1.0 上的替代方案">1.0 上的替代方案</h2>
-<p>规划中的能力在 1.0 上通常可以用业务代码组合现有原语实现，但状态与失败处理需要自行承担。</p>
+<p>不在库内的能力通常可以由业务代码组合现有原语实现，或交给上层编排服务；状态与失败处理需要自行承担。</p>
 <table>
 <thead><tr><th>需求</th><th>1.0 做法</th><th>需要自行处理</th></tr></thead>
 <tbody>
@@ -304,30 +305,49 @@
 <tr><td>条件分支</td><td>任务返回结构化结果，由业务层决定提交哪个后续任务</td><td>分支状态记录与失败补偿</td></tr>
 <tr><td>并行子任务</td><td><code>submit_batch()</code> + <code>wait_all()</code></td><td>部分失败时的清理与重试策略</td></tr>
 <tr><td>定时编排</td><td>用 <code>TaskScheduler</code> 分别定义周期任务</td><td>多实例重复触发；同一周期定义只应有一个调度者</td></tr>
-<tr><td>多租户</td><td>每个租户使用独立 TaskPool 与存储（独立 SQLite 文件或 Redis 库）</td><td>资源配额、统一鉴权与跨租户统计</td></tr>
-<tr><td>可视化管理</td><td>基于 <code>get_stats()</code>、<code>get_task()</code> 与事件自行构建；CLI 仅覆盖基准与版本信息</td><td>Web UI 装配、鉴权与运维入口</td></tr>
+<tr><td>多租户</td><td>不在库内；由上层平台为每个租户部署独立 TaskPool 与存储</td><td>资源配额、统一鉴权与跨租户统计</td></tr>
+<tr><td>可视化管理</td><td>使用 <code>neotask[ui]</code> 查看任务与指标，或基于 <code>get_stats()</code> 自行构建</td><td>编排视图与运维后台交给上层服务</td></tr>
 </tbody>
 </table>
 
-<h2 id="v1.5：任务编排">v1.5：任务编排</h2>
+<h2 id="v1.1：本地任务能力补全">v1.1：本地任务能力补全</h2>
 <ul>
-<li>DAG 工作流定义与提交；</li>
-<li>节点依赖、条件分支与并行执行；</li>
-<li>工作流级状态查询与失败重跑。</li>
+<li>Checkpoint 断点续跑：<code>save_checkpoint()</code> / <code>load_checkpoint()</code>，重试时从检查点恢复；</li>
+<li>成本与耗时采集：<code>report_cost()</code>、<code>queue_wait_ms</code> / <code>duration_ms</code> 与 <code>get_cost_summary()</code>；</li>
+<li>父子任务关联：<code>parent_task_id</code>、<code>get_children()</code> / <code>get_parent()</code>，不做自动汇总；</li>
+<li>本地上下文读写（Blackboard）与自定义失败状态 <code>report_failure()</code>；</li>
+<li>补充 <code>task.checkpointed</code> / <code>task.cost_reported</code> 事件，支持外部指定 <code>task_id</code>。</li>
 </ul>
-<p>规划中的工作流引擎只负责拓扑推进与节流，节点执行仍复用 <code>TaskPool</code>。当前版本没有 <code>workflow</code> 模块，不应在 1.0 上使用相关接口。</p>
 
-<h2 id="v2.0：企业级特性">v2.0：企业级特性</h2>
+<h2 id="v1.2：性能优化与轻量监控">v1.2：性能优化与轻量监控</h2>
 <ul>
-<li>独立 Web UI；</li>
-<li>多租户隔离；</li>
-<li>更完整的 Prometheus 集成。</li>
+<li>批量提交单事务写入、状态查询索引、调度开销优化与进度上报节流；</li>
+<li>SQLite WAL 与连接复用，减少每任务新建连接的开销；</li>
+<li>标准化 <code>get_metrics()</code> 快照与 <code>on_metrics()</code> 定时推送；</li>
+<li>轻量 UI 监控指标：展示状态计数、队列深度、最老 pending 等待、存储健康等，不建设独立编排后台；</li>
+<li><code>benchmarks/</code> 基准套件，发布前跑基准防止性能回退。</li>
 </ul>
-<p>1.0 已提供 <code>MetricsCollector</code> 与 Pushgateway 上报器，但没有内置 HTTP 指标端点；v2.0 的集成范围以发布说明为准。</p>
+
+<h2 id="v1.3：监控导出与可靠性">v1.3：监控导出与可靠性</h2>
+<ul>
+<li>可选 Prometheus 导出器：挂载到已有 HTTP 服务或调用 <code>render()</code>，不默认监听端口；</li>
+<li>崩溃恢复边界：明确未入队 <code>pending</code> 记录不会自动执行，并在指标中计数；</li>
+<li>停机配置：明确是否 drain 未到期延时任务；</li>
+<li>自动重试、手动重试与 Checkpoint 续跑的语义矩阵。</li>
+</ul>
+
+<h2 id="v2.0：编排集成（后移）">v2.0：编排集成（后移）</h2>
+<p>待本地能力稳定且有真实多服务需求后再启动，不属于当前版本承诺。集成以上层编排服务客户端的形态提供：</p>
+<ul>
+<li><code>OrchestratorClient</code>：任务消费、事件上报、心跳与本地重试存储；</li>
+<li>Redis Stream 消费者组与跨语言协议；</li>
+<li>实例注册、失联任务回收与控制消息处理。</li>
+</ul>
+<p>以下能力由上层编排服务负责，不在 NeoTask 内实现：DAG 工作流、条件分支、并行编排、动态路由、插件系统、独立 Web UI、多租户隔离。</p>
 
 <h2 id="升级准备">升级准备</h2>
 <ul>
-<li>保持任务幂等：后续的工作流重跑、故障恢复和人工重试都会再次执行任务。</li>
+<li>保持任务幂等：上层编排重跑、故障恢复和人工重试都会再次执行任务。</li>
 <li>只依赖公开 API：不要直接读写 Redis 键或调用内部模块，存储结构可能随版本变化。</li>
 <li>记录当前配置：升级前保存 <code>TaskPoolConfig</code> 与 <code>SchedulerConfig</code>，发布后逐项对照新版配置参考。</li>
 <li>不要把规划项写进生产依赖，也不要在 1.0 上导入尚不存在的 <code>workflow</code> 模块。</li>
@@ -353,7 +373,7 @@
     </nav>
       <p class="docs-feedback">发现文档问题？欢迎在 <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">GitHub Issues</a> 反馈。</p>
     </main>
-    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#1.0%20%E8%83%BD%E5%8A%9B%E8%BE%B9%E7%95%8C">1.0 能力边界</a><a href="#1.0%20%E4%B8%8A%E7%9A%84%E6%9B%BF%E4%BB%A3%E6%96%B9%E6%A1%88">1.0 上的替代方案</a><a href="#v1.5%EF%BC%9A%E4%BB%BB%E5%8A%A1%E7%BC%96%E6%8E%92">v1.5：任务编排</a><a href="#v2.0%EF%BC%9A%E4%BC%81%E4%B8%9A%E7%BA%A7%E7%89%B9%E6%80%A7">v2.0：企业级特性</a><a href="#%E5%8D%87%E7%BA%A7%E5%87%86%E5%A4%87">升级准备</a><a href="#%E7%89%88%E6%9C%AC%E4%B8%8E%E6%96%87%E6%A1%A3%E8%B7%AF%E5%BE%84">版本与文档路径</a></nav>
+    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#1.0%20%E8%83%BD%E5%8A%9B%E8%BE%B9%E7%95%8C">1.0 能力边界</a><a href="#1.0%20%E4%B8%8A%E7%9A%84%E6%9B%BF%E4%BB%A3%E6%96%B9%E6%A1%88">1.0 上的替代方案</a><a href="#v1.1%EF%BC%9A%E6%9C%AC%E5%9C%B0%E4%BB%BB%E5%8A%A1%E8%83%BD%E5%8A%9B%E8%A1%A5%E5%85%A8">v1.1：本地任务能力补全</a><a href="#v1.2%EF%BC%9A%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%E4%B8%8E%E8%BD%BB%E9%87%8F%E7%9B%91%E6%8E%A7">v1.2：性能优化与轻量监控</a><a href="#v1.3%EF%BC%9A%E7%9B%91%E6%8E%A7%E5%AF%BC%E5%87%BA%E4%B8%8E%E5%8F%AF%E9%9D%A0%E6%80%A7">v1.3：监控导出与可靠性</a><a href="#v2.0%EF%BC%9A%E7%BC%96%E6%8E%92%E9%9B%86%E6%88%90%EF%BC%88%E5%90%8E%E7%A7%BB%EF%BC%89">v2.0：编排集成（后移）</a><a href="#%E5%8D%87%E7%BA%A7%E5%87%86%E5%A4%87">升级准备</a><a href="#%E7%89%88%E6%9C%AC%E4%B8%8E%E6%96%87%E6%A1%A3%E8%B7%AF%E5%BE%84">版本与文档路径</a></nav>
   </div>
   <footer class="site-footer">
   <div class="container">

@@ -1,4 +1,4 @@
-<p>本页区分“1.0 已交付”与“后续规划”。规划项来自仓库公开路线图，尚未实现，接口与行为以最终发布为准。</p>
+<p>NeoTask 的定位是轻量、可嵌入、可被编排的执行层。复杂任务编排不再由本库承担：DAG、条件分支、动态路由与插件系统交给上层编排服务，NeoTask 只负责可靠地执行单个任务，并提供轻量监控指标。</p>
 
 <h2>1.0 能力边界</h2>
 <table>
@@ -13,14 +13,15 @@
 <tr><td>生命周期事件与背压</td><td>已支持</td><td>EventBus 异步投递，可配置队列上限与溢出策略</td></tr>
 <tr><td>终态任务自动清理</td><td>已支持</td><td>默认开启，保留期可配置</td></tr>
 <tr><td>命令行与轻量基准</td><td>已支持</td><td><code>neotask --benchmark</code>、<code>--version</code>、<code>--help</code></td></tr>
-<tr><td>DAG 工作流</td><td>未支持</td><td>规划于 v1.5</td></tr>
-<tr><td>多租户隔离</td><td>未支持</td><td>规划于 v2.0</td></tr>
-<tr><td>独立 Web UI</td><td>未提供公开入口</td><td><code>neotask[ui]</code> 扩展需自行装配，未作为独立产品发布</td></tr>
+<tr><td>轻量监控指标</td><td>基础能力已支持</td><td><code>get_stats()</code>、健康检查与事件总线统计；标准化快照与 UI 指标规划于 v1.2</td></tr>
+<tr><td>DAG 工作流与条件分支</td><td>不在范围内</td><td>由上层编排服务负责，NeoTask 只执行单个任务</td></tr>
+<tr><td>多租户与独立管理后台</td><td>不在范围内</td><td>由上层平台或编排服务提供</td></tr>
+<tr><td>Web UI</td><td>可选轻量入口</td><td><code>neotask[ui]</code> 的 <code>WebUIServer</code> 提供 <code>/api/stats</code>，不是独立编排后台</td></tr>
 </tbody>
 </table>
 
 <h2>1.0 上的替代方案</h2>
-<p>规划中的能力在 1.0 上通常可以用业务代码组合现有原语实现，但状态与失败处理需要自行承担。</p>
+<p>不在库内的能力通常可以由业务代码组合现有原语实现，或交给上层编排服务；状态与失败处理需要自行承担。</p>
 <table>
 <thead><tr><th>需求</th><th>1.0 做法</th><th>需要自行处理</th></tr></thead>
 <tbody>
@@ -28,30 +29,49 @@
 <tr><td>条件分支</td><td>任务返回结构化结果，由业务层决定提交哪个后续任务</td><td>分支状态记录与失败补偿</td></tr>
 <tr><td>并行子任务</td><td><code>submit_batch()</code> + <code>wait_all()</code></td><td>部分失败时的清理与重试策略</td></tr>
 <tr><td>定时编排</td><td>用 <code>TaskScheduler</code> 分别定义周期任务</td><td>多实例重复触发；同一周期定义只应有一个调度者</td></tr>
-<tr><td>多租户</td><td>每个租户使用独立 TaskPool 与存储（独立 SQLite 文件或 Redis 库）</td><td>资源配额、统一鉴权与跨租户统计</td></tr>
-<tr><td>可视化管理</td><td>基于 <code>get_stats()</code>、<code>get_task()</code> 与事件自行构建；CLI 仅覆盖基准与版本信息</td><td>Web UI 装配、鉴权与运维入口</td></tr>
+<tr><td>多租户</td><td>不在库内；由上层平台为每个租户部署独立 TaskPool 与存储</td><td>资源配额、统一鉴权与跨租户统计</td></tr>
+<tr><td>可视化管理</td><td>使用 <code>neotask[ui]</code> 查看任务与指标，或基于 <code>get_stats()</code> 自行构建</td><td>编排视图与运维后台交给上层服务</td></tr>
 </tbody>
 </table>
 
-<h2>v1.5：任务编排</h2>
+<h2>v1.1：本地任务能力补全</h2>
 <ul>
-<li>DAG 工作流定义与提交；</li>
-<li>节点依赖、条件分支与并行执行；</li>
-<li>工作流级状态查询与失败重跑。</li>
+<li>Checkpoint 断点续跑：<code>save_checkpoint()</code> / <code>load_checkpoint()</code>，重试时从检查点恢复；</li>
+<li>成本与耗时采集：<code>report_cost()</code>、<code>queue_wait_ms</code> / <code>duration_ms</code> 与 <code>get_cost_summary()</code>；</li>
+<li>父子任务关联：<code>parent_task_id</code>、<code>get_children()</code> / <code>get_parent()</code>，不做自动汇总；</li>
+<li>本地上下文读写（Blackboard）与自定义失败状态 <code>report_failure()</code>；</li>
+<li>补充 <code>task.checkpointed</code> / <code>task.cost_reported</code> 事件，支持外部指定 <code>task_id</code>。</li>
 </ul>
-<p>规划中的工作流引擎只负责拓扑推进与节流，节点执行仍复用 <code>TaskPool</code>。当前版本没有 <code>workflow</code> 模块，不应在 1.0 上使用相关接口。</p>
 
-<h2>v2.0：企业级特性</h2>
+<h2>v1.2：性能优化与轻量监控</h2>
 <ul>
-<li>独立 Web UI；</li>
-<li>多租户隔离；</li>
-<li>更完整的 Prometheus 集成。</li>
+<li>批量提交单事务写入、状态查询索引、调度开销优化与进度上报节流；</li>
+<li>SQLite WAL 与连接复用，减少每任务新建连接的开销；</li>
+<li>标准化 <code>get_metrics()</code> 快照与 <code>on_metrics()</code> 定时推送；</li>
+<li>轻量 UI 监控指标：展示状态计数、队列深度、最老 pending 等待、存储健康等，不建设独立编排后台；</li>
+<li><code>benchmarks/</code> 基准套件，发布前跑基准防止性能回退。</li>
 </ul>
-<p>1.0 已提供 <code>MetricsCollector</code> 与 Pushgateway 上报器，但没有内置 HTTP 指标端点；v2.0 的集成范围以发布说明为准。</p>
+
+<h2>v1.3：监控导出与可靠性</h2>
+<ul>
+<li>可选 Prometheus 导出器：挂载到已有 HTTP 服务或调用 <code>render()</code>，不默认监听端口；</li>
+<li>崩溃恢复边界：明确未入队 <code>pending</code> 记录不会自动执行，并在指标中计数；</li>
+<li>停机配置：明确是否 drain 未到期延时任务；</li>
+<li>自动重试、手动重试与 Checkpoint 续跑的语义矩阵。</li>
+</ul>
+
+<h2>v2.0：编排集成（后移）</h2>
+<p>待本地能力稳定且有真实多服务需求后再启动，不属于当前版本承诺。集成以上层编排服务客户端的形态提供：</p>
+<ul>
+<li><code>OrchestratorClient</code>：任务消费、事件上报、心跳与本地重试存储；</li>
+<li>Redis Stream 消费者组与跨语言协议；</li>
+<li>实例注册、失联任务回收与控制消息处理。</li>
+</ul>
+<p>以下能力由上层编排服务负责，不在 NeoTask 内实现：DAG 工作流、条件分支、并行编排、动态路由、插件系统、独立 Web UI、多租户隔离。</p>
 
 <h2>升级准备</h2>
 <ul>
-<li>保持任务幂等：后续的工作流重跑、故障恢复和人工重试都会再次执行任务。</li>
+<li>保持任务幂等：上层编排重跑、故障恢复和人工重试都会再次执行任务。</li>
 <li>只依赖公开 API：不要直接读写 Redis 键或调用内部模块，存储结构可能随版本变化。</li>
 <li>记录当前配置：升级前保存 <code>TaskPoolConfig</code> 与 <code>SchedulerConfig</code>，发布后逐项对照新版配置参考。</li>
 <li>不要把规划项写进生产依赖，也不要在 1.0 上导入尚不存在的 <code>workflow</code> 模块。</li>

@@ -145,7 +145,7 @@
       "slug": "monitoring",
       "title": "监控与健康检查",
       "category": "reliability",
-      "description": "指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。",
+      "description": "指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。",
       "updated": "2026-11-11",
       "icon": "activity",
       "time": "7 分钟"
@@ -174,7 +174,7 @@
       "slug": "roadmap",
       "title": "版本路线图",
       "category": "roadmap",
-      "description": "v1.0 的能力边界，以及 v1.5、v2.0 的规划项。",
+      "description": "1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。",
       "updated": "2026-11-11",
       "icon": "workflow",
       "time": "5 分钟"

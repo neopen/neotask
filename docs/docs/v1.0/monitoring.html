@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>监控与健康检查 · NeoTask v1.0 文档</title>
-  <meta name="description" content="指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">
+  <meta name="description" content="指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">
   <meta name="keywords" content="监控与健康检查, 监控与健康检查 教程, 监控与健康检查 文档, 可靠性, NeoTask v1.0 文档, NeoTask 1.0.x, Python 任务队列">
   <meta name="author" content="NeoPen">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
@@ -13,7 +13,7 @@
   <meta property="og:locale" content="zh_CN">
   <meta property="og:type" content="article">
   <meta property="og:title" content="监控与健康检查 · NeoTask v1.0 文档">
-  <meta property="og:description" content="指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">
+  <meta property="og:description" content="指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">
   <meta property="og:url" content="https://task.helpenx.com/docs/v1.0/monitoring.html">
   <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
   <meta property="og:image:type" content="image/png">
@@ -25,7 +25,7 @@
   <meta property="article:section" content="可靠性">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="监控与健康检查 · NeoTask v1.0 文档">
-  <meta name="twitter:description" content="指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">
+  <meta name="twitter:description" content="指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">
   <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
   <meta name="twitter:image:alt" content="监控与健康检查 · NeoTask 文档">
   <meta name="theme-color" content="#0b1713">
@@ -44,7 +44,7 @@
         "@id": "https://task.helpenx.com/docs/v1.0/monitoring.html#article",
         "headline": "监控与健康检查",
         "name": "监控与健康检查 · NeoTask v1.0 文档",
-        "description": "指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。",
+        "description": "指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。",
         "image": "https://task.helpenx.com/assets/img/og.png",
         "url": "https://task.helpenx.com/docs/v1.0/monitoring.html",
         "mainEntityOfPage": "https://task.helpenx.com/docs/v1.0/monitoring.html",
@@ -192,7 +192,7 @@
         <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
         <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
-        <a class="docs-nav-link is-active" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">监控与健康检查</a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
@@ -201,7 +201,7 @@
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 v1.0 的能力边界，以及 v1.5、v2.0 的规划项。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       <p class="docs-nav-empty" id="docsNavEmpty" hidden>没有匹配的文档</p>
@@ -244,7 +244,7 @@
         <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
         <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
-        <a class="docs-nav-link is-active" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">监控与健康检查</a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
@@ -253,7 +253,7 @@
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 v1.0 的能力边界，以及 v1.5、v2.0 的规划项。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       
@@ -262,7 +262,7 @@
         <header class="article-header">
           <p class="article-eyebrow">可靠性</p>
           <h1>监控与健康检查</h1>
-          <p class="article-lede">指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。</p>
+          <p class="article-lede">指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。</p>
           <div class="article-meta">
             <span class="article-version">v1.0 · NeoTask 1.0.x</span>
             <span class="dot"></span>
@@ -274,7 +274,7 @@
           </div>
         </header>
         <div class="article-body">
-<p>NeoTask 提供任务指标、健康检查与指标上报三类能力。它们都是进程内数据，不提供内置 HTTP 端点。</p>
+<p>NeoTask 提供任务指标、健康检查与指标上报三类能力。核心指标都是进程内数据，默认不启动 HTTP 端点；需要界面或 JSON 入口时，可手动启用轻量 <code>WebUIServer</code>。</p>
 
 <h2 id="统计快照">统计快照</h2>
 <pre><code class="language-python">stats = pool.get_stats()
@@ -375,6 +375,23 @@ print(stats["metrics"]["p95_execution_time"])</code></pre>
 pool = TaskPool(executor=handle, config=config)</code></pre>
 <p>启用后每 60 秒向控制台输出一次 <code>get_stats()</code> 摘要。它适合本地观察，不适合生产监控。</p>
 
+<h2 id="轻量监控入口（可选）">轻量监控入口（可选）</h2>
+<p>1.0.8 不会自动启动 Web 服务。需要 HTTP 指标入口时，安装 <code>neotask[ui]</code> 并手动启动 <code>WebUIServer</code>。它提供根页面与 <code>/api/stats</code>，后者返回 <code>get_stats()</code> 的结果。</p>
+
+<pre><code class="language-python">from neotask.web.server import WebUIServer
+
+server = WebUIServer(scheduler, host="127.0.0.1", port=8080)
+server.start()   # 后台线程启动 uvicorn
+
+# GET http://127.0.0.1:8080/api/stats
+# 退出时调用 server.stop()</code></pre>
+
+<ul>
+<li>这是轻量监控入口，不提供任务编排、编辑、鉴权或历史存储。</li>
+<li><code>TaskPool</code> / <code>TaskScheduler</code> 不会自动挂载它，需要自行实例化。</li>
+<li>默认只监听本机。暴露到其他主机前，请置于鉴权代理之后。</li>
+</ul>
+
 <h2 id="Prometheus">Prometheus</h2>
 <p>库内提供 <code>PrometheusReporter</code>，通过 Pushgateway 推送指标，不暴露 <code>/metrics</code> 端点。</p>
 
@@ -399,7 +416,7 @@ await manager.start()</code></pre>
     </nav>
       <p class="docs-feedback">发现文档问题？欢迎在 <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">GitHub Issues</a> 反馈。</p>
     </main>
-    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#%E7%BB%9F%E8%AE%A1%E5%BF%AB%E7%85%A7">统计快照</a><a href="#%E4%BA%8B%E4%BB%B6%E6%80%BB%E7%BA%BF%E7%8A%B6%E6%80%81">事件总线状态</a><a href="#%E4%BB%BB%E5%8A%A1%E6%8C%87%E6%A0%87">任务指标</a><a href="#%E5%81%A5%E5%BA%B7%E6%A3%80%E6%9F%A5">健康检查</a><a href="#%E6%8E%A7%E5%88%B6%E5%8F%B0%E4%B8%8A%E6%8A%A5">控制台上报</a><a href="#Prometheus">Prometheus</a><a href="#%E4%BA%8B%E4%BB%B6%E9%A9%B1%E5%8A%A8%E9%87%87%E9%9B%86">事件驱动采集</a></nav>
+    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#%E7%BB%9F%E8%AE%A1%E5%BF%AB%E7%85%A7">统计快照</a><a href="#%E4%BA%8B%E4%BB%B6%E6%80%BB%E7%BA%BF%E7%8A%B6%E6%80%81">事件总线状态</a><a href="#%E4%BB%BB%E5%8A%A1%E6%8C%87%E6%A0%87">任务指标</a><a href="#%E5%81%A5%E5%BA%B7%E6%A3%80%E6%9F%A5">健康检查</a><a href="#%E6%8E%A7%E5%88%B6%E5%8F%B0%E4%B8%8A%E6%8A%A5">控制台上报</a><a href="#%E8%BD%BB%E9%87%8F%E7%9B%91%E6%8E%A7%E5%85%A5%E5%8F%A3%EF%BC%88%E5%8F%AF%E9%80%89%EF%BC%89">轻量监控入口（可选）</a><a href="#Prometheus">Prometheus</a><a href="#%E4%BA%8B%E4%BB%B6%E9%A9%B1%E5%8A%A8%E9%87%87%E9%9B%86">事件驱动采集</a></nav>
   </div>
   <footer class="site-footer">
   <div class="container">

@@ -1,4 +1,4 @@
-<p>NeoTask 提供任务指标、健康检查与指标上报三类能力。它们都是进程内数据，不提供内置 HTTP 端点。</p>
+<p>NeoTask 提供任务指标、健康检查与指标上报三类能力。核心指标都是进程内数据，默认不启动 HTTP 端点；需要界面或 JSON 入口时，可手动启用轻量 <code>WebUIServer</code>。</p>
 
 <h2>统计快照</h2>
 <pre><code class="language-python">stats = pool.get_stats()
@@ -98,6 +98,23 @@ print(stats["metrics"]["p95_execution_time"])</code></pre>
 <pre><code class="language-python">config = TaskPoolConfig(enable_reporter=True)
 pool = TaskPool(executor=handle, config=config)</code></pre>
 <p>启用后每 60 秒向控制台输出一次 <code>get_stats()</code> 摘要。它适合本地观察，不适合生产监控。</p>
+
+<h2>轻量监控入口（可选）</h2>
+<p>1.0.8 不会自动启动 Web 服务。需要 HTTP 指标入口时，安装 <code>neotask[ui]</code> 并手动启动 <code>WebUIServer</code>。它提供根页面与 <code>/api/stats</code>，后者返回 <code>get_stats()</code> 的结果。</p>
+
+<pre><code class="language-python">from neotask.web.server import WebUIServer
+
+server = WebUIServer(scheduler, host="127.0.0.1", port=8080)
+server.start()   # 后台线程启动 uvicorn
+
+# GET http://127.0.0.1:8080/api/stats
+# 退出时调用 server.stop()</code></pre>
+
+<ul>
+<li>这是轻量监控入口，不提供任务编排、编辑、鉴权或历史存储。</li>
+<li><code>TaskPool</code> / <code>TaskScheduler</code> 不会自动挂载它，需要自行实例化。</li>
+<li>默认只监听本机。暴露到其他主机前，请置于鉴权代理之后。</li>
+</ul>
 
 <h2>Prometheus</h2>
 <p>库内提供 <code>PrometheusReporter</code>，通过 Pushgateway 推送指标，不暴露 <code>/metrics</code> 端点。</p>

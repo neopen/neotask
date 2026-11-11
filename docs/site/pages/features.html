@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>产品能力 · NeoTask 异步任务队列</title>
-  <meta name="description" content="NeoTask 产品能力：即时任务与四级优先级、延时/周期/Cron 调度、自动重试与故障恢复、Memory/SQLite/Redis 存储、Redis 分布式队列与任务锁、生命周期事件与指标。">
-  <meta name="keywords" content="Python 任务队列功能, 任务优先级, Cron 定时任务, 任务重试, 故障恢复, 任务持久化, Redis 分布式队列, 任务锁, 任务监控, NeoTask 功能">
+  <meta name="description" content="NeoTask 产品能力：即时任务与四级优先级、延时/周期/Cron 调度、自动重试与故障恢复、Memory/SQLite/Redis 存储、Redis 分布式队列与任务锁、生命周期事件、轻量监控入口与指标。">
+  <meta name="keywords" content="Python 任务队列功能, 任务优先级, Cron 定时任务, 任务重试, 故障恢复, 任务持久化, Redis 分布式队列, 任务锁, 轻量监控, 任务监控, NeoTask 功能">
   <meta name="author" content="NeoPen">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
   <meta name="theme-color" content="#0b1713">
@@ -218,11 +218,12 @@
           <div class="feature-copy">
             <span class="feature-tag">06 · 可观测性</span>
             <h2>任务状态进入你的监控体系</h2>
-            <p>订阅六类生命周期事件，读取统计与健康状态；事件总线提供有界队列与慢回调统计。需要可视化时，可自行装配可选的 Web UI 扩展。</p>
+            <p>订阅六类生命周期事件，读取统计与健康状态；事件总线提供有界队列与慢回调统计。需要 HTTP 指标入口时，可选 <code>neotask[ui]</code> 手动启动 <code>WebUIServer</code>。</p>
             <ul class="check-list">
               <li><svg class="icon icon-xs"><use href="#i-check"/></svg> created / started / completed / failed</li>
               <li><svg class="icon icon-xs"><use href="#i-check"/></svg> cancelled / reclaimed 事件</li>
               <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 事件背压、丢弃计数与指标采集</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> 轻量监控入口（可选 <code>neotask[ui]</code>）</li>
               <li><svg class="icon icon-xs"><use href="#i-check"/></svg> <code>neotask --benchmark</code> 轻量自测</li>
             </ul>
             <a class="text-link" href="/docs/monitoring.html">监控与健康检查 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
@@ -280,15 +281,15 @@
           <ul class="boundary-list">
             <li>
               <span class="boundary-icon">—</span>
-              <div><strong>DAG 工作流编排</strong><p>规划于 v1.5，当前版本未实现。多任务串联请在业务层组合提交与等待。</p></div>
+              <div><strong>DAG 工作流编排</strong><p>不在范围内。由上层编排服务负责任务拓扑、条件分支与并行执行；NeoTask 只执行单个任务。</p></div>
             </li>
             <li>
               <span class="boundary-icon">—</span>
-              <div><strong>多租户与配额</strong><p>暂无租户隔离与资源配额，规划在企业级版本中提供。</p></div>
+              <div><strong>多租户与配额</strong><p>不在范围内，由上层平台或编排服务提供租户隔离与资源配额。</p></div>
             </li>
             <li>
               <span class="boundary-icon">○</span>
-              <div><strong>Web UI</strong><p>以 <code>neotask[ui]</code> 扩展提供，需要自行装配，TaskPool 不会自动挂载。</p></div>
+              <div><strong>轻量监控入口</strong><p><code>neotask[ui]</code> 的 <code>WebUIServer</code> 提供根页面与 <code>/api/stats</code>，需要自行启动；不提供独立编排后台。</p></div>
             </li>
             <li>
               <span class="boundary-icon">○</span>

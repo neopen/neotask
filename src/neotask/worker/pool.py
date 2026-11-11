@@ -301,6 +301,13 @@ class WorkerPool:
                         exec_task.add_done_callback(
                             lambda task, tid=task_id: self._on_exec_task_done(tid, task)
                         )
+                        # 保持每个 worker 只有一个在途执行任务：并发度由 worker
+                        # 数量决定，运行表不会被整批调度撑大。
+                        try:
+                            await exec_task
+                        except asyncio.CancelledError:
+                            if not self._running:
+                                raise
                     else:
                         # 没有任务时，指数退避
                         consecutive_empty += 1
@@ -310,7 +317,9 @@ class WorkerPool:
 
                 else:
                     # ========== 直接模式（原有逻辑）==========
-                    task_ids = await self._queue.pop(self._prefetch_size)
+                    # 每次只取一个：任务均摊到各 worker，并发度由 worker 数量
+                    # 决定；取整批会让单个 worker 独占队列、任务只能串行执行。
+                    task_ids = await self._queue.pop(1)
 
                     if task_ids:
                         consecutive_empty = 0
@@ -325,14 +334,18 @@ class WorkerPool:
                             exec_task.add_done_callback(
                                 lambda task, tid=task_id: self._on_exec_task_done(tid, task)
                             )
+                            # 逐个等待：批内任务执行完再取下一个，避免把整批
+                            # 协程一次性压进运行表。
+                            try:
+                                await exec_task
+                            except asyncio.CancelledError:
+                                if not self._running:
+                                    raise
                     else:
                         consecutive_empty += 1
                         sleep_time = min(0.01 * (1 << min(consecutive_empty, 6)), 0.5)
                         await asyncio.sleep(sleep_time)
                         continue
-
-                # 清理已完成的任务
-                await self._cleanup_completed_tasks()
 
             except asyncio.CancelledError:
                 break
@@ -575,17 +588,6 @@ class WorkerPool:
                 error_msg,
                 metadata={"node_id": self._node_id, "worker_id": worker_id}
             )
-
-    async def _cleanup_completed_tasks(self) -> None:
-        """清理已完成的任务"""
-        with self._lock:
-            completed = [
-                (tid, t) for tid, t in self._running_tasks.items()
-                if t.done()
-            ]
-
-            for task_id, task in completed:
-                self._running_tasks.pop(task_id, None)
 
     # ========== 预取器管理方法 ==========
 

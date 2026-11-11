@@ -123,6 +123,59 @@ class TestTaskPoolMemory:
             result = task_pool.wait_for_result(task_id)
             assert result["result"] == "processed"
 
+    def test_burst_submit_keeps_running_table_bounded(self):
+        """突发批量提交时，worker 逐个执行任务，运行表不随队列深度膨胀"""
+        observed = {"max": 0}
+        pool = None
+
+        async def executor(data):
+            with pool._worker_pool._lock:
+                observed["max"] = max(
+                    observed["max"], len(pool._worker_pool._running_tasks)
+                )
+            return {"ok": True}
+
+        config = TaskPoolConfig(
+            storage_type="memory",
+            worker_concurrency=1,
+            enable_prefetch=False,
+        )
+        pool = TaskPool(executor, config)
+        pool.start()
+        try:
+            task_ids = pool.submit_batch([{"i": i} for i in range(50)])
+            for task_id in task_ids:
+                pool.wait_for_result(task_id, timeout=10)
+        finally:
+            pool.shutdown()
+
+        assert observed["max"] <= 5
+
+    def test_direct_mode_runs_tasks_concurrently(self):
+        """关闭预取时，任务仍按 worker 数量并发执行（不能被单个 worker 独占）"""
+        async def executor(data):
+            await asyncio.sleep(0.1)
+            return {"ok": True}
+
+        config = TaskPoolConfig(
+            storage_type="memory",
+            worker_concurrency=4,
+            enable_prefetch=False,
+        )
+        pool = TaskPool(executor, config)
+        pool.start()
+        try:
+            start = time.perf_counter()
+            task_ids = pool.submit_batch([{"i": i} for i in range(8)])
+            for task_id in task_ids:
+                pool.wait_for_result(task_id, timeout=10)
+            elapsed = time.perf_counter() - start
+        finally:
+            pool.shutdown()
+
+        # 串行执行约 0.8s，4 个 worker 并发约 0.2s
+        assert elapsed < 0.7
+
     def test_cancel_task(self):
         """测试取消任务"""
         # 提交一个长时间运行的任务

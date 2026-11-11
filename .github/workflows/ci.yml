@@ -13,12 +13,18 @@ permissions:
 jobs:
   ci-checks:
     name: CI Checks (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    # Python 3.8 在 ubuntu-24.04+ 上已无法安装（setup-python 报版本不存在），
+    # 因此固定到仍提供 3.8 构建的 ubuntu-22.04。
+    runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.8", "3.10"]
+        include:
+          - python-version: "3.8"
+            os: ubuntu-22.04
+          - python-version: "3.10"
+            os: ubuntu-latest
 
     services:
       redis:

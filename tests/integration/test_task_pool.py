@@ -176,6 +176,33 @@ class TestTaskPoolMemory:
         # 串行执行约 0.8s，4 个 worker 并发约 0.2s
         assert elapsed < 0.7
 
+    def test_prefetch_is_not_rate_limited_by_interval(self):
+        """预取模式吞吐不受 prefetch_size / prefetch_interval 固定上限限制"""
+        async def executor(data):
+            return {"ok": True}
+
+        config = TaskPoolConfig(
+            storage_type="memory",
+            worker_concurrency=10,
+            enable_prefetch=True,
+            prefetch_size=20,
+            enable_metrics=False,
+            enable_health_check=False,
+        )
+        pool = TaskPool(executor, config)
+        pool.start()
+        try:
+            start = time.perf_counter()
+            task_ids = pool.submit_batch([{"i": i} for i in range(3000)])
+            for task_id in task_ids:
+                pool.wait_for_result(task_id, timeout=60)
+            elapsed = time.perf_counter() - start
+        finally:
+            pool.shutdown()
+
+        # 旧实现被 20 / 0.1s 限制在约 182/s（3000 条需 16s 以上）
+        assert elapsed < 8
+
     def test_cancel_task(self):
         """测试取消任务"""
         # 提交一个长时间运行的任务

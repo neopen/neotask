@@ -111,6 +111,9 @@ class TaskPrefetcher:
         self._running = False
         self._last_activity = time.time()
         self._lock = threading.Lock()
+        # 消费需求信号：Worker 把本地队列消费到下限时置位，预取循环据此
+        # 立即补货，而不是等待固定间隔。
+        self._demand_event = asyncio.Event()
 
         # 统计
         self._stats = PrefetchStats()
@@ -126,6 +129,7 @@ class TaskPrefetcher:
         # 本地队列必须在每次启动时重建：asyncio.Queue 会绑定首次等待时的
         # 事件循环，复用旧队列会让重启后的 Worker 在别的循环上抛 RuntimeError。
         self._local_queue = asyncio.Queue(maxsize=self._config.local_queue_size)
+        self._demand_event = asyncio.Event()
         self._running = True
         self._prefetch_task = asyncio.create_task(self._prefetch_loop())
         self._last_activity = time.time()
@@ -165,9 +169,12 @@ class TaskPrefetcher:
                 self._local_queue.get(),
                 timeout=timeout
             )
-            return task_id
         except asyncio.TimeoutError:
             return None
+
+        if self._local_queue.qsize() < self._config.min_threshold:
+            self._demand_event.set()
+        return task_id
 
     async def get_batch(self, max_count: int, timeout: float = 0.1) -> List[str]:
         """批量获取任务
@@ -201,6 +208,8 @@ class TaskPrefetcher:
         except asyncio.TimeoutError:
             pass
 
+        if tasks and self._local_queue.qsize() < self._config.min_threshold:
+            self._demand_event.set()
         return tasks
 
     async def size(self) -> int:
@@ -287,37 +296,63 @@ class TaskPrefetcher:
     async def _prefetch_loop(self) -> None:
         """预取循环
 
+        补货节奏由本地队列的消费进度驱动：队列见底时连续补货（只让出事件
+        循环），队列有存货时等待 Worker 消费到下限再唤醒。``prefetch_interval``
+        只作为等待消费的超时兜底，不再成为吞吐上限。
+
         真正尝试预取但一个任务都没拿到（队列见底/队列被禁用/后端异常）时，
         按指数退避拉长下一轮间隔，避免空转风暴；拿到任务则立即回到正常节奏。
         """
         while self._running:
             try:
-                current_size = self._local_queue.qsize()
-                attempted = False
-                fetched = 0
-
-                # 检查是否需要预取
-                if self._should_prefetch(current_size):
-                    attempted = True
+                if self._should_prefetch(self._local_queue.qsize()):
                     fetched = await self._do_prefetch()
 
-                if attempted and fetched == 0:
-                    self._empty_streak += 1
-                    wait_time = min(
-                        EMPTY_BACKOFF_BASE * (2 ** min(self._empty_streak, EMPTY_BACKOFF_MAX_EXPONENT)),
-                        EMPTY_BACKOFF_MAX
-                    )
+                    if fetched == 0:
+                        self._empty_streak += 1
+                        wait_time = min(
+                            EMPTY_BACKOFF_BASE * (2 ** min(self._empty_streak, EMPTY_BACKOFF_MAX_EXPONENT)),
+                            EMPTY_BACKOFF_MAX
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
+
+                    self._empty_streak = 0
+
+                    if self._local_queue.qsize() < self._config.min_threshold:
+                        # 刚补的货被瞬间消费：立即补下一批，只让出事件循环。
+                        # 固定睡 prefetch_interval 会把吞吐钉死在
+                        # prefetch_size / prefetch_interval。
+                        await asyncio.sleep(0)
+                        continue
                 else:
                     self._empty_streak = 0
-                    # 根据策略决定等待时间
-                    wait_time = self._calculate_wait_time(current_size)
 
-                await asyncio.sleep(wait_time)
+                # 本地队列还有存货：等 Worker 消费到下限再唤醒，超时兜底重查
+                await self._wait_for_consumer(
+                    self._calculate_wait_time(self._local_queue.qsize())
+                )
 
             except asyncio.CancelledError:
                 break
             except Exception:
                 await asyncio.sleep(0.5)
+
+    async def _wait_for_consumer(self, timeout: float) -> None:
+        """等待本地队列被消费到下限
+
+        先清信号再读队列大小：若消费恰好发生在两者之间，队列已低于下限，
+        直接返回补货，不会丢失唤醒信号。
+        """
+        self._demand_event.clear()
+        if self._local_queue.qsize() < self._config.min_threshold:
+            # 已低于下限（或处于空闲超时状态），让出一个调度周期后重查
+            await asyncio.sleep(0)
+            return
+        try:
+            await asyncio.wait_for(self._demand_event.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            pass
 
     def _should_prefetch(self, current_size: int) -> bool:
         """判断是否需要预取"""

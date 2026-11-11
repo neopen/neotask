@@ -36,6 +36,7 @@ class PrefetchStrategy(Enum):
 EMPTY_BACKOFF_BASE = 0.1        # 首次退避（秒）
 EMPTY_BACKOFF_MAX = 0.5         # 退避上限（秒），与 worker 侧一致
 EMPTY_BACKOFF_MAX_EXPONENT = 6  # 指数封顶（2^6 = 64 倍）
+WAKE_COALESCE = 0.01            # 入队唤醒后的批量合并窗口（秒）
 
 
 @dataclass
@@ -314,7 +315,9 @@ class TaskPrefetcher:
                             EMPTY_BACKOFF_BASE * (2 ** min(self._empty_streak, EMPTY_BACKOFF_MAX_EXPONENT)),
                             EMPTY_BACKOFF_MAX
                         )
-                        await asyncio.sleep(wait_time)
+                        # 被入队通知立即唤醒，退避时间只作为超时兜底；
+                        # 纯睡眠会让延时任务到期后最多再等 0.5s。
+                        await self._wait_for_queue(wait_time)
                         continue
 
                     self._empty_streak = 0
@@ -337,6 +340,17 @@ class TaskPrefetcher:
                 break
             except Exception:
                 await asyncio.sleep(0.5)
+
+    async def _wait_for_queue(self, timeout: float) -> None:
+        """空共享队列时等待入队通知（超时兜底）"""
+        waiter = getattr(self._queue, "wait_for_task", None)
+        if waiter is None:
+            await asyncio.sleep(timeout)
+            return
+        if await waiter(timeout):
+            # 唤醒后留一个合并窗口，让同一批快速提交先落入共享队列再统一
+            # 批量预取；逐条抢取会让本地 FIFO 队列绕过共享队列的优先级排序。
+            await asyncio.sleep(WAKE_COALESCE)
 
     async def _wait_for_consumer(self, timeout: float) -> None:
         """等待本地队列被消费到下限

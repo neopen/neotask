@@ -276,6 +276,14 @@ class WorkerPool:
         except Exception as e:
             warning(f"Failed to send task {task.task_id} to dead letter queue: {e}")
 
+    async def _wait_for_queue(self, timeout: float) -> None:
+        """空队列时等待新任务通知（超时兜底）"""
+        waiter = getattr(self._queue, "wait_for_task", None)
+        if waiter is None:
+            await asyncio.sleep(timeout)
+            return
+        await waiter(timeout)
+
     async def _worker_loop(self, worker_id: int) -> None:
         """Worker主循环（支持预取器）"""
         debug(f"Worker {worker_id} started (prefetch={self._enable_prefetch})")
@@ -344,7 +352,9 @@ class WorkerPool:
                     else:
                         consecutive_empty += 1
                         sleep_time = min(0.01 * (1 << min(consecutive_empty, 6)), 0.5)
-                        await asyncio.sleep(sleep_time)
+                        # 等待入队通知而不是纯睡眠：否则延时任务到期入队后，
+                        # 最坏要等退避上限（0.5s）才会被取走。
+                        await self._wait_for_queue(sleep_time)
                         continue
 
             except asyncio.CancelledError:

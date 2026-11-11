@@ -127,6 +127,26 @@ class TestTimeWheel:
 
         assert "task_long" in executed, f"Expected 'task_long' in {executed}, got {executed}"
 
+    async def test_scheduled_task_not_fired_early(self):
+        """任务不应在延迟时间到达前触发，且误差在一个 tick 量级内"""
+        executed = {}
+
+        async def callback(task_id, priority, data=None):
+            executed[task_id] = asyncio.get_running_loop().time()
+
+        wheel = TimeWheel(slot_count=20, tick_interval=0.05)
+        await wheel.start(callback)
+
+        submitted_at = asyncio.get_running_loop().time()
+        await wheel.add_task("task_1", 1, 0.2)
+
+        await asyncio.sleep(0.5)
+        await wheel.stop()
+
+        assert "task_1" in executed
+        elapsed = executed["task_1"] - submitted_at
+        assert 0.19 <= elapsed <= 0.35, f"Unexpected delay: {elapsed:.3f}s"
+
     async def test_get_stats(self):
         """测试获取统计信息"""
         wheel = TimeWheel(slot_count=20, tick_interval=0.1)

@@ -13,7 +13,7 @@ See LICENSE File For Details.
 import asyncio
 import threading
 import time
-from typing import Optional, List, Dict, Any, Awaitable, Callable
+from typing import Optional, List, Dict, Any, Awaitable, Callable, cast
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -105,16 +105,17 @@ class TaskPrefetcher:
     ):
         self._queue = queue_scheduler
         self._config = config or PrefetchConfig()
-        self._local_queue: asyncio.Queue = asyncio.Queue(
-            maxsize=self._config.local_queue_size
-        )
+        # 队列与需求事件延迟到 start() 中创建：Python 3.8 的 asyncio.Queue /
+        # asyncio.Event 在构造时就会绑定当前线程的事件循环，在无循环的调用方
+        # 线程里构造会抛 RuntimeError。
+        self._local_queue: asyncio.Queue = cast(asyncio.Queue, None)
         self._prefetch_task: Optional[asyncio.Task] = None
         self._running = False
         self._last_activity = time.time()
         self._lock = threading.Lock()
         # 消费需求信号：Worker 把本地队列消费到下限时置位，预取循环据此
         # 立即补货，而不是等待固定间隔。
-        self._demand_event = asyncio.Event()
+        self._demand_event: asyncio.Event = cast(asyncio.Event, None)
 
         # 统计
         self._stats = PrefetchStats()
@@ -508,7 +509,7 @@ class TaskPrefetcher:
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息"""
         return {
-            "local_queue_size": self._local_queue.qsize(),
+            "local_queue_size": self._local_queue.qsize() if self._local_queue is not None else 0,
             "local_queue_maxsize": self._config.local_queue_size,
             "total_prefetch": self._stats.total_prefetch,
             "total_fetched": self._stats.total_fetched,

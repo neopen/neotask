@@ -14,7 +14,7 @@ import asyncio
 import threading
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from neotask.common.logger import debug, warning, error
 from neotask.core.lifecycle import TaskLifecycleManager
@@ -85,7 +85,9 @@ class WorkerPool:
         self._workers: Dict[int, asyncio.Task] = {}
         self._running_tasks: Dict[str, asyncio.Task] = {}
         self._worker_stats: Dict[int, WorkerStats] = {}
-        self._semaphore = asyncio.Semaphore(concurrency)
+        # 信号量延迟到 start() 中创建：Python 3.8 的 asyncio.Semaphore 在构造时
+        # 就会绑定当前线程的事件循环，在无循环的调用方线程里构造会抛 RuntimeError。
+        self._semaphore: asyncio.Semaphore = cast(asyncio.Semaphore, None)
         self._running = False
         # Worker 统计可能被调用方循环读取，使用线程锁
         self._lock = threading.Lock()
@@ -113,6 +115,9 @@ class WorkerPool:
             return
 
         self._running = True
+
+        # 信号量必须按当前事件循环重建（Python 3.8 构造时即绑定循环）
+        self._semaphore = asyncio.Semaphore(self._concurrency)
 
         # 启动预取器
         if self._prefetcher:

@@ -14,7 +14,7 @@ import asyncio
 import threading
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Callable, Any, Optional
+from typing import Dict, List, Callable, Any, Optional, cast
 
 from neotask.common.logger import error, warning
 
@@ -77,7 +77,9 @@ class EventBus:
         self._max_queue_size = max_queue_size
         self._overflow_policy = overflow_policy
         self._slow_handler_threshold = slow_handler_threshold
-        self._queue: asyncio.Queue = asyncio.Queue()
+        # 队列延迟到 start() 中创建：Python 3.8 的 asyncio.Queue 在构造时就会
+        # 绑定当前线程的事件循环，在无循环的调用方线程里构造会直接抛 RuntimeError。
+        self._queue: asyncio.Queue = cast(asyncio.Queue, None)
         self._worker_task: Optional[asyncio.Task] = None
         # 消费队列的事件循环（由 start() 记录），用于跨循环投递
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -301,12 +303,13 @@ class EventBus:
         """启动事件总线"""
         if self._running:
             return
-        self._running = True
-        # 队列必须在每次启动时重建：asyncio.Queue 首次 await 时会绑定到当时的
-        # 事件循环，复用旧队列会让重启后的消费任务在别的循环上抛 RuntimeError。
+        # 队列必须在每次启动时重建：asyncio.Queue 会绑定所在事件循环，复用旧
+        # 队列会让重启后的消费任务在别的循环上抛 RuntimeError。先创建队列与
+        # 循环记录再置运行标记，避免并发 emit 看到 None 队列。
         self._queue = asyncio.Queue(maxsize=self._max_queue_size or 0)
         # 记录消费队列的事件循环，供 emit 判断是否需要跨循环投递
         self._loop = asyncio.get_running_loop()
+        self._running = True
         self._worker_task = asyncio.create_task(self._worker_loop())
 
     async def stop(self) -> None:
@@ -355,7 +358,7 @@ class EventBus:
         ``dropped_events`` 非零说明有界队列已开始丢弃事件。
         """
         return {
-            "queue_size": self._queue.qsize(),
+            "queue_size": self._queue.qsize() if self._queue is not None else 0,
             "max_queue_size": self._max_queue_size,
             "processed_events": self._processed_events,
             "dropped_events": self._dropped_events,

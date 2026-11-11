@@ -268,5 +268,69 @@ class TestEventBus:
             await bus.stop()
 
 
+class TestEventBusConfigPassthrough:
+    """背压配置透传测试：三个入口 Config 的背压字段须到达池内 EventBus"""
+
+    def test_task_pool_config_passthrough(self):
+        from neotask.api.task_pool import TaskPool
+        from neotask.models.config import TaskPoolConfig
+
+        config = TaskPoolConfig(
+            event_queue_max_size=5,
+            event_slow_handler_threshold=0.5,
+        )
+        pool = TaskPool(config=config)
+        stats = pool.event_bus.get_stats()
+        assert stats["max_queue_size"] == 5
+        assert stats["slow_handler_threshold"] == 0.5
+
+    def test_scheduler_config_passthrough(self):
+        from neotask.api.task_scheduler import TaskScheduler
+        from neotask.models.config import SchedulerConfig
+
+        config = SchedulerConfig(
+            event_queue_max_size=7,
+            event_slow_handler_threshold=0.25,
+        )
+        scheduler = TaskScheduler(config=config)
+        assert scheduler.event_bus is scheduler._pool.event_bus
+        stats = scheduler.event_bus.get_stats()
+        assert stats["max_queue_size"] == 7
+        assert stats["slow_handler_threshold"] == 0.25
+
+    @pytest.mark.asyncio
+    async def test_engine_config_passthrough(self):
+        from neotask.core.engine import TaskEngine, EngineConfig
+
+        config = EngineConfig(
+            event_queue_max_size=9,
+            event_slow_handler_threshold=0.75,
+            enable_metrics=False,
+        )
+        engine = TaskEngine(config)
+        await engine.initialize()
+        stats = engine.event_bus.get_stats()
+        assert stats["max_queue_size"] == 9
+        assert stats["slow_handler_threshold"] == 0.75
+
+    def test_default_config_keeps_unbounded(self):
+        """默认配置保持无界队列与默认阈值（向后兼容）"""
+        from neotask.api.task_pool import TaskPool
+
+        pool = TaskPool()
+        stats = pool.event_bus.get_stats()
+        assert stats["max_queue_size"] is None
+        assert stats["slow_handler_threshold"] == 1.0
+
+    def test_invalid_overflow_policy_raises(self):
+        """非法溢出策略在构造期即失败"""
+        from neotask.api.task_pool import TaskPool
+        from neotask.models.config import TaskPoolConfig
+
+        config = TaskPoolConfig(event_overflow_policy="block")
+        with pytest.raises(ValueError):
+            TaskPool(config=config)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--asyncio-mode=auto"])

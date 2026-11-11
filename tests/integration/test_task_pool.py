@@ -708,5 +708,55 @@ class TestTaskPoolAsyncAPI:
             pool.shutdown()
 
 
+class TestTaskPoolEventBackpressure:
+    """事件总线背压集成测试：慢订阅者触发事件丢弃，但不影响任务执行"""
+
+    def test_bounded_bus_drops_events_not_tasks(self):
+        import threading
+
+        completed = []
+        handler_started = threading.Event()
+        release = threading.Event()
+
+        async def executor(data):
+            completed.append(data["i"])
+            return {"ok": True}
+
+        async def slow_handler(event):
+            handler_started.set()
+            # 阻塞事件总线消费协程，让后续事件在队列中堆积直至溢出
+            while not release.is_set():
+                await asyncio.sleep(0.01)
+
+        config = TaskPoolConfig(
+            storage_type="memory",
+            worker_concurrency=4,
+            event_queue_max_size=2,
+            enable_metrics=False,
+            enable_health_check=False,
+            enable_reclaimer=False,
+            enable_heartbeat=False,
+        )
+        pool = TaskPool(executor, config)
+        pool.on_completed(slow_handler)
+        pool.start()
+        try:
+            for i in range(20):
+                pool.submit({"i": i})
+
+            assert handler_started.wait(timeout=5)
+            deadline = time.time() + 10
+            while len(completed) < 20 and time.time() < deadline:
+                time.sleep(0.02)
+
+            # 任务全部执行完成，事件背压不拖垮任务通路
+            assert len(completed) == 20
+            stats = pool.event_bus.get_stats()
+            assert stats["dropped_events"] > 0
+        finally:
+            release.set()
+            pool.shutdown()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

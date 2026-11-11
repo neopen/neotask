@@ -79,7 +79,11 @@ class TaskPool:
         self._lock_manager = self._init_lock()
 
         # 初始化事件总线
-        self._event_bus = EventBus()
+        self._event_bus = EventBus(
+            max_queue_size=self._config.event_queue_max_size,
+            overflow_policy=self._config.event_overflow_policy,
+            slow_handler_threshold=self._config.event_slow_handler_threshold,
+        )
 
         # 初始化未来管理器
         self._future_manager = FutureManager()
@@ -1176,6 +1180,11 @@ class TaskPool:
         return False
 
     # ========== 事件回调 API ==========
+
+    @property
+    def event_bus(self) -> EventBus:
+        """事件总线（只读），可订阅自定义事件或通过 get_stats() 读取背压统计"""
+        return self._event_bus
 
     def on_created(self, handler: Callable) -> None:
         """注册任务创建回调"""

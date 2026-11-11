@@ -258,6 +258,11 @@ class TaskPoolConfig:
     queue_max_size: int = 10000
     priority_levels: int = 4
 
+    # 事件总线背压：默认无界队列保持向后兼容；有界队列满时丢弃新事件并计数告警
+    event_queue_max_size: Optional[int] = None  # 待处理事件队列上限；None 不设硬上限
+    event_overflow_policy: str = "drop"  # 队列满时策略，目前仅支持 drop
+    event_slow_handler_threshold: float = 1.0  # 单回调耗时告警阈值（秒）
+
     # 锁配置
     lock_type: str = "memory"
     lock_timeout: int = 30
@@ -376,6 +381,11 @@ class SchedulerConfig:
     # 重试配置
     max_retries: int = 3
     retry_delay: float = 1.0
+
+    # 事件总线背压：默认无界队列保持向后兼容；有界队列满时丢弃新事件并计数告警
+    event_queue_max_size: Optional[int] = None  # 待处理事件队列上限；None 不设硬上限
+    event_overflow_policy: str = "drop"  # 队列满时策略，目前仅支持 drop
+    event_slow_handler_threshold: float = 1.0  # 单回调耗时告警阈值（秒）
 
     # 进度落库节流（时间间隔 或 增量阈值任一满足即写入）
     progress_flush_interval: float = DEFAULT_PROGRESS_FLUSH_INTERVAL

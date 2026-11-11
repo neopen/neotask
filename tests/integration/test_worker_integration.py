@@ -145,12 +145,13 @@ class TestReclaimerIntegration:
 
         await event_bus.start()
 
-        return {
+        yield {
             "task_repo": task_repo,
             "queue_scheduler": queue_scheduler,
             "lock": lock,
             "event_bus": event_bus
         }
+        await event_bus.stop()
 
     @pytest.mark.asyncio
     async def test_reclaimer_timeout(self, setup_reclaimer):

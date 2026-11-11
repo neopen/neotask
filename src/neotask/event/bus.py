@@ -322,16 +322,20 @@ class EventBus:
         self._loop = None
 
     async def _worker_loop(self) -> None:
-        """工作循环"""
+        """工作循环
+
+        直接阻塞等待队列：退出依赖 ``stop()`` 取消本任务，因此不需要轮询超时。
+        此前用 ``wait_for(..., timeout=1.0)`` 轮询，取消恰好撞上超时竞态时
+        ``wait_for`` 会吞掉 CancelledError 继续下一轮等待，外部取消方（如
+        pytest-asyncio 关闭事件循环）会一直等不到任务结束。
+        """
         while self._running:
             try:
-                event = await asyncio.wait_for(self._queue.get(), timeout=1.0)
+                event = await self._queue.get()
                 await self._process_event(event)
                 self._processed_events += 1
                 self._queue.task_done()
                 self._update_queue_watermark()
-            except asyncio.TimeoutError:
-                continue
             except asyncio.CancelledError:
                 break
             except RuntimeError as exc:

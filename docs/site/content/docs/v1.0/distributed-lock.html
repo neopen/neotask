@@ -12,7 +12,7 @@ config = TaskPoolConfig(
 )
 pool = TaskPool(executor=handle, config=config)</code></pre>
 
-<div class="doc-warning"><strong>默认值陷阱：</strong><code>lock_type</code> 默认是 <code>"memory"</code>，即使 <code>storage_type="redis"</code> 也不会自动改为 Redis 锁。仅在单进程内运行时，内存锁足够；多节点部署必须设置 <code>lock_type="redis"</code>。</div>
+<div class="doc-warning"><strong>默认值陷阱：</strong><code>TaskPoolConfig.redis()</code> 会同时启用 Redis 存储与 Redis 锁；但手工构造 <code>TaskPoolConfig(storage_type="redis", ...)</code> 时，<code>lock_type</code> 仍默认为 <code>"memory"</code>。多节点部署若不用工厂方法，必须显式设置 <code>lock_type="redis"</code>。</div>
 
 <h2>自动加锁</h2>
 <p>Worker 在执行每个任务前自动获取锁，键为 <code>lock:task:{task_id}</code>（RedisLock 前缀 <code>lock:</code>），任务结束后释放。</p>

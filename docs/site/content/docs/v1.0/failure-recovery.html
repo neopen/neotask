@@ -1,4 +1,4 @@
-<p>故障恢复依赖 Redis 模式下的节点心跳、任务回收器与死信队列。memory 与 SQLite 模式没有自动回收能力：进程退出后，运行中的任务会停留在 <code>running</code>。</p>
+<p>故障恢复依赖 Redis 模式下的节点心跳、任务回收器与死信队列。memory 与 SQLite 模式没有自动回收能力：进程退出后，运行中的任务会停留在 <code>running</code>。终态清理只删除已结束的记录，不属于故障恢复。</p>
 
 <h2>恢复来源</h2>
 <table>
@@ -51,7 +51,7 @@ pool.on_reclaimed(on_reclaimed)</code></pre>
 
 <h2>边界与前提</h2>
 <ul>
-<li>自动回收只在 <code>storage_type="redis"</code> 且配置 <code>redis_url</code> 时创建。</li>
+<li>自动回收只在 <code>storage_type="redis"</code> 且配置 <code>redis_url</code> 时创建。<code>enable_reclaimer</code> 与 <code>enable_heartbeat</code> 在 1.0.8 起会真正控制组件创建；关闭心跳会失去节点存活视图，孤儿回收将被跳过。</li>
 <li>孤儿回收需要节点管理器；没有活跃节点信息时会跳过，避免误判。</li>
 <li>回收不终止原进程中的业务代码。若旧节点恢复后仍在执行，任务可能被重复执行。</li>
 <li>锁能降低重复执行概率，但不能替代业务幂等。</li>

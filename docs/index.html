@@ -66,7 +66,7 @@
         "url": "https://task.helpenx.com/",
         "codeRepository": "https://github.com/neopen/neotask",
         "downloadUrl": "https://pypi.org/project/neotask/",
-        "softwareVersion": "1.0.5",
+        "softwareVersion": "1.0.8",
         "license": "https://github.com/neopen/neotask/blob/main/LICENSE",
         "screenshot": "https://task.helpenx.com/assets/img/og.png",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -106,7 +106,7 @@
             "name": "NeoTask 任务失败会自动重试吗？",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "会。通过 max_retries 与 retry_delay 配置重试次数和退避间隔；节点宕机留下的任务由回收器重新入队，最终失败的任务进入死信队列。"
+              "text": "会。通过 max_retries 与 retry_delay 配置重试次数与线性延迟；节点宕机留下的任务由回收器重新入队，最终失败的任务进入死信队列。"
             }
           },
           {
@@ -167,7 +167,7 @@
         <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
       </svg>
       <span class="brand-name">NeoTask</span>
-      <span class="brand-version">v1.0.5</span>
+      <span class="brand-version">v1.0.8</span>
     </a>
 
     <nav class="site-nav" id="siteNav" aria-label="主导航">
@@ -198,9 +198,9 @@
       <div class="hero-grid-bg" aria-hidden="true"></div>
       <div class="container hero-layout">
         <div class="hero-copy">
-          <a class="announce" href="/changelog.html#v1.0.5">
+          <a class="announce" href="/changelog.html#v1.0.8">
             <span class="announce-tag">NEW</span>
-            <span>v1.0.5 已发布 · 2026-10-29</span>
+            <span>v1.0.8 已发布 · 2026-11-11</span>
             <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
           </a>
           <h1>把耗时任务<br><span class="grad-text">交给后台。</span></h1>
@@ -289,7 +289,7 @@
             <div class="console-foot">
               <span class="console-tag"><svg class="icon icon-xs"><use href="#i-database"/></svg> memory</span>
               <span class="console-tag"><svg class="icon icon-xs"><use href="#i-sliders"/></svg> workers=10</span>
-              <span class="console-tag">v1.0.5</span>
+              <span class="console-tag">v1.0.8</span>
             </div>
           </div>
         </div>
@@ -447,7 +447,7 @@
             <span class="eyebrow">QUICK TO ADOPT</span>
             <h2>几分钟接入，而不是几天</h2>
           </div>
-          <p class="section-note">安装后即可运行。以下示例均为 v1.0.5 的真实 API。</p>
+          <p class="section-note">安装后即可运行。以下示例均为 v1.0.8 的真实 API。</p>
         </div>
 
         <div class="code-layout">
@@ -549,7 +549,7 @@ result = pool.wait_for_result(task_id)</code></pre>
             <div class="code-window-foot">
               <span><span class="dot-live"></span> Python 3.8+</span>
               <span>MIT</span>
-              <span>v1.0.5</span>
+              <span>v1.0.8</span>
             </div>
           </div>
         </div>
@@ -703,26 +703,26 @@ result = pool.wait_for_result(task_id)</code></pre>
         <div class="bench-grid">
           <div class="bench-card bench-main">
             <span class="bench-label">提交吞吐</span>
-            <strong class="bench-num">14,657<span> tasks/s</span></strong>
+            <strong class="bench-num">9,681<span> tasks/s</span></strong>
             <p>2,000 个 noop 任务，Memory 存储，10 个 Worker。</p>
           </div>
           <div class="bench-card">
             <span class="bench-label">完成吞吐</span>
-            <strong class="bench-num">2,433<span> tasks/s</span></strong>
-            <p>3,000 个任务，含状态落库与事件分发，P50 790 ms。</p>
+            <strong class="bench-num">3,035<span> tasks/s</span></strong>
+            <p>20,000 个 noop 任务压测，Memory 存储，10 个 Worker。</p>
           </div>
           <div class="bench-card">
             <span class="bench-label">串行往返</span>
-            <strong class="bench-num">15.50<span> ms</span></strong>
+            <strong class="bench-num">0.86<span> ms</span></strong>
             <p>单任务提交到完成的 P50 延迟，200 次串行测量。</p>
           </div>
           <div class="bench-card">
             <span class="bench-label">IO 扩展性</span>
-            <strong class="bench-num">7.76<span> ×</span></strong>
+            <strong class="bench-num">8.03<span> ×</span></strong>
             <p>20 ms 睡眠任务，8 个 Worker 相对 1 个 Worker 的完成吞吐。</p>
           </div>
         </div>
-        <p class="bench-note">数据来自 NeoTask 1.0.5 官方基准脚本：Windows 10 19045、i7-1165G7、Python 3.13.15、Memory 后端，旁路组件全部关闭。绝对数值不代表你的部署环境，请以自己的业务压测为准。<a href="/docs/v1.0/benchmarks.html">阅读完整口径与边界说明 →</a></p>
+        <p class="bench-note">数据来自 NeoTask 1.0.8 官方基准脚本与 20,000 任务压力套件：Windows 10 19045、i7-1165G7、Python 3.13.15、Memory 后端，旁路组件全部关闭。绝对数值不代表你的部署环境，请以自己的业务压测为准。<a href="/docs/v1.0/benchmarks.html">阅读完整口径与边界说明 →</a></p>
       </div>
     </section>
 
@@ -794,7 +794,7 @@ result = pool.wait_for_result(task_id)</code></pre>
           </details>
           <details class="faq-item">
             <summary>任务失败会自动重试吗？<span class="faq-icon"></span></summary>
-            <div class="faq-answer"><p>会。通过 <code>max_retries</code> 与 <code>retry_delay</code> 配置重试次数和退避间隔；节点宕机留下的任务由回收器重新入队，最终失败的任务进入死信队列。</p></div>
+            <div class="faq-answer"><p>会。通过 <code>max_retries</code> 与 <code>retry_delay</code> 配置重试次数与线性延迟；节点宕机留下的任务由回收器重新入队，最终失败的任务进入死信队列。</p></div>
           </details>
           <details class="faq-item">
             <summary>支持 Python 3.8 吗？<span class="faq-icon"></span></summary>
@@ -846,7 +846,7 @@ result = pool.wait_for_result(task_id)</code></pre>
           <span class="brand-name">NeoTask</span>
         </a>
         <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
-        <div class="footer-status"><span class="status-dot"></span> v1.0.5 · 发布于 2026-10-29</div>
+        <div class="footer-status"><span class="status-dot"></span> v1.0.8 · 发布于 2026-11-11</div>
       </div>
 
       <div class="footer-col">

@@ -28,10 +28,10 @@
 <tbody>
 <tr><td><code>TaskDispatcher</code></td><td>创建任务记录并写入优先队列或延时队列</td></tr>
 <tr><td><code>QueueScheduler</code></td><td>统一入队、出队、暂停、清空；延时到期后提升到优先队列</td></tr>
-<tr><td><code>WorkerPool</code></td><td>按 <code>worker_concurrency</code> 消费任务，执行超时与失败重试</td></tr>
-<tr><td><code>TaskLifecycleManager</code></td><td>维护状态机、结果、进度与等待者通知</td></tr>
+<tr><td><code>WorkerPool</code></td><td>按 <code>worker_concurrency</code> 消费任务；预取由本地队列消费进度驱动，空闲时由入队事件唤醒</td></tr>
+<tr><td><code>TaskLifecycleManager</code></td><td>维护状态机、结果、进度与等待者通知；周期清理过期终态任务</td></tr>
 <tr><td><code>TaskRepository</code></td><td>任务记录持久化；Memory / SQLite / Redis 三种实现</td></tr>
-<tr><td><code>EventBus</code></td><td>异步事件分发，供回调和指标采集订阅</td></tr>
+<tr><td><code>EventBus</code></td><td>异步事件队列；可选有界丢弃、慢回调告警，派发不阻塞任务主链路</td></tr>
 <tr><td><code>TaskReclaimer</code></td><td>仅 Redis 模式：回收超时、孤儿任务与僵尸锁</td></tr>
 </tbody>
 </table>
@@ -39,18 +39,30 @@
 <h2>任务执行路径</h2>
 <ol>
 <li>调用 <code>submit()</code> 或 <code>submit_async()</code>，<code>TaskDispatcher</code> 创建 <code>PENDING</code> 任务并写入存储。</li>
-<li><code>QueueScheduler</code> 将任务放入优先队列；<code>delay &gt; 0</code> 时先进入延时队列。</li>
+<li><code>QueueScheduler</code> 将任务放入优先队列；<code>delay &gt; 0</code> 时先进入延时队列，并唤醒等待中的消费者。</li>
 <li><code>WorkerPool</code> 出队并将任务置为 <code>RUNNING</code>，获取任务锁后调用执行器。</li>
-<li>执行完成写入 <code>SUCCESS</code> / <code>FAILED</code>，发布事件并唤醒 <code>wait_for_result()</code>。</li>
+<li>执行完成写入 <code>SUCCESS</code> / <code>FAILED</code>，把事件投递到 EventBus 并唤醒 <code>wait_for_result()</code>。</li>
 <li>失败且未超过 <code>max_retries</code> 时重置为 <code>PENDING</code>，按线性延迟重新入队。</li>
 </ol>
+
+<h2>事件驱动与背压</h2>
+<p>1.0.8 起，Worker 不再按固定间隔轮询队列：本地队列见底时预取器立即补货，共享队列为空时等待入队通知。空闲后提交的任务唤醒延迟中位约 1.3 ms。EventBus 同样使用后台队列，任务线程只负责投递，不等待订阅者处理完成。</p>
+<table>
+<thead><tr><th>字段</th><th>行为</th></tr></thead>
+<tbody>
+<tr><td><code>event_queue_max_size</code></td><td><code>None</code> 为无界；设为正整数后队列满会丢弃新事件并累加 <code>dropped_events</code></td></tr>
+<tr><td><code>event_overflow_policy</code></td><td>当前仅支持 <code>"drop"</code>，其他值在构造时抛 <code>ValueError</code></td></tr>
+<tr><td><code>event_slow_handler_threshold</code></td><td>单个回调耗时超过阈值时累加 <code>slow_handler_calls</code> 并输出告警</td></tr>
+</tbody>
+</table>
+<p>有界队列保护内存，但会牺牲事件完整性；需要完整审计时保持无界，并确保订阅者不在回调中执行阻塞操作。运行状态可通过 <code>pool.event_bus.get_stats()</code> 读取。</p>
 
 <h2>三种部署形态</h2>
 <table>
 <thead><tr><th>形态</th><th>存储</th><th>适用场景</th><th>限制</th></tr></thead>
 <tbody>
 <tr><td>单进程嵌入</td><td>memory</td><td>脚本、测试、短生命周期服务</td><td>进程退出即丢失</td></tr>
-<tr><td>单机持久化</td><td>SQLite</td><td>低频、单写入者、需要本地持久化</td><td>多 worker 并发写入会出现 <code>database is locked</code></td></tr>
+<tr><td>单机持久化</td><td>SQLite</td><td>低频、单写入者、需要本地持久化</td><td>写入已串行化；多 Worker 可用但吞吐随并发增加下降</td></tr>
 <tr><td>多节点对等</td><td>Redis</td><td>水平扩展、共享队列、故障回收</td><td>需要 Redis，且节点 ID 必须唯一</td></tr>
 </tbody>
 </table>

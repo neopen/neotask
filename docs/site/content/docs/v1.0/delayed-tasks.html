@@ -108,3 +108,5 @@ scheduler.start()</code></pre>
 <h2>关闭</h2>
 <pre><code class="language-python">scheduler.shutdown(graceful=True, timeout=30)</code></pre>
 <p>优雅关闭会先停止接收新任务，等待队列清空，再停止周期管理器与时间轮。</p>
+
+<p>1.0.8 新增 <code>drain_delayed_on_shutdown</code>（默认 <code>False</code>）。开启后，关闭时会把尚未到期的延时任务立即转入优先队列并等待执行，适合“宁可提前，也不要丢失”的任务；代价是这些任务不再按原定时间运行。</p>

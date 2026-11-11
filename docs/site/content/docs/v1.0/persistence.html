@@ -33,7 +33,7 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 </tbody>
 </table>
 
-<div class="doc-warning"><strong>并发写入限制：</strong>任务仓储与队列仓储各自持有连接，每次写入立即提交。多个 worker 并发写入时会出现 <code>database is locked</code>。生产环境请将 SQLite 限制为单写入者，或改用 Redis。实测单 worker 串行约 30 tasks/s。</div>
+<div class="doc-warning"><strong>并发写入限制：</strong>1.0.8 为 SQLite 单连接写入加了串行锁，同一进程内的多个 Worker 并发提交不再报 <code>database is locked</code>，但写入仍是一个接一个执行，吞吐随 Worker 数增加而下降。实测 100 条突发：1 Worker 87.4 tasks/s、2 Worker 61.8 tasks/s、4 Worker 41.3 tasks/s。生产环境仍建议单写入者；需要高并发写入时改用 Redis。</div>
 
 <p>路径必须可写，目录需提前存在。容器中建议挂载持久卷，不要放在容器临时层。</p>
 
@@ -60,13 +60,13 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 </tbody>
 </table>
 
-<p>所有节点必须连接同一个 Redis 数据库，并使用唯一的 <code>node_id</code>。Redis 模式下会自动启用节点心跳、任务回收、死信队列和分布式锁。</p>
+<p>所有节点必须连接同一个 Redis 数据库，并使用唯一的 <code>node_id</code>。Redis 模式下会启用节点心跳、任务回收、死信队列与分布式锁。<code>TaskPoolConfig.redis()</code> 会自动把 <code>lock_type</code> 设为 <code>"redis"</code>；如果手工构造 <code>TaskPoolConfig(storage_type="redis", ...)</code>，<code>lock_type</code> 仍默认为 <code>"memory"</code>，跨节点部署必须显式改为 <code>"redis"</code>。</p>
 
 <h2>实际持久化范围</h2>
 <table>
 <thead><tr><th>数据</th><th>是否持久化</th><th>说明</th></tr></thead>
 <tbody>
-<tr><td>任务记录与结果</td><td>是（SQLite / Redis）</td><td>写入后跨重启保留</td></tr>
+<tr><td>任务记录与结果</td><td>是（SQLite / Redis）</td><td>写入后跨重启保留；终态记录会按保留期清理</td></tr>
 <tr><td>优先队列</td><td>是（SQLite / Redis）</td><td>未出队任务可恢复</td></tr>
 <tr><td>周期任务定义</td><td>是（需启用持久化）</td><td>memory 模式除外</td></tr>
 <tr><td>延时堆 / 时间轮</td><td>否</td><td>仅进程内，重启后等待中的任务不会自动入队</td></tr>
@@ -75,4 +75,15 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 </table>
 
 <h2>清理</h2>
-<p>任务记录不会自动删除。终态任务会一直保留，直到调用 <code>delete()</code>。任务级 <code>ttl</code> 用于回收器判断运行中超时，不负责清理历史记录；死信队列按 <code>dead_letter_ttl</code>（默认 7 天）过期。需要控制存储增长时，应自行定期清理终态任务。</p>
+<p>1.0.8 默认启用终态清理：每 <code>terminal_cleanup_interval</code>（默认 60 秒）扫描一次，删除超过保留期的 <code>success</code> / <code>failed</code> / <code>cancelled</code> 记录。保留期由 <code>terminal_retention_seconds</code> 决定，0 表示沿用任务自身 <code>ttl</code>（默认 3600 秒）。</p>
+
+<pre><code class="language-python">config = TaskPoolConfig(
+    enable_terminal_cleanup=True,
+    terminal_cleanup_interval=60.0,
+    terminal_retention_seconds=7 * 24 * 3600,  # 终态保留 7 天
+)
+
+# 手动触发一次清理，返回删除数量
+pool.cleanup_terminal_tasks()</code></pre>
+
+<p>任务级 <code>ttl</code> 同时用于回收器判断 <code>running</code> 超时，因此它既影响故障回收，也影响默认的终态保留时长。需要长期保留审计记录时，应关闭自动清理或设置更大的 <code>terminal_retention_seconds</code>，并自行归档。死信队列仍按 <code>dead_letter_ttl</code>（默认 7 天）过期，不受终态清理影响。</p>

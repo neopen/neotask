@@ -10,9 +10,12 @@
 <tr><td>Memory / SQLite / Redis</td><td>已支持</td><td>Redis 支持多节点共享队列</td></tr>
 <tr><td>自动重试、超时、进度</td><td>已支持</td><td>重试为线性延迟</td></tr>
 <tr><td>节点心跳、任务回收、死信</td><td>已支持（Redis）</td><td>死信无公开查询 API</td></tr>
+<tr><td>生命周期事件与背压</td><td>已支持</td><td>EventBus 异步投递，可配置队列上限与溢出策略</td></tr>
+<tr><td>终态任务自动清理</td><td>已支持</td><td>默认开启，保留期可配置</td></tr>
+<tr><td>命令行与轻量基准</td><td>已支持</td><td><code>neotask --benchmark</code>、<code>--version</code>、<code>--help</code></td></tr>
 <tr><td>DAG 工作流</td><td>未支持</td><td>规划于 v1.5</td></tr>
 <tr><td>多租户隔离</td><td>未支持</td><td>规划于 v2.0</td></tr>
-<tr><td>独立 Web UI / CLI</td><td>未提供</td><td>仓库有 Web 代码，但未接入公开入口</td></tr>
+<tr><td>独立 Web UI</td><td>未提供公开入口</td><td><code>neotask[ui]</code> 扩展需自行装配，未作为独立产品发布</td></tr>
 </tbody>
 </table>
 
@@ -26,7 +29,7 @@
 <tr><td>并行子任务</td><td><code>submit_batch()</code> + <code>wait_all()</code></td><td>部分失败时的清理与重试策略</td></tr>
 <tr><td>定时编排</td><td>用 <code>TaskScheduler</code> 分别定义周期任务</td><td>多实例重复触发；同一周期定义只应有一个调度者</td></tr>
 <tr><td>多租户</td><td>每个租户使用独立 TaskPool 与存储（独立 SQLite 文件或 Redis 库）</td><td>资源配额、统一鉴权与跨租户统计</td></tr>
-<tr><td>可视化管理</td><td>基于 <code>get_stats()</code>、<code>get_task()</code> 与事件自行构建</td><td>Web UI 与 CLI 尚未接入公开入口</td></tr>
+<tr><td>可视化管理</td><td>基于 <code>get_stats()</code>、<code>get_task()</code> 与事件自行构建；CLI 仅覆盖基准与版本信息</td><td>Web UI 装配、鉴权与运维入口</td></tr>
 </tbody>
 </table>
 

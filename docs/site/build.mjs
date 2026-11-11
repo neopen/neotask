@@ -259,7 +259,7 @@ ${rows.map((r) => `  <div class="bench-boundary ${r.ok ? 'is-ok' : 'is-fail'}">
       <strong>${esc(r.mode)}</strong>
       <span class="bench-boundary-workers">${r.workers} worker${r.workers > 1 ? 's' : ''}</span>
     </div>
-    <p class="bench-boundary-outcome">${esc(r.outcome)}${r.ok ? '' : ' <code>database is locked</code>'}</p>
+    <p class="bench-boundary-outcome">${esc(r.outcome)}</p>
 ${r.meta.length ? `    <dl class="bench-boundary-meta">${r.meta.map((m) => `<div><dt>${esc(m.label)}</dt><dd>${esc(m.value)}</dd></div>`).join('')}</dl>` : ''}
   </div>`).join('\n')}
 </div>`;
@@ -274,7 +274,10 @@ function renderBenchmarkContent(raw, b) {
     BENCH_IO_CHART: benchBars(b.io.caption, b.io.bars, b.io.max, b.io.note),
     BENCH_IO_TABLE: benchTable(b.io.headers, b.io.rows),
     BENCH_SQLITE_BOUNDARIES: benchBoundaries(b.sqlite.rows),
-    BENCH_PREFETCH_CHART: benchBars(b.prefetch.caption, b.prefetch.bars, 0, b.prefetch.note)
+    BENCH_PREFETCH_CHART: benchBars(b.prefetch.caption, b.prefetch.bars, 0, b.prefetch.note),
+    BENCH_STRESS_TABLE: benchTable(b.stress.headers, b.stress.rows),
+    BENCH_STRESS_NOTE: esc(b.stress.note),
+    BENCH_EVENT_TABLE: benchTable(b.eventbus.headers, b.eventbus.rows)
   };
   return raw.replace(/\{\{([A-Z0-9_]+)\}\}/g, (m, key) =>
     Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : m

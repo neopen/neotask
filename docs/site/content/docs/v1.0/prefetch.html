@@ -1,4 +1,4 @@
-<p>预取器把共享队列中的任务批量搬到每个 Worker 的本地队列，减少对 Redis 或存储层的出队请求。默认开启。</p>
+<p>预取器把共享队列中的任务批量搬到每个 Worker 的本地队列，减少对 Redis 或存储层的出队请求。默认开启。1.0.8 起，补货节奏由本地队列的消费进度驱动，空闲时由入队事件唤醒。</p>
 
 <h2>配置</h2>
 <pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
@@ -17,19 +17,19 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 <tr><td>本地队列容量</td><td><code>prefetch_size × 5</code> = 100</td></tr>
 <tr><td>触发下限</td><td><code>max(1, prefetch_size // 4)</code> = 5</td></tr>
 <tr><td>停止上限</td><td><code>prefetch_size × 3</code> = 60</td></tr>
-<tr><td>预取检查间隔</td><td>0.1 秒</td></tr>
+<tr><td>等待兜底间隔</td><td>0.1 秒；仅在等待消费时作为超时，不再是补货节奏上限</td></tr>
 <tr><td>空闲超时</td><td>5 秒无消费后暂停预取</td></tr>
-<tr><td>空预取退避</td><td>0.1 秒起指数增长，上限 0.5 秒</td></tr>
+<tr><td>空预取退避</td><td>0.1 秒起指数增长，上限 0.5 秒；入队通知可提前唤醒</td></tr>
 </tbody>
 </table>
 
 <h2>触发逻辑</h2>
 <p>默认使用 HYBRID 策略：</p>
 <ul>
-<li>本地队列低于下限（5）时立即预取；</li>
-<li>低于上限（60）且最近 5 个批次的平均消费量超过 <code>prefetch_size × 0.5</code> 时也会预取；</li>
-<li>本地队列达到上限后延长检查间隔，避免空转；</li>
-<li>连续空预取时按指数退避，最高 0.5 秒，与 Worker 空转退避对齐。</li>
+<li>本地队列低于下限（5）时立即预取；Worker 每次取走任务后都会检查并置位需求信号；</li>
+<li>本地队列仍有存货时，等待 Worker 消费到下限再补货，等待超时作为兜底；</li>
+<li>共享队列为空时等待入队通知，不再固定睡眠 0.1 秒；</li>
+<li>连续空预取时按指数退避，最高 0.5 秒，入队通知可以提前唤醒。</li>
 </ul>
 
 <h2>一次预取</h2>
@@ -53,9 +53,10 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 </table>
 
 <h2>吞吐影响</h2>
-<p>预取优化的是队列争用，不是极短任务的吞吐。预取补充节奏约为每 0.1 秒一批；当任务本身只有几十微秒时，默认 20 个/批会成为瓶颈。官方基准中，极短任务关闭预取后的完成吞吐明显高于默认预取配置。</p>
+<p>1.0.8 的预取由消费需求驱动，固定的 0.1 秒批间隔不再是吞吐上限。官方基准中，3,000 个 noop 任务关闭预取为 1,453 tasks/s、预取 20 为 1,211 tasks/s、预取 100 为 1,538 tasks/s，差异处于单轮波动范围。</p>
+<p>预取的主要收益在批量出队侧：20,000 任务压力套件中，预取开启的提交吞吐提高 22.4%，完成吞吐提高 12.7%。任务体有 IO 等待或执行时间较长时，减少取任务往返的价值更明显。</p>
 
-<div class="doc-note">是否启用应基于任务耗时判断：毫秒级以上任务通常受益；微秒级任务建议先关闭预取做对照测试。数据口径见 <a href="/docs/benchmarks.html">性能基准</a>。</div>
+<div class="doc-note">是否启用应基于任务耗时与队列后端判断：毫秒级以上任务通常受益；极短任务建议用同一组参数做 A/B 对照，而不是默认关闭。数据口径见 <a href="/docs/benchmarks.html">性能基准</a>。</div>
 
 <h2>统计</h2>
 <pre><code class="language-python">stats = pool.get_stats()

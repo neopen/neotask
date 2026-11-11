@@ -1,71 +1,92 @@
-<p>以下数据由 NeoTask {{BENCH_RELEASE}} 官方基准脚本测得，用于判断相对趋势与配置影响，不构成性能承诺。数字随 CPU、Python 版本、存储后端与旁路组件变化，请按同一口径在自己的目标环境复测。</p>
+<p>以下数据由 NeoTask {{BENCH_RELEASE}} 官方基准脚本与极限压力套件测得，用于判断相对趋势与配置影响，不构成性能承诺。数字随 CPU、Python 版本、存储后端与旁路组件变化，请按同一口径在自己的目标环境复测。</p>
 
 {{BENCH_METRICS}}
 
 <h2>测试环境</h2>
 {{BENCH_ENV_TABLE}}
-<p>主套件使用 Memory 后端；SQLite 数据来自独立探针，两组结果不可合并比较。</p>
+<p>主套件、20,000 任务压力套件与 SQLite 探针是三组独立测量，口径不同，不能合并比较。</p>
 
 <h2>口径</h2>
 <table>
 <thead><tr><th>指标</th><th>定义</th></tr></thead>
 <tbody>
 <tr><td>提交吞吐</td><td>第一个 <code>submit_async</code> 到第 N 个返回</td></tr>
-<tr><td>完成吞吐</td><td>第一个 <code>submit_async</code> 到第 N 个 <code>task.completed</code> 事件</td></tr>
+<tr><td>完成吞吐（官方套件）</td><td>第一个 <code>submit_async</code> 到第 N 个 <code>task.completed</code> 事件</td></tr>
+<tr><td>完成吞吐（压力套件）</td><td>任务执行完成时计数，不等待事件订阅回调</td></tr>
 <tr><td>任务延迟</td><td>单任务提交前到该任务完成事件</td></tr>
 <tr><td>等待吞吐</td><td>N 个并发 <code>wait_for_result_async</code> 全部返回的速率</td></tr>
 </tbody>
 </table>
 <p>每个场景独立创建 <code>TaskPool</code>，预热 10 个任务；主套件重复 2–3 轮取中位数。提交吞吐与完成吞吐的分母不同，不能直接比较：前者衡量入队链路，后者包含调度、执行与状态落库。</p>
 
+<div class="doc-warning"><strong>1.0.8 的完成吞吐有两个口径：</strong>事件总线改为异步队列后，官方套件按 <code>task.completed</code> 事件计时，订阅者处理慢时测到的是事件投递速率，而不是任务执行速率。同一版本的压力套件在任务完成时计数，20,000 任务实测 3,035 tasks/s；官方套件 3,000 任务为 1,804 tasks/s。两者都不是容量上限，比较时先确认口径。</div>
+
 <h2>调度与执行开销</h2>
 {{BENCH_SCHEDULING_TABLE}}
-<p>空任务单条提交的主链路开销约 68 μs。完成吞吐的瓶颈在生命周期流转、状态落库与事件分发，不在执行器本身；单纯增加 Worker 无法突破这一上限。</p>
+<p>2,000 个 noop 任务顺序提交为 9,681 tasks/s，折算单条约 0.10 ms；串行往返 P50 0.86 ms 包含出队、执行、状态写回与事件唤醒。完成吞吐的瓶颈在生命周期流转、状态落库与事件分发，不在执行器本身；单纯增加 Worker 无法突破这一上限。</p>
 
 <h2>IO 扩展性</h2>
 <p>任务体为 <code>asyncio.sleep(0.020)</code>，N=400，Memory 后端。完成吞吐随 Worker 数增加接近线性增长。</p>
 {{BENCH_IO_CHART}}
 {{BENCH_IO_TABLE}}
-<p>1 Worker 的绝对值受 Windows 定时器粒度影响：20 ms 的 sleep 实际约 31 ms，因此 32.1 tasks/s 略低于理论上限。评估扩展性时看相对倍率，不要只看单点绝对值。</p>
+<p>1 Worker 的绝对值受 Windows 定时器粒度影响：20 ms 的 sleep 实际约 31 ms，因此 30.2 tasks/s 略低于理论上限。评估扩展性时看相对倍率，不要只看单点绝对值。</p>
+
+<h2>持续与突发负载</h2>
+<p>20,000 个 noop 任务一次性提交，观察持续完成能力；其余场景覆盖 Worker 数、缓存淘汰、空闲 CPU、延时精度与三后端突发。压力套件在空闲机器上以最终 wheel 运行。</p>
+{{BENCH_STRESS_TABLE}}
+<div class="doc-note">{{BENCH_STRESS_NOTE}} 8 Worker 与 20 Worker 的完成吞吐基本持平，说明瓶颈已回到事件循环与生命周期处理，而不是并发度。</div>
+
+<h2>事件总线与唤醒</h2>
+<p>1.0.8 起 Worker 与预取器由事件唤醒，不再按固定间隔轮询。EventBus 默认无界；设置 <code>event_queue_max_size</code> 后队列满会丢弃新事件并计数，慢回调超过 <code>event_slow_handler_threshold</code> 时会告警。</p>
+{{BENCH_EVENT_TABLE}}
+<p>空闲后提交的唤醒延迟中位 1.3 ms，是串行往返降到 0.86 ms 的主要原因。有界队列会牺牲事件完整性换取内存上限：需要完整审计时保持无界，并把耗时回调移出事件循环。</p>
 
 <h2>SQLite 边界</h2>
-<p>noop 任务，每次重建数据库，对比单写入者与并发写入的行为。</p>
+<p>noop 任务，每次重建数据库，对比串行提交与 1–4 个 Worker 的突发提交。</p>
 {{BENCH_SQLITE_BOUNDARIES}}
-<p>SQLite 适合低频、单写入者场景。需要多 Worker 并发写入或跨节点共享队列时改用 Redis，配置方式见 <a href="/docs/persistence.html">持久化存储</a> 与 <a href="/docs/distributed.html">分布式部署</a>。</p>
+<p>1.0.8 为单连接写入加了串行锁，多 Worker 并发提交不再出现 <code>database is locked</code>，但吞吐随 Worker 数增加而下降：2 Worker 61.8 tasks/s、4 Worker 41.3 tasks/s。SQLite 仍适合低频、单写入者场景；需要高并发写入或跨节点共享队列时改用 Redis。</p>
 
 <h2>预取的配置影响</h2>
-<p>极短任务由事件循环直接调度更快；默认预取按约 0.1 秒一批补充任务，批间隔会限制微任务的完成吞吐。</p>
+<p>1.0.8 的预取由本地队列消费进度驱动，<code>prefetch_interval</code> 只作为等待兜底，不再按固定 0.1 秒一批补货。极短任务下关闭预取与开启预取的完成吞吐处于同一量级。</p>
 {{BENCH_PREFETCH_CHART}}
-<p>任务体本身有 IO 等待或执行时间较长时，预取节省的取任务往返通常更有价值，保持默认即可。触发条件与批量参数见 <a href="/docs/prefetch.html">预取机制</a>。</p>
+<p>预取的价值主要在批量出队侧：20,000 任务压力套件中，预取开启的提交吞吐比关闭高 22.4%（25,760 对 21,052 tasks/s），完成吞吐高 12.7%。任务体有 IO 等待或执行时间较长时收益更明显。触发条件与批量参数见 <a href="/docs/prefetch.html">预取机制</a>。</p>
 
 <h2>怎么选配置</h2>
 <table>
 <thead><tr><th>场景</th><th>建议配置</th><th>依据</th></tr></thead>
 <tbody>
-<tr><td>数十微秒的纯计算微任务</td><td>关闭预取，Worker 数与 CPU 核数对齐</td><td>预取批间隔成为瓶颈，关闭后完成吞吐从 181 提升到 2,382 tasks/s</td></tr>
-<tr><td>毫秒级 IO 任务</td><td>保持默认预取，Worker 16–32 起步</td><td>20 ms 睡眠任务在 8 Worker 下仍有 7.76× 扩展</td></tr>
+<tr><td>数十微秒的纯计算微任务</td><td>Worker 数与 CPU 核数对齐；预取可关可开</td><td>预取不再是数量级瓶颈，关闭 1,453 与预取 100 的 1,538 tasks/s 处于同一量级</td></tr>
+<tr><td>毫秒级 IO 任务</td><td>保持默认预取，Worker 16–32 起步</td><td>20 ms 睡眠任务在 8 Worker 下仍有 8.03× 扩展</td></tr>
 <tr><td>CPU 密集任务</td><td>ProcessExecutor，Worker 不超过物理核数</td><td>异步 Worker 共享 GIL，超配只增加切换开销</td></tr>
-<tr><td>单机低频、需重启恢复</td><td>SQLite，单写入者</td><td>100 条突发在 1 Worker 下全部成功；2 Worker 起出现 <code>database is locked</code></td></tr>
-<tr><td>多节点或高并发写入</td><td>Redis，唯一 <code>node_id</code>，<code>lock_type="redis"</code></td><td>SQLite 没有跨进程写协调，见分布式部署</td></tr>
+<tr><td>单机低频、需重启恢复</td><td>SQLite，单写入者</td><td>写入已串行化；1 Worker 突发 87.4 tasks/s，4 Worker 降至 41.3 tasks/s</td></tr>
+<tr><td>多节点或高并发写入</td><td>Redis，唯一 <code>node_id</code></td><td><code>TaskPoolConfig.redis()</code> 自动启用 Redis 锁；手工构造配置时需显式设置 <code>lock_type="redis"</code></td></tr>
 <tr><td>优先级严格生效</td><td>关闭预取或调小批量</td><td>预取会提前取走任务，后提交的高优先级任务可能排在已取走的低优先级任务之后</td></tr>
+<tr><td>事件完整性优先</td><td>保持无界事件队列，回调快速返回</td><td>有界队列会丢弃事件；慢回调会延后 <code>task.completed</code> 的观测时间</td></tr>
 </tbody>
 </table>
 <p>字段默认值与生效范围见 <a href="/docs/configuration.html">配置参考</a>；执行器与并发选型的完整建议见 <a href="/docs/best-practices.html">最佳实践</a>。</p>
 
 <h2>复现</h2>
-<pre><code class="language-bash">git clone https://github.com/neopen/neotask.git
+<pre><code class="language-bash"># 用内置 5 ms 执行器做一轮轻量自测
+neotask --benchmark
+
+# 用自己的执行器
+neotask --benchmark --executor my_tasks:handle --tasks 2000 --json
+
+# 仓库内完整基准
+git clone https://github.com/neopen/neotask.git
 cd neotask
 pip install -e ".[dev]"
 python tests/benchmark/run_benchmark.py</code></pre>
-<p>基准脚本位于仓库 <code>tests/benchmark/</code>，不随 PyPI 包分发。主套件约需 2 分钟，SQLite 探针另需约 2 分钟。复测时记录 CPU、Python 版本、存储后端与 Worker 数，否则结果不可比。</p>
+<p><code>neotask --benchmark</code> 随 PyPI 包分发，默认 200 个任务、10 并发，适合快速对照；完整基准脚本位于仓库 <code>tests/benchmark/</code>，主套件约需 2 分钟，SQLite 探针另需约 2 分钟。复测时记录 CPU、Python 版本、存储后端与 Worker 数，否则结果不可比。</p>
 
 <h2>解读边界</h2>
 <ul>
 <li>数据来自单台开发笔记本（4 核 8 线程），不能外推到服务器或容器环境。</li>
-<li>主套件使用 Memory 后端，SQLite 数据单独测量，两者不可混用。</li>
+<li>主套件与压力套件使用 Memory 后端，SQLite 数据单独测量，三者不可混用。</li>
 <li>旁路组件（metrics、health check、reporter、reclaimer、heartbeat、dead letter、retry）全部关闭，开启后吞吐会下降。</li>
 <li>延迟分位数来自单次场景，不代表长期稳定性；持续负载与突发负载应分开评估。</li>
-<li>版本间口径可能变化，1.0.5 之前的历史数字不应直接比较。</li>
+<li>1.0.8 事件总线改为异步队列，完成吞吐的事件口径与 1.0.7 及更早版本不可直接比较；历史数字仅作趋势参考。</li>
 </ul>
 
 <div class="doc-note"><strong>不要直接引用绝对值做容量规划。</strong>请在自己的目标环境用相同脚本、相同口径复测，并把业务任务的真实耗时分布纳入评估。</div>

@@ -129,7 +129,7 @@
         <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
       </svg>
       <span class="brand-name">NeoTask</span>
-      <span class="brand-version">v1.0.5</span>
+      <span class="brand-version">v1.0.8</span>
     </a>
 
     <nav class="site-nav" id="siteNav" aria-label="主导航">
@@ -191,8 +191,8 @@
         <p class="docs-nav-label">可靠性</p>
         <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
-        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 批量预取的触发条件、阈值配置与对延迟和优先级的影响。">预取机制</a>
-        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、Reporter 与 Prometheus 集成。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
@@ -243,8 +243,8 @@
         <p class="docs-nav-label">可靠性</p>
         <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
-        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 批量预取的触发条件、阈值配置与对延迟和优先级的影响。">预取机制</a>
-        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、Reporter 与 Prometheus 集成。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
@@ -351,7 +351,7 @@ pool.submit_batch([{"job": "report"}], priority=TaskPriority.NORMAL)</code></pre
           <span class="brand-name">NeoTask</span>
         </a>
         <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
-        <div class="footer-status"><span class="status-dot"></span> v1.0.5 · 发布于 2026-10-29</div>
+        <div class="footer-status"><span class="status-dot"></span> v1.0.8 · 发布于 2026-11-11</div>
       </div>
 
       <div class="footer-col">

@@ -15,8 +15,19 @@
 
 <h2>安装校验</h2>
 <pre><code class="language-bash">python -c "import neotask; print(neotask.__version__)"
-# 1.0.5</code></pre>
-<p>如果导入失败，先确认当前 Python 环境与安装位置一致。Redis 后端和系统指标是可选依赖，未安装时不影响内存模式运行。</p>
+# 1.0.8
+
+neotask --version
+# neotask 1.0.8</code></pre>
+<p>如果导入失败，先确认当前 Python 环境与安装位置一致。Redis 后端和系统指标是可选依赖，未安装时不影响内存模式运行。1.0.8 起安装包提供 <code>neotask</code> 命令行入口，支持版本查询与轻量基准；完整基准与 API 说明见 <a href="/docs/benchmarks.html">性能基准</a>。</p>
+
+<h2>轻量性能自测</h2>
+<pre><code class="language-bash"># 内置 5 ms 执行器，200 个任务，10 并发
+neotask --benchmark
+
+# 用自己的执行器并输出 JSON
+neotask --benchmark --executor my_tasks:handle --tasks 2000 --json</code></pre>
+<p>基准入口默认关闭健康检查、指标与 Reporter，只测量提交、完成与端到端延迟。它适合验证环境与执行器，不替代完整压测。</p>
 
 <h2>提交第一个任务</h2>
 <p>执行器接收一个 <code>dict</code>，返回值会作为任务结果保存。返回值必须可 JSON 序列化。</p>
@@ -83,7 +94,7 @@ results = pool.wait_all(task_ids, timeout=60)
 <tr><td>Redis 连接失败</td><td>未安装 <code>redis</code> 扩展或地址不可达</td><td>安装 <code>neotask[redis]</code>，检查 <code>redis_url</code> 与网络</td></tr>
 <tr><td>任务一直 <code>pending</code></td><td>池未启动、并发为 0 或 Worker 异常</td><td>显式调用 <code>pool.start()</code>，用 <code>get_stats()</code> 查看队列与 Worker 状态</td></tr>
 <tr><td><code>wait_for_result</code> 超时</td><td>任务仍在执行，或同步阻塞函数占住了事件循环</td><td>调大等待时间；阻塞代码改用 <code>ThreadExecutor</code></td></tr>
-<tr><td><code>database is locked</code></td><td>SQLite 被多个写入者并发访问</td><td>保持单写入者，或改用 Redis</td></tr>
+<tr><td><code>database is locked</code></td><td>多个进程共用同一个 SQLite 文件</td><td>1.0.8 已串行化单进程内写入；跨进程仍建议单写入者，或改用 Redis</td></tr>
 </tbody>
 </table>
 

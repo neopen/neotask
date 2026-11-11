@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>监控与健康检查 · NeoTask v1.0 文档</title>
-  <meta name="description" content="指标采集、健康检查、Reporter 与 Prometheus 集成。">
+  <meta name="description" content="指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">
   <meta name="keywords" content="监控与健康检查, 监控与健康检查 教程, 监控与健康检查 文档, 可靠性, NeoTask v1.0 文档, NeoTask 1.0.x, Python 任务队列">
   <meta name="author" content="NeoPen">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
@@ -13,7 +13,7 @@
   <meta property="og:locale" content="zh_CN">
   <meta property="og:type" content="article">
   <meta property="og:title" content="监控与健康检查 · NeoTask v1.0 文档">
-  <meta property="og:description" content="指标采集、健康检查、Reporter 与 Prometheus 集成。">
+  <meta property="og:description" content="指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">
   <meta property="og:url" content="https://task.helpenx.com/docs/v1.0/monitoring.html">
   <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
   <meta property="og:image:type" content="image/png">
@@ -21,11 +21,11 @@
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="监控与健康检查 · NeoTask 文档">
   <meta property="article:published_time" content="2026-10-29">
-  <meta property="article:modified_time" content="2026-10-30">
+  <meta property="article:modified_time" content="2026-11-11">
   <meta property="article:section" content="可靠性">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="监控与健康检查 · NeoTask v1.0 文档">
-  <meta name="twitter:description" content="指标采集、健康检查、Reporter 与 Prometheus 集成。">
+  <meta name="twitter:description" content="指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">
   <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
   <meta name="twitter:image:alt" content="监控与健康检查 · NeoTask 文档">
   <meta name="theme-color" content="#0b1713">
@@ -44,13 +44,13 @@
         "@id": "https://task.helpenx.com/docs/v1.0/monitoring.html#article",
         "headline": "监控与健康检查",
         "name": "监控与健康检查 · NeoTask v1.0 文档",
-        "description": "指标采集、健康检查、Reporter 与 Prometheus 集成。",
+        "description": "指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。",
         "image": "https://task.helpenx.com/assets/img/og.png",
         "url": "https://task.helpenx.com/docs/v1.0/monitoring.html",
         "mainEntityOfPage": "https://task.helpenx.com/docs/v1.0/monitoring.html",
         "inLanguage": "zh-CN",
         "datePublished": "2026-10-29",
-        "dateModified": "2026-10-30",
+        "dateModified": "2026-11-11",
         "articleSection": "可靠性",
         "keywords": "监控与健康检查, 监控与健康检查 教程, 监控与健康检查 文档, 可靠性, NeoTask v1.0 文档, NeoTask 1.0.x, Python 任务队列",
         "author": {
@@ -129,7 +129,7 @@
         <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
       </svg>
       <span class="brand-name">NeoTask</span>
-      <span class="brand-version">v1.0.5</span>
+      <span class="brand-version">v1.0.8</span>
     </a>
 
     <nav class="site-nav" id="siteNav" aria-label="主导航">
@@ -191,8 +191,8 @@
         <p class="docs-nav-label">可靠性</p>
         <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
-        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 批量预取的触发条件、阈值配置与对延迟和优先级的影响。">预取机制</a>
-        <a class="docs-nav-link is-active" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、Reporter 与 Prometheus 集成。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
@@ -243,8 +243,8 @@
         <p class="docs-nav-label">可靠性</p>
         <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
-        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 批量预取的触发条件、阈值配置与对延迟和优先级的影响。">预取机制</a>
-        <a class="docs-nav-link is-active" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、Reporter 与 Prometheus 集成。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
@@ -262,11 +262,11 @@
         <header class="article-header">
           <p class="article-eyebrow">可靠性</p>
           <h1>监控与健康检查</h1>
-          <p class="article-lede">指标采集、健康检查、Reporter 与 Prometheus 集成。</p>
+          <p class="article-lede">指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。</p>
           <div class="article-meta">
             <span class="article-version">v1.0 · NeoTask 1.0.x</span>
             <span class="dot"></span>
-            <span>更新于 2026-10-30</span>
+            <span>更新于 2026-11-11</span>
             <span class="dot"></span>
             <span>约 7 分钟 读完</span>
             <span class="dot"></span>
@@ -296,6 +296,35 @@ print(stats["metrics"]["p95_execution_time"])</code></pre>
 </table>
 
 <p><code>TaskScheduler.get_stats()</code> 在相同字段上追加 <code>periodic</code> 与 <code>time_wheel</code>。</p>
+
+<h2 id="事件总线状态">事件总线状态</h2>
+<pre><code class="language-python">bus = pool.event_bus.get_stats()
+# {
+#   "queue_size": 0,
+#   "max_queue_size": None,
+#   "processed_events": 12034,
+#   "dropped_events": 0,
+#   "slow_handler_calls": 0,
+#   "slow_handler_threshold": 1.0,
+#   "is_running": True
+# }</code></pre>
+
+<table>
+<thead><tr><th>字段</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>queue_size</code></td><td>当前待处理事件数；持续上涨说明消费跟不上生产</td></tr>
+<tr><td><code>max_queue_size</code></td><td>配置的上限；<code>None</code> 表示无界</td></tr>
+<tr><td><code>processed_events</code></td><td>已分发事件总数</td></tr>
+<tr><td><code>dropped_events</code></td><td>有界队列满时丢弃的事件数</td></tr>
+<tr><td><code>slow_handler_calls</code></td><td>超过阈值的回调次数</td></tr>
+<tr><td><code>slow_handler_threshold</code></td><td>慢回调告警阈值（秒）</td></tr>
+<tr><td><code>is_running</code></td><td>事件消费任务是否在运行</td></tr>
+</tbody>
+</table>
+
+<div class="doc-warning"><strong>指标依赖事件时序：</strong><code>metrics.throughput</code> 与完成计数由生命周期事件推导。事件总线异步化后，慢订阅者会延后 <code>task.completed</code> 的观测时刻，使短窗口吞吐和延迟看起来偏低。排查时同时查看 <code>queue_size</code> 与 <code>slow_handler_calls</code>，不要把事件积压误判为任务执行慢。</div>
+
+<div class="doc-note"><strong>终态清理影响计数：</strong>默认每 60 秒清理过期终态任务，<code>completed</code> / <code>failed</code> / <code>cancelled</code> 是当前存储中的记录数，不是历史累计值。累计口径请看 <code>metrics.total_completed</code> 等计数器。</div>
 
 <h2 id="任务指标">任务指标</h2>
 <table>
@@ -360,7 +389,7 @@ await manager.start()</code></pre>
 <div class="doc-warning"><strong>额外依赖：</strong><code>PrometheusReporter</code> 使用 <code>aiohttp</code>，它不在 NeoTask 的依赖或 extras 中，需要自行安装。上报字段仅包含提交/完成/失败/成功率、pending/running 以及平均与 P95 执行耗时。</div>
 
 <h2 id="事件驱动采集">事件驱动采集</h2>
-<p>指标由生命周期事件推导：<code>task.created</code>、<code>task.started</code>、<code>task.completed</code>、<code>task.failed</code>、<code>task.cancelled</code>、<code>task.retry</code>。因此指标只覆盖当前进程产生或消费的事件，跨节点汇总需要把各节点数据送到同一个监控系统。</p>
+<p>指标由生命周期事件推导：<code>task.created</code>、<code>task.started</code>、<code>task.completed</code>、<code>task.failed</code>、<code>task.cancelled</code>、<code>task.retry</code>。因此指标只覆盖当前进程产生或消费的事件，跨节点汇总需要把各节点数据送到同一个监控系统。有界事件队列发生丢弃时，依赖事件的统计也会缺失对应记录。</p>
 
         </div>
       </article>
@@ -370,7 +399,7 @@ await manager.start()</code></pre>
     </nav>
       <p class="docs-feedback">发现文档问题？欢迎在 <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">GitHub Issues</a> 反馈。</p>
     </main>
-    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#%E7%BB%9F%E8%AE%A1%E5%BF%AB%E7%85%A7">统计快照</a><a href="#%E4%BB%BB%E5%8A%A1%E6%8C%87%E6%A0%87">任务指标</a><a href="#%E5%81%A5%E5%BA%B7%E6%A3%80%E6%9F%A5">健康检查</a><a href="#%E6%8E%A7%E5%88%B6%E5%8F%B0%E4%B8%8A%E6%8A%A5">控制台上报</a><a href="#Prometheus">Prometheus</a><a href="#%E4%BA%8B%E4%BB%B6%E9%A9%B1%E5%8A%A8%E9%87%87%E9%9B%86">事件驱动采集</a></nav>
+    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#%E7%BB%9F%E8%AE%A1%E5%BF%AB%E7%85%A7">统计快照</a><a href="#%E4%BA%8B%E4%BB%B6%E6%80%BB%E7%BA%BF%E7%8A%B6%E6%80%81">事件总线状态</a><a href="#%E4%BB%BB%E5%8A%A1%E6%8C%87%E6%A0%87">任务指标</a><a href="#%E5%81%A5%E5%BA%B7%E6%A3%80%E6%9F%A5">健康检查</a><a href="#%E6%8E%A7%E5%88%B6%E5%8F%B0%E4%B8%8A%E6%8A%A5">控制台上报</a><a href="#Prometheus">Prometheus</a><a href="#%E4%BA%8B%E4%BB%B6%E9%A9%B1%E5%8A%A8%E9%87%87%E9%9B%86">事件驱动采集</a></nav>
   </div>
   <footer class="site-footer">
   <div class="container">
@@ -385,7 +414,7 @@ await manager.start()</code></pre>
           <span class="brand-name">NeoTask</span>
         </a>
         <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
-        <div class="footer-status"><span class="status-dot"></span> v1.0.5 · 发布于 2026-10-29</div>
+        <div class="footer-status"><span class="status-dot"></span> v1.0.8 · 发布于 2026-11-11</div>
       </div>
 
       <div class="footer-col">

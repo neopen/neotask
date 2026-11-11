@@ -21,6 +21,35 @@ print(stats["metrics"]["p95_execution_time"])</code></pre>
 
 <p><code>TaskScheduler.get_stats()</code> 在相同字段上追加 <code>periodic</code> 与 <code>time_wheel</code>。</p>
 
+<h2>事件总线状态</h2>
+<pre><code class="language-python">bus = pool.event_bus.get_stats()
+# {
+#   "queue_size": 0,
+#   "max_queue_size": None,
+#   "processed_events": 12034,
+#   "dropped_events": 0,
+#   "slow_handler_calls": 0,
+#   "slow_handler_threshold": 1.0,
+#   "is_running": True
+# }</code></pre>
+
+<table>
+<thead><tr><th>字段</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>queue_size</code></td><td>当前待处理事件数；持续上涨说明消费跟不上生产</td></tr>
+<tr><td><code>max_queue_size</code></td><td>配置的上限；<code>None</code> 表示无界</td></tr>
+<tr><td><code>processed_events</code></td><td>已分发事件总数</td></tr>
+<tr><td><code>dropped_events</code></td><td>有界队列满时丢弃的事件数</td></tr>
+<tr><td><code>slow_handler_calls</code></td><td>超过阈值的回调次数</td></tr>
+<tr><td><code>slow_handler_threshold</code></td><td>慢回调告警阈值（秒）</td></tr>
+<tr><td><code>is_running</code></td><td>事件消费任务是否在运行</td></tr>
+</tbody>
+</table>
+
+<div class="doc-warning"><strong>指标依赖事件时序：</strong><code>metrics.throughput</code> 与完成计数由生命周期事件推导。事件总线异步化后，慢订阅者会延后 <code>task.completed</code> 的观测时刻，使短窗口吞吐和延迟看起来偏低。排查时同时查看 <code>queue_size</code> 与 <code>slow_handler_calls</code>，不要把事件积压误判为任务执行慢。</div>
+
+<div class="doc-note"><strong>终态清理影响计数：</strong>默认每 60 秒清理过期终态任务，<code>completed</code> / <code>failed</code> / <code>cancelled</code> 是当前存储中的记录数，不是历史累计值。累计口径请看 <code>metrics.total_completed</code> 等计数器。</div>
+
 <h2>任务指标</h2>
 <table>
 <thead><tr><th>指标</th><th>说明</th></tr></thead>
@@ -84,4 +113,4 @@ await manager.start()</code></pre>
 <div class="doc-warning"><strong>额外依赖：</strong><code>PrometheusReporter</code> 使用 <code>aiohttp</code>，它不在 NeoTask 的依赖或 extras 中，需要自行安装。上报字段仅包含提交/完成/失败/成功率、pending/running 以及平均与 P95 执行耗时。</div>
 
 <h2>事件驱动采集</h2>
-<p>指标由生命周期事件推导：<code>task.created</code>、<code>task.started</code>、<code>task.completed</code>、<code>task.failed</code>、<code>task.cancelled</code>、<code>task.retry</code>。因此指标只覆盖当前进程产生或消费的事件，跨节点汇总需要把各节点数据送到同一个监控系统。</p>
+<p>指标由生命周期事件推导：<code>task.created</code>、<code>task.started</code>、<code>task.completed</code>、<code>task.failed</code>、<code>task.cancelled</code>、<code>task.retry</code>。因此指标只覆盖当前进程产生或消费的事件，跨节点汇总需要把各节点数据送到同一个监控系统。有界事件队列发生丢弃时，依赖事件的统计也会缺失对应记录。</p>

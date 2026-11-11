@@ -39,6 +39,7 @@
 <tr><td><code>cancel(task_id)</code></td><td>移除队列项并置为 <code>cancelled</code>；仅 <code>pending</code> / <code>running</code> 有效</td></tr>
 <tr><td><code>retry(task_id, delay=0)</code></td><td>重置终态任务并重新入队</td></tr>
 <tr><td><code>delete(task_id)</code></td><td>删除任务记录</td></tr>
+<tr><td><code>cleanup_terminal_tasks()</code> / <code>cleanup_terminal_tasks_async()</code></td><td>立即清理已过保留期的终态任务，返回删除数量</td></tr>
 <tr><td><code>pause()</code> / <code>resume()</code></td><td>暂停 / 恢复出队，仍可继续入队</td></tr>
 <tr><td><code>clear_queue()</code></td><td>清空队列；不修改已创建的任务记录</td></tr>
 </tbody>
@@ -68,8 +69,9 @@
 
 <h3>事件</h3>
 <table>
-<thead><tr><th>方法</th><th>事件</th></tr></thead>
+<thead><tr><th>方法 / 属性</th><th>说明</th></tr></thead>
 <tbody>
+<tr><td><code>event_bus</code></td><td>只读属性，返回内部 <code>EventBus</code>；调用 <code>get_stats()</code> 查看队列与丢弃计数</td></tr>
 <tr><td><code>on_created(handler)</code></td><td><code>task.created</code></td></tr>
 <tr><td><code>on_started(handler)</code></td><td><code>task.started</code></td></tr>
 <tr><td><code>on_completed(handler)</code></td><td><code>task.completed</code></td></tr>
@@ -116,6 +118,7 @@
 <tr><td><code>get_status</code> / <code>get_result</code> / <code>get_task</code> / <code>task_exists</code></td><td>同 TaskPool</td></tr>
 <tr><td><code>cancel</code> / <code>delete</code> / <code>retry</code></td><td>先尝试周期任务，再操作普通任务</td></tr>
 <tr><td><code>get_stats</code> / <code>get_queue_size</code> / <code>get_health_status</code></td><td>汇总周期与时间轮统计</td></tr>
+<tr><td><code>event_bus</code></td><td>返回内部 TaskPool 的 EventBus</td></tr>
 <tr><td><code>pause</code> / <code>resume</code> / <code>clear_queue</code></td><td>同 TaskPool</td></tr>
 <tr><td><code>on_created</code> 等 6 个回调</td><td>同 TaskPool；无 <code>on_reclaimed</code></td></tr>
 </tbody>
@@ -144,6 +147,27 @@
 <tr><td><code>TaskError</code></td><td>已定义但当前版本未使用</td></tr>
 </tbody>
 </table>
+
+<h2>命令行与轻量基准</h2>
+<p>1.0.8 起安装包提供 <code>neotask</code> 入口，等价于 <code>python -m neotask</code>：</p>
+
+<pre><code class="language-bash">neotask --version
+neotask --help
+neotask --benchmark --tasks 2000 --concurrency 10 --json</code></pre>
+
+<table>
+<thead><tr><th>参数</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>--executor MODULE:FUNC</code></td><td>执行器，也支持 <code>./bench.py:func</code> 文件路径形式</td></tr>
+<tr><td><code>--tasks</code> / <code>--concurrency</code></td><td>任务数与 Worker 并发，默认 200 / 10</td></tr>
+<tr><td><code>--warmup</code> / <code>--timeout</code></td><td>预热任务数与等待超时</td></tr>
+<tr><td><code>--payload</code></td><td>JSON 任务数据模板，默认 <code>{"index": i}</code></td></tr>
+<tr><td><code>--no-prefetch</code></td><td>关闭 Worker 预取</td></tr>
+<tr><td><code>--json</code></td><td>输出 JSON，便于 CI 或脚本消费</td></tr>
+</tbody>
+</table>
+
+<p>代码内可调用 <code>run_benchmark()</code> / <code>run_benchmark_async()</code>，返回 <code>BenchmarkResult</code>；基准默认关闭健康检查、指标与 Reporter。</p>
 
 <h2>其他导出</h2>
 <p><code>neotask</code> 还导出执行器、存储、队列、锁、监控与分布式组件：<code>AsyncExecutor</code>、<code>ThreadExecutor</code>、<code>ProcessExecutor</code>、<code>MemoryTaskRepository</code>、<code>SQLiteTaskRepository</code>、<code>RedisTaskRepository</code>、<code>PriorityQueue</code>、<code>DelayedQueue</code>、<code>MemoryLock</code>、<code>RedisLock</code>、<code>WatchDog</code>、<code>MetricsCollector</code>、<code>HealthChecker</code>、<code>NodeManager</code>、<code>Coordinator</code> 等。完整列表见 <code>neotask.__all__</code>。</p>

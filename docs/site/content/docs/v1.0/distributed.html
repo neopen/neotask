@@ -26,7 +26,7 @@ config = TaskPoolConfig(
 pool = TaskPool(executor=handle, config=config)
 pool.start()</code></pre>
 
-<div class="doc-warning"><strong>锁类型不会自动切换：</strong><code>TaskPoolConfig.redis()</code> 只设置存储，<code>lock_type</code> 仍默认为 <code>"memory"</code>。多节点部署必须显式设置 <code>lock_type="redis"</code>，否则任务锁只在进程内有效，无法阻止重复执行。</div>
+<div class="doc-warning"><strong>手工配置默认仍是内存锁：</strong><code>TaskPoolConfig.redis()</code> 在 1.0.8 中会自动把 <code>lock_type</code> 设为 <code>"redis"</code>；但直接构造 <code>TaskPoolConfig(storage_type="redis", ...)</code> 时，<code>lock_type</code> 仍默认为 <code>"memory"</code>，任务锁只在进程内有效，无法阻止跨节点重复执行。</div>
 
 <h2>运行方式</h2>
 <p>在每台机器启动相同进程即可。提交到任意节点的任务都会进入共享队列，由最先取到任务的节点执行。</p>

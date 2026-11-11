@@ -21,7 +21,7 @@
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="任务生命周期 · NeoTask 文档">
   <meta property="article:published_time" content="2026-10-29">
-  <meta property="article:modified_time" content="2026-10-30">
+  <meta property="article:modified_time" content="2026-11-11">
   <meta property="article:section" content="核心概念">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="任务生命周期 · NeoTask v1.0 文档">
@@ -50,7 +50,7 @@
         "mainEntityOfPage": "https://task.helpenx.com/docs/v1.0/task-lifecycle.html",
         "inLanguage": "zh-CN",
         "datePublished": "2026-10-29",
-        "dateModified": "2026-10-30",
+        "dateModified": "2026-11-11",
         "articleSection": "核心概念",
         "keywords": "任务生命周期, 任务生命周期 教程, 任务生命周期 文档, 核心概念, NeoTask v1.0 文档, NeoTask 1.0.x, Python 任务队列",
         "author": {
@@ -129,7 +129,7 @@
         <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
       </svg>
       <span class="brand-name">NeoTask</span>
-      <span class="brand-version">v1.0.5</span>
+      <span class="brand-version">v1.0.8</span>
     </a>
 
     <nav class="site-nav" id="siteNav" aria-label="主导航">
@@ -191,8 +191,8 @@
         <p class="docs-nav-label">可靠性</p>
         <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
-        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 批量预取的触发条件、阈值配置与对延迟和优先级的影响。">预取机制</a>
-        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、Reporter 与 Prometheus 集成。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
@@ -243,8 +243,8 @@
         <p class="docs-nav-label">可靠性</p>
         <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
-        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 批量预取的触发条件、阈值配置与对延迟和优先级的影响。">预取机制</a>
-        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、Reporter 与 Prometheus 集成。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
@@ -266,7 +266,7 @@
           <div class="article-meta">
             <span class="article-version">v1.0 · NeoTask 1.0.x</span>
             <span class="dot"></span>
-            <span>更新于 2026-10-30</span>
+            <span>更新于 2026-11-11</span>
             <span class="dot"></span>
             <span>约 6 分钟 读完</span>
             <span class="dot"></span>
@@ -318,7 +318,7 @@ pending ──► running ──► success
 <div class="doc-note"><strong>跨节点等待：</strong><code>wait_for_result()</code> 除了监听本节点事件，还会按 0.2 秒间隔回查存储，因此任务在其他节点执行时也能及时返回。</div>
 
 <h2 id="事件">事件</h2>
-<p>回调必须是异步函数，签名为 <code>async def handler(event: TaskEvent)</code>。事件在后台队列中处理，处理器抛出的异常会被吞掉，不会影响任务执行。</p>
+<p>回调必须是异步函数，签名为 <code>async def handler(event: TaskEvent)</code>。事件先进入后台队列，再由 EventBus 的消费任务依次分发给订阅者；回调抛出的异常会被记录并吞掉，不会影响任务执行。</p>
 
 <table>
 <thead><tr><th>注册方法</th><th>事件</th><th><code>event.data</code></th></tr></thead>
@@ -334,13 +334,43 @@ pending ──► running ──► success
 </table>
 
 <pre><code class="language-python">import asyncio
-from neotask import TaskPool
+from neotask import TaskPool, TaskPoolConfig
 
 async def on_completed(event):
     print("done", event.task_id, event.data)
 
 pool = TaskPool(executor=handle)
 pool.on_completed(on_completed)</code></pre>
+
+<h2 id="事件总线背压">事件总线背压</h2>
+<p>默认事件队列无界，生产速度只受内存限制。设置 <code>event_queue_max_size</code> 后，队列满时新事件会被丢弃并计数；单个回调超过 <code>event_slow_handler_threshold</code> 秒时会累加慢回调计数。丢弃事件不会改变任务状态，但会让依赖该事件的监控或后续流程漏掉一次通知。</p>
+
+<pre><code class="language-python">config = TaskPoolConfig(
+    event_queue_max_size=1000,        # None 表示无界
+    event_overflow_policy="drop",    # 当前仅支持 drop
+    event_slow_handler_threshold=0.5,
+)
+pool = TaskPool(executor=handle, config=config)
+
+print(pool.event_bus.get_stats())
+# queue_size / max_queue_size / processed_events / dropped_events
+# slow_handler_calls / slow_handler_threshold / is_running</code></pre>
+
+<div class="doc-warning"><strong>慢订阅者会延后事件时刻：</strong>事件由独立消费任务处理，<code>task.completed</code> 的观测时间可能晚于任务实际完成时间。需要精确执行耗时时，在任务体内打点或用 <code>get_task()</code> 的时间戳；不要把事件延迟当作执行延迟。</div>
+
+<h2 id="终态清理">终态清理</h2>
+<p>1.0.8 起默认每 60 秒清理一次已过保留期的 <code>success</code> / <code>failed</code> / <code>cancelled</code> 任务，避免内存与存储随任务量无限增长。保留时长取 <code>terminal_retention_seconds</code>，为 0 时使用任务自身 <code>ttl</code>。</p>
+
+<pre><code class="language-python">config = TaskPoolConfig(
+    enable_terminal_cleanup=True,
+    terminal_cleanup_interval=60.0,
+    terminal_retention_seconds=0,     # 0 = 按任务 ttl 清理
+)
+
+# 立即清理已过保留期的终态任务，返回清理数量
+removed = pool.cleanup_terminal_tasks()</code></pre>
+
+<div class="doc-note">清理只删除已过保留期的终态记录，不影响 <code>pending</code> / <code>running</code> 任务，也不等同于故障回收。需要长期保留审计记录时，关闭自动清理或把 <code>terminal_retention_seconds</code> 设为足够大的值，并自行归档。</div>
 
 <h2 id="进度上报">进度上报</h2>
 <p>异步任务调用 <code>report_progress()</code>；线程执行器中的同步任务调用 <code>report_progress_sync()</code>。进度值会收敛到 0 至 1，任务成功后自动置为 1.0。</p>
@@ -379,7 +409,7 @@ def thread_task(data):
     </nav>
       <p class="docs-feedback">发现文档问题？欢迎在 <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">GitHub Issues</a> 反馈。</p>
     </main>
-    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#%E7%8A%B6%E6%80%81">状态</a><a href="#%E6%AD%A3%E5%B8%B8%E6%B5%81%E8%BD%AC">正常流转</a><a href="#%E6%9F%A5%E8%AF%A2%E4%B8%8E%E7%AD%89%E5%BE%85">查询与等待</a><a href="#%E4%BA%8B%E4%BB%B6">事件</a><a href="#%E8%BF%9B%E5%BA%A6%E4%B8%8A%E6%8A%A5">进度上报</a><a href="#%E5%8F%96%E6%B6%88%E3%80%81%E9%87%8D%E8%AF%95%E4%B8%8E%E5%88%A0%E9%99%A4">取消、重试与删除</a></nav>
+    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#%E7%8A%B6%E6%80%81">状态</a><a href="#%E6%AD%A3%E5%B8%B8%E6%B5%81%E8%BD%AC">正常流转</a><a href="#%E6%9F%A5%E8%AF%A2%E4%B8%8E%E7%AD%89%E5%BE%85">查询与等待</a><a href="#%E4%BA%8B%E4%BB%B6">事件</a><a href="#%E4%BA%8B%E4%BB%B6%E6%80%BB%E7%BA%BF%E8%83%8C%E5%8E%8B">事件总线背压</a><a href="#%E7%BB%88%E6%80%81%E6%B8%85%E7%90%86">终态清理</a><a href="#%E8%BF%9B%E5%BA%A6%E4%B8%8A%E6%8A%A5">进度上报</a><a href="#%E5%8F%96%E6%B6%88%E3%80%81%E9%87%8D%E8%AF%95%E4%B8%8E%E5%88%A0%E9%99%A4">取消、重试与删除</a></nav>
   </div>
   <footer class="site-footer">
   <div class="container">
@@ -394,7 +424,7 @@ def thread_task(data):
           <span class="brand-name">NeoTask</span>
         </a>
         <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
-        <div class="footer-status"><span class="status-dot"></span> v1.0.5 · 发布于 2026-10-29</div>
+        <div class="footer-status"><span class="status-dot"></span> v1.0.8 · 发布于 2026-11-11</div>
       </div>
 
       <div class="footer-col">

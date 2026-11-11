@@ -106,7 +106,7 @@
             "name": "NeoTask 任务失败会自动重试吗？",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "会。通过 max_retries 与 retry_delay 配置重试次数和退避间隔；节点宕机留下的任务由回收器重新入队，最终失败的任务进入死信队列。"
+              "text": "会。通过 max_retries 与 retry_delay 配置重试次数与线性延迟；节点宕机留下的任务由回收器重新入队，最终失败的任务进入死信队列。"
             }
           },
           {
@@ -645,7 +645,7 @@ result = pool.wait_for_result(task_id)</code></pre>
         <div class="bench-grid">
 {{BENCH_HOME_CARDS}}
         </div>
-        <p class="bench-note">数据来自 NeoTask 1.0.5 官方基准脚本：Windows 10 19045、i7-1165G7、Python 3.13.15、Memory 后端，旁路组件全部关闭。绝对数值不代表你的部署环境，请以自己的业务压测为准。<a href="/docs/benchmarks.html">阅读完整口径与边界说明 →</a></p>
+        <p class="bench-note">数据来自 NeoTask 1.0.8 官方基准脚本与 20,000 任务压力套件：Windows 10 19045、i7-1165G7、Python 3.13.15、Memory 后端，旁路组件全部关闭。绝对数值不代表你的部署环境，请以自己的业务压测为准。<a href="/docs/benchmarks.html">阅读完整口径与边界说明 →</a></p>
       </div>
     </section>
 
@@ -717,7 +717,7 @@ result = pool.wait_for_result(task_id)</code></pre>
           </details>
           <details class="faq-item">
             <summary>任务失败会自动重试吗？<span class="faq-icon"></span></summary>
-            <div class="faq-answer"><p>会。通过 <code>max_retries</code> 与 <code>retry_delay</code> 配置重试次数和退避间隔；节点宕机留下的任务由回收器重新入队，最终失败的任务进入死信队列。</p></div>
+            <div class="faq-answer"><p>会。通过 <code>max_retries</code> 与 <code>retry_delay</code> 配置重试次数与线性延迟；节点宕机留下的任务由回收器重新入队，最终失败的任务进入死信队列。</p></div>
           </details>
           <details class="faq-item">
             <summary>支持 Python 3.8 吗？<span class="faq-icon"></span></summary>

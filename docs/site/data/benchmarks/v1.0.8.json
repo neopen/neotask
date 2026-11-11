@@ -1,0 +1,145 @@
+{
+  "version": "1.0.8",
+  "environment": [
+    { "label": "CPU", "value": "Intel Core i7-1165G7，4 核 8 线程" },
+    { "label": "内存", "value": "15.8 GiB" },
+    { "label": "系统", "value": "Windows 10 19045，64 位" },
+    { "label": "Python", "value": "3.13.15" },
+    { "label": "存储", "value": "memory（主套件与压力套件）；SQLite（边界探针）" },
+    { "label": "旁路组件", "value": "metrics、health check、reporter、reclaimer、heartbeat、dead letter、retry 全部关闭" }
+  ],
+  "metrics": [
+    {
+      "label": "提交吞吐",
+      "value": "9,681",
+      "unit": "tasks/s",
+      "detail": "2,000 个 noop 任务顺序提交，Memory 后端，10 个 Worker；官方套件。",
+      "homeDetail": "2,000 个 noop 任务，Memory 存储，10 个 Worker。",
+      "highlight": true
+    },
+    {
+      "label": "完成吞吐",
+      "value": "3,035",
+      "unit": "tasks/s",
+      "detail": "20,000 个 noop 任务全部完成，10 个 Worker，预取关闭；压力套件按任务完成计数。",
+      "homeDetail": "20,000 个 noop 任务压测，Memory 存储，10 个 Worker。"
+    },
+    {
+      "label": "串行往返",
+      "value": "0.86",
+      "unit": "ms",
+      "detail": "单任务提交到完成的 P50 延迟，200 次串行测量，P95 1.65 ms；官方套件。",
+      "homeDetail": "单任务提交到完成的 P50 延迟，200 次串行测量。"
+    },
+    {
+      "label": "IO 扩展性",
+      "value": "8.03",
+      "unit": "×",
+      "detail": "20 ms 睡眠任务，8 个 Worker 相对 1 个 Worker 的完成吞吐；官方套件。",
+      "homeDetail": "20 ms 睡眠任务，8 个 Worker 相对 1 个 Worker 的完成吞吐。"
+    }
+  ],
+  "scheduling": {
+    "headers": ["场景", "N", "Workers", "提交吞吐", "完成吞吐", "P50", "P95", "P99"],
+    "rows": [
+      ["只提交", "2,000", "10", "9,681/s", "—", "—", "—", "—"],
+      ["提交并等待完成", "3,000", "10", "7,636/s", "1,804/s", "1,315 ms", "1,366 ms", "1,374 ms"],
+      ["串行往返", "200", "10", "1,044/s", "1,044/s", "0.86 ms", "1.65 ms", "2.18 ms"]
+    ]
+  },
+  "io": {
+    "max": 242.3,
+    "caption": "完成吞吐 · 400 个 20 ms 睡眠任务（线性刻度）",
+    "note": "柱长按 242.3 tasks/s 满刻度换算；8 Worker 下的 P99 为 1,532 ms。",
+    "headers": ["Workers", "完成吞吐", "相对 1 Worker", "P50", "P95", "P99"],
+    "rows": [
+      ["1", "30.2/s", "1.00×", "6,245 ms", "12,616 ms", "13,109 ms"],
+      ["2", "61.6/s", "2.04×", "3,162 ms", "6,096 ms", "6,353 ms"],
+      ["4", "125.8/s", "4.17×", "1,592 ms", "2,957 ms", "3,085 ms"],
+      ["8", "242.3/s", "8.03×", "795 ms", "1,474 ms", "1,532 ms"]
+    ],
+    "bars": [
+      { "label": "1 worker", "value": 30.2, "display": "30.2/s" },
+      { "label": "2 workers", "value": 61.6, "display": "61.6/s" },
+      { "label": "4 workers", "value": 125.8, "display": "125.8/s" },
+      { "label": "8 workers", "value": 242.3, "display": "242.3/s" }
+    ]
+  },
+  "stress": {
+    "headers": ["场景", "N", "Workers", "完成吞吐", "提交吞吐", "备注"],
+    "rows": [
+      ["内存 noop · 预取关", "20,000", "10", "3,035/s", "21,052/s", "RSS +32.2 MB"],
+      ["内存 noop · 预取开", "20,000", "10", "3,421/s", "25,760/s", "完成 +12.7%，RSS +9.0 MB"],
+      ["内存 noop · 预取关", "8,000", "4", "3,554/s", "26,840/s", "—"],
+      ["内存 noop · 预取关", "8,000", "20", "3,532/s", "27,365/s", "超过 4 Worker 后不再增长"],
+      ["内存 noop · 缓存淘汰", "30,000", "10", "3,349/s", "—", "get_stats 9.8 ms，缓存上限 5,000"],
+      ["空闲 CPU · 预取开", "—", "10", "—", "—", "1.04%（3 秒窗口）"],
+      ["延时 200 · 背景负载", "200", "10", "—", "—", "med 121.3 ms / p95 137.9 ms"],
+      ["SQLite 突发", "500", "1", "338/s", "—", "500/500 成功，零错误"],
+      ["Redis 突发", "1,000", "10", "219.7/s", "14,023/s", "全部成功，经网络往返"],
+      ["队列容量背压", "50", "—", "—", "—", "接受 51 个后抛 QueueFullError"]
+    ],
+    "note": "压力套件在空闲机器上以最终 wheel 运行；完成吞吐在任务完成时计数，不经过 task.completed 订阅回调，因此与官方套件的完成口径不同。"
+  },
+  "sqlite": {
+    "rows": [
+      {
+        "mode": "串行提交 100 条",
+        "workers": 1,
+        "ok": true,
+        "outcome": "全部成功",
+        "meta": [
+          { "label": "吞吐", "value": "76.5 tasks/s" },
+          { "label": "P50", "value": "11.4 ms" },
+          { "label": "P95", "value": "27.6 ms" }
+        ]
+      },
+      {
+        "mode": "突发提交 100 条",
+        "workers": 1,
+        "ok": true,
+        "outcome": "100/100 成功",
+        "meta": [
+          { "label": "吞吐", "value": "87.4 tasks/s" }
+        ]
+      },
+      {
+        "mode": "突发提交 100 条",
+        "workers": 2,
+        "ok": true,
+        "outcome": "100/100 成功，写入串行化",
+        "meta": [
+          { "label": "吞吐", "value": "61.8 tasks/s" }
+        ]
+      },
+      {
+        "mode": "突发提交 100 条",
+        "workers": 4,
+        "ok": true,
+        "outcome": "100/100 成功，写入串行化",
+        "meta": [
+          { "label": "吞吐", "value": "41.3 tasks/s" }
+        ]
+      }
+    ]
+  },
+  "prefetch": {
+    "caption": "完成吞吐 · 3,000 个 noop 任务（线性刻度）",
+    "note": "预取关闭 1,453 tasks/s，预取 20 为 1,211 tasks/s，预取 100 为 1,538 tasks/s；差异处于单轮波动范围。",
+    "bars": [
+      { "label": "关闭预取", "value": 1453, "display": "1,453/s" },
+      { "label": "预取 20", "value": 1211, "display": "1,211/s" },
+      { "label": "预取 100", "value": 1538, "display": "1,538/s" }
+    ]
+  },
+  "eventbus": {
+    "headers": ["场景", "配置", "结果"],
+    "rows": [
+      ["有界队列 · 丢弃", "上限 5，50 个事件", "处理 5，丢弃 45"],
+      ["有界队列 · 丢弃", "上限 3，30 个任务", "处理 28，丢弃 58"],
+      ["默认无界", "30 个任务", "处理 30，丢弃 0"],
+      ["慢回调隔离", "阈值 1.0 s", "快回调 0.1 ms，慢回调 310.3 ms；计数 1"],
+      ["空闲唤醒延迟", "10 次空闲后提交", "中位 1.3 ms，最大 2.2 ms"]
+    ]
+  }
+}

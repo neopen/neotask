@@ -21,7 +21,7 @@
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="版本路线图 · NeoTask 文档">
   <meta property="article:published_time" content="2026-10-29">
-  <meta property="article:modified_time" content="2026-10-30">
+  <meta property="article:modified_time" content="2026-11-11">
   <meta property="article:section" content="路线图">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="版本路线图 · NeoTask v1.0 文档">
@@ -50,7 +50,7 @@
         "mainEntityOfPage": "https://task.helpenx.com/docs/v1.0/roadmap.html",
         "inLanguage": "zh-CN",
         "datePublished": "2026-10-29",
-        "dateModified": "2026-10-30",
+        "dateModified": "2026-11-11",
         "articleSection": "路线图",
         "keywords": "版本路线图, 版本路线图 教程, 版本路线图 文档, 路线图, NeoTask v1.0 文档, NeoTask 1.0.x, Python 任务队列",
         "author": {
@@ -129,7 +129,7 @@
         <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
       </svg>
       <span class="brand-name">NeoTask</span>
-      <span class="brand-version">v1.0.5</span>
+      <span class="brand-version">v1.0.8</span>
     </a>
 
     <nav class="site-nav" id="siteNav" aria-label="主导航">
@@ -191,8 +191,8 @@
         <p class="docs-nav-label">可靠性</p>
         <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
-        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 批量预取的触发条件、阈值配置与对延迟和优先级的影响。">预取机制</a>
-        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、Reporter 与 Prometheus 集成。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
@@ -243,8 +243,8 @@
         <p class="docs-nav-label">可靠性</p>
         <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
-        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 批量预取的触发条件、阈值配置与对延迟和优先级的影响。">预取机制</a>
-        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、Reporter 与 Prometheus 集成。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、Reporter 与 Prometheus 集成。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
@@ -266,7 +266,7 @@
           <div class="article-meta">
             <span class="article-version">v1.0 · NeoTask 1.0.x</span>
             <span class="dot"></span>
-            <span>更新于 2026-10-30</span>
+            <span>更新于 2026-11-11</span>
             <span class="dot"></span>
             <span>约 5 分钟 读完</span>
             <span class="dot"></span>
@@ -286,9 +286,12 @@
 <tr><td>Memory / SQLite / Redis</td><td>已支持</td><td>Redis 支持多节点共享队列</td></tr>
 <tr><td>自动重试、超时、进度</td><td>已支持</td><td>重试为线性延迟</td></tr>
 <tr><td>节点心跳、任务回收、死信</td><td>已支持（Redis）</td><td>死信无公开查询 API</td></tr>
+<tr><td>生命周期事件与背压</td><td>已支持</td><td>EventBus 异步投递，可配置队列上限与溢出策略</td></tr>
+<tr><td>终态任务自动清理</td><td>已支持</td><td>默认开启，保留期可配置</td></tr>
+<tr><td>命令行与轻量基准</td><td>已支持</td><td><code>neotask --benchmark</code>、<code>--version</code>、<code>--help</code></td></tr>
 <tr><td>DAG 工作流</td><td>未支持</td><td>规划于 v1.5</td></tr>
 <tr><td>多租户隔离</td><td>未支持</td><td>规划于 v2.0</td></tr>
-<tr><td>独立 Web UI / CLI</td><td>未提供</td><td>仓库有 Web 代码，但未接入公开入口</td></tr>
+<tr><td>独立 Web UI</td><td>未提供公开入口</td><td><code>neotask[ui]</code> 扩展需自行装配，未作为独立产品发布</td></tr>
 </tbody>
 </table>
 
@@ -302,7 +305,7 @@
 <tr><td>并行子任务</td><td><code>submit_batch()</code> + <code>wait_all()</code></td><td>部分失败时的清理与重试策略</td></tr>
 <tr><td>定时编排</td><td>用 <code>TaskScheduler</code> 分别定义周期任务</td><td>多实例重复触发；同一周期定义只应有一个调度者</td></tr>
 <tr><td>多租户</td><td>每个租户使用独立 TaskPool 与存储（独立 SQLite 文件或 Redis 库）</td><td>资源配额、统一鉴权与跨租户统计</td></tr>
-<tr><td>可视化管理</td><td>基于 <code>get_stats()</code>、<code>get_task()</code> 与事件自行构建</td><td>Web UI 与 CLI 尚未接入公开入口</td></tr>
+<tr><td>可视化管理</td><td>基于 <code>get_stats()</code>、<code>get_task()</code> 与事件自行构建；CLI 仅覆盖基准与版本信息</td><td>Web UI 装配、鉴权与运维入口</td></tr>
 </tbody>
 </table>
 
@@ -365,7 +368,7 @@
           <span class="brand-name">NeoTask</span>
         </a>
         <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
-        <div class="footer-status"><span class="status-dot"></span> v1.0.5 · 发布于 2026-10-29</div>
+        <div class="footer-status"><span class="status-dot"></span> v1.0.8 · 发布于 2026-11-11</div>
       </div>
 
       <div class="footer-col">

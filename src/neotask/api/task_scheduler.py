@@ -64,13 +64,15 @@ class TaskScheduler:
     def __init__(
             self,
             executor: Optional[Union[Callable]] = None,
-            config: Optional[SchedulerConfig] = None
+            config: Optional[SchedulerConfig] = None,
+            checkpoint_repo=None,
     ):
         """初始化定时任务调度器
 
         Args:
             executor: 任务执行函数，可以是同步或异步函数
             config: 调度器配置，包含存储、Worker、重试等配置
+            checkpoint_repo: 可选 checkpoint 仓储，透传给内部 TaskPool
         """
         self._config = config or SchedulerConfig()
 
@@ -93,9 +95,11 @@ class TaskScheduler:
             event_queue_max_size=self._config.event_queue_max_size,
             event_overflow_policy=self._config.event_overflow_policy,
             event_slow_handler_threshold=self._config.event_slow_handler_threshold,
+            enable_checkpoint=self._config.enable_checkpoint,
+            checkpoint_keep_versions=self._config.checkpoint_keep_versions,
         )
 
-        self._pool = TaskPool(executor, pool_config)
+        self._pool = TaskPool(executor, pool_config, checkpoint_repo)
 
         self._periodic_manager: Optional[PeriodicTaskManager] = None
         self._time_wheel: Optional[TimeWheel] = None
@@ -849,6 +853,7 @@ class TaskScheduler:
             delay: float = 0,
             ttl: int = 3600,
             parent_task_id: Optional[str] = None,
+            resume_from_checkpoint: bool = False,
     ) -> str:
         """提交即时任务
 
@@ -859,13 +864,17 @@ class TaskScheduler:
             delay: 延迟执行时间（秒）
             ttl: 任务超时时间（秒）
             parent_task_id: 父任务ID（可选，仅建立关联）
+            resume_from_checkpoint: 是否从该 task_id 遗留的 checkpoint 续跑
 
         Returns:
             任务ID
 
         设计模式: Delegation Pattern - 委托给TaskPool
         """
-        return self._pool.submit(data, task_id, priority, delay, ttl, parent_task_id)
+        return self._pool.submit(
+            data, task_id, priority, delay, ttl, parent_task_id,
+            resume_from_checkpoint,
+        )
 
     async def submit_async(
             self,
@@ -875,10 +884,12 @@ class TaskScheduler:
             delay: float = 0,
             ttl: int = 3600,
             parent_task_id: Optional[str] = None,
+            resume_from_checkpoint: bool = False,
     ) -> str:
         """提交即时任务（异步版本）"""
         return await self._pool.submit_async(
-            data, task_id, priority, delay, ttl, parent_task_id
+            data, task_id, priority, delay, ttl, parent_task_id,
+            resume_from_checkpoint,
         )
 
     def submit_many(
@@ -1120,6 +1131,28 @@ class TaskScheduler:
     ) -> Dict[str, Any]:
         """聚合任务成本（异步）"""
         return await self._pool.get_cost_summary_async(task_ids)
+
+    # ========== Checkpoint API ==========
+
+    def save_checkpoint(self, task_id: str, state: Dict[str, Any]) -> int:
+        """显式保存任务中间状态（同步）"""
+        return self._pool.save_checkpoint(task_id, state)
+
+    async def save_checkpoint_async(
+            self, task_id: str, state: Dict[str, Any]
+    ) -> int:
+        """显式保存任务中间状态（异步）"""
+        return await self._pool.save_checkpoint_async(task_id, state)
+
+    def load_checkpoint(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """读取任务最近一次 checkpoint（同步）"""
+        return self._pool.load_checkpoint(task_id)
+
+    async def load_checkpoint_async(
+            self, task_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """读取任务最近一次 checkpoint（异步）"""
+        return await self._pool.load_checkpoint_async(task_id)
 
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息

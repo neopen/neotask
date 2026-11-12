@@ -18,6 +18,11 @@ from typing import Any, Dict, Optional, cast
 
 from neotask.common.constants import EventType
 from neotask.common.logger import debug, warning, error
+from neotask.core.checkpoint import (
+    CheckpointContext,
+    reset_checkpoint_context,
+    set_checkpoint_context,
+)
 from neotask.core.cost import (
     CostRecorder,
     reset_cost_recorder,
@@ -584,10 +589,25 @@ class WorkerPool:
         async def progress_callback(progress: float, message: str = "") -> None:
             await self._update_task_progress(task_id, progress, message)
 
+        async def checkpoint_save(state: Dict[str, Any]) -> bool:
+            return await self._lifecycle.save_checkpoint(task_id, state) > 0
+
+        async def checkpoint_load() -> Optional[Dict[str, Any]]:
+            return await self._lifecycle.load_checkpoint(task_id)
+
         reporter = ProgressReporter(progress_callback)
         token = set_progress_reporter(reporter)
         failure_token = set_failure_recorder(recorder)
         cost_token = set_cost_recorder(cost_recorder)
+        checkpoint_token = None
+        if self._lifecycle.checkpoint_enabled:
+            checkpoint_token = set_checkpoint_context(
+                CheckpointContext(
+                    checkpoint_save,
+                    checkpoint_load,
+                    loop=asyncio.get_running_loop(),
+                )
+            )
         try:
             execution = self._executor.execute_with_progress(
                 task.data,
@@ -597,6 +617,8 @@ class WorkerPool:
                 return await asyncio.wait_for(execution, timeout=self._task_timeout)
             return await execution
         finally:
+            if checkpoint_token is not None:
+                reset_checkpoint_context(checkpoint_token)
             reset_cost_recorder(cost_token)
             reset_failure_recorder(failure_token)
             reset_progress_reporter(token)
@@ -650,10 +672,11 @@ class WorkerPool:
             task.error = error_msg
             task.status = TaskStatus.PENDING
             task.node_id = ""
-            await self._task_repo.save_fields(
-                task,
-                ("retry_count", "error", "status", "node_id")
-            )
+            fields = ["retry_count", "error", "status", "node_id"]
+            # 自动重试同样续跑：把最近 checkpoint 注入 task.data 并落库
+            if await self._lifecycle.resume_from_checkpoint(task):
+                fields.extend(["data", "checkpoint_version"])
+            await self._task_repo.save_fields(task, tuple(fields))
 
             # 更新缓存
             if self._lifecycle._cache_enabled:

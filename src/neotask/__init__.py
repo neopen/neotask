@@ -42,6 +42,16 @@ from neotask.core.cost import (
     report_cost,
 )
 
+# Checkpoint 断点续跑
+from neotask.core.checkpoint import (
+    CHECKPOINT_DATA_KEY,
+    CheckpointContext,
+    load_checkpoint,
+    load_checkpoint_sync,
+    save_checkpoint,
+    save_checkpoint_sync,
+)
+
 # 事件总线
 from neotask.common.constants import EventType
 from neotask.event.bus import EventBus, TaskEvent
@@ -61,10 +71,26 @@ from neotask.lock.watchdog import WatchDog
 from neotask.lock.factory import LockFactory, LockManager
 
 # 存储
-from neotask.storage.base import TaskRepository, QueueRepository
-from neotask.storage.memory import MemoryTaskRepository, MemoryQueueRepository
-from neotask.storage.sqlite import SQLiteTaskRepository, SQLiteQueueRepository
-from neotask.storage.redis import RedisTaskRepository, RedisQueueRepository
+from neotask.storage.base import (
+    CheckpointRepository,
+    QueueRepository,
+    TaskRepository,
+)
+from neotask.storage.memory import (
+    MemoryCheckpointRepository,
+    MemoryQueueRepository,
+    MemoryTaskRepository,
+)
+from neotask.storage.sqlite import (
+    SQLiteCheckpointRepository,
+    SQLiteQueueRepository,
+    SQLiteTaskRepository,
+)
+from neotask.storage.redis import (
+    RedisCheckpointRepository,
+    RedisQueueRepository,
+    RedisTaskRepository,
+)
 from neotask.storage.factory import StorageFactory
 
 # 队列
@@ -95,7 +121,8 @@ from neotask.models.config import (
 # 异常
 from neotask.common.exceptions import (
     TaskSchedulerError, TaskNotFoundError, TaskError,
-    TaskAlreadyExistsError, QueueFullError, BatchSubmitError, TimeoutError
+    TaskAlreadyExistsError, QueueFullError, BatchSubmitError, TimeoutError,
+    NeoTaskError, UnsupportedFeatureError,
 )
 
 #
@@ -131,6 +158,12 @@ __all__ = [
     "CostRecorder",
     "get_cost_recorder",
     "report_cost",
+    "CHECKPOINT_DATA_KEY",
+    "CheckpointContext",
+    "save_checkpoint",
+    "save_checkpoint_sync",
+    "load_checkpoint",
+    "load_checkpoint_sync",
 
     # 事件
     "EventBus",
@@ -155,12 +188,16 @@ __all__ = [
     # 存储
     "TaskRepository",
     "QueueRepository",
+    "CheckpointRepository",
     "MemoryTaskRepository",
     "MemoryQueueRepository",
+    "MemoryCheckpointRepository",
     "SQLiteTaskRepository",
     "SQLiteQueueRepository",
+    "SQLiteCheckpointRepository",
     "RedisTaskRepository",
     "RedisQueueRepository",
+    "RedisCheckpointRepository",
     "StorageFactory",
 
     # 队列
@@ -208,4 +245,6 @@ __all__ = [
     "TaskAlreadyExistsError",
     "QueueFullError",
     "TimeoutError",
+    "NeoTaskError",
+    "UnsupportedFeatureError",
 ]

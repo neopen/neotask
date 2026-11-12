@@ -48,6 +48,7 @@ class TaskDispatcher:
         delay: float = 0,
         ttl: int = 3600,
         parent_task_id: Optional[str] = None,
+        resume_from_checkpoint: bool = False,
     ) -> str:
         """分发任务
 
@@ -58,6 +59,8 @@ class TaskDispatcher:
             delay: 延迟执行时间（秒）
             ttl: 任务超时时间（秒）
             parent_task_id: 父任务 ID（仅建立关联，不做自动汇总）
+            resume_from_checkpoint: 是否把该 task_id 遗留的 checkpoint 注入
+                ``data["__checkpoint__"]`` 并落库（需显式 task_id）
 
         Returns:
             task_id
@@ -70,9 +73,30 @@ class TaskDispatcher:
 
         debug(f"Dispatching task: task_id={task_id}, priority={priority_enum.value}, delay={delay}")
 
+        # 断点续跑：先创建任务、注入 checkpoint 落库，再入队，避免 Worker
+        # 在 data 写回前抢先执行。该路径牺牲「创建+入队」原子快路径。
+        if resume_from_checkpoint and task_id:
+            task = await self._lifecycle.create_task(
+                data=data,
+                task_id=task_id,
+                priority=priority_enum,
+                node_id=self._node_id,
+                ttl=ttl,
+                parent_task_id=parent_task_id,
+            )
+            await self._lifecycle.apply_checkpoint_resume(task)
+            if delay > 0:
+                queued = await self._queue.schedule_delayed(
+                    task.task_id, task.priority.value, delay
+                )
+            elif self._queue.is_disabled:
+                queued = False
+            else:
+                queued = await self._queue.push(task.task_id, task.priority.value)
+
         # 创建任务并入队：即时任务优先走「存储层原子创建 + 入队」快路径
         # （Redis 用单条 Lua，提交只需 1 次跨 loop 往返）
-        if delay > 0:
+        elif delay > 0:
             task = await self._lifecycle.create_task(
                 data=data,
                 task_id=task_id,

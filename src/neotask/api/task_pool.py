@@ -35,6 +35,7 @@ from neotask.monitor.reporter import ReporterManager, ConsoleReporter
 from neotask.queue.dead_letter import DeadLetterQueue
 from neotask.queue.queue_scheduler import QueueScheduler
 from neotask.storage.factory import StorageFactory
+from neotask.storage.memory import MemoryContextStore
 from neotask.worker.pool import WorkerPool
 from neotask.worker.supervisor import WorkerSupervisor
 from neotask.worker.reclaimer import TaskReclaimer, ReclaimerConfig
@@ -65,9 +66,17 @@ class TaskPool:
     def __init__(
             self,
             executor: Union[TaskExecutor, Callable, None] = None,
-            config: Optional[TaskPoolConfig] = None
+            config: Optional[TaskPoolConfig] = None,
+            checkpoint_repo=None,
     ):
-        """初始化任务池"""
+        """初始化任务池
+
+        Args:
+            executor: 任务执行函数或执行器
+            config: 任务池配置
+            checkpoint_repo: 可选的 checkpoint 仓储；未传且
+                ``config.enable_checkpoint`` 为 True 时按存储类型自动创建
+        """
         self._config = config or TaskPoolConfig()
 
         # 初始化执行器
@@ -75,6 +84,16 @@ class TaskPool:
 
         # 初始化存储
         self._task_repo, self._queue_repo = self._init_storage()
+
+        # checkpoint 仓储：独立工厂，默认与任务仓储共用同一 SQLite 连接
+        self._checkpoint_repo = checkpoint_repo
+        if self._checkpoint_repo is None and self._config.enable_checkpoint:
+            self._checkpoint_repo = StorageFactory.create_checkpoint_repo(self._storage_config)
+
+        # Blackboard 仅支持内存后端
+        self._context_store = (
+            MemoryContextStore() if self._config.storage_type == StorageType.MEMORY else None
+        )
 
         # 初始化锁管理器
         self._lock_manager = self._init_lock()
@@ -105,6 +124,8 @@ class TaskPool:
             progress_flush_batch_interval=self._config.progress_flush_batch_interval,
             cache_max_size=self._config.cache_max_size,
             running_persist_delay=self._config.running_persist_delay,
+            checkpoint_repo=self._checkpoint_repo,
+            checkpoint_keep_versions=self._config.checkpoint_keep_versions,
         )
 
         # 初始化分发器
@@ -289,6 +310,7 @@ class TaskPool:
         else:
             raise ValueError(f"Unknown storage type: {self._config.storage_type}")
 
+        self._storage_config = storage_config
         return StorageFactory.create(storage_config)
 
     def _init_lock(self):
@@ -559,7 +581,10 @@ class TaskPool:
                 error(f"Error flushing pending progress: {e}")
 
             # 关闭存储连接 - 捕获异常避免循环冲突
-            for repo in [self._task_repo, self._queue_repo]:
+            repos = [self._task_repo, self._queue_repo]
+            if self._checkpoint_repo is not None:
+                repos.append(self._checkpoint_repo)
+            for repo in repos:
                 try:
                     await repo.close()
                 except RuntimeError as e:
@@ -661,12 +686,18 @@ class TaskPool:
             delay: float = 0,
             ttl: int = 3600,
             parent_task_id: Optional[str] = None,
+            resume_from_checkpoint: bool = False,
     ) -> str:
-        """提交任务（同步）"""
+        """提交任务（同步）
+
+        ``resume_from_checkpoint=True`` 时（需显式 ``task_id``），会把该 ID
+        遗留的最近 checkpoint 注入 ``data["__checkpoint__"]`` 后入队。
+        """
         self._ensure_running()
         result = self._run_coroutine(
             self._dispatcher.dispatch(
-                data, task_id, priority, delay, ttl, parent_task_id
+                data, task_id, priority, delay, ttl, parent_task_id,
+                resume_from_checkpoint,
             )
         )
         return result.task_id if hasattr(result, 'task_id') else result
@@ -679,11 +710,13 @@ class TaskPool:
             delay: float = 0,
             ttl: int = 3600,
             parent_task_id: Optional[str] = None,
+            resume_from_checkpoint: bool = False,
     ) -> str:
         """提交任务（异步）"""
         self._ensure_running()
         result = await self._dispatcher.dispatch(
-            data, task_id, priority, delay, ttl, parent_task_id
+            data, task_id, priority, delay, ttl, parent_task_id,
+            resume_from_checkpoint,
         )
         return result.task_id if hasattr(result, 'task_id') else result
 
@@ -726,7 +759,8 @@ class TaskPool:
             data: Dict[str, Any],
             task_id: Optional[str] = None,
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
-            ttl: int = 3600
+            ttl: int = 3600,
+            resume_from_checkpoint: bool = False,
     ) -> str:
         """创建任务记录但**不入队**（同步）
 
@@ -735,7 +769,9 @@ class TaskPool:
         """
         self._ensure_running()
         return self._run_coroutine(
-            self.create_pending_task_async(data, task_id, priority, ttl)
+            self.create_pending_task_async(
+                data, task_id, priority, ttl, resume_from_checkpoint
+            )
         )
 
     async def create_pending_task_async(
@@ -743,7 +779,8 @@ class TaskPool:
             data: Dict[str, Any],
             task_id: Optional[str] = None,
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
-            ttl: int = 3600
+            ttl: int = 3600,
+            resume_from_checkpoint: bool = False,
     ) -> str:
         """创建任务记录但**不入队**（异步）"""
         self._ensure_running()
@@ -754,6 +791,8 @@ class TaskPool:
             node_id=self._config.node_id,
             ttl=ttl
         )
+        if resume_from_checkpoint:
+            await self._lifecycle.apply_checkpoint_resume(task)
         self._remember_unenqueued(task.task_id)
         return task.task_id
 
@@ -1121,6 +1160,41 @@ class TaskPool:
         """聚合任务成本（异步）"""
         summary: Dict[str, Any] = await self._task_repo.cost_summary(task_ids)
         return summary
+
+    # ========== Checkpoint API ==========
+
+    def save_checkpoint(self, task_id: str, state: Dict[str, Any]) -> int:
+        """显式保存任务的中间状态（同步）
+
+        适用于进程执行器的父进程等拿不到 contextvar 的场景；执行器内部请使用
+        ``neotask.save_checkpoint(state)``。返回新版本号，任务不存在或
+        checkpoint 未启用时返回 0。
+        """
+        self._ensure_running()
+        version: int = self._run_coroutine(
+            self.save_checkpoint_async(task_id, state)
+        )
+        return version
+
+    async def save_checkpoint_async(
+            self, task_id: str, state: Dict[str, Any]
+    ) -> int:
+        """显式保存任务的中间状态（异步）"""
+        return await self._lifecycle.save_checkpoint(task_id, state)
+
+    def load_checkpoint(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """读取任务最近一次 checkpoint（同步）"""
+        self._ensure_running()
+        checkpoint: Optional[Dict[str, Any]] = self._run_coroutine(
+            self.load_checkpoint_async(task_id)
+        )
+        return checkpoint
+
+    async def load_checkpoint_async(
+            self, task_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """读取任务最近一次 checkpoint（异步）"""
+        return await self._lifecycle.load_checkpoint(task_id)
 
     # ========== 终态清理 API ==========
 

@@ -288,6 +288,10 @@ class TaskPoolConfig:
     # 生命周期缓存上限，超出后优先淘汰已结束任务
     cache_max_size: int = DEFAULT_LIFECYCLE_CACHE_MAX_SIZE
 
+    # 断点续跑：任务内保存的状态快照，恢复时注入 task.data["__checkpoint__"]
+    enable_checkpoint: bool = True
+    checkpoint_keep_versions: int = 5  # 单个任务保留的历史版本数
+
     # 预取配置
     enable_prefetch: bool = True
     prefetch_min_threshold: int = 5
@@ -398,6 +402,10 @@ class SchedulerConfig:
     running_persist_delay: float = DEFAULT_RUNNING_PERSIST_DELAY
     # 生命周期缓存上限，超出后优先淘汰已结束任务
     cache_max_size: int = DEFAULT_LIFECYCLE_CACHE_MAX_SIZE
+
+    # 断点续跑：任务内保存的状态快照，恢复时注入 task.data["__checkpoint__"]
+    enable_checkpoint: bool = True
+    checkpoint_keep_versions: int = 5  # 单个任务保留的历史版本数
 
     # 持久化配置
     # 默认开启：sqlite/redis 下周期任务会跨重启恢复；memory 模式下仍只存在内存中，

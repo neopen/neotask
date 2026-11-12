@@ -29,6 +29,7 @@ from neotask.core.progress import (
 )
 
 # 事件总线
+from neotask.common.constants import EventType
 from neotask.event.bus import EventBus, TaskEvent
 
 # 执行器
@@ -113,6 +114,7 @@ __all__ = [
 
     # 事件
     "EventBus",
+    "EventType",
     "TaskEvent",
 
     # 执行器

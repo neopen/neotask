@@ -17,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Callable, Union
 
+from neotask.common.constants import EventType
 from neotask.common.logger import error, debug, info, warning
 from neotask.core.dispatcher import TaskDispatcher
 from neotask.core.future import FutureManager
@@ -312,20 +313,20 @@ class TaskPool:
             async def metrics_handler(event: TaskEvent):
                 data = event.data if isinstance(event.data, dict) else {}
 
-                if event.event_type == "task.created":
+                if event.event_type == EventType.CREATED:
                     # task.created 的 payload 是 Task.to_dict()，带 priority
                     await self._metrics.record_task_submit(
                         event.task_id, data.get("priority", TaskPriority.NORMAL.value)
                     )
-                elif event.event_type == "task.started":
+                elif event.event_type == EventType.STARTED:
                     await self._metrics.record_task_start(event.task_id)
-                elif event.event_type == "task.completed":
+                elif event.event_type == EventType.COMPLETED:
                     await self._metrics.record_task_complete(event.task_id)
-                elif event.event_type == "task.failed":
+                elif event.event_type == EventType.FAILED:
                     await self._metrics.record_task_failed(event.task_id)
-                elif event.event_type == "task.cancelled":
+                elif event.event_type == EventType.CANCELLED:
                     await self._metrics.record_task_cancelled(event.task_id)
-                elif event.event_type == "task.retry":
+                elif event.event_type == EventType.RETRY:
                     await self._metrics.record_task_retry(
                         event.task_id, data.get("retry_count", 1)
                     )
@@ -337,39 +338,39 @@ class TaskPool:
             old_status = str(data.get("old_status", "")).lower()
 
             with self._counter_lock:
-                if event.event_type == "task.created":
+                if event.event_type == EventType.CREATED:
                     self._pending_count += 1
-                elif event.event_type == "task.started":
+                elif event.event_type == EventType.STARTED:
                     self._pending_count = max(0, self._pending_count - 1)
                     self._running_count += 1
-                elif event.event_type == "task.completed":
+                elif event.event_type == EventType.COMPLETED:
                     self._running_count = max(0, self._running_count - 1)
-                elif event.event_type == "task.failed":
+                elif event.event_type == EventType.FAILED:
                     self._decrement_counter_locked(old_status or "running")
                     self._failed_count += 1
-                elif event.event_type == "task.cancelled":
+                elif event.event_type == EventType.CANCELLED:
                     self._decrement_counter_locked(old_status or "pending")
-                elif event.event_type == "task.retry":
+                elif event.event_type == EventType.RETRY:
                     self._decrement_counter_locked(old_status or "running")
                     self._pending_count += 1
 
         # 未来管理器完成
-        @self._event_bus.subscribe("task.completed")
+        @self._event_bus.subscribe(EventType.COMPLETED)
         async def complete_future_handler(event: TaskEvent):
             result = event.data.get("result") if isinstance(event.data, dict) else event.data
             await self._future_manager.complete(event.task_id, result=result)
 
-        @self._event_bus.subscribe("task.failed")
+        @self._event_bus.subscribe(EventType.FAILED)
         async def fail_future_handler(event: TaskEvent):
             err = event.data.get("error") if isinstance(event.data, dict) else str(event.data)
             await self._future_manager.complete(event.task_id, error=err)
 
-        @self._event_bus.subscribe("task.cancelled")
+        @self._event_bus.subscribe(EventType.CANCELLED)
         async def cancel_future_handler(event: TaskEvent):
             await self._future_manager.complete(event.task_id, error="Task cancelled")
 
         # 任务回收事件（用于监控）
-        @self._event_bus.subscribe("task.reclaimed")
+        @self._event_bus.subscribe(EventType.RECLAIMED)
         async def reclaim_handler(event: TaskEvent):
             debug(f"Task reclaimed: {event.task_id}, reason: {event.data}")
 
@@ -1188,28 +1189,28 @@ class TaskPool:
 
     def on_created(self, handler: Callable) -> None:
         """注册任务创建回调"""
-        self._event_bus.subscribe("task.created", handler)
+        self._event_bus.subscribe(EventType.CREATED, handler)
 
     def on_started(self, handler: Callable) -> None:
         """注册任务开始回调"""
-        self._event_bus.subscribe("task.started", handler)
+        self._event_bus.subscribe(EventType.STARTED, handler)
 
     def on_completed(self, handler: Callable) -> None:
         """注册任务完成回调"""
-        self._event_bus.subscribe("task.completed", handler)
+        self._event_bus.subscribe(EventType.COMPLETED, handler)
 
     def on_failed(self, handler: Callable) -> None:
         """注册任务失败回调"""
-        self._event_bus.subscribe("task.failed", handler)
+        self._event_bus.subscribe(EventType.FAILED, handler)
 
     def on_cancelled(self, handler: Callable) -> None:
         """注册任务取消回调"""
-        self._event_bus.subscribe("task.cancelled", handler)
+        self._event_bus.subscribe(EventType.CANCELLED, handler)
 
     def on_progress(self, handler: Callable) -> None:
         """注册任务进度回调"""
-        self._event_bus.subscribe("task.progress", handler)
+        self._event_bus.subscribe(EventType.PROGRESS, handler)
 
     def on_reclaimed(self, handler: Callable) -> None:
         """注册任务回收回调"""
-        self._event_bus.subscribe("task.reclaimed", handler)
+        self._event_bus.subscribe(EventType.RECLAIMED, handler)

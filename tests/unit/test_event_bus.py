@@ -14,6 +14,7 @@ import asyncio
 
 import pytest
 
+from neotask.common.constants import EventType
 from neotask.event.bus import EventBus, TaskEvent
 
 
@@ -331,6 +332,69 @@ class TestEventBusConfigPassthrough:
         with pytest.raises(ValueError):
             TaskPool(config=config)
 
+
+class TestEventTypeRegistry:
+    """事件名常量注册表测试（v1.1.0 批次 1）"""
+
+    def test_registry_values_match_1_0_strings(self):
+        """常量值与 1.0.x 既有裸字符串逐一对齐，防止改名破坏订阅兼容"""
+        expected = {
+            "CREATED": "task.created",
+            "STARTED": "task.started",
+            "COMPLETED": "task.completed",
+            "FAILED": "task.failed",
+            "CANCELLED": "task.cancelled",
+            "RETRY": "task.retry",
+            "PROGRESS": "task.progress",
+            "STATUS_CHANGED": "task.status_changed",
+            "DELETED": "task.deleted",
+            "RECLAIMED": "task.reclaimed",
+            "CHECKPOINTED": "task.checkpointed",
+            "COST_REPORTED": "task.cost_reported",
+        }
+        for name, value in expected.items():
+            assert getattr(EventType, name) == value
+
+    def test_constants_format_as_plain_event_names(self):
+        """常量参与格式化后仍是事件名字符串
+
+        事件名会写进日志与 Web UI；若改用 ``str``-Enum，3.11+ 的
+        ``__format__`` 变更会让 ``f"{EventType.COMPLETED}"`` 变成成员名。
+        """
+        assert f"{EventType.COMPLETED}" == "task.completed"
+        assert format(EventType.COMPLETED) == "task.completed"
+        assert str(EventType.COMPLETED) == "task.completed"
+
+    @pytest.mark.asyncio
+    async def test_plain_string_subscription_receives_constant_event(self, event_bus):
+        """调用方用裸字符串订阅，仍能收到以 EventType 发出的事件（双向兼容）"""
+        received = []
+
+        async def handler(event: TaskEvent):
+            received.append(event)
+
+        async with event_bus as bus:
+            bus.subscribe("task.completed", handler)
+            await bus.emit(TaskEvent(EventType.COMPLETED, "task_001"))
+            await asyncio.sleep(0.1)
+
+        assert len(received) == 1
+        assert received[0].event_type == "task.completed"
+
+    @pytest.mark.asyncio
+    async def test_constant_subscription_receives_string_event(self, event_bus):
+        """反向兼容：以 EventType 订阅，接收调用方用裸字符串发出的事件"""
+        received = []
+
+        async def handler(event: TaskEvent):
+            received.append(event)
+
+        async with event_bus as bus:
+            bus.subscribe(EventType.COMPLETED, handler)
+            await bus.emit(TaskEvent("task.completed", "task_002"))
+            await asyncio.sleep(0.1)
+
+        assert len(received) == 1
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--asyncio-mode=auto"])

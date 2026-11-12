@@ -12,6 +12,7 @@ See LICENSE File For Details.
 
 from typing import Dict, Any, Optional
 
+from neotask.common.constants import EventType
 from neotask.common.logger import error
 from neotask.event.bus import TaskEvent, EventBus
 from neotask.models.task import TaskPriority
@@ -30,19 +31,19 @@ class MetricsHandler:
         """
         data = event.data if isinstance(event.data, dict) else {}
 
-        if event.event_type == "task.created":
+        if event.event_type == EventType.CREATED:
             await self._metrics.record_task_submit(
                 event.task_id, data.get("priority", TaskPriority.NORMAL.value)
             )
-        elif event.event_type == "task.started":
+        elif event.event_type == EventType.STARTED:
             await self._metrics.record_task_start(event.task_id)
-        elif event.event_type == "task.completed":
+        elif event.event_type == EventType.COMPLETED:
             await self._metrics.record_task_complete(event.task_id)
-        elif event.event_type == "task.failed":
+        elif event.event_type == EventType.FAILED:
             await self._metrics.record_task_failed(event.task_id)
-        elif event.event_type == "task.cancelled":
+        elif event.event_type == EventType.CANCELLED:
             await self._metrics.record_task_cancelled(event.task_id)
-        elif event.event_type == "task.retry":
+        elif event.event_type == EventType.RETRY:
             await self._metrics.record_task_retry(
                 event.task_id, data.get("retry_count", 1)
             )
@@ -70,7 +71,7 @@ class NotificationHandler:
     async def handle(self, event: TaskEvent) -> None:
         """处理事件"""
         # 根据事件类型发送通知
-        if event.event_type in ["task.failed", "task.completed"]:
+        if event.event_type in [EventType.FAILED, EventType.COMPLETED]:
             for name, notifier in self._notifiers.items():
                 try:
                     await notifier.send(event)
@@ -94,13 +95,13 @@ def setup_default_handlers(
     # 持久化处理器
     if storage:
         persistence_handler = PersistenceHandler(storage)
-        event_bus.subscribe("task.created", persistence_handler.handle)
-        event_bus.subscribe("task.completed", persistence_handler.handle)
-        event_bus.subscribe("task.failed", persistence_handler.handle)
+        event_bus.subscribe(EventType.CREATED, persistence_handler.handle)
+        event_bus.subscribe(EventType.COMPLETED, persistence_handler.handle)
+        event_bus.subscribe(EventType.FAILED, persistence_handler.handle)
 
     # 通知处理器
     if notifiers:
         notification_handler = NotificationHandler(notifiers)
-        event_bus.subscribe("task.failed", notification_handler.handle)
+        event_bus.subscribe(EventType.FAILED, notification_handler.handle)
         if notifiers.get("on_complete"):
-            event_bus.subscribe("task.completed", notification_handler.handle)
+            event_bus.subscribe(EventType.COMPLETED, notification_handler.handle)

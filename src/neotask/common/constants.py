@@ -34,6 +34,33 @@ DEFAULT_LIFECYCLE_CACHE_MAX_SIZE = 1000
 DEFAULT_RUNNING_PERSIST_DELAY = 0.0
 
 
+class EventType:
+    """事件总线事件名注册表。
+
+    取普通常量类而非 ``str``-Enum：事件名会被写进日志、Web UI 与事件字典，
+    而 mixin Enum 的 ``__str__`` / ``__format__`` 语义在 Python 3.11 发生变更，
+    ``f"{event_type}"`` 在部分版本得到 ``"EventType.COMPLETED"`` 而非
+    ``"task.completed"``。纯字符串常量与既有裸字符串订阅方式逐字节等价，
+    不需要为字典键与格式化行为赌版本差异。
+
+    前 10 项为 1.0.x 已有事件，末 2 项（``CHECKPOINTED`` / ``COST_REPORTED``）由
+    v1.1.0 新增。
+    """
+
+    CREATED = "task.created"
+    STARTED = "task.started"
+    COMPLETED = "task.completed"
+    FAILED = "task.failed"
+    CANCELLED = "task.cancelled"
+    RETRY = "task.retry"
+    PROGRESS = "task.progress"
+    STATUS_CHANGED = "task.status_changed"
+    DELETED = "task.deleted"
+    RECLAIMED = "task.reclaimed"
+    CHECKPOINTED = "task.checkpointed"
+    COST_REPORTED = "task.cost_reported"
+
+
 def redis_key(name: str) -> str:
     """为 Redis 键拼接统一根前缀。
 

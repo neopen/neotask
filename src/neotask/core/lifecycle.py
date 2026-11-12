@@ -25,6 +25,7 @@ from neotask.common.constants import (
     DEFAULT_PROGRESS_FLUSH_DELTA,
     DEFAULT_PROGRESS_FLUSH_INTERVAL,
     DEFAULT_RUNNING_PERSIST_DELAY,
+    EventType,
 )
 from neotask.common.exceptions import TaskAlreadyExistsError, TaskNotFoundError
 from neotask.common.logger import debug, info, warning
@@ -140,7 +141,7 @@ class TaskLifecycleManager:
         if self._cache_enabled:
             self._cache_put(task_id, task)
 
-        await self._emit_event("task.created", task_id, task.to_dict())
+        await self._emit_event(EventType.CREATED, task_id, task.to_dict())
 
         return task
 
@@ -180,7 +181,7 @@ class TaskLifecycleManager:
         if self._cache_enabled:
             self._cache_put(task_id, task)
 
-        await self._emit_event("task.created", task_id, task.to_dict())
+        await self._emit_event(EventType.CREATED, task_id, task.to_dict())
 
         return task, queued
 
@@ -251,7 +252,7 @@ class TaskLifecycleManager:
                 continue
             if self._cache_enabled:
                 self._cache_put(task.task_id, task)
-            await self._emit_event("task.created", task.task_id, task.to_dict())
+            await self._emit_event(EventType.CREATED, task.task_id, task.to_dict())
             created.append(task.task_id)
 
         return created
@@ -322,7 +323,7 @@ class TaskLifecycleManager:
             self._cache_put(task_id, task)
 
         await self._emit_event(
-            "task.status_changed",
+            EventType.STATUS_CHANGED,
             task_id,
             {"old_status": old_status.value, "new_status": status.value}
         )
@@ -372,7 +373,7 @@ class TaskLifecycleManager:
 
 
         await self._emit_event(
-            "task.progress",
+            EventType.PROGRESS,
             task_id,
             {
                 "progress": task.progress,
@@ -662,7 +663,7 @@ class TaskLifecycleManager:
             self._cache_put(task_id, task)
 
 
-        await self._emit_event("task.started", task_id, {"node_id": node_id})
+        await self._emit_event(EventType.STARTED, task_id, {"node_id": node_id})
 
         debug(f"Task {task_id} started on node {node_id}")
         return True
@@ -706,7 +707,7 @@ class TaskLifecycleManager:
         await self._future_manager.complete(task_id, result=result)
 
         # 直接传递 result，不包装
-        await self._emit_event("task.completed", task_id, result)
+        await self._emit_event(EventType.COMPLETED, task_id, result)
 
         debug(f"Task {task_id} completed successfully")
         return True
@@ -756,7 +757,7 @@ class TaskLifecycleManager:
         await self._future_manager.complete(task_id, error=error)
 
         await self._emit_event(
-            "task.failed",
+            EventType.FAILED,
             task_id,
             {"error": error, "old_status": old_status.value}
         )
@@ -792,7 +793,7 @@ class TaskLifecycleManager:
         await self._future_manager.complete(task_id, error="Task cancelled")
 
         await self._emit_event(
-            "task.cancelled",
+            EventType.CANCELLED,
             task_id,
             {"old_status": old_status.value}
         )
@@ -832,7 +833,7 @@ class TaskLifecycleManager:
         await self._future_manager.remove(task_id)
 
         await self._emit_event(
-            "task.retry",
+            EventType.RETRY,
             task_id,
             {
                 "retry_count": task.retry_count,
@@ -856,7 +857,7 @@ class TaskLifecycleManager:
 
         await self._future_manager.remove(task_id)
 
-        await self._emit_event("task.deleted", task_id)
+        await self._emit_event(EventType.DELETED, task_id)
 
         return True
 

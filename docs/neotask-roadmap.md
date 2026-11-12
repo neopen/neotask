@@ -39,18 +39,24 @@
 - `get_task(task_id)` 返回中体现 checkpoint 存在性。
 - 优先完整支持 Memory / SQLite，Redis 后端同步跟进。
 
-#### 2. 成本与耗时采集
+#### 2. 成本与耗时采集（批次 2 已交付）
 - 任务元数据标准化 `cost_tracking` 字段：
   `{tokens_in, tokens_out, api_calls, estimated_cost, currency}`
-- `report_cost(...)`：执行器上报成本（与 `report_progress` 同风格）。
+- `report_cost(...)`：执行器上报成本（与 `report_progress` 同风格）；执行器外使用
+  `pool.report_cost(task_id, ...)`，终态任务仍可追加用量。
 - 耗时拆分：`queue_wait_ms`（排队等待）+ `duration_ms`（执行耗时）。
-- `pool.get_cost_summary(task_ids)`：聚合接口。
-- `task.completed` / `task.failed` 事件信封携带 `cost` 字段。
+- `pool.get_cost_summary(task_ids)`：聚合接口；币种混用标记为 `MIXED`。
+- `task.completed` / `task.failed` 事件信封携带 `cost` 字段（`task.completed` 仅在
+  上报过成本时包装为 `{"result": ..., "cost": ...}`，否则保持原始结果契约）。
+- 用法见 `examples/18_cost_tracking.py`。
 
-#### 3. 父子任务关联字段
-- 任务元数据增加：`parent_task_id`、`child_count`、`completed_children`。
-- 查询接口：`pool.get_children(task_id)`、`pool.get_parent(task_id)`。
+#### 3. 父子任务关联字段（批次 2 已交付）
+- 任务元数据增加：`parent_task_id`（未引入 `child_count` / `completed_children`，
+  与设计文档数据模型一致）。
+- 查询接口：`pool.get_children(task_id)`、`pool.get_parent(task_id)`；SQLite 建
+  `idx_tasks_parent` 索引，Redis 维护父集合索引。
 - **不做自动汇总触发**：父任务完成判断由调用方或编排层决定，NeoTask 不越界。
+- 用法见 `examples/19_parent_child.py`。
 
 #### 4. 自定义失败状态（批次 1 已交付）
 - `report_failure(reason=...)`：执行器标记业务级失败（如 `qa_failed`）。

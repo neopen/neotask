@@ -46,7 +46,8 @@
 - **事件回调** - 支持任务生命周期事件监听
 - **进度上报** - executor 内可发布进度，订阅者收到 `task.progress` 事件
 - **自定义失败原因** *(v1.1)* - executor 可通过 `report_failure(reason=...)` 标记业务级失败（如 `qa_failed`），`task.failed` 事件携带原因，与系统异常区分
-- **父子关联** *(v1.1)* - 任务携带 `parent_task_id` / `child_count` / `completed_children` 元数据，提供 `get_children()` / `get_parent()` 查询；自动汇总交由调用方或编排层，不在 NeoTask 内实现
+- **成本采集** *(v1.1)* - executor 通过 `report_cost()` 上报 token / API 调用次数 / 预估费用，`get_cost_summary()` 可按任务或批次聚合，多币种标记为 `MIXED`
+- **父子关联** *(v1.1)* - 任务携带 `parent_task_id`，提供 `get_children()` / `get_parent()` 查询；自动汇总交由调用方或编排层，不在 NeoTask 内实现
 
 ------
 
@@ -384,6 +385,10 @@ print(result.format())        # result.to_dict() 可直接 json.dumps
 | `pool.cancel(task_id)`                                       | 取消任务                                                     |
 | `pool.task_exists(task_id)`                                  | 判断任务 ID 是否已存在（幂等重提交）                          |
 | `pool.report_failure(task_id, reason, detail="")`            | 按业务原因终结运行中的任务（不进入自动重试）                  |
+| `pool.submit(data, parent_task_id=parent_id)`                | 提交关联父任务的子任务                                       |
+| `pool.get_children(task_id)` / `pool.get_parent(task_id)`    | 查询父子关系                                                 |
+| `pool.report_cost(task_id, tokens_in=0, tokens_out=0, api_calls=0, estimated_cost=None, currency=None)` | 累加任务成本并发布 `task.cost_reported` |
+| `pool.get_cost_summary(task_ids=None)`                       | 按指定任务或全部任务聚合成本                                  |
 | `pool.on_progress(handler)`                                  | 订阅进度事件                                                 |
 | `scheduler.submit_delayed(data, delay_seconds)`              | 提交延时任务                                                 |
 | `scheduler.submit_interval(data, interval_seconds)`          | 提交周期任务                                                 |
@@ -411,7 +416,13 @@ print(result.failed)     # [{"index": 3, "data": {...}, "error": "queue is full"
 
 - **`get_result` 与 `wait_for_result` 的区别**：`wait_for_result(task_id)` 直接返回
   executor 的原始结果；`get_result(task_id)` 返回元数据包装字典
-  `{task_id, status, result, error, failure_reason, created_at, completed_at}`，真实结果在 `result` 字段。
+  `{task_id, status, result, error, failure_reason, parent_task_id, estimated_cost,
+  cost_tracking, queue_wait_ms, duration_ms, created_at, completed_at}`，真实结果在 `result` 字段。
+- **成本上报**：在执行器内调用 `neotask.report_cost(tokens_in=..., tokens_out=...,
+  api_calls=..., estimated_cost=..., currency="USD")`；进程执行器或任务结束后才拿到
+  的用量改用 `pool.report_cost(task_id, ...)`。多次上报按字段累加。任务上报过成本时，
+  `task.completed` 事件的 `data` 变为 `{"result": ..., "cost": {...}}`；未上报时保持
+  原始结果不变。
 - **业务失败与异常失败**：审核不通过、风控拒绝这类"业务判失败"应在执行器内调用
   `neotask.report_failure("qa_failed", "score=10")` 后正常返回——NeoTask 会把任务定稿为
   `FAILED`、记录 `failure_reason="qa_failed"`、`retry_count` 保持 0，并在 `task.failed`
@@ -429,6 +440,9 @@ print(result.failed)     # [{"index": 3, "data": {...}, "error": "queue is full"
 - **崩溃/重启恢复**：自动恢复只针对已**入队**的任务（其 id 存在于持久化队列中）。
   仅通过 `create_pending_task()` 落库、从未调用 `enqueue_task()` 入队的记录不属于队列，
   重启后**不会**自动执行——需显式入队。
+- **升级 1.0.x 的 SQLite 库**：新列在启动时自动补齐。若要回填历史任务的
+  `queue_wait_ms` / `duration_ms` 并建立父子索引，请先停机再执行
+  `python scripts/migrate_task_metadata.py --db <路径> --apply`（不加 `--apply` 为预演）。
 - **周期任务持久化**：`enable_persistence` **默认开启**。`storage_type="sqlite"` 或
   `"redis"` 时，interval / cron 周期任务会持久化并在重启后自动恢复，停机期间错过的槽位按
   各任务的 `missed_policy` 处理。`storage_type="memory"` 或显式

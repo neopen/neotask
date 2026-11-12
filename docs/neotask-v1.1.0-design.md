@@ -279,6 +279,15 @@ schema_version: int = 1
 合计 9.5–12 人日。另建 `benchmarks/` 目录骨架（roadmap §七 本周项），至少覆盖
 "单任务提交延迟""批量提交吞吐""Checkpoint 写入开销"三条，作为批次 2/3 的成本基线。
 
+> **进度**：
+> - 批次 1 已交付：`EventType` 注册表、`TaskEvent` 信封扩展、`TaskScheduler.task_exists_async()`、
+>   `report_failure(reason)`（示例 16 / 17）。
+> - 批次 2 已交付：Task 元数据字段与三后端持久化、SQLite 启动期 ALTER、
+>   `scripts/migrate_task_metadata.py`、成本采集与 `get_cost_summary()`、父子关联与
+>   `get_children()` / `get_parent()`（示例 18 / 19）。Redis 按既有 JSON 任务结构自然兼容，
+>   无需迁移；SQLite 1.0.x 库的耗时回填与索引重建由迁移脚本完成。
+> - 批次 3（`statements_transaction`、Checkpoint、Blackboard）待实施。
+
 ---
 
 ## 七、验收标准

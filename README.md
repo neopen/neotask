@@ -58,7 +58,8 @@
 - **Event Callbacks** - Supports task lifecycle event listeners
 - **Progress Reporting** - Executors can publish progress updates; subscribers receive `task.progress` events
 - **Custom Failure Reason** *(v1.1)* - Executors can mark business-level failures (e.g. `qa_failed`) via `report_failure(reason=...)`; the `task.failed` event carries the reason, distinct from system exceptions
-- **Parent-Child Association** *(v1.1)* - Tasks carry `parent_task_id` / `child_count` / `completed_children` metadata with `get_children()` / `get_parent()` queries; auto-aggregation is intentionally left to the caller or orchestrator
+- **Cost Tracking** *(v1.1)* - Executors report tokens / API calls / estimated cost via `report_cost()`; `get_cost_summary()` aggregates per task or across a batch, with mixed currencies flagged as `MIXED`
+- **Parent-Child Association** *(v1.1)* - Tasks carry `parent_task_id` with `get_children()` / `get_parent()` queries; auto-aggregation is intentionally left to the caller or orchestrator
 
 
 
@@ -385,6 +386,10 @@ How the numbers are measured:
 | `pool.cancel(task_id)`                                       | Cancel task                                                  |
 | `pool.task_exists(task_id)`                                  | Check whether a task id is taken (idempotent resubmit)       |
 | `pool.report_failure(task_id, reason, detail="")`            | Fail a running task with a business reason (skips auto-retry) |
+| `pool.submit(data, parent_task_id=parent_id)`                | Submit a child task associated with a parent                 |
+| `pool.get_children(task_id)` / `pool.get_parent(task_id)`    | Query the parent-child relation                              |
+| `pool.report_cost(task_id, tokens_in=0, tokens_out=0, api_calls=0, estimated_cost=None, currency=None)` | Add cost usage to a task and emit `task.cost_reported` |
+| `pool.get_cost_summary(task_ids=None)`                       | Aggregate cost across selected tasks or all tasks             |
 | `pool.on_progress(handler)`                                  | Subscribe to progress events                                 |
 | `scheduler.submit_delayed(data, delay_seconds)`              | Delayed task                                                 |
 | `scheduler.submit_interval(data, interval_seconds)`          | Periodic task                                                |
@@ -416,8 +421,15 @@ A few behaviors are easy to trip over, so they are documented explicitly:
 
 - **`get_result` vs `wait_for_result`**: `wait_for_result(task_id)` returns the
   executor's raw value, while `get_result(task_id)` returns a metadata wrapper
-  dict `{task_id, status, result, error, failure_reason, created_at, completed_at}` —
-  the real payload is under `result`.
+  dict `{task_id, status, result, error, failure_reason, parent_task_id,
+  estimated_cost, cost_tracking, queue_wait_ms, duration_ms, created_at,
+  completed_at}` — the real payload is under `result`.
+- **Cost reporting**: call `neotask.report_cost(tokens_in=..., tokens_out=...,
+  api_calls=..., estimated_cost=..., currency="USD")` inside the executor; use
+  `pool.report_cost(task_id, ...)` for process executors or usage that arrives
+  after the task finished. Repeated reports accumulate. When a task reports a
+  cost, the `task.completed` event `data` becomes `{"result": ..., "cost": {...}}`;
+  without a cost it stays the raw result.
 - **Business failure vs exception**: a task that fails because the *business*
   said so (review rejected, risk score too low) should report a reason instead
   of raising, so it doesn't burn the retry budget. Call
@@ -440,6 +452,11 @@ A few behaviors are easy to trip over, so they are documented explicitly:
   **enqueued** (their ids live in the persisted queue). A record created only via
   `create_pending_task()` and never pushed through `enqueue_task()` is not part
   of the queue, so it will **not** auto-run after a restart — enqueue it explicitly.
+- **Upgrading a 1.0.x SQLite database**: new columns are added automatically on
+  startup. To backfill `queue_wait_ms` / `duration_ms` for historical rows and
+  build the parent index, stop the pool and run
+  `python scripts/migrate_task_metadata.py --db <path> --apply` (preview without
+  `--apply`).
 - **Periodic task persistence**: `enable_persistence` is **on by default**. With
   `storage_type="sqlite"` or `"redis"`, interval / cron periodic tasks are persisted
   and auto-restored after a restart; slots missed while down are handled by each

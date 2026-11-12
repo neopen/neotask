@@ -152,6 +152,11 @@ class RedisTaskRepository(TaskRepository):
         """状态索引键（统一根前缀 + status:<status>）"""
         return redis_key(f"status:{status}")
 
+    @staticmethod
+    def _parent_key(parent_task_id: str) -> str:
+        """父子索引键（``parent:<parent_task_id>`` 集合）"""
+        return redis_key(f"parent:{parent_task_id}")
+
     async def save(self, task: Task) -> None:
         """保存任务 - 使用 JSON 序列化存储"""
         client = await self._get_client()
@@ -173,6 +178,10 @@ class RedisTaskRepository(TaskRepository):
 
         # 添加到状态索引
         await client.sadd(self._status_key(task.status.value), task.task_id)
+
+        # 维护父子索引，供 get_children() 免全量扫描
+        if task.parent_task_id:
+            await client.sadd(self._parent_key(task.parent_task_id), task.task_id)
 
         # 同步终态过期索引
         score = _expiry_score(task_dict)
@@ -198,7 +207,10 @@ class RedisTaskRepository(TaskRepository):
                 task.task_id,
             ],
         )
-        return int(created) == 1
+        inserted = int(created) == 1
+        if inserted and task.parent_task_id:
+            await client.sadd(self._parent_key(task.parent_task_id), task.task_id)
+        return inserted
 
     async def save_if_absent_and_enqueue(
             self, task: Task, max_size: int
@@ -236,6 +248,9 @@ class RedisTaskRepository(TaskRepository):
         outcome = int(outcome)
         if outcome < 0:
             raise TaskAlreadyExistsError(task.task_id)
+        # 无论队列是否已满，任务都已写入存储，需要同步父子索引
+        if task.parent_task_id:
+            await client.sadd(self._parent_key(task.parent_task_id), task.task_id)
         return outcome == 1
 
     async def save_batch(self, tasks: List[Task]) -> List[str]:
@@ -253,6 +268,7 @@ class RedisTaskRepository(TaskRepository):
         pipe = client.pipeline()
         saved: List[str] = []
         status_ids: Dict[str, List[str]] = {}
+        parent_ids: Dict[str, List[str]] = {}
         for task, old_value in zip(tasks, existing_values):
             if old_value:
                 continue
@@ -263,6 +279,8 @@ class RedisTaskRepository(TaskRepository):
                 json.dumps(task_dict, default=str),
             )
             status_ids.setdefault(task.status.value, []).append(task.task_id)
+            if task.parent_task_id:
+                parent_ids.setdefault(task.parent_task_id, []).append(task.task_id)
 
             score = _expiry_score(task_dict)
             if score is not None:
@@ -270,6 +288,9 @@ class RedisTaskRepository(TaskRepository):
 
         for status, task_ids in status_ids.items():
             pipe.sadd(self._status_key(status), *task_ids)
+
+        for parent_task_id, task_ids in parent_ids.items():
+            pipe.sadd(self._parent_key(parent_task_id), *task_ids)
 
         await pipe.execute()
         return saved
@@ -292,6 +313,8 @@ class RedisTaskRepository(TaskRepository):
         task = await self.get(task_id)
         if task:
             await client.srem(self._status_key(task.status.value), task_id)
+            if task.parent_task_id:
+                await client.srem(self._parent_key(task.parent_task_id), task_id)
         key = self._task_key(task_id)
         result = await client.delete(key)
         await client.zrem(self._expiry_key, task_id)
@@ -319,12 +342,17 @@ class RedisTaskRepository(TaskRepository):
         for task_id, raw in zip(task_ids, raws):
             if raw:
                 try:
-                    status = json.loads(raw).get("status")
+                    task_dict = json.loads(raw)
+                    status = task_dict.get("status")
+                    parent_task_id = task_dict.get("parent_task_id")
                 except (ValueError, TypeError):
                     status = None
+                    parent_task_id = None
                 if status:
                     # 从状态索引中移除
                     pipe.srem(self._status_key(status), task_id)
+                if parent_task_id:
+                    pipe.srem(self._parent_key(parent_task_id), task_id)
                 deleted_count += 1
             # 删除任务键与终态过期索引
             pipe.delete(self._task_key(task_id))
@@ -392,6 +420,32 @@ class RedisTaskRepository(TaskRepository):
         """统计状态索引里的任务数量（一次 SCARD，不读取任务实体）"""
         client = await self._get_client()
         return int(await client.scard(self._status_key(status.value)))
+
+    async def list_by_parent(
+            self, parent_task_id: str, limit: int = 100, offset: int = 0
+    ) -> List[Task]:
+        """按父子索引集合取子任务（一次 SMEMBERS + MGET），按创建时间排序"""
+        client = await self._get_client()
+        task_ids = list(await client.smembers(self._parent_key(parent_task_id)))
+        if not task_ids:
+            return []
+
+        raws = await client.mget([self._task_key(task_id) for task_id in task_ids])
+        tasks: List[Task] = []
+        for task_id, raw in zip(task_ids, raws):
+            if not raw:
+                # 任务已删除但索引残留，顺手清理
+                await client.srem(self._parent_key(parent_task_id), task_id)
+                continue
+            try:
+                task = Task.from_dict(json.loads(raw))
+            except (ValueError, TypeError):
+                continue
+            if task.parent_task_id == parent_task_id:
+                tasks.append(task)
+
+        tasks.sort(key=lambda task: task.created_at)
+        return tasks[offset:offset + limit]
 
     async def update_status(self, task_id: str, status: TaskStatus, **kwargs) -> bool:
         """更新任务状态"""

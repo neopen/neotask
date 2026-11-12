@@ -17,7 +17,12 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from neotask.models.task import Task, TaskPriority, TaskStatus
-from neotask.storage.base import TaskRepository, QueueRepository
+from neotask.storage.base import (
+    TaskRepository,
+    QueueRepository,
+    merge_cost_detail,
+    new_cost_summary,
+)
 from neotask.utils import sqlite_compat
 
 #: DELETE ... RETURNING 自 SQLite 3.35 起支持；多进程下用它把「取任务 + 出队」
@@ -32,12 +37,20 @@ _TASK_COLUMNS = {
     "data", "status", "priority", "node_id", "retry_count", "ttl",
     "created_at", "started_at", "completed_at", "result", "error",
     "progress", "progress_message", "failure_reason",
+    "checkpoint_version", "parent_task_id", "estimated_cost",
+    "cost_tracking", "queue_wait_ms", "duration_ms",
 }
 
 #: v1.1.0 起新增的任务列：老库文件在启动期按此表自动补列。
 #: 仅限“新增列 + 有默认值 + 不搬运数据”，跨后端搬迁仍走 scripts/migrate_*.py。
 _NEW_TASK_COLUMNS = (
     ("failure_reason", "TEXT"),
+    ("checkpoint_version", "INTEGER NOT NULL DEFAULT 0"),
+    ("parent_task_id", "TEXT"),
+    ("estimated_cost", "REAL NOT NULL DEFAULT 0.0"),
+    ("cost_tracking", "TEXT"),
+    ("queue_wait_ms", "REAL"),
+    ("duration_ms", "REAL"),
 )
 
 
@@ -55,6 +68,8 @@ def _serialize_field(name: str, value: Any) -> Any:
         return json.dumps(value) if value is not None else "{}"
     if name == "result":
         return json.dumps(value) if value is not None else None
+    if name == "cost_tracking":
+        return json.dumps(value) if value else None
     return value
 
 
@@ -80,6 +95,12 @@ def _row_to_task(row: Dict[str, Any]) -> Task:
         "progress": row.get("progress", 0.0),
         "progress_message": row.get("progress_message", ""),
         "failure_reason": row.get("failure_reason"),
+        "checkpoint_version": row.get("checkpoint_version", 0),
+        "parent_task_id": row.get("parent_task_id"),
+        "estimated_cost": row.get("estimated_cost", 0.0),
+        "cost_tracking": row.get("cost_tracking"),
+        "queue_wait_ms": row.get("queue_wait_ms"),
+        "duration_ms": row.get("duration_ms"),
     })
 
 
@@ -162,6 +183,11 @@ class SQLiteTaskRepository(TaskRepository):
             CREATE INDEX IF NOT EXISTS idx_tasks_created_at
             ON tasks(created_at)
         """)
+        # 父子查询路径：get_children() 按 parent_task_id 过滤
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_tasks_parent
+            ON tasks(parent_task_id)
+        """)
         await conn.commit()
 
     async def _add_missing_columns(self, conn) -> None:
@@ -201,7 +227,13 @@ class SQLiteTaskRepository(TaskRepository):
             task.error,
             getattr(task, 'progress', 0.0),
             getattr(task, 'progress_message', ''),
-            getattr(task, 'failure_reason', None)
+            getattr(task, 'failure_reason', None),
+            getattr(task, 'checkpoint_version', 0),
+            getattr(task, 'parent_task_id', None),
+            getattr(task, 'estimated_cost', 0.0),
+            json.dumps(task.cost_tracking) if task.cost_tracking else None,
+            getattr(task, 'queue_wait_ms', None),
+            getattr(task, 'duration_ms', None),
         )
 
     async def save(self, task: Task) -> None:
@@ -210,8 +242,9 @@ class SQLiteTaskRepository(TaskRepository):
             INSERT OR REPLACE INTO tasks 
             (task_id, data, status, priority, node_id, retry_count, ttl,
              created_at, started_at, completed_at, result, error, progress, progress_message,
-             failure_reason)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             failure_reason, checkpoint_version, parent_task_id, estimated_cost,
+             cost_tracking, queue_wait_ms, duration_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, self._task_values(task))
         await self._conn.commit()
 
@@ -222,8 +255,9 @@ class SQLiteTaskRepository(TaskRepository):
             INSERT OR IGNORE INTO tasks 
             (task_id, data, status, priority, node_id, retry_count, ttl,
              created_at, started_at, completed_at, result, error, progress, progress_message,
-             failure_reason)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             failure_reason, checkpoint_version, parent_task_id, estimated_cost,
+             cost_tracking, queue_wait_ms, duration_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, self._task_values(task))
         inserted = cursor.rowcount > 0
         await cursor.close()
@@ -268,8 +302,9 @@ class SQLiteTaskRepository(TaskRepository):
             INSERT OR IGNORE INTO tasks
             (task_id, data, status, priority, node_id, retry_count, ttl,
              created_at, started_at, completed_at, result, error, progress, progress_message,
-             failure_reason)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             failure_reason, checkpoint_version, parent_task_id, estimated_cost,
+             cost_tracking, queue_wait_ms, duration_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, params)
         return [task.task_id for task in new_tasks]
 
@@ -414,6 +449,73 @@ class SQLiteTaskRepository(TaskRepository):
         finally:
             await cursor.close()
         return int(row[0]) if row else 0
+
+    async def list_by_parent(
+            self, parent_task_id: str, limit: int = 100, offset: int = 0
+    ) -> List[Task]:
+        """走 ``idx_tasks_parent`` 索引按创建时间列出子任务"""
+        await self._ensure_init()
+        # 存量实现里 _conn 的类型标注为 None，这里用局部变量避开同类告警
+        conn: Any = self._conn
+        cursor = await conn.execute(
+            "SELECT * FROM tasks WHERE parent_task_id = ? "
+            "ORDER BY created_at ASC LIMIT ? OFFSET ?",
+            (parent_task_id, limit, offset)
+        )
+        try:
+            rows = await cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+        finally:
+            await cursor.close()
+        return [
+            _row_to_task(dict(zip(columns, row)))
+            for row in rows
+        ]
+
+    async def cost_summary(self, task_ids=None) -> Dict[str, Any]:
+        """成本聚合：金额与计数下推 SQL，明细 JSON 在 Python 侧累加"""
+        if task_ids is not None:
+            # 指定任务列表时复用基类（按主键逐条读取，无需全表扫描）
+            return await super().cost_summary(task_ids)
+
+        await self._ensure_init()
+        conn: Any = self._conn
+        cursor = await conn.execute(
+            "SELECT COUNT(*), "
+            "COALESCE(SUM(estimated_cost), 0), "
+            "SUM(CASE WHEN estimated_cost <> 0 "
+            "OR (cost_tracking IS NOT NULL AND cost_tracking <> '') "
+            "THEN 1 ELSE 0 END) "
+            "FROM tasks"
+        )
+        try:
+            row = await cursor.fetchone()
+        finally:
+            await cursor.close()
+
+        summary = new_cost_summary()
+        if row:
+            summary["task_count"] = int(row[0] or 0)
+            summary["tasks_with_cost"] = int(row[2] or 0)
+            summary["estimated_cost"] = float(row[1] or 0.0)
+
+        cursor = await conn.execute(
+            "SELECT cost_tracking FROM tasks "
+            "WHERE cost_tracking IS NOT NULL AND cost_tracking <> ''"
+        )
+        try:
+            rows = await cursor.fetchall()
+        finally:
+            await cursor.close()
+
+        for (raw,) in rows:
+            try:
+                detail = json.loads(raw)
+            except (ValueError, TypeError):
+                continue
+            if isinstance(detail, dict):
+                merge_cost_detail(summary, detail)
+        return summary
 
     async def update_status(self, task_id: str, status: TaskStatus, **kwargs) -> bool:
         await self._ensure_init()

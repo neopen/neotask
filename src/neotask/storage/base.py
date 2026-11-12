@@ -12,8 +12,64 @@ See LICENSE File For Details.
 
 from abc import ABC, abstractmethod
 import time
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from neotask.models.task import Task, TaskStatus
+
+
+def new_cost_summary() -> Dict[str, Any]:
+    """成本聚合结果的空模板（``task_count`` 等计数按任务累加）"""
+    return {
+        "task_count": 0,
+        "tasks_with_cost": 0,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "api_calls": 0,
+        "estimated_cost": 0.0,
+        "currency": "",
+    }
+
+
+def merge_cost_detail(
+        summary: Dict[str, Any],
+        cost_tracking: Optional[Dict[str, Any]],
+) -> None:
+    """只累加明细字段（tokens/api_calls/currency），不动金额与任务计数"""
+    cost = cost_tracking or {}
+    summary["tokens_in"] += int(cost.get("tokens_in") or 0)
+    summary["tokens_out"] += int(cost.get("tokens_out") or 0)
+    summary["api_calls"] += int(cost.get("api_calls") or 0)
+
+    currency = str(cost.get("currency") or "")
+    if currency:
+        if not summary["currency"]:
+            summary["currency"] = currency
+        elif summary["currency"] != currency:
+            summary["currency"] = "MIXED"
+
+
+def record_cost_values(
+        summary: Dict[str, Any],
+        cost_tracking: Optional[Dict[str, Any]],
+        estimated_cost: float = 0.0,
+) -> None:
+    """把一条任务的成本明细累加进聚合结果
+
+    多个任务使用不同币种时把 ``currency`` 标记为 ``MIXED``，避免把不同
+    币种的金额静默相加。
+    """
+    cost = cost_tracking or {}
+    if not cost and not estimated_cost:
+        return
+
+    summary["tasks_with_cost"] += 1
+    merge_cost_detail(summary, cost)
+    summary["estimated_cost"] += float(estimated_cost or 0.0)
+
+
+def record_task_cost(summary: Dict[str, Any], task: Task) -> None:
+    """累加单个任务的成本（``task_count`` 计入所有任务）"""
+    summary["task_count"] += 1
+    record_cost_values(summary, task.cost_tracking, task.estimated_cost)
 
 
 def _is_terminal_expired(
@@ -143,6 +199,59 @@ class TaskRepository(ABC):
     async def update_status(self, task_id: str, status: TaskStatus) -> None:
         """Update task status."""
         pass
+
+    async def list_by_parent(
+            self, parent_task_id: str, limit: int = 100, offset: int = 0
+    ) -> List[Task]:
+        """按父任务 ID 列出子任务（按创建时间升序）。
+
+        默认实现分页扫描各状态集合；内置后端均覆盖为索引/字典查询，
+        避免为一次父子查询读取全部任务。
+        """
+        matched: List[Task] = []
+        for status in TaskStatus:
+            status_offset = 0
+            while True:
+                tasks = await self.list_by_status(
+                    status, limit=1000, offset=status_offset
+                )
+                matched.extend(
+                    task for task in tasks
+                    if task.parent_task_id == parent_task_id
+                )
+                if len(tasks) < 1000:
+                    break
+                status_offset += len(tasks)
+
+        matched.sort(key=lambda task: task.created_at)
+        return matched[offset:offset + limit]
+
+    async def cost_summary(
+            self, task_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """聚合任务成本。
+
+        ``task_ids=None`` 时聚合全部任务；SQLite 后端下推为 SQL 聚合。
+        币种混用时结果中的 ``currency`` 为 ``MIXED``。
+        """
+        summary = new_cost_summary()
+        if task_ids is not None:
+            for task_id in task_ids:
+                task = await self.get(task_id)
+                if task:
+                    record_task_cost(summary, task)
+            return summary
+
+        for status in TaskStatus:
+            offset = 0
+            while True:
+                tasks = await self.list_by_status(status, limit=1000, offset=offset)
+                for task in tasks:
+                    record_task_cost(summary, task)
+                if len(tasks) < 1000:
+                    break
+                offset += len(tasks)
+        return summary
 
     async def update_progress(self, task_id: str, progress: float, message: str = "") -> bool:
         """Update task progress.

@@ -17,7 +17,12 @@ from typing import Optional, Dict, List, Tuple
 
 from neotask.common.logger import debug, warning
 from neotask.models.task import Task, TaskStatus
-from neotask.storage.base import TaskRepository, QueueRepository
+from neotask.storage.base import (
+    TaskRepository,
+    QueueRepository,
+    new_cost_summary,
+    record_task_cost,
+)
 
 
 class MemoryTaskRepository(TaskRepository):
@@ -146,6 +151,36 @@ class MemoryTaskRepository(TaskRepository):
         """统计指定状态的任务数量（不拷贝任务对象）"""
         with self._lock:
             return sum(1 for task in self._tasks.values() if task.status == status)
+
+    async def list_by_parent(
+            self, parent_task_id: str, limit: int = 100, offset: int = 0
+    ) -> List[Task]:
+        """按父任务 ID 列出子任务（深拷贝，按创建时间升序）"""
+        with self._lock:
+            children = sorted(
+                (
+                    copy.deepcopy(task)
+                    for task in self._tasks.values()
+                    if task.parent_task_id == parent_task_id
+                ),
+                key=lambda task: task.created_at,
+            )
+        return children[offset:offset + limit]
+
+    async def cost_summary(self, task_ids=None) -> Dict:
+        """内存后端直接遍历字典聚合，无需反序列化"""
+        summary = new_cost_summary()
+        with self._lock:
+            if task_ids is None:
+                tasks = list(self._tasks.values())
+            else:
+                tasks = [
+                    self._tasks[task_id] for task_id in task_ids
+                    if task_id in self._tasks
+                ]
+            for task in tasks:
+                record_task_cost(summary, task)
+        return summary
 
     async def update_status(
             self,

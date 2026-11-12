@@ -82,8 +82,16 @@ class EngineConfig:
     enable_metrics: bool = True
     metrics_interval: int = 60
 
+    # 节点标识（写入事件信封；留空时按 hostname-pid 自动派生）
+    node_id: str = ""
+
     def __post_init__(self) -> None:
         self.storage_type = StorageType.coerce(self.storage_type)
+        if not self.node_id:
+            import os
+            import socket
+            # 与 TaskPoolConfig 同口径：同机多进程时 hostname 相同，追加 pid 区分实例
+            self.node_id = f"{socket.gethostname()}-{os.getpid()}"
 
 
 class TaskEngine:
@@ -141,6 +149,7 @@ class TaskEngine:
             max_queue_size=self.config.event_queue_max_size,
             overflow_policy=self.config.event_overflow_policy,
             slow_handler_threshold=self.config.event_slow_handler_threshold,
+            node_id=self.config.node_id,
         )
 
         # 3. 初始化执行器

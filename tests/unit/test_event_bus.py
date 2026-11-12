@@ -11,6 +11,7 @@ See LICENSE File For Details.
 """
 
 import asyncio
+import time
 
 import pytest
 
@@ -395,6 +396,57 @@ class TestEventTypeRegistry:
             await asyncio.sleep(0.1)
 
         assert len(received) == 1
+
+
+class TestEventEnvelope:
+    """事件信封稳定化测试（v1.1.0 批次 1）"""
+
+    def test_defaults_are_populated(self):
+        """timestamp 构造时自动填充，schema_version 固定为 1"""
+        before = time.time()
+        event = TaskEvent(EventType.CREATED, "task_001")
+        assert event.schema_version == 1
+        assert event.node_id == ""
+        assert before <= event.timestamp <= time.time() + 1
+
+    def test_positional_construction_stays_compatible(self):
+        """既有三位置参数构造方式不受新增字段影响"""
+        event = TaskEvent("task.completed", "task_001", {"ok": True})
+        assert event.data == {"ok": True}
+        assert event.timestamp > 0
+
+    @pytest.mark.asyncio
+    async def test_bus_stamps_configured_node_id(self):
+        """总线按自身配置补齐缺失的 node_id"""
+        received = []
+
+        async def handler(event: TaskEvent):
+            received.append(event)
+
+        bus = EventBus(node_id="host-a-1001")
+        async with bus:
+            bus.subscribe_global(handler)
+            await bus.emit(TaskEvent(EventType.STARTED, "task_001"))
+            await asyncio.sleep(0.1)
+
+        assert received[0].node_id == "host-a-1001"
+
+    @pytest.mark.asyncio
+    async def test_explicit_node_id_not_overwritten(self):
+        """事件已带 node_id 时不被总线覆盖"""
+        received = []
+
+        async def handler(event: TaskEvent):
+            received.append(event)
+
+        bus = EventBus(node_id="host-a-1001")
+        async with bus:
+            bus.subscribe_global(handler)
+            await bus.emit(TaskEvent(EventType.STARTED, "task_001", node_id="worker-7"))
+            await asyncio.sleep(0.1)
+
+        assert received[0].node_id == "worker-7"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--asyncio-mode=auto"])

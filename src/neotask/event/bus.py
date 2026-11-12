@@ -13,7 +13,7 @@ See LICENSE File For Details.
 import asyncio
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Callable, Any, Optional, cast
 
 from neotask.common.logger import error, warning
@@ -21,10 +21,25 @@ from neotask.common.logger import error, warning
 
 @dataclass
 class TaskEvent:
-    """任务事件"""
+    """任务事件
+
+    事件信封在 v1.1.0 起稳定：``timestamp`` / ``node_id`` / ``schema_version``
+    为远程上报预留字段，本版本只做信封扩展，不做任何上报。
+
+    Attributes:
+        event_type: 事件名，取值见 :class:`neotask.common.constants.EventType`
+        task_id: 关联任务 ID
+        data: 事件负载
+        timestamp: 事件产生时刻（epoch 秒），构造时自动填充
+        node_id: 产生该事件的实例标识，由 EventBus 按自身配置补齐
+        schema_version: 信封结构版本，当前为 1
+    """
     event_type: str
     task_id: str
     data: Optional[Any] = None
+    timestamp: float = field(default_factory=time.time)
+    node_id: str = ""
+    schema_version: int = 1
 
 
 class EventBus:
@@ -57,6 +72,7 @@ class EventBus:
             max_queue_size: Optional[int] = None,
             overflow_policy: str = "drop",
             slow_handler_threshold: float = 1.0,
+            node_id: str = "",
     ):
         """初始化事件总线
 
@@ -66,9 +82,12 @@ class EventBus:
             overflow_policy: 队列满时的策略，目前支持 ``"drop"``：丢弃新事件
                 并计数告警，避免慢回调把发布方一起拖死。
             slow_handler_threshold: 单个回调耗时超过该秒数时告警并计数。
+            node_id: 写入事件信封 ``TaskEvent.node_id`` 的实例标识；留空则保持
+                事件自带的 ``node_id``（调用方未指定时为 ``""``）。
         """
         if overflow_policy != "drop":
             raise ValueError(f"Unsupported overflow_policy: {overflow_policy}")
+        self._node_id = node_id
         self._handlers: Dict[str, List[Callable]] = {}
         self._global_handlers: List[Callable] = []
         # 订阅关系可能被不同线程修改，使用线程锁（临界区无 await）
@@ -205,6 +224,9 @@ class EventBus:
         （最多拖延到一个轮询超时）。因此跨循环时必须用
         ``call_soon_threadsafe`` 在目标循环中投递。
         """
+        if self._node_id and not event.node_id:
+            event.node_id = self._node_id
+
         if not self._running:
             # 同步处理
             await self._process_event(event)

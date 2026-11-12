@@ -84,6 +84,7 @@ class TaskPool:
             max_queue_size=self._config.event_queue_max_size,
             overflow_policy=self._config.event_overflow_policy,
             slow_handler_threshold=self._config.event_slow_handler_threshold,
+            node_id=self._config.node_id,
         )
 
         # 初始化未来管理器

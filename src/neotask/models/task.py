@@ -65,6 +65,9 @@ class Task:
     completed_at: Optional[datetime] = None
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    #: 业务级失败原因（如 ``qa_failed``）。状态仍是 ``FAILED``，
+    #: 仅用于与系统异常区分，不引入新状态。
+    failure_reason: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage - 修复 None 值问题"""
@@ -83,6 +86,7 @@ class Task:
             "completed_at": self.completed_at.isoformat() if self.completed_at else "",
             "result": json.dumps(self.result) if self.result is not None else "",
             "error": self.error or "",
+            "failure_reason": self.failure_reason or "",
         }
 
     def update_progress(self, progress: float, message: str = "") -> None:
@@ -126,6 +130,7 @@ class Task:
             completed_at=parse_datetime(data.get("completed_at")),
             result=parse_json(data.get("result")),
             error=data.get("error"),
+            failure_reason=data.get("failure_reason") or None,
         )
 
     def start(self, node_id: str) -> None:
@@ -140,10 +145,16 @@ class Task:
         self.result = result
         self.completed_at = datetime.now(timezone.utc)
 
-    def fail(self, error: str) -> None:
-        """Mark task as failed."""
+    def fail(self, error: str, failure_reason: Optional[str] = None) -> None:
+        """Mark task as failed.
+
+        Args:
+            error: 失败信息（系统异常文本或业务原因描述）
+            failure_reason: 业务级失败原因；系统异常时保持 ``None``
+        """
         self.status = TaskStatus.FAILED
         self.error = error
+        self.failure_reason = failure_reason
         self.completed_at = datetime.now(timezone.utc)
 
     def cancel(self) -> None:
@@ -163,6 +174,7 @@ class Task:
         self.completed_at = None
         self.result = None
         self.error = None
+        self.failure_reason = None
         self.node_id = ""
         self.progress = 0.0
         self.progress_message = ""

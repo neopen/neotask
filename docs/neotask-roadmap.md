@@ -25,6 +25,10 @@
 
 **目标**：在 Memory / SQLite 本地场景下，任务执行能力覆盖 Checkpoint、成本采集、父子关联、自定义失败、本地上下文共享与完整事件类型。
 
+> **实现依据**：本节范围已由 [neotask-v1.1.0-design.md](./neotask-v1.1.0-design.md) 定稿细化，
+> 其中第 5 项 Blackboard 收缩为仅 Memory 后端，第 7 项外部 task_id 在 1.0.x 已基本落地、本版本仅补
+> `has_task()`。与本文档冲突处以设计文档为准。
+
 ### P0 功能项
 
 #### 1. Checkpoint 断点续跑
@@ -48,9 +52,10 @@
 - 查询接口：`pool.get_children(task_id)`、`pool.get_parent(task_id)`。
 - **不做自动汇总触发**：父任务完成判断由调用方或编排层决定，NeoTask 不越界。
 
-#### 4. 自定义失败状态
+#### 4. 自定义失败状态（批次 1 已交付）
 - `report_failure(reason=...)`：执行器标记业务级失败（如 `qa_failed`）。
 - `task.failed` 事件携带 `reason` 字段，区别于系统异常。
+- 收尾语义与持久化细节见设计文档决策 2；用法见 `examples/17_business_failure.py`。
 
 #### 5. 本地上下文读写原语（Blackboard）
 - `context_set(key, value, ttl=...)`
@@ -59,15 +64,20 @@
 - Memory 后端进程内 dict + TTL 清理；SQLite / Redis 落对应存储。
 - 仅在本地生效，不承担跨服务数据传递职责。
 
-#### 6. 事件类型补全
+#### 6. 事件类型补全（批次 1 已交付常量注册表与信封扩展）
 - 已有：`task.created` / `task.started` / `task.completed` / `task.failed` / `task.cancelled` / `task.retry` / `task.progress`
 - 新增：`task.checkpointed`、`task.cost_reported`
 - 事件信封稳定化，为未来远程上报预留字段（当前不做上报）。
+- 注册表实际覆盖 10 个在途事件名（含文档未列出的 `task.status_changed` / `task.deleted` /
+  `task.reclaimed`），统一由 `neotask.EventType` 常量提供。
 
-#### 7. 外部指定 task_id（提前小项）
+#### 7. 外部指定 task_id（已交付）
 - `pool.submit(data, task_id=..., priority=...)`：支持外部传入 ID。
 - `pool.has_task(task_id)`：幂等检查。
 - 成本低且本地有价值，提前交付，不构成编排依赖。
+- 定稿：公开名沿用既有 `pool.task_exists()`（未新增 `has_task()` 别名），
+  重复提交同一 ID 抛 `TaskAlreadyExistsError`；`TaskScheduler` 补齐 `task_exists_async()`。
+  用法见 `examples/16_custom_task_id.py`。
 
 ### 验收标准
 - Memory / SQLite 后端下所有功能可用，每项配示例与测试（覆盖率 ≥80%）。

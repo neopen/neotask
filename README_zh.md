@@ -383,6 +383,7 @@ print(result.format())        # result.to_dict() 可直接 json.dumps
 | `pool.get_status(task_id)`                                   | 获取任务状态                                                 |
 | `pool.cancel(task_id)`                                       | 取消任务                                                     |
 | `pool.task_exists(task_id)`                                  | 判断任务 ID 是否已存在（幂等重提交）                          |
+| `pool.report_failure(task_id, reason, detail="")`            | 按业务原因终结运行中的任务（不进入自动重试）                  |
 | `pool.on_progress(handler)`                                  | 订阅进度事件                                                 |
 | `scheduler.submit_delayed(data, delay_seconds)`              | 提交延时任务                                                 |
 | `scheduler.submit_interval(data, interval_seconds)`          | 提交周期任务                                                 |
@@ -410,10 +411,16 @@ print(result.failed)     # [{"index": 3, "data": {...}, "error": "queue is full"
 
 - **`get_result` 与 `wait_for_result` 的区别**：`wait_for_result(task_id)` 直接返回
   executor 的原始结果；`get_result(task_id)` 返回元数据包装字典
-  `{task_id, status, result, error, created_at, completed_at}`，真实结果在 `result` 字段。
+  `{task_id, status, result, error, failure_reason, created_at, completed_at}`，真实结果在 `result` 字段。
+- **业务失败与异常失败**：审核不通过、风控拒绝这类"业务判失败"应在执行器内调用
+  `neotask.report_failure("qa_failed", "score=10")` 后正常返回——NeoTask 会把任务定稿为
+  `FAILED`、记录 `failure_reason="qa_failed"`、`retry_count` 保持 0，并在 `task.failed`
+  事件里带上 `reason`；抛异常仍走原有的自动重试与死信投递。执行器之外用
+  `pool.report_failure(task_id, reason)`，它只接受 RUNNING 状态的任务。
 - **事件类型串**：生命周期事件名是带命名空间的 `task.created` / `task.started` /
   `task.completed` / `task.failed` / `task.cancelled` / `task.retry`（而非裸 `created`），
-  建议直接使用 `pool.on_completed(...)` 等便捷方法。
+  建议直接使用 `pool.on_completed(...)` 等便捷方法，或用 `EventType` 常量
+  （`from neotask import EventType`）订阅。
 - **优雅关闭的范围**：`shutdown(graceful=True)` 只会把已入队的任务（pending + running）
   排空后返回。未到期的延时任务、周期/Cron 调度在关闭期间**不会**被触发——请先
   `cancel_periodic` 取消周期调度，或用 `graceful=False` 立即返回。停机时会输出摘要，

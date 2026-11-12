@@ -22,6 +22,7 @@ NeoTask 示例索引（examples/）
 14_event_backpressure.py EventBus 背压   有界队列丢弃策略、慢回调监控与隔离（约 2 秒）
 15_low_jitter_delay.py   低抖动延时      延迟队列 vs 时间轮的触发精度对比（约 3 秒）
 16_custom_task_id.py     外部任务 ID     业务自持 task_id、task_exists 与幂等重提交
+17_business_failure.py   业务失败上报    report_failure 登记原因、跳过自动重试、事件携带 reason
 99_all_features.py       完整演示        即时+优先级+批量+事件+进度+统计+定时（约 7 秒）
 
 说明：

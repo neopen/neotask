@@ -1028,6 +1028,22 @@ class TaskScheduler:
         """
         return self._pool.retry(task_id, delay)
 
+    def report_failure(self, task_id: str, reason: str, detail: str = "") -> bool:
+        """按业务原因终结任务
+
+        状态定为 ``FAILED`` 并记录 ``failure_reason``，不进入自动重试；
+        仅对 RUNNING 状态生效。
+
+        Args:
+            task_id: 任务ID
+            reason: 业务失败原因标识，如 ``qa_failed``
+            detail: 可选补充说明
+
+        Returns:
+            是否成功终结任务
+        """
+        return self._pool.report_failure(task_id, reason, detail)
+
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息
 

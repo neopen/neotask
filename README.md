@@ -384,6 +384,7 @@ How the numbers are measured:
 | `pool.get_status(task_id)`                                   | Get status                                                   |
 | `pool.cancel(task_id)`                                       | Cancel task                                                  |
 | `pool.task_exists(task_id)`                                  | Check whether a task id is taken (idempotent resubmit)       |
+| `pool.report_failure(task_id, reason, detail="")`            | Fail a running task with a business reason (skips auto-retry) |
 | `pool.on_progress(handler)`                                  | Subscribe to progress events                                 |
 | `scheduler.submit_delayed(data, delay_seconds)`              | Delayed task                                                 |
 | `scheduler.submit_interval(data, interval_seconds)`          | Periodic task                                                |
@@ -415,11 +416,21 @@ A few behaviors are easy to trip over, so they are documented explicitly:
 
 - **`get_result` vs `wait_for_result`**: `wait_for_result(task_id)` returns the
   executor's raw value, while `get_result(task_id)` returns a metadata wrapper
-  dict `{task_id, status, result, error, created_at, completed_at}` — the real
-  payload is under `result`.
+  dict `{task_id, status, result, error, failure_reason, created_at, completed_at}` —
+  the real payload is under `result`.
+- **Business failure vs exception**: a task that fails because the *business*
+  said so (review rejected, risk score too low) should report a reason instead
+  of raising, so it doesn't burn the retry budget. Call
+  `neotask.report_failure("qa_failed", "score=10")` inside the executor and
+  return normally — NeoTask finalizes the task as `FAILED` with
+  `failure_reason="qa_failed"`, keeps `retry_count` at 0, and puts `reason` on
+  the `task.failed` event. From outside the executor use
+  `pool.report_failure(task_id, reason)`, which only accepts a running task.
+  Raising an exception keeps the existing retry + dead-letter behaviour.
 - **Event keys**: lifecycle event types are namespaced as `task.created` /
   `task.started` / `task.completed` / `task.failed` / `task.cancelled` / `task.retry`
-  (not bare `created`). Prefer the `pool.on_completed(...)` helpers.
+  (not bare `created`). Prefer the `pool.on_completed(...)` helpers, or subscribe
+  with the `EventType` constants (`from neotask import EventType`).
 - **Graceful shutdown scope**: `shutdown(graceful=True)` drains tasks that are
   already enqueued (pending + running) before returning. Unexpired delayed
   tasks and periodic/cron schedules are **not** fired during shutdown — cancel

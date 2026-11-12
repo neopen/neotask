@@ -31,8 +31,14 @@ _BATCH_CHUNK = 500
 _TASK_COLUMNS = {
     "data", "status", "priority", "node_id", "retry_count", "ttl",
     "created_at", "started_at", "completed_at", "result", "error",
-    "progress", "progress_message",
+    "progress", "progress_message", "failure_reason",
 }
+
+#: v1.1.0 起新增的任务列：老库文件在启动期按此表自动补列。
+#: 仅限“新增列 + 有默认值 + 不搬运数据”，跨后端搬迁仍走 scripts/migrate_*.py。
+_NEW_TASK_COLUMNS = (
+    ("failure_reason", "TEXT"),
+)
 
 
 def _serialize_field(name: str, value: Any) -> Any:
@@ -51,6 +57,30 @@ def _serialize_field(name: str, value: Any) -> Any:
         return json.dumps(value) if value is not None else None
     return value
 
+
+def _row_to_task(row: Dict[str, Any]) -> Task:
+    """tasks 表的一行还原成 Task
+
+    ``get`` / 条件查询 / ``list`` 三条读取路径共用：新增列只需在这里登记一次，
+    避免多处手工映射漏字段。老库尚未补列时由 ``.get`` 兜默认值。
+    """
+    return Task.from_dict({
+        "task_id": row["task_id"],
+        "data": row["data"],
+        "status": row["status"],
+        "priority": row["priority"],
+        "node_id": row["node_id"],
+        "retry_count": row["retry_count"],
+        "ttl": row.get("ttl", 3600),
+        "created_at": row["created_at"],
+        "started_at": row["started_at"],
+        "completed_at": row["completed_at"],
+        "result": row["result"],
+        "error": row["error"],
+        "progress": row.get("progress", 0.0),
+        "progress_message": row.get("progress_message", ""),
+        "failure_reason": row.get("failure_reason"),
+    })
 
 
 class SQLiteTaskRepository(TaskRepository):
@@ -116,6 +146,9 @@ class SQLiteTaskRepository(TaskRepository):
                 progress_message TEXT DEFAULT ''
             )
         """)
+        # v1.1.0 起的新列不写进上面的 CREATE TABLE，统一由 _add_missing_columns 补齐：
+        # 新建库当场 ALTER 一次，1.0.x 老库同样走这条路，新列只在一处声明。
+        await self._add_missing_columns(conn)
         await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_tasks_status 
             ON tasks(status)
@@ -130,6 +163,25 @@ class SQLiteTaskRepository(TaskRepository):
             ON tasks(created_at)
         """)
         await conn.commit()
+
+    async def _add_missing_columns(self, conn) -> None:
+        """启动期为已存在的 ``tasks`` 表补齐新增列（只加列，不搬运数据）
+
+        1.0.x 的老库文件缺列时逐条 ``ALTER TABLE ADD COLUMN``；新列默认值由
+        SQLite 在读取时给出，无需回填。列名来自模块常量而非外部输入，
+        因此拼接 DDL 不存在注入面。
+        """
+        cursor = await conn.execute("PRAGMA table_info(tasks)")
+        try:
+            rows = await cursor.fetchall()
+        finally:
+            await cursor.close()
+
+        present = {row[1] for row in rows}
+        for name, column_type in _NEW_TASK_COLUMNS:
+            if name in present:
+                continue
+            await conn.execute(f"ALTER TABLE tasks ADD COLUMN {name} {column_type}")
 
     @staticmethod
     def _task_values(task: Task) -> tuple:
@@ -148,7 +200,8 @@ class SQLiteTaskRepository(TaskRepository):
             json.dumps(task.result) if task.result is not None else None,
             task.error,
             getattr(task, 'progress', 0.0),
-            getattr(task, 'progress_message', '')
+            getattr(task, 'progress_message', ''),
+            getattr(task, 'failure_reason', None)
         )
 
     async def save(self, task: Task) -> None:
@@ -156,8 +209,9 @@ class SQLiteTaskRepository(TaskRepository):
         await self._conn.execute("""
             INSERT OR REPLACE INTO tasks 
             (task_id, data, status, priority, node_id, retry_count, ttl,
-             created_at, started_at, completed_at, result, error, progress, progress_message)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             created_at, started_at, completed_at, result, error, progress, progress_message,
+             failure_reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, self._task_values(task))
         await self._conn.commit()
 
@@ -167,8 +221,9 @@ class SQLiteTaskRepository(TaskRepository):
         cursor = await self._conn.execute("""
             INSERT OR IGNORE INTO tasks 
             (task_id, data, status, priority, node_id, retry_count, ttl,
-             created_at, started_at, completed_at, result, error, progress, progress_message)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             created_at, started_at, completed_at, result, error, progress, progress_message,
+             failure_reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, self._task_values(task))
         inserted = cursor.rowcount > 0
         await cursor.close()
@@ -205,32 +260,16 @@ class SQLiteTaskRepository(TaskRepository):
         if not new_tasks:
             return []
 
-        params = [
-            (
-                task.task_id,
-                json.dumps(task.data),
-                task.status.value,
-                task.priority.value,
-                task.node_id,
-                task.retry_count,
-                getattr(task, 'ttl', 3600),
-                task.created_at.isoformat(),
-                task.started_at.isoformat() if task.started_at else None,
-                task.completed_at.isoformat() if task.completed_at else None,
-                json.dumps(task.result) if task.result is not None else None,
-                task.error,
-                getattr(task, 'progress', 0.0),
-                getattr(task, 'progress_message', ''),
-            )
-            for task in new_tasks
-        ]
+        # 参数顺序由 _task_values 单点定义，避免批量写入与单条写入漏列
+        params = [self._task_values(task) for task in new_tasks]
         # 单事务写入：整批原子提交。事务在专用 loop 内一次执行并全程持写锁，
         # 避免并发批量/单条写在共享连接上交错触发 BEGIN/COMMIT 竞态。
         await self._conn.executemany_transaction("""
             INSERT OR IGNORE INTO tasks
             (task_id, data, status, priority, node_id, retry_count, ttl,
-             created_at, started_at, completed_at, result, error, progress, progress_message)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             created_at, started_at, completed_at, result, error, progress, progress_message,
+             failure_reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, params)
         return [task.task_id for task in new_tasks]
 
@@ -325,24 +364,7 @@ class SQLiteTaskRepository(TaskRepository):
         if not row:
             return None
 
-        data = dict(zip(columns, row))
-
-        return Task.from_dict({
-            "task_id": data["task_id"],
-            "data": data["data"],
-            "status": data["status"],
-            "priority": data["priority"],
-            "node_id": data["node_id"],
-            "retry_count": data["retry_count"],
-            "ttl": data.get("ttl", 3600),
-            "created_at": data["created_at"],
-            "started_at": data["started_at"],
-            "completed_at": data["completed_at"],
-            "result": data["result"],
-            "error": data["error"],
-            "progress": data.get("progress", 0.0),
-            "progress_message": data.get("progress_message", "")
-        })
+        return _row_to_task(dict(zip(columns, row)))
 
     async def delete(self, task_id: str) -> None:
         await self._ensure_init()
@@ -377,23 +399,7 @@ class SQLiteTaskRepository(TaskRepository):
 
         tasks = []
         for row in rows:
-            data = dict(zip(columns, row))
-            tasks.append(Task.from_dict({
-                "task_id": data["task_id"],
-                "data": data["data"],
-                "status": data["status"],
-                "priority": data["priority"],
-                "node_id": data["node_id"],
-                "retry_count": data["retry_count"],
-                "ttl": data.get("ttl", 3600),
-                "created_at": data["created_at"],
-                "started_at": data["started_at"],
-                "completed_at": data["completed_at"],
-                "result": data["result"],
-                "error": data["error"],
-                "progress": data.get("progress", 0.0),
-                "progress_message": data.get("progress_message", "")
-            }))
+            tasks.append(_row_to_task(dict(zip(columns, row))))
 
         return tasks
 
@@ -490,23 +496,7 @@ class SQLiteTaskRepository(TaskRepository):
 
         tasks = []
         for row in rows:
-            data = dict(zip(columns, row))
-            tasks.append(Task.from_dict({
-                "task_id": data["task_id"],
-                "data": data["data"],
-                "status": data["status"],
-                "priority": data["priority"],
-                "node_id": data["node_id"],
-                "retry_count": data["retry_count"],
-                "ttl": data.get("ttl", 3600),
-                "created_at": data["created_at"],
-                "started_at": data["started_at"],
-                "completed_at": data["completed_at"],
-                "result": data["result"],
-                "error": data["error"],
-                "progress": data.get("progress", 0.0),
-                "progress_message": data.get("progress_message", "")
-            }))
+            tasks.append(_row_to_task(dict(zip(columns, row))))
 
         return tasks
 

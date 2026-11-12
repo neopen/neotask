@@ -712,11 +712,24 @@ class TaskLifecycleManager:
         debug(f"Task {task_id} completed successfully")
         return True
 
-    async def fail_task(self, task_id: str, error: str, allow_pending: bool = False) -> bool:
+    async def fail_task(
+            self,
+            task_id: str,
+            error: str,
+            allow_pending: bool = False,
+            failure_reason: Optional[str] = None,
+    ) -> bool:
         """任务失败
 
         正常情况下只有 RUNNING 状态的任务可以标记为失败。`allow_pending=True`
         用于入队失败的回滚：任务已落库为 PENDING 但从未进入队列，只能在这里终结。
+
+        Args:
+            task_id: 任务ID
+            error: 失败信息
+            allow_pending: 是否允许终结尚未开始的任务
+            failure_reason: 业务级失败原因（如 ``qa_failed``）。系统异常时留空，
+                两者靠该字段区分，状态同为 ``FAILED``。
         """
         task = await self.get_task(task_id)
 
@@ -742,10 +755,10 @@ class TaskLifecycleManager:
         await self._resolve_deferred_running(task_id)
 
         old_status = task.status
-        task.fail(error)
+        task.fail(error, failure_reason)
         await self._task_repo.save_fields(
             task,
-            ("status", "started_at", "error", "completed_at")
+            ("status", "started_at", "error", "completed_at", "failure_reason")
         )
         self._clear_progress_flush(task_id)
 
@@ -759,7 +772,11 @@ class TaskLifecycleManager:
         await self._emit_event(
             EventType.FAILED,
             task_id,
-            {"error": error, "old_status": old_status.value}
+            {
+                "error": error,
+                "old_status": old_status.value,
+                "reason": task.failure_reason,
+            }
         )
 
         return True

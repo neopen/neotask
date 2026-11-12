@@ -866,6 +866,7 @@ class TaskPool:
             "status": task.status.value,
             "result": task.result,
             "error": task.error,
+            "failure_reason": task.failure_reason,
             "created_at": task.created_at.isoformat() if task.created_at else None,
             "completed_at": task.completed_at.isoformat() if task.completed_at else None,
         }
@@ -880,6 +881,7 @@ class TaskPool:
             "status": task.status.value,
             "result": task.result,
             "error": task.error,
+            "failure_reason": task.failure_reason,
             "created_at": task.created_at.isoformat() if task.created_at else None,
             "completed_at": task.completed_at.isoformat() if task.completed_at else None,
         }
@@ -942,6 +944,48 @@ class TaskPool:
     async def retry_async(self, task_id: str, delay: float = 0) -> bool:
         """重试失败的任务（异步）"""
         return await self._dispatcher.redispatch(task_id, delay)
+
+    # ========== 业务失败 API ==========
+
+    def report_failure(self, task_id: str, reason: str, detail: str = "") -> bool:
+        """按业务原因终结任务（同步）
+
+        与执行体内 ``neotask.report_failure()`` 的区别只在于调用位置：本方法从
+        外部（编排层、进程执行器的父进程）立即把任务定为 ``FAILED`` 并记录
+        ``failure_reason``，**不进入自动重试**。
+
+        仅对 RUNNING 状态生效；仍在排队的 PENDING 任务请先用 ``cancel()``。
+
+        Args:
+            task_id: 任务ID
+            reason: 业务失败原因标识，如 ``qa_failed``
+            detail: 可选补充说明，会拼进任务的 ``error`` 字段
+
+        Returns:
+            是否成功终结任务
+        """
+        self._ensure_running()
+        # _run_coroutine 返回 Any，此处按声明收窄，避免公开 API 泄漏 Any
+        return bool(self._run_coroutine(
+            self._lifecycle.fail_task(
+                task_id,
+                f"{reason}: {detail}" if detail else reason,
+                failure_reason=reason,
+            )
+        ))
+
+    async def report_failure_async(
+            self,
+            task_id: str,
+            reason: str,
+            detail: str = ""
+    ) -> bool:
+        """按业务原因终结任务（异步）"""
+        return await self._lifecycle.fail_task(
+            task_id,
+            f"{reason}: {detail}" if detail else reason,
+            failure_reason=reason,
+        )
 
     # ========== 终态清理 API ==========
 

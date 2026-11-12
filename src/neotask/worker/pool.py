@@ -16,7 +16,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Optional, cast
 
+from neotask.common.constants import EventType
 from neotask.common.logger import debug, warning, error
+from neotask.core.failure import (
+    BusinessFailure,
+    reset_failure_recorder,
+    set_failure_recorder,
+)
 from neotask.core.lifecycle import TaskLifecycleManager
 from neotask.core.progress import (
     ProgressReporter,
@@ -443,8 +449,14 @@ class WorkerPool:
             # 获取当前重试次数
             current_retry = task.retry_count
 
+            recorder = BusinessFailure()
             try:
-                result = await self._execute_with_progress(task)
+                result = await self._execute_with_progress(task, recorder)
+
+                if recorder.triggered:
+                    # 业务级失败：按登记原因收尾，不进入自动重试链路
+                    await self._fail_business(task_id, recorder, worker_id)
+                    return
 
                 # 标记完成（强制关闭时存储连接可能已断开，降级为告警而非未捕获异常）
                 try:
@@ -490,12 +502,44 @@ class WorkerPool:
                     self._worker_stats[worker_id].is_busy = self._worker_stats[worker_id].active_tasks > 0
                     self._worker_stats[worker_id].last_active = datetime.now()
 
-    async def _execute_with_progress(self, task) -> Any:
-        """执行任务，并向业务代码暴露进度上报钩子
+    async def _fail_business(self, task_id: str, recorder: BusinessFailure, worker_id: int) -> None:
+        """按业务登记的原因终结任务：状态为 FAILED，不消耗重试预算
 
-        通过 ContextVar 绑定 :class:`ProgressReporter`，业务代码可在 executor 中
-        调用 ``report_progress()`` / ``report_progress_sync()``；同时把回调传给
-        ``execute_with_progress()``，自定义 executor 也可以直接使用该回调。
+        业务判定失败（如 ``qa_failed``）重试通常只是重复同样的输入与成本，
+        因此直接定稿。也不投递死信：任务已可按 ``failure_reason`` 查询，
+        与系统异常导致的重试耗尽区分开。
+
+        Args:
+            task_id: 任务ID
+            recorder: 本次执行的失败登记器
+            worker_id: 处理该任务的 worker 编号
+        """
+        error_msg = recorder.message
+        warning(f"Task {task_id} reported business failure: {error_msg}")
+        try:
+            await self._lifecycle.fail_task(
+                task_id,
+                error_msg,
+                failure_reason=recorder.reason
+            )
+        except Exception as save_err:
+            warning(
+                f"Failed to persist business failure for task {task_id} "
+                f"(storage closing?): {save_err}"
+            )
+        self._worker_stats[worker_id].failed_tasks += 1
+
+    async def _execute_with_progress(self, task, recorder: BusinessFailure) -> Any:
+        """执行任务，并向业务代码暴露进度上报钩子与失败登记器
+
+        通过 ContextVar 绑定 :class:`ProgressReporter` 与 :class:`BusinessFailure`，
+        业务代码可在 executor 中调用 ``report_progress()`` / ``report_progress_sync()``
+        与 ``report_failure()``；同时把回调传给 ``execute_with_progress()``，
+        自定义 executor 也可以直接使用该回调。
+
+        Args:
+            task: 待执行任务
+            recorder: 本次执行的失败登记器，调用方在执行结束后读取登记结果
         """
         task_id = task.task_id
 
@@ -504,6 +548,7 @@ class WorkerPool:
 
         reporter = ProgressReporter(progress_callback)
         token = set_progress_reporter(reporter)
+        failure_token = set_failure_recorder(recorder)
         try:
             execution = self._executor.execute_with_progress(
                 task.data,
@@ -513,6 +558,7 @@ class WorkerPool:
                 return await asyncio.wait_for(execution, timeout=self._task_timeout)
             return await execution
         finally:
+            reset_failure_recorder(failure_token)
             reset_progress_reporter(token)
 
     async def _update_task_progress(self, task_id: str, progress: float, message: str = "") -> None:
@@ -583,7 +629,7 @@ class WorkerPool:
 
             # 发送重试事件
             await self._event_bus.emit(TaskEvent(
-                "task.retry",
+                EventType.RETRY,
                 task_id,
                 {
                     "error": error_msg,

@@ -28,6 +28,13 @@ from neotask.core.progress import (
     report_progress_sync,
 )
 
+# 业务级失败登记
+from neotask.core.failure import (
+    BusinessFailure,
+    get_failure_recorder,
+    report_failure,
+)
+
 # 事件总线
 from neotask.common.constants import EventType
 from neotask.event.bus import EventBus, TaskEvent
@@ -111,11 +118,14 @@ __all__ = [
     "report_progress",
     "report_progress_sync",
     "get_progress_reporter",
+    "BusinessFailure",
+    "get_failure_recorder",
+    "report_failure",
 
     # 事件
     "EventBus",
-    "EventType",
     "TaskEvent",
+    "EventType",
 
     # 执行器
     "TaskExecutor",

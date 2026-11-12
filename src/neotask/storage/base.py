@@ -11,6 +11,8 @@ See LICENSE File For Details.
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from datetime import datetime
 import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from neotask.models.task import Task, TaskStatus
@@ -365,6 +367,65 @@ class TaskRepository(ABC):
 
     async def close(self) -> None:
         """Release underlying resources; no-op for memory implementations."""
+        return None
+
+
+@dataclass
+class CheckpointRecord:
+    """单个 checkpoint 版本的快照
+
+    ``state`` 为执行器写入的任意可 JSON 序列化字典；``version`` 从 1 开始
+    按任务递增，0 保留给「无 checkpoint」。
+    """
+
+    task_id: str
+    version: int
+    state: Dict[str, Any]
+    created_at: datetime
+
+
+class CheckpointRepository(ABC):
+    """Repository interface for task checkpoints.
+
+    中间状态独立存储（SQLite ``task_checkpoints`` 表 / Redis hash / Memory
+    deque），``tasks.checkpoint_version`` 只作为存在性标记，避免每次 checkpoint
+    写入重写整行任务数据。
+
+    ``handles_task_marker`` 为 True 的后端在 :meth:`save` 内**原子**更新
+    ``tasks.checkpoint_version``（SQLite 多语句事务 / Redis 脚本）；为 False 时
+    由生命周期管理器在保存后单独补写标记（Memory 单 loop 顺序执行）。
+    """
+
+    #: save() 是否同时原子维护任务上的 checkpoint_version 标记
+    handles_task_marker: bool = False
+
+    @abstractmethod
+    async def save(self, task_id: str, version: int, state: Dict[str, Any]) -> None:
+        """写入指定版本的 checkpoint（同版本覆盖）"""
+        pass
+
+    @abstractmethod
+    async def load_latest(self, task_id: str) -> Optional[CheckpointRecord]:
+        """读取版本号最大的 checkpoint；不存在返回 None"""
+        pass
+
+    @abstractmethod
+    async def load(self, task_id: str, version: int) -> Optional[CheckpointRecord]:
+        """读取指定版本的 checkpoint；不存在返回 None"""
+        pass
+
+    @abstractmethod
+    async def prune(self, task_id: str, keep: int) -> int:
+        """只保留版本号最大的 ``keep`` 个 checkpoint，返回淘汰数量"""
+        pass
+
+    @abstractmethod
+    async def delete(self, task_id: str) -> None:
+        """删除某任务的全部 checkpoint"""
+        pass
+
+    async def close(self) -> None:
+        """Release underlying resources; no-op by default."""
         return None
 
 

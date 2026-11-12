@@ -12,12 +12,14 @@ See LICENSE File For Details.
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from neotask.models.task import Task, TaskPriority, TaskStatus
 from neotask.storage.base import (
+    CheckpointRecord,
+    CheckpointRepository,
     TaskRepository,
     QueueRepository,
     merge_cost_detail,
@@ -761,4 +763,160 @@ class SQLiteQueueRepository(QueueRepository):
         self._conn = None
         self._initialized = False
         if conn is not None:
+            await sqlite_compat.release_shared_connection(conn)
+
+
+def _row_to_checkpoint(row: Tuple[Any, ...]) -> CheckpointRecord:
+    """task_checkpoints 表的一行还原成 CheckpointRecord"""
+    task_id, version, state, created_at = row
+    try:
+        parsed_state = json.loads(state) if state else {}
+    except (ValueError, TypeError):
+        parsed_state = {}
+    if not isinstance(parsed_state, dict):
+        parsed_state = {}
+    try:
+        created = datetime.fromisoformat(created_at)
+    except (ValueError, TypeError):
+        created = datetime.now(timezone.utc)
+    return CheckpointRecord(
+        task_id=task_id,
+        version=int(version),
+        state=parsed_state,
+        created_at=created,
+    )
+
+
+class SQLiteCheckpointRepository(CheckpointRepository):
+    """SQLite checkpoint 存储（独立表 + 原子标记更新）"""
+
+    #: save() 在同一事务内更新 tasks.checkpoint_version
+    handles_task_marker = True
+
+    def __init__(
+            self,
+            db_path: Optional[str] = None,
+            *,
+            pragmas: Optional[Iterable[str]] = None,
+            connection: Optional[Any] = None,
+    ):
+        self.db_path = Path(db_path or "/data/tasks.db")
+        self._pragmas = pragmas
+        # connection= 为测试注入：调用方持有生命周期，close() 不释放它。
+        # 默认路径按 db_path 取共享连接（引用计数 +1），与任务仓储共用一条连接。
+        self._conn = connection
+        self._owns_connection = connection is None
+        if self._owns_connection:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._initialized = False
+
+    async def _ensure_init(self) -> None:
+        if self._initialized:
+            return
+        if self._conn is None:
+            self._conn = sqlite_compat.acquire_shared_connection(
+                self.db_path,
+                pragmas=self._pragmas,
+            )
+        conn = self._conn
+        await self._init_db(conn)
+        if self._conn is conn:
+            self._initialized = True
+
+    async def _init_db(self, conn: Any) -> None:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS task_checkpoints (
+                task_id TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                state TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (task_id, version)
+            )
+        """)
+        await conn.commit()
+
+    async def save(self, task_id: str, version: int, state: Dict[str, Any]) -> None:
+        """写 checkpoint 并更新任务标记：两条语句同一事务提交"""
+        await self._ensure_init()
+        conn: Any = self._conn
+        await conn.statements_transaction([
+            (
+                "INSERT OR REPLACE INTO task_checkpoints "
+                "(task_id, version, state, created_at) VALUES (?, ?, ?, ?)",
+                (
+                    task_id,
+                    int(version),
+                    json.dumps(state, ensure_ascii=False),
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            ),
+            (
+                "UPDATE tasks SET checkpoint_version = ? WHERE task_id = ?",
+                (int(version), task_id),
+            ),
+        ])
+
+    async def load_latest(self, task_id: str) -> Optional[CheckpointRecord]:
+        await self._ensure_init()
+        conn: Any = self._conn
+        cursor = await conn.execute(
+            "SELECT task_id, version, state, created_at FROM task_checkpoints "
+            "WHERE task_id = ? ORDER BY version DESC LIMIT 1",
+            (task_id,)
+        )
+        try:
+            row = await cursor.fetchone()
+        finally:
+            await cursor.close()
+        return _row_to_checkpoint(row) if row else None
+
+    async def load(self, task_id: str, version: int) -> Optional[CheckpointRecord]:
+        await self._ensure_init()
+        conn: Any = self._conn
+        cursor = await conn.execute(
+            "SELECT task_id, version, state, created_at FROM task_checkpoints "
+            "WHERE task_id = ? AND version = ?",
+            (task_id, int(version))
+        )
+        try:
+            row = await cursor.fetchone()
+        finally:
+            await cursor.close()
+        return _row_to_checkpoint(row) if row else None
+
+    async def prune(self, task_id: str, keep: int) -> int:
+        """只保留版本号最大的 keep 个 checkpoint，返回淘汰数量"""
+        await self._ensure_init()
+        conn: Any = self._conn
+        keep = max(0, int(keep))
+        if keep == 0:
+            cursor = await conn.execute(
+                "DELETE FROM task_checkpoints WHERE task_id = ?", (task_id,)
+            )
+        else:
+            cursor = await conn.execute(
+                "DELETE FROM task_checkpoints WHERE task_id = ? "
+                "AND version NOT IN ("
+                "SELECT version FROM task_checkpoints WHERE task_id = ? "
+                "ORDER BY version DESC LIMIT ?)",
+                (task_id, task_id, keep)
+            )
+        removed = cursor.rowcount
+        await cursor.close()
+        await conn.commit()
+        return max(0, int(removed or 0))
+
+    async def delete(self, task_id: str) -> None:
+        await self._ensure_init()
+        conn: Any = self._conn
+        await conn.execute(
+            "DELETE FROM task_checkpoints WHERE task_id = ?", (task_id,)
+        )
+        await conn.commit()
+
+    async def close(self) -> None:
+        conn = self._conn
+        self._conn = None
+        self._initialized = False
+        if conn is not None and self._owns_connection:
             await sqlite_compat.release_shared_connection(conn)

@@ -17,6 +17,31 @@ class TaskSchedulerError(Exception):
     pass
 
 
+class NeoTaskError(TaskSchedulerError):
+    """能力级错误基类。
+
+    用于「当前后端/配置不支持某特性」这类可预期失败；调用方据此决定降级
+    或换后端，而不是把它当成任务执行失败。
+    """
+    pass
+
+
+class UnsupportedFeatureError(NeoTaskError):
+    """后端或运行配置不支持请求的能力
+
+    Args:
+        feature: 能力名，如 ``checkpoint`` / ``blackboard``
+        backend: 后端名，如 ``redis`` / ``sqlite``
+    """
+
+    def __init__(self, feature: str, backend: str):
+        super().__init__(
+            f"{feature} is not supported by the '{backend}' backend"
+        )
+        self.feature = feature
+        self.backend = backend
+
+
 class TaskNotFoundError(TaskSchedulerError):
     """Raised when task is not found."""
 

@@ -13,11 +13,15 @@ See LICENSE File For Details.
 import copy
 import heapq
 import threading
-from typing import Optional, Dict, List, Tuple
+import time
+from datetime import datetime, timezone
+from typing import Any, Optional, Dict, List, Tuple
 
 from neotask.common.logger import debug, warning
 from neotask.models.task import Task, TaskStatus
 from neotask.storage.base import (
+    CheckpointRecord,
+    CheckpointRepository,
     TaskRepository,
     QueueRepository,
     new_cost_summary,
@@ -240,6 +244,67 @@ class MemoryTaskRepository(TaskRepository):
                     del self._tasks[task_id]
                     deleted += 1
             return deleted
+
+
+class MemoryCheckpointRepository(CheckpointRepository):
+    """内存 checkpoint 存储
+
+    每个任务维护按版本升序的列表。单 loop 顺序执行下「写 checkpoint + 补写
+    任务标记」两次赋值之间没有可失败点，因此无需额外事务机制。
+    """
+
+    def __init__(self):
+        self._records: Dict[str, List[CheckpointRecord]] = {}
+        self._lock = threading.Lock()
+
+    async def save(self, task_id: str, version: int, state: Dict) -> None:
+        record = CheckpointRecord(
+            task_id=task_id,
+            version=int(version),
+            state=copy.deepcopy(state),
+            created_at=datetime.now(timezone.utc),
+        )
+        with self._lock:
+            records = self._records.setdefault(task_id, [])
+            for index, existing in enumerate(records):
+                if existing.version == record.version:
+                    records[index] = record
+                    break
+            else:
+                records.append(record)
+                records.sort(key=lambda item: item.version)
+        debug(f"Checkpoint v{version} saved for task {task_id}")
+
+    async def load_latest(self, task_id: str) -> Optional[CheckpointRecord]:
+        with self._lock:
+            records = self._records.get(task_id)
+            if not records:
+                return None
+            return copy.deepcopy(records[-1])
+
+    async def load(self, task_id: str, version: int) -> Optional[CheckpointRecord]:
+        with self._lock:
+            for record in self._records.get(task_id, []):
+                if record.version == version:
+                    return copy.deepcopy(record)
+        return None
+
+    async def prune(self, task_id: str, keep: int) -> int:
+        keep = max(0, int(keep))
+        with self._lock:
+            records = self._records.get(task_id)
+            if not records or len(records) <= keep:
+                return 0
+            removed = len(records) - keep
+            if keep == 0:
+                self._records.pop(task_id, None)
+            else:
+                self._records[task_id] = records[removed:]
+            return removed
+
+    async def delete(self, task_id: str) -> None:
+        with self._lock:
+            self._records.pop(task_id, None)
 
 
 class MemoryQueueRepository(QueueRepository):

@@ -34,7 +34,12 @@ except ImportError:  # pragma: no cover
 from neotask.common.constants import redis_key
 from neotask.common.exceptions import TaskAlreadyExistsError
 from neotask.models.task import Task, TaskPriority, TaskStatus
-from neotask.storage.base import TaskRepository, QueueRepository
+from neotask.storage.base import (
+    CheckpointRecord,
+    CheckpointRepository,
+    TaskRepository,
+    QueueRepository,
+)
 
 #: 队列 zset 键：任务仓储的「创建即入队」原子脚本需要直接写入这两个键
 _QUEUE_PRIORITY_KEY = redis_key("queue:priority")
@@ -795,6 +800,151 @@ class RedisQueueRepository(QueueRepository):
 
     async def close(self) -> None:
         """Close Redis connection."""
+        if self._client:
+            await self._client.close()
+            self._client = None
+
+
+#: checkpoint 原子写脚本：更新任务 JSON 里的 checkpoint_version 并写 hash 字段。
+#: 两条写入在同一脚本内完成，Redis 单线程执行天然原子。
+_SAVE_CHECKPOINT_LUA = """
+local raw = redis.call('GET', KEYS[1])
+if raw then
+    local ok, task = pcall(cjson.decode, raw)
+    if ok and type(task) == 'table' then
+        task['checkpoint_version'] = tonumber(ARGV[1])
+        redis.call('SET', KEYS[1], cjson.encode(task))
+    end
+end
+redis.call('HSET', KEYS[2], ARGV[1], ARGV[2])
+return 1
+"""
+
+
+def _parse_checkpoint(task_id: str, version: Any, raw: Any) -> Optional[CheckpointRecord]:
+    """把 hash 字段值还原成 CheckpointRecord，损坏数据返回 None"""
+    try:
+        payload = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    state = payload.get("state")
+    if not isinstance(state, dict):
+        state = {}
+    created_raw = payload.get("created_at") or ""
+    try:
+        created = datetime.fromisoformat(created_raw)
+    except (ValueError, TypeError):
+        created = datetime.now()
+    try:
+        version_int = int(version)
+    except (ValueError, TypeError):
+        return None
+    return CheckpointRecord(
+        task_id=task_id,
+        version=version_int,
+        state=state,
+        created_at=created,
+    )
+
+
+class RedisCheckpointRepository(CheckpointRepository):
+    """Redis checkpoint 存储（``neotask:ckpt:{task_id}`` hash，field=version）"""
+
+    #: save() 用 Lua 原子更新任务 JSON 中的 checkpoint_version
+    handles_task_marker = True
+
+    def __init__(self, redis_url: str, max_connections: int = 10):
+        self.redis_url = redis_url
+        self.max_connections = max_connections
+        self._client: Optional[Any] = None
+        self._save_script: Optional[Any] = None
+
+    async def _get_client(self) -> Any:
+        if not HAS_REDIS:
+            raise RuntimeError("redis not installed. Run: pip install neotask[redis]")
+        if self._client is None:
+            self._client = redis_compat.create_client(
+                self.redis_url,
+                max_connections=self.max_connections,
+                decode_responses=True,
+            )
+        return self._client
+
+    @staticmethod
+    def _ckpt_key(task_id: str) -> str:
+        return redis_key(f"ckpt:{task_id}")
+
+    @staticmethod
+    def _task_key(task_id: str) -> str:
+        return redis_key(f"task:{task_id}")
+
+    async def save(self, task_id: str, version: int, state: Dict[str, Any]) -> None:
+        client = await self._get_client()
+        script = self._save_script
+        if script is None:
+            script = client.register_script(_SAVE_CHECKPOINT_LUA)
+            self._save_script = script
+        payload = json.dumps(
+            {
+                "state": state,
+                "created_at": datetime.now().isoformat(),
+            },
+            default=str,
+        )
+        await script(
+            keys=[self._task_key(task_id), self._ckpt_key(task_id)],
+            args=[int(version), payload],
+        )
+
+    async def load_latest(self, task_id: str) -> Optional[CheckpointRecord]:
+        client = await self._get_client()
+        raw_map = await client.hgetall(self._ckpt_key(task_id))
+        best_version: Optional[int] = None
+        best_raw: Any = None
+        for field, raw in raw_map.items():
+            try:
+                version = int(field)
+            except (ValueError, TypeError):
+                continue
+            if best_version is None or version > best_version:
+                best_version = version
+                best_raw = raw
+        if best_version is None:
+            return None
+        return _parse_checkpoint(task_id, best_version, best_raw)
+
+    async def load(self, task_id: str, version: int) -> Optional[CheckpointRecord]:
+        client = await self._get_client()
+        raw = await client.hget(self._ckpt_key(task_id), str(int(version)))
+        if not raw:
+            return None
+        return _parse_checkpoint(task_id, version, raw)
+
+    async def prune(self, task_id: str, keep: int) -> int:
+        client = await self._get_client()
+        key = self._ckpt_key(task_id)
+        fields = await client.hkeys(key)
+        versions = []
+        for field in fields:
+            try:
+                versions.append(int(field))
+            except (ValueError, TypeError):
+                continue
+        keep = max(0, int(keep))
+        versions.sort(reverse=True)
+        stale = versions[keep:]
+        if not stale:
+            return 0
+        await client.hdel(key, *[str(version) for version in stale])
+        return len(stale)
+
+    async def delete(self, task_id: str) -> None:
+        client = await self._get_client()
+        await client.delete(self._ckpt_key(task_id))
+
+    async def close(self) -> None:
         if self._client:
             await self._client.close()
             self._client = None

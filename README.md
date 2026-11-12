@@ -60,6 +60,8 @@
 - **Custom Failure Reason** *(v1.1)* - Executors can mark business-level failures (e.g. `qa_failed`) via `report_failure(reason=...)`; the `task.failed` event carries the reason, distinct from system exceptions
 - **Cost Tracking** *(v1.1)* - Executors report tokens / API calls / estimated cost via `report_cost()`; `get_cost_summary()` aggregates per task or across a batch, with mixed currencies flagged as `MIXED`
 - **Parent-Child Association** *(v1.1)* - Tasks carry `parent_task_id` with `get_children()` / `get_parent()` queries; auto-aggregation is intentionally left to the caller or orchestrator
+- **Checkpoint & Resume** *(v1.1)* - Executors save intermediate state via `save_checkpoint()` / `load_checkpoint()` (or `pool.save_checkpoint(task_id, ...)` for process executors); `task.checkpointed` is emitted, and retries / `resume_from_checkpoint=True` resume from the latest version
+- **Local Blackboard** *(v1.1, Memory backend)* - Share process-local values with `context_set()` / `context_get()` / `context_delete()` (optional TTL); non-Memory backends raise `UnsupportedFeatureError` instead of silently degrading
 
 
 
@@ -390,6 +392,9 @@ How the numbers are measured:
 | `pool.get_children(task_id)` / `pool.get_parent(task_id)`    | Query the parent-child relation                              |
 | `pool.report_cost(task_id, tokens_in=0, tokens_out=0, api_calls=0, estimated_cost=None, currency=None)` | Add cost usage to a task and emit `task.cost_reported` |
 | `pool.get_cost_summary(task_ids=None)`                       | Aggregate cost across selected tasks or all tasks             |
+| `pool.save_checkpoint(task_id, state) / pool.load_checkpoint(task_id)` | Explicit checkpoint write / latest-state read (works for process executors) |
+| `pool.submit(..., task_id=..., resume_from_checkpoint=True)` | Resubmit with an external id and inject its latest checkpoint |
+| `pool.context_set(key, value, ttl=None) / context_get(key) / context_delete(key)` | Process-local blackboard (Memory backend only) |
 | `pool.on_progress(handler)`                                  | Subscribe to progress events                                 |
 | `scheduler.submit_delayed(data, delay_seconds)`              | Delayed task                                                 |
 | `scheduler.submit_interval(data, interval_seconds)`          | Periodic task                                                |
@@ -443,6 +448,18 @@ A few behaviors are easy to trip over, so they are documented explicitly:
   `task.started` / `task.completed` / `task.failed` / `task.cancelled` / `task.retry`
   (not bare `created`). Prefer the `pool.on_completed(...)` helpers, or subscribe
   with the `EventType` constants (`from neotask import EventType`).
+- **Checkpoint & resume**: inside async executors call
+  `await neotask.save_checkpoint(state)` / `await neotask.load_checkpoint()`;
+  thread executors use the `_sync` variants; process executors must use
+  `pool.save_checkpoint(task_id, state)` / `pool.load_checkpoint(task_id)`.
+  Automatic and manual retries inject the latest checkpoint into
+  `task.data["__checkpoint__"]`; pass `resume_from_checkpoint=True` to
+  `submit` / `create_pending_task` (requires an explicit `task_id`). Versions are
+  pruned to `checkpoint_keep_versions` (default 5), reflected in
+  `get_task()["checkpoint_version"]`, and every write emits `task.checkpointed`.
+- **Local blackboard**: `context_set` / `context_get` / `context_delete` are
+  process-local and **Memory backend only**. SQLite / Redis raise
+  `UnsupportedFeatureError` instead of silently doing nothing.
 - **Graceful shutdown scope**: `shutdown(graceful=True)` drains tasks that are
   already enqueued (pending + running) before returning. Unexpired delayed
   tasks and periodic/cron schedules are **not** fired during shutdown — cancel

@@ -152,8 +152,9 @@ contextvar 形态在拿不到上下文时返回 `False`（与 `report_progress` 
    `TaskScheduler` 内部持有 `TaskPool`，是第 4 处需向内部 pool 透传的参数。
 3. `enable_checkpoint=True` 且未注入时，由装配层调用 `create_checkpoint_repo` 自动创建，
    复用 task 仓储的连接（取值方式见下节）。
-4. `StorageFactory.register(name, task_repo_class, queue_repo_class)` 增可选参数
-   `ckpt_repo_class=None`；未注册时该后端调用 checkpoint API 显式报"后端不支持"，
+4. `RepositoryFactory.register(name, task_repo_class, queue_repo_class)` 增可选参数
+   `ckpt_repo_class=None`（注册表实际位于 `RepositoryFactory`，`StorageFactory` 无
+   `register` 方法）；未注册时该后端调用 checkpoint API 显式报"后端不支持"，
    **不得静默降级为 no-op**，否则自定义后端用户会误以为 checkpoint 生效。
 
 **收益**：批次 2/3 的改动范围由"改返回签名 + 三处装配"缩小为"新增工厂函数 + 四处可选参数"，
@@ -286,7 +287,13 @@ schema_version: int = 1
 >   `scripts/migrate_task_metadata.py`、成本采集与 `get_cost_summary()`、父子关联与
 >   `get_children()` / `get_parent()`（示例 18 / 19）。Redis 按既有 JSON 任务结构自然兼容，
 >   无需迁移；SQLite 1.0.x 库的耗时回填与索引重建由迁移脚本完成。
-> - 批次 3（`statements_transaction`、Checkpoint、Blackboard）待实施。
+> - 批次 3 已交付：`sqlite_compat.statements_transaction()` 多语句事务原语；
+>   Checkpoint 仓储（Memory / SQLite / Redis）与独立工厂、`TaskPoolConfig` /
+>   `SchedulerConfig` / `EngineConfig` 配置项与装配注入；执行器 contextvar 与显式
+>   `task_id` 双形态 API；自动/手动重试、`submit` / `create_pending_task` 恢复路径；
+>   `task.checkpointed` 事件；Blackboard（仅 Memory，非 Memory 显式报错）。
+>   示例 20 / 21，测试见 `tests/unit/test_checkpoint.py`、
+>   `tests/unit/test_blackboard.py` 与 `tests/unit/test_sqlite_transactions.py`。
 
 ---
 

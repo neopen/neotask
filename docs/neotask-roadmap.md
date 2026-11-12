@@ -31,13 +31,14 @@
 
 ### P0 功能项
 
-#### 1. Checkpoint 断点续跑
+#### 1. Checkpoint 断点续跑（批次 3 已交付）
 - `save_checkpoint(state)`：执行器写入中间状态，持久化到任务记录（Memory / SQLite / Redis）。
 - `load_checkpoint()`：执行器读取上次状态。
 - `pool.submit(..., resume_from_checkpoint=True)`：重试时从 checkpoint 恢复。
 - `task.checkpointed` 事件纳入事件总线。
 - `get_task(task_id)` 返回中体现 checkpoint 存在性。
-- 优先完整支持 Memory / SQLite，Redis 后端同步跟进。
+- 三后端均已实现：SQLite 多语句事务、Redis Lua 原子更新，历史版本按 `checkpoint_keep_versions` 淘汰。
+- 用法见 `examples/20_checkpoint.py`。
 
 #### 2. 成本与耗时采集（批次 2 已交付）
 - 任务元数据标准化 `cost_tracking` 字段：
@@ -63,14 +64,15 @@
 - `task.failed` 事件携带 `reason` 字段，区别于系统异常。
 - 收尾语义与持久化细节见设计文档决策 2；用法见 `examples/17_business_failure.py`。
 
-#### 5. 本地上下文读写原语（Blackboard）
+#### 5. 本地上下文读写原语（Blackboard，批次 3 已交付）
 - `context_set(key, value, ttl=...)`
 - `context_get(key)`
 - `context_delete(key)`
-- Memory 后端进程内 dict + TTL 清理；SQLite / Redis 落对应存储。
-- 仅在本地生效，不承担跨服务数据传递职责。
+- 仅实现 Memory 后端（进程内 dict + 惰性 TTL 清理）；SQLite / Redis 调用时抛
+  `UnsupportedFeatureError`，不静默降级。
+- 仅在本地生效，不承担跨服务数据传递职责；用法见 `examples/21_blackboard.py`。
 
-#### 6. 事件类型补全（批次 1 已交付常量注册表与信封扩展）
+#### 6. 事件类型补全（批次 1 交付常量注册表与信封扩展；`task.checkpointed` / `task.cost_reported` 随批次 2/3 上线）
 - 已有：`task.created` / `task.started` / `task.completed` / `task.failed` / `task.cancelled` / `task.retry` / `task.progress`
 - 新增：`task.checkpointed`、`task.cost_reported`
 - 事件信封稳定化，为未来远程上报预留字段（当前不做上报）。
@@ -169,19 +171,21 @@
 
 ### P1 可靠性补强
 
-#### 1. 崩溃恢复边界明确化
+#### 1. 崩溃恢复边界明确化（批次 3 已补 Checkpoint 交互测试）
 - `create_pending_task()` 未入队记录重启后不自动执行，需在文档与 `get_metrics()` 中体现"未入队 pending"计数。
-- Checkpoint 恢复路径与崩溃恢复路径交互测试：重启后已入队任务重跑时能否读到上次 checkpoint。
+- Checkpoint 恢复路径与崩溃恢复路径交互测试：重启后已入队任务重跑时能否读到上次 checkpoint
+  （`tests/unit/test_checkpoint.py::TestCheckpointResume::test_resume_across_restart_sqlite`）。
 
 #### 2. 优雅停机配置
 - 当前 `shutdown(graceful=True)` 不触发未到期延迟任务与周期调度。
 - 新增配置项：停机时是否 drain 到期延迟任务。
 - 文档明确默认行为。
 
-#### 3. 重试语义统一
+#### 3. 重试语义统一（批次 3 已定稿）
 - 明确自动重试、手动重试、Checkpoint 续跑三者交互：
-  - 手动重试时是否保留 checkpoint
-  - `resume_from_checkpoint` 与 `max_retries` 的关系
+  - 手动重试与自动重试都会保留 checkpoint，并把最近状态注入 `task.data["__checkpoint__"]`
+  - `resume_from_checkpoint=True` 仅作用于新的提交（`submit` / `create_pending_task`），
+    与 `max_retries` 相互独立：前者决定首次执行前是否注入历史状态，后者只决定异常后的重试次数
 
 ### 验收标准
 - Prometheus 导出器可挂载到 FastAPI 示例。

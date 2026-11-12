@@ -1154,6 +1154,36 @@ class TaskScheduler:
         """读取任务最近一次 checkpoint（异步）"""
         return await self._pool.load_checkpoint_async(task_id)
 
+    # ========== Blackboard（本地上下文）API ==========
+
+    def context_set(
+            self, key: str, value: Any, ttl: Optional[float] = None
+    ) -> None:
+        """写入进程内共享上下文（同步，仅 Memory 后端）"""
+        self._pool.context_set(key, value, ttl)
+
+    async def context_set_async(
+            self, key: str, value: Any, ttl: Optional[float] = None
+    ) -> None:
+        """写入进程内共享上下文（异步，仅 Memory 后端）"""
+        await self._pool.context_set_async(key, value, ttl)
+
+    def context_get(self, key: str) -> Optional[Any]:
+        """读取进程内共享上下文（同步，仅 Memory 后端）"""
+        return self._pool.context_get(key)
+
+    async def context_get_async(self, key: str) -> Optional[Any]:
+        """读取进程内共享上下文（异步，仅 Memory 后端）"""
+        return await self._pool.context_get_async(key)
+
+    def context_delete(self, key: str) -> bool:
+        """删除进程内共享上下文（同步，仅 Memory 后端）"""
+        return self._pool.context_delete(key)
+
+    async def context_delete_async(self, key: str) -> bool:
+        """删除进程内共享上下文（异步，仅 Memory 后端）"""
+        return await self._pool.context_delete_async(key)
+
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息
 

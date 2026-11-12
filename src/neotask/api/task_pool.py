@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List, Callable, Union
 
 from neotask.common.constants import EventType
+from neotask.common.exceptions import UnsupportedFeatureError
 from neotask.common.logger import error, debug, info, warning
 from neotask.core.dispatcher import TaskDispatcher
 from neotask.core.future import FutureManager
@@ -1195,6 +1196,52 @@ class TaskPool:
     ) -> Optional[Dict[str, Any]]:
         """读取任务最近一次 checkpoint（异步）"""
         return await self._lifecycle.load_checkpoint(task_id)
+
+    # ========== Blackboard（本地上下文）API ==========
+
+    def _require_context_store(self) -> MemoryContextStore:
+        if self._context_store is None:
+            raise UnsupportedFeatureError(
+                "blackboard", str(self._config.storage_type)
+            )
+        return self._context_store
+
+    def context_set(
+            self, key: str, value: Any, ttl: Optional[float] = None
+    ) -> None:
+        """写入进程内共享上下文（同步，仅 Memory 后端）
+
+        Args:
+            key: 上下文键
+            value: 任意可深拷贝的值
+            ttl: 过期时间（秒）；None 表示不过期
+
+        Raises:
+            UnsupportedFeatureError: 存储后端不是 Memory
+        """
+        self._require_context_store().set(key, value, ttl)
+
+    async def context_set_async(
+            self, key: str, value: Any, ttl: Optional[float] = None
+    ) -> None:
+        """写入进程内共享上下文（异步，仅 Memory 后端）"""
+        self._require_context_store().set(key, value, ttl)
+
+    def context_get(self, key: str) -> Optional[Any]:
+        """读取进程内共享上下文（同步，仅 Memory 后端）"""
+        return self._require_context_store().get(key)
+
+    async def context_get_async(self, key: str) -> Optional[Any]:
+        """读取进程内共享上下文（异步，仅 Memory 后端）"""
+        return self._require_context_store().get(key)
+
+    def context_delete(self, key: str) -> bool:
+        """删除进程内共享上下文（同步，仅 Memory 后端）"""
+        return self._require_context_store().delete(key)
+
+    async def context_delete_async(self, key: str) -> bool:
+        """删除进程内共享上下文（异步，仅 Memory 后端）"""
+        return self._require_context_store().delete(key)
 
     # ========== 终态清理 API ==========
 

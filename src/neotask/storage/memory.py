@@ -478,3 +478,50 @@ class MemoryQueueRepository(QueueRepository):
             是否禁用
         """
         return self._disabled
+
+
+class MemoryContextStore:
+    """进程内 Blackboard：``key -> (value, expires_at)``
+
+    仅 Memory 后端提供。TTL 采用惰性过期（读取时判定）+ 写入时顺带清扫，
+    不启动后台线程，符合「本地轻量上下文」的定位。
+    """
+
+    def __init__(self):
+        self._data: Dict[str, Tuple[Any, Optional[float]]] = {}
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _is_expired(expires_at: Optional[float]) -> bool:
+        return expires_at is not None and expires_at <= time.time()
+
+    def set(self, key: str, value: Any, ttl: Optional[float] = None) -> bool:
+        """写入或覆盖一个键；``ttl`` 为秒，None 表示不过期"""
+        expires_at = time.time() + float(ttl) if ttl is not None else None
+        with self._lock:
+            # 顺带清理已过期条目，避免只写不读的场景无限增长
+            expired = [
+                name for name, (_, deadline) in self._data.items()
+                if self._is_expired(deadline)
+            ]
+            for name in expired:
+                self._data.pop(name, None)
+            self._data[key] = (copy.deepcopy(value), expires_at)
+        return True
+
+    def get(self, key: str) -> Any:
+        """读取一个键；不存在或已过期返回 None"""
+        with self._lock:
+            item = self._data.get(key)
+            if item is None:
+                return None
+            value, expires_at = item
+            if self._is_expired(expires_at):
+                self._data.pop(key, None)
+                return None
+            return copy.deepcopy(value)
+
+    def delete(self, key: str) -> bool:
+        """删除一个键，返回是否命中"""
+        with self._lock:
+            return self._data.pop(key, None) is not None

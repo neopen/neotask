@@ -78,6 +78,7 @@ from neotask.storage.base import (
 )
 from neotask.storage.memory import (
     MemoryCheckpointRepository,
+    MemoryContextStore,
     MemoryQueueRepository,
     MemoryTaskRepository,
 )
@@ -192,6 +193,7 @@ __all__ = [
     "MemoryTaskRepository",
     "MemoryQueueRepository",
     "MemoryCheckpointRepository",
+    "MemoryContextStore",
     "SQLiteTaskRepository",
     "SQLiteQueueRepository",
     "SQLiteCheckpointRepository",

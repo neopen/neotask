@@ -46,7 +46,8 @@ class TaskDispatcher:
         task_id: Optional[str] = None,
         priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
         delay: float = 0,
-        ttl: int = 3600
+        ttl: int = 3600,
+        parent_task_id: Optional[str] = None,
     ) -> str:
         """分发任务
 
@@ -56,6 +57,7 @@ class TaskDispatcher:
             priority: 优先级
             delay: 延迟执行时间（秒）
             ttl: 任务超时时间（秒）
+            parent_task_id: 父任务 ID（仅建立关联，不做自动汇总）
 
         Returns:
             task_id
@@ -76,7 +78,8 @@ class TaskDispatcher:
                 task_id=task_id,
                 priority=priority_enum,
                 node_id=self._node_id,
-                ttl=ttl
+                ttl=ttl,
+                parent_task_id=parent_task_id,
             )
             queued = await self._queue.schedule_delayed(
                 task.task_id, task.priority.value, delay
@@ -89,7 +92,8 @@ class TaskDispatcher:
                     task_id=task_id,
                     priority=priority_enum,
                     node_id=self._node_id,
-                    ttl=ttl
+                    ttl=ttl,
+                    parent_task_id=parent_task_id,
                 )
                 queued = False
             else:
@@ -99,7 +103,8 @@ class TaskDispatcher:
                     task_id=task_id,
                     priority=priority_enum,
                     node_id=self._node_id,
-                    ttl=ttl
+                    ttl=ttl,
+                    parent_task_id=parent_task_id,
                 )
                 if queued is None:
                     # 后端不支持合并（memory / SQLite）：按原两步流程入队

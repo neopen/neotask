@@ -18,6 +18,11 @@ from typing import Any, Dict, Optional, cast
 
 from neotask.common.constants import EventType
 from neotask.common.logger import debug, warning, error
+from neotask.core.cost import (
+    CostRecorder,
+    reset_cost_recorder,
+    set_cost_recorder,
+)
 from neotask.core.failure import (
     BusinessFailure,
     reset_failure_recorder,
@@ -450,17 +455,22 @@ class WorkerPool:
             current_retry = task.retry_count
 
             recorder = BusinessFailure()
+            cost_recorder = CostRecorder()
             try:
-                result = await self._execute_with_progress(task, recorder)
+                result = await self._execute_with_progress(task, recorder, cost_recorder)
 
                 if recorder.triggered:
                     # 业务级失败：按登记原因收尾，不进入自动重试链路
-                    await self._fail_business(task_id, recorder, worker_id)
+                    await self._fail_business(
+                        task_id, recorder, worker_id, cost_recorder.payload() or None
+                    )
                     return
 
                 # 标记完成（强制关闭时存储连接可能已断开，降级为告警而非未捕获异常）
                 try:
-                    await self._lifecycle.complete_task(task_id, result)
+                    await self._lifecycle.complete_task(
+                        task_id, result, cost=cost_recorder.payload() or None
+                    )
                 except Exception as save_err:
                     warning(
                         f"Failed to persist completion for task {task_id} "
@@ -473,18 +483,31 @@ class WorkerPool:
 
             except asyncio.CancelledError:
                 debug(f"Task {task_id} was cancelled")
+                if cost_recorder.reported:
+                    try:
+                        await self._lifecycle.apply_cost(
+                            task_id, cost_recorder.payload()
+                        )
+                    except Exception as cost_err:
+                        debug(f"Failed to persist cost for cancelled task {task_id}: {cost_err}")
                 await self._lifecycle.cancel_task(task_id)
                 return
 
             except asyncio.TimeoutError:
                 err = f"Task execution timeout after {self._task_timeout}s"
                 error(f"Task {task_id} timeout: {err}")
-                await self._handle_task_failure(task_id, err, current_retry, worker_id)
+                await self._handle_task_failure(
+                    task_id, err, current_retry, worker_id,
+                    cost_recorder.payload() or None,
+                )
 
             except Exception as e:
                 err = str(e)
                 error(f"Task {task_id} failed: {err}")
-                await self._handle_task_failure(task_id, err, current_retry, worker_id)
+                await self._handle_task_failure(
+                    task_id, err, current_retry, worker_id,
+                    cost_recorder.payload() or None,
+                )
 
             finally:
                 # ========== 停止看门狗并释放锁 ==========
@@ -502,7 +525,13 @@ class WorkerPool:
                     self._worker_stats[worker_id].is_busy = self._worker_stats[worker_id].active_tasks > 0
                     self._worker_stats[worker_id].last_active = datetime.now()
 
-    async def _fail_business(self, task_id: str, recorder: BusinessFailure, worker_id: int) -> None:
+    async def _fail_business(
+            self,
+            task_id: str,
+            recorder: BusinessFailure,
+            worker_id: int,
+            cost: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """按业务登记的原因终结任务：状态为 FAILED，不消耗重试预算
 
         业务判定失败（如 ``qa_failed``）重试通常只是重复同样的输入与成本，
@@ -513,6 +542,7 @@ class WorkerPool:
             task_id: 任务ID
             recorder: 本次执行的失败登记器
             worker_id: 处理该任务的 worker 编号
+            cost: 本次执行已上报的成本明细
         """
         error_msg = recorder.message
         warning(f"Task {task_id} reported business failure: {error_msg}")
@@ -520,7 +550,8 @@ class WorkerPool:
             await self._lifecycle.fail_task(
                 task_id,
                 error_msg,
-                failure_reason=recorder.reason
+                failure_reason=recorder.reason,
+                cost=cost,
             )
         except Exception as save_err:
             warning(
@@ -529,17 +560,24 @@ class WorkerPool:
             )
         self._worker_stats[worker_id].failed_tasks += 1
 
-    async def _execute_with_progress(self, task, recorder: BusinessFailure) -> Any:
-        """执行任务，并向业务代码暴露进度上报钩子与失败登记器
+    async def _execute_with_progress(
+            self,
+            task,
+            recorder: BusinessFailure,
+            cost_recorder: CostRecorder,
+    ) -> Any:
+        """执行任务，并向业务代码暴露进度/失败/成本上报钩子
 
-        通过 ContextVar 绑定 :class:`ProgressReporter` 与 :class:`BusinessFailure`，
-        业务代码可在 executor 中调用 ``report_progress()`` / ``report_progress_sync()``
-        与 ``report_failure()``；同时把回调传给 ``execute_with_progress()``，
+        通过 ContextVar 绑定 :class:`ProgressReporter`、:class:`BusinessFailure`
+        与 :class:`CostRecorder`，业务代码可在 executor 中调用
+        ``report_progress()`` / ``report_progress_sync()``、``report_failure()``
+        与 ``report_cost()``；同时把回调传给 ``execute_with_progress()``，
         自定义 executor 也可以直接使用该回调。
 
         Args:
             task: 待执行任务
             recorder: 本次执行的失败登记器，调用方在执行结束后读取登记结果
+            cost_recorder: 本次执行的成本累加器，调用方在执行结束后读取成本
         """
         task_id = task.task_id
 
@@ -549,6 +587,7 @@ class WorkerPool:
         reporter = ProgressReporter(progress_callback)
         token = set_progress_reporter(reporter)
         failure_token = set_failure_recorder(recorder)
+        cost_token = set_cost_recorder(cost_recorder)
         try:
             execution = self._executor.execute_with_progress(
                 task.data,
@@ -558,6 +597,7 @@ class WorkerPool:
                 return await asyncio.wait_for(execution, timeout=self._task_timeout)
             return await execution
         finally:
+            reset_cost_recorder(cost_token)
             reset_failure_recorder(failure_token)
             reset_progress_reporter(token)
 
@@ -579,7 +619,14 @@ class WorkerPool:
         except Exception as e:
             debug(f"Failed to update progress for task {task_id}: {e}")
 
-    async def _handle_task_failure(self, task_id: str, error_msg: str, retry_count: int, worker_id: int) -> None:
+    async def _handle_task_failure(
+            self,
+            task_id: str,
+            error_msg: str,
+            retry_count: int,
+            worker_id: int,
+            cost: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """处理任务失败和重试"""
         # 重新获取最新任务状态
         task = await self._lifecycle.get_task(task_id)
@@ -593,6 +640,10 @@ class WorkerPool:
             new_retry_count = retry_count + 1
 
             debug(f"Retrying task {task_id} (attempt {new_retry_count}/{self._max_retries})")
+
+            # 成本属于已经发生的消耗，重试前先落库，避免被下一轮覆盖
+            if cost:
+                await self._lifecycle.apply_cost(task_id, cost)
 
             # 更新重试计数，重置状态为 PENDING（只写变化字段）
             task.retry_count = new_retry_count
@@ -617,7 +668,7 @@ class WorkerPool:
                 # 队列已满/禁用，无法重试，直接失败并投递死信
                 err = f"{error_msg} (retry requeue failed: queue rejected task)"
                 error(f"Task {task_id} cannot be requeued: {err}")
-                await self._lifecycle.fail_task(task_id, err)
+                await self._lifecycle.fail_task(task_id, err, cost=cost)
                 self._worker_stats[worker_id].failed_tasks += 1
                 await self._send_to_dead_letter(
                     task,
@@ -641,7 +692,7 @@ class WorkerPool:
         else:
             # 超过最大重试次数，标记为失败
             debug(f"Task {task_id} exceeded max retries ({self._max_retries}), marking as FAILED")
-            await self._lifecycle.fail_task(task_id, error_msg)
+            await self._lifecycle.fail_task(task_id, error_msg, cost=cost)
             self._worker_stats[worker_id].failed_tasks += 1
             await self._send_to_dead_letter(
                 task,

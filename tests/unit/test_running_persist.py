@@ -49,7 +49,7 @@ async def test_default_writes_running_immediately(event_bus):
     task = await manager.create_task(data={"id": 1})
     await manager.start_task(task.task_id, "worker-1")
 
-    assert repo.saved_fields == [("status", "node_id", "started_at")]
+    assert repo.saved_fields == [("status", "node_id", "started_at", "queue_wait_ms")]
     stored = await repo.get(task.task_id)
     assert stored.status == TaskStatus.RUNNING
     assert stored.started_at is not None

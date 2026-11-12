@@ -847,7 +847,8 @@ class TaskScheduler:
             task_id: Optional[str] = None,
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
             delay: float = 0,
-            ttl: int = 3600
+            ttl: int = 3600,
+            parent_task_id: Optional[str] = None,
     ) -> str:
         """提交即时任务
 
@@ -857,13 +858,14 @@ class TaskScheduler:
             priority: 优先级
             delay: 延迟执行时间（秒）
             ttl: 任务超时时间（秒）
+            parent_task_id: 父任务ID（可选，仅建立关联）
 
         Returns:
             任务ID
 
         设计模式: Delegation Pattern - 委托给TaskPool
         """
-        return self._pool.submit(data, task_id, priority, delay, ttl)
+        return self._pool.submit(data, task_id, priority, delay, ttl, parent_task_id)
 
     async def submit_async(
             self,
@@ -871,10 +873,13 @@ class TaskScheduler:
             task_id: Optional[str] = None,
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
             delay: float = 0,
-            ttl: int = 3600
+            ttl: int = 3600,
+            parent_task_id: Optional[str] = None,
     ) -> str:
         """提交即时任务（异步版本）"""
-        return await self._pool.submit_async(data, task_id, priority, delay, ttl)
+        return await self._pool.submit_async(
+            data, task_id, priority, delay, ttl, parent_task_id
+        )
 
     def submit_many(
             self,
@@ -984,6 +989,22 @@ class TaskScheduler:
         """
         return await self._pool.task_exists_async(task_id)
 
+    def get_children(self, task_id: str) -> List[str]:
+        """列出指定任务的子任务 ID（同步）"""
+        return self._pool.get_children(task_id)
+
+    async def get_children_async(self, task_id: str) -> List[str]:
+        """列出指定任务的子任务 ID（异步）"""
+        return await self._pool.get_children_async(task_id)
+
+    def get_parent(self, task_id: str) -> Optional[str]:
+        """获取指定任务的父任务 ID（同步）"""
+        return self._pool.get_parent(task_id)
+
+    async def get_parent_async(self, task_id: str) -> Optional[str]:
+        """获取指定任务的父任务 ID（异步）"""
+        return await self._pool.get_parent_async(task_id)
+
     def cancel(self, task_id: str) -> bool:
         """取消任务
 
@@ -1043,6 +1064,62 @@ class TaskScheduler:
             是否成功终结任务
         """
         return self._pool.report_failure(task_id, reason, detail)
+
+    async def report_failure_async(
+            self, task_id: str, reason: str, detail: str = ""
+    ) -> bool:
+        """按业务原因终结任务（异步）"""
+        return await self._pool.report_failure_async(task_id, reason, detail)
+
+    def report_cost(
+            self,
+            task_id: str,
+            tokens_in: int = 0,
+            tokens_out: int = 0,
+            api_calls: int = 0,
+            estimated_cost: Optional[float] = None,
+            currency: Optional[str] = None,
+    ) -> bool:
+        """累加任务成本并发布 ``task.cost_reported``（同步）"""
+        return self._pool.report_cost(
+            task_id,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            api_calls=api_calls,
+            estimated_cost=estimated_cost,
+            currency=currency,
+        )
+
+    async def report_cost_async(
+            self,
+            task_id: str,
+            tokens_in: int = 0,
+            tokens_out: int = 0,
+            api_calls: int = 0,
+            estimated_cost: Optional[float] = None,
+            currency: Optional[str] = None,
+    ) -> bool:
+        """累加任务成本并发布 ``task.cost_reported``（异步）"""
+        return await self._pool.report_cost_async(
+            task_id,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            api_calls=api_calls,
+            estimated_cost=estimated_cost,
+            currency=currency,
+        )
+
+    def get_cost_summary(
+            self, task_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """聚合任务成本（同步）"""
+        return self._pool.get_cost_summary(task_ids)
+
+    async def get_cost_summary_async(
+            self, task_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """聚合任务成本（异步）"""
+        return await self._pool.get_cost_summary_async(task_ids)
 
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息

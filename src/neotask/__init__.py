@@ -35,6 +35,13 @@ from neotask.core.failure import (
     report_failure,
 )
 
+# 成本上报
+from neotask.core.cost import (
+    CostRecorder,
+    get_cost_recorder,
+    report_cost,
+)
+
 # 事件总线
 from neotask.common.constants import EventType
 from neotask.event.bus import EventBus, TaskEvent
@@ -121,6 +128,9 @@ __all__ = [
     "BusinessFailure",
     "get_failure_recorder",
     "report_failure",
+    "CostRecorder",
+    "get_cost_recorder",
+    "report_cost",
 
     # 事件
     "EventBus",

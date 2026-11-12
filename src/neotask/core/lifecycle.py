@@ -114,7 +114,8 @@ class TaskLifecycleManager:
             task_id: Optional[str] = None,
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
             node_id: str = "default",
-            ttl: int = 3600
+            ttl: int = 3600,
+            parent_task_id: Optional[str] = None,
     ) -> Task:
         """创建任务"""
         task_id = task_id or self._generate_task_id()
@@ -132,7 +133,8 @@ class TaskLifecycleManager:
             data=data,
             priority=priority_enum,
             node_id=node_id,
-            ttl=ttl
+            ttl=ttl,
+            parent_task_id=parent_task_id,
         )
 
         if not await self._task_repo.save_if_absent(task):
@@ -153,6 +155,7 @@ class TaskLifecycleManager:
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
             node_id: str = "default",
             ttl: int = 3600,
+            parent_task_id: Optional[str] = None,
     ) -> Tuple[Task, Optional[bool]]:
         """创建任务并尝试一次原子入队（提交快路径）
 
@@ -171,7 +174,8 @@ class TaskLifecycleManager:
             data=data,
             priority=priority_enum,
             node_id=node_id,
-            ttl=ttl
+            ttl=ttl,
+            parent_task_id=parent_task_id,
         )
 
         queued = await self._task_repo.save_if_absent_and_enqueue(task, max_size)
@@ -533,7 +537,9 @@ class TaskLifecycleManager:
 
             if task.status != TaskStatus.RUNNING:
                 return
-            await self._task_repo.save_fields(task, ("status", "node_id", "started_at"))
+            await self._task_repo.save_fields(
+                task, ("status", "node_id", "started_at", "queue_wait_ms")
+            )
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -599,7 +605,9 @@ class TaskLifecycleManager:
             if task.status != TaskStatus.RUNNING:
                 continue
             try:
-                await self._task_repo.save_fields(task, ("status", "node_id", "started_at"))
+                await self._task_repo.save_fields(
+                    task, ("status", "node_id", "started_at", "queue_wait_ms")
+                )
                 flushed += 1
             except Exception as exc:
                 warning(f"Flush running state for {task.task_id} failed: {exc}")
@@ -651,7 +659,7 @@ class TaskLifecycleManager:
             try:
                 await self._task_repo.save_fields(
                     task,
-                    ("status", "node_id", "started_at")
+                    ("status", "node_id", "started_at", "queue_wait_ms")
                 )
             except Exception:
                 # 落库失败必须回滚内存状态：缓存里存的就是同一个对象，若保持 RUNNING，
@@ -668,8 +676,65 @@ class TaskLifecycleManager:
         debug(f"Task {task_id} started on node {node_id}")
         return True
 
-    async def complete_task(self, task_id: str, result: Any) -> bool:
-        """完成任务"""
+    @staticmethod
+    def _merge_cost(task: Task, cost: Optional[Dict[str, Any]]) -> None:
+        """把一次成本上报累加进任务（金额与明细均按字段求和）"""
+        if not cost:
+            return
+
+        detail = dict(task.cost_tracking or {})
+        for key in ("tokens_in", "tokens_out", "api_calls"):
+            detail[key] = int(detail.get(key) or 0) + int(cost.get(key) or 0)
+        task.estimated_cost = (
+            float(task.estimated_cost or 0.0)
+            + float(cost.get("estimated_cost") or 0.0)
+        )
+
+        currency = str(cost.get("currency") or "")
+        current = str(detail.get("currency") or "")
+        if currency:
+            if not current:
+                detail["currency"] = currency
+            elif current != currency:
+                detail["currency"] = "MIXED"
+        task.cost_tracking = detail
+
+    async def apply_cost(self, task_id: str, cost: Dict[str, Any]) -> bool:
+        """把成本明细累加到任务并发布 ``task.cost_reported`` 事件
+
+        终态任务同样接受追加成本：进程执行器的父进程通常在子任务结束后
+        才拿到用量数据，此处不做 RUNNING 限制。
+        """
+        if not cost:
+            return False
+
+        task = await self.get_task(task_id)
+        if not task:
+            return False
+
+        self._merge_cost(task, cost)
+        await self._task_repo.save_fields(
+            task, ("estimated_cost", "cost_tracking")
+        )
+        if self._cache_enabled:
+            self._cache_put(task_id, task)
+
+        await self._emit_event(EventType.COST_REPORTED, task_id, cost)
+        return True
+
+    async def complete_task(
+            self,
+            task_id: str,
+            result: Any,
+            cost: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """完成任务
+
+        Args:
+            task_id: 任务ID
+            result: 执行器返回值
+            cost: 本次执行上报的成本明细；非空时随 ``task.completed`` 事件携带
+        """
         task = await self.get_task(task_id)
 
         # 检查任务是否存在
@@ -689,14 +754,16 @@ class TaskLifecycleManager:
         # 先结束延迟的 RUNNING 落库，保证终态写入之后不会再出现 RUNNING 写入
         await self._resolve_deferred_running(task_id)
 
+        fields = ["status", "started_at", "completed_at", "result", "progress", "duration_ms"]
+        if cost:
+            self._merge_cost(task, cost)
+            fields.extend(("estimated_cost", "cost_tracking"))
+
         task.complete(result)
         # 成功完成即视为 100%，避免 UI 停留在最后一次业务上报的进度上。
         task.progress = 1.0
 
-        await self._task_repo.save_fields(
-            task,
-            ("status", "started_at", "completed_at", "result", "progress")
-        )
+        await self._task_repo.save_fields(task, fields)
         self._clear_progress_flush(task_id)
 
         if self._cache_enabled:
@@ -706,8 +773,11 @@ class TaskLifecycleManager:
         # 通知等待者
         await self._future_manager.complete(task_id, result=result)
 
-        # 直接传递 result，不包装
-        await self._emit_event(EventType.COMPLETED, task_id, result)
+        # 无成本时保持「data 直接是 result」的既有契约；有成本时包一层信封
+        event_data: Any = result
+        if cost:
+            event_data = {"result": result, "cost": cost}
+        await self._emit_event(EventType.COMPLETED, task_id, event_data)
 
         debug(f"Task {task_id} completed successfully")
         return True
@@ -718,6 +788,7 @@ class TaskLifecycleManager:
             error: str,
             allow_pending: bool = False,
             failure_reason: Optional[str] = None,
+            cost: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """任务失败
 
@@ -730,6 +801,7 @@ class TaskLifecycleManager:
             allow_pending: 是否允许终结尚未开始的任务
             failure_reason: 业务级失败原因（如 ``qa_failed``）。系统异常时留空，
                 两者靠该字段区分，状态同为 ``FAILED``。
+            cost: 本次执行上报的成本明细；非空时随 ``task.failed`` 事件携带
         """
         task = await self.get_task(task_id)
 
@@ -755,11 +827,13 @@ class TaskLifecycleManager:
         await self._resolve_deferred_running(task_id)
 
         old_status = task.status
+        fields = ["status", "started_at", "error", "completed_at", "failure_reason", "duration_ms"]
+        if cost:
+            self._merge_cost(task, cost)
+            fields.extend(("estimated_cost", "cost_tracking"))
+
         task.fail(error, failure_reason)
-        await self._task_repo.save_fields(
-            task,
-            ("status", "started_at", "error", "completed_at", "failure_reason")
-        )
+        await self._task_repo.save_fields(task, fields)
         self._clear_progress_flush(task_id)
 
         if self._cache_enabled:
@@ -776,6 +850,7 @@ class TaskLifecycleManager:
                 "error": error,
                 "old_status": old_status.value,
                 "reason": task.failure_reason,
+                "cost": cost,
             }
         )
 
@@ -798,7 +873,7 @@ class TaskLifecycleManager:
         task.cancel()
         await self._task_repo.save_fields(
             task,
-            ("status", "started_at", "completed_at")
+            ("status", "started_at", "completed_at", "duration_ms")
         )
         self._clear_progress_flush(task_id)
 
@@ -839,6 +914,7 @@ class TaskLifecycleManager:
             (
                 "status", "started_at", "completed_at", "result", "error",
                 "node_id", "progress", "progress_message",
+                "queue_wait_ms", "duration_ms",
             )
         )
         self._clear_progress_flush(task_id)

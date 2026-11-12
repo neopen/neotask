@@ -659,12 +659,15 @@ class TaskPool:
             task_id: Optional[str] = None,
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
             delay: float = 0,
-            ttl: int = 3600
+            ttl: int = 3600,
+            parent_task_id: Optional[str] = None,
     ) -> str:
         """提交任务（同步）"""
         self._ensure_running()
         result = self._run_coroutine(
-            self._dispatcher.dispatch(data, task_id, priority, delay, ttl)
+            self._dispatcher.dispatch(
+                data, task_id, priority, delay, ttl, parent_task_id
+            )
         )
         return result.task_id if hasattr(result, 'task_id') else result
 
@@ -674,11 +677,14 @@ class TaskPool:
             task_id: Optional[str] = None,
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
             delay: float = 0,
-            ttl: int = 3600
+            ttl: int = 3600,
+            parent_task_id: Optional[str] = None,
     ) -> str:
         """提交任务（异步）"""
         self._ensure_running()
-        result = await self._dispatcher.dispatch(data, task_id, priority, delay, ttl)
+        result = await self._dispatcher.dispatch(
+            data, task_id, priority, delay, ttl, parent_task_id
+        )
         return result.task_id if hasattr(result, 'task_id') else result
 
     def submit_many(
@@ -867,6 +873,11 @@ class TaskPool:
             "result": task.result,
             "error": task.error,
             "failure_reason": task.failure_reason,
+            "parent_task_id": task.parent_task_id,
+            "estimated_cost": task.estimated_cost,
+            "cost_tracking": task.cost_tracking,
+            "queue_wait_ms": task.queue_wait_ms,
+            "duration_ms": task.duration_ms,
             "created_at": task.created_at.isoformat() if task.created_at else None,
             "completed_at": task.completed_at.isoformat() if task.completed_at else None,
         }
@@ -882,6 +893,11 @@ class TaskPool:
             "result": task.result,
             "error": task.error,
             "failure_reason": task.failure_reason,
+            "parent_task_id": task.parent_task_id,
+            "estimated_cost": task.estimated_cost,
+            "cost_tracking": task.cost_tracking,
+            "queue_wait_ms": task.queue_wait_ms,
+            "duration_ms": task.duration_ms,
             "created_at": task.created_at.isoformat() if task.created_at else None,
             "completed_at": task.completed_at.isoformat() if task.completed_at else None,
         }
@@ -903,6 +919,41 @@ class TaskPool:
     async def task_exists_async(self, task_id: str) -> bool:
         """检查任务是否存在（异步）"""
         return await self._task_repo.exists(task_id)
+
+    # ========== 父子任务查询 API ==========
+
+    def get_children(self, task_id: str) -> List[str]:
+        """列出指定任务的子任务 ID（同步）
+
+        只按 ``parent_task_id`` 关联查询，顺序为创建时间升序；不做任何
+        完成状态汇总（由调用方或编排层决定父任务何时算完成）。
+        """
+        return list(self._run_coroutine(self.get_children_async(task_id)))
+
+    async def get_children_async(self, task_id: str) -> List[str]:
+        """列出指定任务的子任务 ID（异步）"""
+        children: List[str] = []
+        offset = 0
+        while True:
+            batch = await self._task_repo.list_by_parent(
+                task_id, limit=1000, offset=offset
+            )
+            children.extend(task.task_id for task in batch)
+            if len(batch) < 1000:
+                return children
+            offset += len(batch)
+
+    def get_parent(self, task_id: str) -> Optional[str]:
+        """获取指定任务的父任务 ID（同步）；无父任务或任务不存在返回 None"""
+        parent: Optional[str] = self._run_coroutine(
+            self.get_parent_async(task_id)
+        )
+        return parent
+
+    async def get_parent_async(self, task_id: str) -> Optional[str]:
+        """获取指定任务的父任务 ID（异步）"""
+        task = await self._lifecycle.get_task(task_id)
+        return task.parent_task_id if task else None
 
     # ========== 任务管理 API ==========
 
@@ -986,6 +1037,90 @@ class TaskPool:
             f"{reason}: {detail}" if detail else reason,
             failure_reason=reason,
         )
+
+    # ========== 成本上报与聚合 API ==========
+
+    def report_cost(
+            self,
+            task_id: str,
+            tokens_in: int = 0,
+            tokens_out: int = 0,
+            api_calls: int = 0,
+            estimated_cost: Optional[float] = None,
+            currency: Optional[str] = None,
+    ) -> bool:
+        """累加任务成本并发布 ``task.cost_reported``（同步）
+
+        与执行器内的 ``neotask.report_cost(...)`` 等价，区别只在于调用位置：
+        本方法适用于进程执行器的父进程等拿不到 contextvar 的场景。终态任务
+        同样接受追加成本（用量数据通常在子任务结束后才汇总）。
+
+        Args:
+            task_id: 任务ID
+            tokens_in: 输入 token 数
+            tokens_out: 输出 token 数
+            api_calls: 外部 API 调用次数
+            estimated_cost: 本次费用金额
+            currency: 币种；同一任务内出现不同币种会标记为 ``MIXED``
+
+        Returns:
+            任务存在且写入成功返回 True
+        """
+        self._ensure_running()
+        return bool(self._run_coroutine(
+            self.report_cost_async(
+                task_id,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                api_calls=api_calls,
+                estimated_cost=estimated_cost,
+                currency=currency,
+            )
+        ))
+
+    async def report_cost_async(
+            self,
+            task_id: str,
+            tokens_in: int = 0,
+            tokens_out: int = 0,
+            api_calls: int = 0,
+            estimated_cost: Optional[float] = None,
+            currency: Optional[str] = None,
+    ) -> bool:
+        """累加任务成本并发布 ``task.cost_reported``（异步）"""
+        cost: Dict[str, Any] = {
+            "tokens_in": int(tokens_in or 0),
+            "tokens_out": int(tokens_out or 0),
+            "api_calls": int(api_calls or 0),
+            "estimated_cost": float(estimated_cost or 0.0),
+        }
+        if currency:
+            cost["currency"] = currency
+        return await self._lifecycle.apply_cost(task_id, cost)
+
+    def get_cost_summary(
+            self, task_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """聚合任务成本（同步）
+
+        Args:
+            task_ids: 需要聚合的任务列表；为 None 时聚合全部任务
+
+        Returns:
+            ``{task_count, tasks_with_cost, tokens_in, tokens_out, api_calls,
+            estimated_cost, currency}``；币种混用时 ``currency`` 为 ``MIXED``。
+        """
+        summary: Dict[str, Any] = self._run_coroutine(
+            self.get_cost_summary_async(task_ids)
+        )
+        return dict(summary)
+
+    async def get_cost_summary_async(
+            self, task_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """聚合任务成本（异步）"""
+        summary: Dict[str, Any] = await self._task_repo.cost_summary(task_ids)
+        return summary
 
     # ========== 终态清理 API ==========
 

@@ -383,6 +383,7 @@ How the numbers are measured:
 | `pool.wait_for_result(task_id, timeout=300)`                 | Wait for result                                              |
 | `pool.get_status(task_id)`                                   | Get status                                                   |
 | `pool.cancel(task_id)`                                       | Cancel task                                                  |
+| `pool.task_exists(task_id)`                                  | Check whether a task id is taken (idempotent resubmit)       |
 | `pool.on_progress(handler)`                                  | Subscribe to progress events                                 |
 | `scheduler.submit_delayed(data, delay_seconds)`              | Delayed task                                                 |
 | `scheduler.submit_interval(data, interval_seconds)`          | Periodic task                                                |

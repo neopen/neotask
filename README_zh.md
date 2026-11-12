@@ -382,6 +382,7 @@ print(result.format())        # result.to_dict() 可直接 json.dumps
 | `pool.wait_for_result(task_id, timeout=300)`                 | 等待任务结果                                                 |
 | `pool.get_status(task_id)`                                   | 获取任务状态                                                 |
 | `pool.cancel(task_id)`                                       | 取消任务                                                     |
+| `pool.task_exists(task_id)`                                  | 判断任务 ID 是否已存在（幂等重提交）                          |
 | `pool.on_progress(handler)`                                  | 订阅进度事件                                                 |
 | `scheduler.submit_delayed(data, delay_seconds)`              | 提交延时任务                                                 |
 | `scheduler.submit_interval(data, interval_seconds)`          | 提交周期任务                                                 |

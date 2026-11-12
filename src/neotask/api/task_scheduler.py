@@ -973,6 +973,17 @@ class TaskScheduler:
         """
         return self._pool.task_exists(task_id)
 
+    async def task_exists_async(self, task_id: str) -> bool:
+        """检查任务是否存在（异步）
+
+        Args:
+            task_id: 任务ID
+
+        Returns:
+            是否存在
+        """
+        return await self._pool.task_exists_async(task_id)
+
     def cancel(self, task_id: str) -> bool:
         """取消任务
 

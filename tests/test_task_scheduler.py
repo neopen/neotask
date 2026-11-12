@@ -511,6 +511,17 @@ class TestTaskSchedulerTaskManagement:
             assert scheduler.task_exists(task_id) is True
             assert scheduler.task_exists("nonexistent") is False
 
+    async def test_task_exists_async(self):
+        """测试异步存在性检查（v1.1.0 补齐 TaskScheduler 的异步形态）"""
+        scheduler = TaskScheduler(executor=echo_executor)
+        scheduler.start()
+        try:
+            task_id = await scheduler.submit_async({"test": "exists_async"})
+            assert await scheduler.task_exists_async(task_id) is True
+            assert await scheduler.task_exists_async("nonexistent") is False
+        finally:
+            scheduler.shutdown()
+
 
 class TestTaskSchedulerIntegration:
     """集成测试"""

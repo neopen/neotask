@@ -106,7 +106,7 @@
 ### 发布收尾清单
 
 - [x] 协议契约页：[neotask-execution-contract.md](./neotask-execution-contract.md)
-- [ ] `src/neotask/core/checkpoint.py` 覆盖率 75.6% → ≥80%（补齐 sync 分支与上下文读取）
+- [x] `src/neotask/core/checkpoint.py` 覆盖率 75.6% → 100%（补齐 sync 分支与上下文读取）
 - [ ] `TaskEngine` 的 `checkpoint_repo` 注入路径补测试
 - [x] README / README_zh 状态同步（v1.1 已交付、架构图去掉“规划”标注、链接契约页）
 - [ ] release-please 依据 conventional commits 生成 1.1.0 与 CHANGELOG（不手改）
@@ -244,7 +244,7 @@
 
 **v1.1 发布收尾**：
 
-- 补齐 `core/checkpoint.py` 覆盖率与 `TaskEngine` 注入测试。
+- 补齐 `TaskEngine` 注入测试。
 - 合并后由 release-please 出具 1.1.0 版本与 CHANGELOG。
 
 **v1.2 启动**：

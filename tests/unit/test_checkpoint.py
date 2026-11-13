@@ -13,12 +13,14 @@ See LICENSE File For Details.
 
 import asyncio
 import os
+import threading
 from uuid import uuid4
 
 import pytest
 
 from neotask import (
     CHECKPOINT_DATA_KEY,
+    CheckpointContext,
     EventType,
     TaskPool,
     TaskPoolConfig,
@@ -29,6 +31,11 @@ from neotask import (
     save_checkpoint_sync,
 )
 from neotask.common.exceptions import NeoTaskError
+from neotask.core.checkpoint import (
+    get_checkpoint_context,
+    reset_checkpoint_context,
+    set_checkpoint_context,
+)
 from neotask.executor import ExecutorType
 from neotask.models.config import StorageConfig
 from neotask.models.task import Task, TaskPriority
@@ -376,6 +383,97 @@ class TestCheckpointContextvar:
             assert (await repo.load(task_id, 4)).state == {"step": 4}
         finally:
             pool.shutdown()
+
+
+# ========== CheckpointContext 同步形态分支 ==========
+
+
+def _ok_callbacks(saved):
+    async def save(state):
+        saved.append(state)
+        return True
+
+    async def load():
+        return {"restored": True}
+
+    return save, load
+
+
+@pytest.fixture
+def background_loop():
+    """在独立线程中运行的 loop，模拟线程执行器看向 Worker loop 的视角"""
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    try:
+        yield loop
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=5)
+        loop.close()
+
+
+class TestCheckpointContextSyncBranches:
+    def test_no_bound_loop(self):
+        save, load = _ok_callbacks([])
+        ctx = CheckpointContext(save, load)
+
+        assert ctx.save_sync({"a": 1}) is False
+        assert ctx.load_sync() is None
+
+    def test_closed_loop(self):
+        loop = asyncio.new_event_loop()
+        loop.close()
+        save, load = _ok_callbacks([])
+        ctx = CheckpointContext(save, load, loop=loop)
+
+        assert ctx.save_sync({"a": 1}) is False
+        assert ctx.load_sync() is None
+
+    async def test_inside_foreign_running_loop(self):
+        """当前已在事件循环中：拒绝跨循环调度，读操作也直接返回 None"""
+        foreign_loop = asyncio.new_event_loop()
+        try:
+            save, load = _ok_callbacks([])
+            ctx = CheckpointContext(save, load, loop=foreign_loop)
+
+            assert ctx.save_sync({"a": 1}) is False
+            assert ctx.load_sync() is None
+        finally:
+            foreign_loop.close()
+
+    def test_from_thread_to_worker_loop(self, background_loop):
+        saved = []
+        save, load = _ok_callbacks(saved)
+        ctx = CheckpointContext(save, load, loop=background_loop)
+
+        assert ctx.save_sync({"a": 1}) is True
+        assert saved == [{"a": 1}]
+        assert ctx.load_sync() == {"restored": True}
+
+    def test_callback_error_returns_false_and_none(self, background_loop):
+        async def save(state):
+            raise RuntimeError("boom")
+
+        async def load():
+            raise RuntimeError("boom")
+
+        ctx = CheckpointContext(save, load, loop=background_loop)
+
+        assert ctx.save_sync({"a": 1}) is False
+        assert ctx.load_sync() is None
+
+    def test_context_var_bound_unbound(self):
+        save, load = _ok_callbacks([])
+        ctx = CheckpointContext(save, load)
+
+        assert get_checkpoint_context() is None
+        token = set_checkpoint_context(ctx)
+        try:
+            assert get_checkpoint_context() is ctx
+        finally:
+            reset_checkpoint_context(token)
+        assert get_checkpoint_context() is None
 
 
 # ========== 恢复路径 ==========

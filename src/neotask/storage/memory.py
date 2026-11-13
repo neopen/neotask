@@ -13,11 +13,20 @@ See LICENSE File For Details.
 import copy
 import heapq
 import threading
-from typing import Optional, Dict, List, Tuple
+import time
+from datetime import datetime, timezone
+from typing import Any, Optional, Dict, List, Tuple
 
 from neotask.common.logger import debug, warning
 from neotask.models.task import Task, TaskStatus
-from neotask.storage.base import TaskRepository, QueueRepository
+from neotask.storage.base import (
+    CheckpointRecord,
+    CheckpointRepository,
+    TaskRepository,
+    QueueRepository,
+    new_cost_summary,
+    record_task_cost,
+)
 
 
 class MemoryTaskRepository(TaskRepository):
@@ -147,6 +156,36 @@ class MemoryTaskRepository(TaskRepository):
         with self._lock:
             return sum(1 for task in self._tasks.values() if task.status == status)
 
+    async def list_by_parent(
+            self, parent_task_id: str, limit: int = 100, offset: int = 0
+    ) -> List[Task]:
+        """按父任务 ID 列出子任务（深拷贝，按创建时间升序）"""
+        with self._lock:
+            children = sorted(
+                (
+                    copy.deepcopy(task)
+                    for task in self._tasks.values()
+                    if task.parent_task_id == parent_task_id
+                ),
+                key=lambda task: task.created_at,
+            )
+        return children[offset:offset + limit]
+
+    async def cost_summary(self, task_ids=None) -> Dict:
+        """内存后端直接遍历字典聚合，无需反序列化"""
+        summary = new_cost_summary()
+        with self._lock:
+            if task_ids is None:
+                tasks = list(self._tasks.values())
+            else:
+                tasks = [
+                    self._tasks[task_id] for task_id in task_ids
+                    if task_id in self._tasks
+                ]
+            for task in tasks:
+                record_task_cost(summary, task)
+        return summary
+
     async def update_status(
             self,
             task_id: str,
@@ -205,6 +244,67 @@ class MemoryTaskRepository(TaskRepository):
                     del self._tasks[task_id]
                     deleted += 1
             return deleted
+
+
+class MemoryCheckpointRepository(CheckpointRepository):
+    """内存 checkpoint 存储
+
+    每个任务维护按版本升序的列表。单 loop 顺序执行下「写 checkpoint + 补写
+    任务标记」两次赋值之间没有可失败点，因此无需额外事务机制。
+    """
+
+    def __init__(self):
+        self._records: Dict[str, List[CheckpointRecord]] = {}
+        self._lock = threading.Lock()
+
+    async def save(self, task_id: str, version: int, state: Dict) -> None:
+        record = CheckpointRecord(
+            task_id=task_id,
+            version=int(version),
+            state=copy.deepcopy(state),
+            created_at=datetime.now(timezone.utc),
+        )
+        with self._lock:
+            records = self._records.setdefault(task_id, [])
+            for index, existing in enumerate(records):
+                if existing.version == record.version:
+                    records[index] = record
+                    break
+            else:
+                records.append(record)
+                records.sort(key=lambda item: item.version)
+        debug(f"Checkpoint v{version} saved for task {task_id}")
+
+    async def load_latest(self, task_id: str) -> Optional[CheckpointRecord]:
+        with self._lock:
+            records = self._records.get(task_id)
+            if not records:
+                return None
+            return copy.deepcopy(records[-1])
+
+    async def load(self, task_id: str, version: int) -> Optional[CheckpointRecord]:
+        with self._lock:
+            for record in self._records.get(task_id, []):
+                if record.version == version:
+                    return copy.deepcopy(record)
+        return None
+
+    async def prune(self, task_id: str, keep: int) -> int:
+        keep = max(0, int(keep))
+        with self._lock:
+            records = self._records.get(task_id)
+            if not records or len(records) <= keep:
+                return 0
+            removed = len(records) - keep
+            if keep == 0:
+                self._records.pop(task_id, None)
+            else:
+                self._records[task_id] = records[removed:]
+            return removed
+
+    async def delete(self, task_id: str) -> None:
+        with self._lock:
+            self._records.pop(task_id, None)
 
 
 class MemoryQueueRepository(QueueRepository):
@@ -378,3 +478,50 @@ class MemoryQueueRepository(QueueRepository):
             是否禁用
         """
         return self._disabled
+
+
+class MemoryContextStore:
+    """进程内 Blackboard：``key -> (value, expires_at)``
+
+    仅 Memory 后端提供。TTL 采用惰性过期（读取时判定）+ 写入时顺带清扫，
+    不启动后台线程，符合「本地轻量上下文」的定位。
+    """
+
+    def __init__(self):
+        self._data: Dict[str, Tuple[Any, Optional[float]]] = {}
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _is_expired(expires_at: Optional[float]) -> bool:
+        return expires_at is not None and expires_at <= time.time()
+
+    def set(self, key: str, value: Any, ttl: Optional[float] = None) -> bool:
+        """写入或覆盖一个键；``ttl`` 为秒，None 表示不过期"""
+        expires_at = time.time() + float(ttl) if ttl is not None else None
+        with self._lock:
+            # 顺带清理已过期条目，避免只写不读的场景无限增长
+            expired = [
+                name for name, (_, deadline) in self._data.items()
+                if self._is_expired(deadline)
+            ]
+            for name in expired:
+                self._data.pop(name, None)
+            self._data[key] = (copy.deepcopy(value), expires_at)
+        return True
+
+    def get(self, key: str) -> Any:
+        """读取一个键；不存在或已过期返回 None"""
+        with self._lock:
+            item = self._data.get(key)
+            if item is None:
+                return None
+            value, expires_at = item
+            if self._is_expired(expires_at):
+                self._data.pop(key, None)
+                return None
+            return copy.deepcopy(value)
+
+    def delete(self, key: str) -> bool:
+        """删除一个键，返回是否命中"""
+        with self._lock:
+            return self._data.pop(key, None) is not None

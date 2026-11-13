@@ -11,9 +11,67 @@ See LICENSE File For Details.
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from datetime import datetime
 import time
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from neotask.models.task import Task, TaskStatus
+
+
+def new_cost_summary() -> Dict[str, Any]:
+    """成本聚合结果的空模板（``task_count`` 等计数按任务累加）"""
+    return {
+        "task_count": 0,
+        "tasks_with_cost": 0,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "api_calls": 0,
+        "estimated_cost": 0.0,
+        "currency": "",
+    }
+
+
+def merge_cost_detail(
+        summary: Dict[str, Any],
+        cost_tracking: Optional[Dict[str, Any]],
+) -> None:
+    """只累加明细字段（tokens/api_calls/currency），不动金额与任务计数"""
+    cost = cost_tracking or {}
+    summary["tokens_in"] += int(cost.get("tokens_in") or 0)
+    summary["tokens_out"] += int(cost.get("tokens_out") or 0)
+    summary["api_calls"] += int(cost.get("api_calls") or 0)
+
+    currency = str(cost.get("currency") or "")
+    if currency:
+        if not summary["currency"]:
+            summary["currency"] = currency
+        elif summary["currency"] != currency:
+            summary["currency"] = "MIXED"
+
+
+def record_cost_values(
+        summary: Dict[str, Any],
+        cost_tracking: Optional[Dict[str, Any]],
+        estimated_cost: float = 0.0,
+) -> None:
+    """把一条任务的成本明细累加进聚合结果
+
+    多个任务使用不同币种时把 ``currency`` 标记为 ``MIXED``，避免把不同
+    币种的金额静默相加。
+    """
+    cost = cost_tracking or {}
+    if not cost and not estimated_cost:
+        return
+
+    summary["tasks_with_cost"] += 1
+    merge_cost_detail(summary, cost)
+    summary["estimated_cost"] += float(estimated_cost or 0.0)
+
+
+def record_task_cost(summary: Dict[str, Any], task: Task) -> None:
+    """累加单个任务的成本（``task_count`` 计入所有任务）"""
+    summary["task_count"] += 1
+    record_cost_values(summary, task.cost_tracking, task.estimated_cost)
 
 
 def _is_terminal_expired(
@@ -144,6 +202,59 @@ class TaskRepository(ABC):
         """Update task status."""
         pass
 
+    async def list_by_parent(
+            self, parent_task_id: str, limit: int = 100, offset: int = 0
+    ) -> List[Task]:
+        """按父任务 ID 列出子任务（按创建时间升序）。
+
+        默认实现分页扫描各状态集合；内置后端均覆盖为索引/字典查询，
+        避免为一次父子查询读取全部任务。
+        """
+        matched: List[Task] = []
+        for status in TaskStatus:
+            status_offset = 0
+            while True:
+                tasks = await self.list_by_status(
+                    status, limit=1000, offset=status_offset
+                )
+                matched.extend(
+                    task for task in tasks
+                    if task.parent_task_id == parent_task_id
+                )
+                if len(tasks) < 1000:
+                    break
+                status_offset += len(tasks)
+
+        matched.sort(key=lambda task: task.created_at)
+        return matched[offset:offset + limit]
+
+    async def cost_summary(
+            self, task_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """聚合任务成本。
+
+        ``task_ids=None`` 时聚合全部任务；SQLite 后端下推为 SQL 聚合。
+        币种混用时结果中的 ``currency`` 为 ``MIXED``。
+        """
+        summary = new_cost_summary()
+        if task_ids is not None:
+            for task_id in task_ids:
+                task = await self.get(task_id)
+                if task:
+                    record_task_cost(summary, task)
+            return summary
+
+        for status in TaskStatus:
+            offset = 0
+            while True:
+                tasks = await self.list_by_status(status, limit=1000, offset=offset)
+                for task in tasks:
+                    record_task_cost(summary, task)
+                if len(tasks) < 1000:
+                    break
+                offset += len(tasks)
+        return summary
+
     async def update_progress(self, task_id: str, progress: float, message: str = "") -> bool:
         """Update task progress.
 
@@ -256,6 +367,65 @@ class TaskRepository(ABC):
 
     async def close(self) -> None:
         """Release underlying resources; no-op for memory implementations."""
+        return None
+
+
+@dataclass
+class CheckpointRecord:
+    """单个 checkpoint 版本的快照
+
+    ``state`` 为执行器写入的任意可 JSON 序列化字典；``version`` 从 1 开始
+    按任务递增，0 保留给「无 checkpoint」。
+    """
+
+    task_id: str
+    version: int
+    state: Dict[str, Any]
+    created_at: datetime
+
+
+class CheckpointRepository(ABC):
+    """Repository interface for task checkpoints.
+
+    中间状态独立存储（SQLite ``task_checkpoints`` 表 / Redis hash / Memory
+    deque），``tasks.checkpoint_version`` 只作为存在性标记，避免每次 checkpoint
+    写入重写整行任务数据。
+
+    ``handles_task_marker`` 为 True 的后端在 :meth:`save` 内**原子**更新
+    ``tasks.checkpoint_version``（SQLite 多语句事务 / Redis 脚本）；为 False 时
+    由生命周期管理器在保存后单独补写标记（Memory 单 loop 顺序执行）。
+    """
+
+    #: save() 是否同时原子维护任务上的 checkpoint_version 标记
+    handles_task_marker: bool = False
+
+    @abstractmethod
+    async def save(self, task_id: str, version: int, state: Dict[str, Any]) -> None:
+        """写入指定版本的 checkpoint（同版本覆盖）"""
+        pass
+
+    @abstractmethod
+    async def load_latest(self, task_id: str) -> Optional[CheckpointRecord]:
+        """读取版本号最大的 checkpoint；不存在返回 None"""
+        pass
+
+    @abstractmethod
+    async def load(self, task_id: str, version: int) -> Optional[CheckpointRecord]:
+        """读取指定版本的 checkpoint；不存在返回 None"""
+        pass
+
+    @abstractmethod
+    async def prune(self, task_id: str, keep: int) -> int:
+        """只保留版本号最大的 ``keep`` 个 checkpoint，返回淘汰数量"""
+        pass
+
+    @abstractmethod
+    async def delete(self, task_id: str) -> None:
+        """删除某任务的全部 checkpoint"""
+        pass
+
+    async def close(self) -> None:
+        """Release underlying resources; no-op by default."""
         return None
 
 

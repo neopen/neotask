@@ -25,13 +25,15 @@ from neotask.common.constants import (
     DEFAULT_PROGRESS_FLUSH_DELTA,
     DEFAULT_PROGRESS_FLUSH_INTERVAL,
     DEFAULT_RUNNING_PERSIST_DELAY,
+    EventType,
 )
 from neotask.common.exceptions import TaskAlreadyExistsError, TaskNotFoundError
 from neotask.common.logger import debug, info, warning
+from neotask.core.checkpoint import CHECKPOINT_DATA_KEY
 from neotask.core.future import FutureManager
 from neotask.event.bus import EventBus, TaskEvent
 from neotask.models.task import Task, TaskPriority, TaskStats, TaskStatus
-from neotask.storage.base import TaskRepository
+from neotask.storage.base import CheckpointRepository, TaskRepository
 
 
 #: 进度落库硬性最小间隔（秒）。同一任务两次进度写入间隔小于该值时跳过存储
@@ -79,6 +81,8 @@ class TaskLifecycleManager:
             progress_flush_batch_interval: float = DEFAULT_PROGRESS_FLUSH_BATCH_INTERVAL,
             cache_max_size: int = DEFAULT_LIFECYCLE_CACHE_MAX_SIZE,
             running_persist_delay: float = DEFAULT_RUNNING_PERSIST_DELAY,
+            checkpoint_repo: Optional[CheckpointRepository] = None,
+            checkpoint_keep_versions: int = 5,
     ):
         self._task_repo = task_repo
         self._event_bus = event_bus
@@ -105,6 +109,9 @@ class TaskLifecycleManager:
         # 执行侧写入优化：RUNNING 状态延迟落库窗口（0 = 立即落库）
         self._running_persist_delay = running_persist_delay
         self._deferred_running: Dict[str, _DeferredRunningWrite] = {}
+        # checkpoint：None 表示功能未启用（save_checkpoint 返回 0，不抛异常）
+        self._checkpoint_repo = checkpoint_repo
+        self._checkpoint_keep_versions = max(0, int(checkpoint_keep_versions))
 
 
     async def create_task(
@@ -113,7 +120,8 @@ class TaskLifecycleManager:
             task_id: Optional[str] = None,
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
             node_id: str = "default",
-            ttl: int = 3600
+            ttl: int = 3600,
+            parent_task_id: Optional[str] = None,
     ) -> Task:
         """创建任务"""
         task_id = task_id or self._generate_task_id()
@@ -131,7 +139,8 @@ class TaskLifecycleManager:
             data=data,
             priority=priority_enum,
             node_id=node_id,
-            ttl=ttl
+            ttl=ttl,
+            parent_task_id=parent_task_id,
         )
 
         if not await self._task_repo.save_if_absent(task):
@@ -140,7 +149,7 @@ class TaskLifecycleManager:
         if self._cache_enabled:
             self._cache_put(task_id, task)
 
-        await self._emit_event("task.created", task_id, task.to_dict())
+        await self._emit_event(EventType.CREATED, task_id, task.to_dict())
 
         return task
 
@@ -152,6 +161,7 @@ class TaskLifecycleManager:
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
             node_id: str = "default",
             ttl: int = 3600,
+            parent_task_id: Optional[str] = None,
     ) -> Tuple[Task, Optional[bool]]:
         """创建任务并尝试一次原子入队（提交快路径）
 
@@ -170,7 +180,8 @@ class TaskLifecycleManager:
             data=data,
             priority=priority_enum,
             node_id=node_id,
-            ttl=ttl
+            ttl=ttl,
+            parent_task_id=parent_task_id,
         )
 
         queued = await self._task_repo.save_if_absent_and_enqueue(task, max_size)
@@ -180,7 +191,7 @@ class TaskLifecycleManager:
         if self._cache_enabled:
             self._cache_put(task_id, task)
 
-        await self._emit_event("task.created", task_id, task.to_dict())
+        await self._emit_event(EventType.CREATED, task_id, task.to_dict())
 
         return task, queued
 
@@ -251,7 +262,7 @@ class TaskLifecycleManager:
                 continue
             if self._cache_enabled:
                 self._cache_put(task.task_id, task)
-            await self._emit_event("task.created", task.task_id, task.to_dict())
+            await self._emit_event(EventType.CREATED, task.task_id, task.to_dict())
             created.append(task.task_id)
 
         return created
@@ -262,6 +273,7 @@ class TaskLifecycleManager:
             return 0
 
         deleted = await self._task_repo.delete_batch(task_ids)
+        await self._delete_checkpoints(task_ids)
         if self._cache_enabled:
             with self._lock:
                 for task_id in task_ids:
@@ -322,7 +334,7 @@ class TaskLifecycleManager:
             self._cache_put(task_id, task)
 
         await self._emit_event(
-            "task.status_changed",
+            EventType.STATUS_CHANGED,
             task_id,
             {"old_status": old_status.value, "new_status": status.value}
         )
@@ -372,7 +384,7 @@ class TaskLifecycleManager:
 
 
         await self._emit_event(
-            "task.progress",
+            EventType.PROGRESS,
             task_id,
             {
                 "progress": task.progress,
@@ -532,7 +544,9 @@ class TaskLifecycleManager:
 
             if task.status != TaskStatus.RUNNING:
                 return
-            await self._task_repo.save_fields(task, ("status", "node_id", "started_at"))
+            await self._task_repo.save_fields(
+                task, ("status", "node_id", "started_at", "queue_wait_ms")
+            )
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -598,7 +612,9 @@ class TaskLifecycleManager:
             if task.status != TaskStatus.RUNNING:
                 continue
             try:
-                await self._task_repo.save_fields(task, ("status", "node_id", "started_at"))
+                await self._task_repo.save_fields(
+                    task, ("status", "node_id", "started_at", "queue_wait_ms")
+                )
                 flushed += 1
             except Exception as exc:
                 warning(f"Flush running state for {task.task_id} failed: {exc}")
@@ -650,7 +666,7 @@ class TaskLifecycleManager:
             try:
                 await self._task_repo.save_fields(
                     task,
-                    ("status", "node_id", "started_at")
+                    ("status", "node_id", "started_at", "queue_wait_ms")
                 )
             except Exception:
                 # 落库失败必须回滚内存状态：缓存里存的就是同一个对象，若保持 RUNNING，
@@ -662,13 +678,165 @@ class TaskLifecycleManager:
             self._cache_put(task_id, task)
 
 
-        await self._emit_event("task.started", task_id, {"node_id": node_id})
+        await self._emit_event(EventType.STARTED, task_id, {"node_id": node_id})
 
         debug(f"Task {task_id} started on node {node_id}")
         return True
 
-    async def complete_task(self, task_id: str, result: Any) -> bool:
-        """完成任务"""
+    @staticmethod
+    def _merge_cost(task: Task, cost: Optional[Dict[str, Any]]) -> None:
+        """把一次成本上报累加进任务（金额与明细均按字段求和）"""
+        if not cost:
+            return
+
+        detail = dict(task.cost_tracking or {})
+        for key in ("tokens_in", "tokens_out", "api_calls"):
+            detail[key] = int(detail.get(key) or 0) + int(cost.get(key) or 0)
+        task.estimated_cost = (
+            float(task.estimated_cost or 0.0)
+            + float(cost.get("estimated_cost") or 0.0)
+        )
+
+        currency = str(cost.get("currency") or "")
+        current = str(detail.get("currency") or "")
+        if currency:
+            if not current:
+                detail["currency"] = currency
+            elif current != currency:
+                detail["currency"] = "MIXED"
+        task.cost_tracking = detail
+
+    async def apply_cost(self, task_id: str, cost: Dict[str, Any]) -> bool:
+        """把成本明细累加到任务并发布 ``task.cost_reported`` 事件
+
+        终态任务同样接受追加成本：进程执行器的父进程通常在子任务结束后
+        才拿到用量数据，此处不做 RUNNING 限制。
+        """
+        if not cost:
+            return False
+
+        task = await self.get_task(task_id)
+        if not task:
+            return False
+
+        self._merge_cost(task, cost)
+        await self._task_repo.save_fields(
+            task, ("estimated_cost", "cost_tracking")
+        )
+        if self._cache_enabled:
+            self._cache_put(task_id, task)
+
+        await self._emit_event(EventType.COST_REPORTED, task_id, cost)
+        return True
+
+    # ========== checkpoint ==========
+
+    @property
+    def checkpoint_enabled(self) -> bool:
+        """checkpoint 仓储是否已装配"""
+        return self._checkpoint_repo is not None
+
+    async def save_checkpoint(
+            self, task_id: str, state: Dict[str, Any]
+    ) -> int:
+        """保存一个 checkpoint 版本并发布 ``task.checkpointed``
+
+        Returns:
+            新版本号；任务不存在或 checkpoint 未启用时返回 0
+        """
+        if self._checkpoint_repo is None:
+            return 0
+
+        task = await self.get_task(task_id)
+        if not task:
+            return 0
+
+        version = int(task.checkpoint_version or 0) + 1
+        await self._checkpoint_repo.save(task_id, version, state)
+
+        task.checkpoint_version = version
+        if not getattr(self._checkpoint_repo, "handles_task_marker", False):
+            await self._task_repo.save_fields(task, ("checkpoint_version",))
+        if self._cache_enabled:
+            self._cache_put(task_id, task)
+
+        pruned = await self._checkpoint_repo.prune(
+            task_id, self._checkpoint_keep_versions
+        )
+        if pruned:
+            debug(f"Pruned {pruned} old checkpoint(s) for task {task_id}")
+
+        await self._emit_event(
+            EventType.CHECKPOINTED,
+            task_id,
+            {"version": version},
+        )
+        return version
+
+    async def load_checkpoint(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """读取任务最近一次 checkpoint 的状态；没有则返回 None"""
+        if self._checkpoint_repo is None:
+            return None
+        record = await self._checkpoint_repo.load_latest(task_id)
+        return record.state if record else None
+
+    async def resume_from_checkpoint(self, task: Task) -> bool:
+        """把最近一次 checkpoint 注入 ``task.data``（不落库）
+
+        执行器通过 ``data[CHECKPOINT_DATA_KEY]`` 拿到恢复状态；调用方负责把
+        ``data`` 与 ``checkpoint_version`` 一并写回存储。
+
+        Returns:
+            是否找到并注入了 checkpoint
+        """
+        if self._checkpoint_repo is None:
+            return False
+        record = await self._checkpoint_repo.load_latest(task.task_id)
+        if record is None:
+            return False
+        task.data[CHECKPOINT_DATA_KEY] = record.state
+        if record.version > task.checkpoint_version:
+            task.checkpoint_version = record.version
+        return True
+
+    async def apply_checkpoint_resume(self, task: Task) -> bool:
+        """恢复最近 checkpoint 并立即落库（供提交/恢复路径使用）
+
+        Returns:
+            是否找到并写入了 checkpoint
+        """
+        if not await self.resume_from_checkpoint(task):
+            return False
+        await self._task_repo.save_fields(
+            task, ("data", "checkpoint_version")
+        )
+        if self._cache_enabled:
+            self._cache_put(task.task_id, task)
+        return True
+
+    async def _delete_checkpoints(self, task_ids: List[str]) -> None:
+        """删除任务时清理其 checkpoint（尽力而为，失败不影响删除主流程）"""
+        if self._checkpoint_repo is None:
+            return
+        for task_id in task_ids:
+            try:
+                await self._checkpoint_repo.delete(task_id)
+            except Exception as exc:
+                debug(f"Failed to delete checkpoint for task {task_id}: {exc}")
+
+    async def complete_task(
+            self,
+            task_id: str,
+            result: Any,
+            cost: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """完成任务
+
+        Args:
+            task_id: 任务ID
+            result: 执行器返回值
+            cost: 本次执行上报的成本明细；非空时随 ``task.completed`` 事件携带
+        """
         task = await self.get_task(task_id)
 
         # 检查任务是否存在
@@ -688,14 +856,16 @@ class TaskLifecycleManager:
         # 先结束延迟的 RUNNING 落库，保证终态写入之后不会再出现 RUNNING 写入
         await self._resolve_deferred_running(task_id)
 
+        fields = ["status", "started_at", "completed_at", "result", "progress", "duration_ms"]
+        if cost:
+            self._merge_cost(task, cost)
+            fields.extend(("estimated_cost", "cost_tracking"))
+
         task.complete(result)
         # 成功完成即视为 100%，避免 UI 停留在最后一次业务上报的进度上。
         task.progress = 1.0
 
-        await self._task_repo.save_fields(
-            task,
-            ("status", "started_at", "completed_at", "result", "progress")
-        )
+        await self._task_repo.save_fields(task, fields)
         self._clear_progress_flush(task_id)
 
         if self._cache_enabled:
@@ -705,17 +875,35 @@ class TaskLifecycleManager:
         # 通知等待者
         await self._future_manager.complete(task_id, result=result)
 
-        # 直接传递 result，不包装
-        await self._emit_event("task.completed", task_id, result)
+        # 无成本时保持「data 直接是 result」的既有契约；有成本时包一层信封
+        event_data: Any = result
+        if cost:
+            event_data = {"result": result, "cost": cost}
+        await self._emit_event(EventType.COMPLETED, task_id, event_data)
 
         debug(f"Task {task_id} completed successfully")
         return True
 
-    async def fail_task(self, task_id: str, error: str, allow_pending: bool = False) -> bool:
+    async def fail_task(
+            self,
+            task_id: str,
+            error: str,
+            allow_pending: bool = False,
+            failure_reason: Optional[str] = None,
+            cost: Optional[Dict[str, Any]] = None,
+    ) -> bool:
         """任务失败
 
         正常情况下只有 RUNNING 状态的任务可以标记为失败。`allow_pending=True`
         用于入队失败的回滚：任务已落库为 PENDING 但从未进入队列，只能在这里终结。
+
+        Args:
+            task_id: 任务ID
+            error: 失败信息
+            allow_pending: 是否允许终结尚未开始的任务
+            failure_reason: 业务级失败原因（如 ``qa_failed``）。系统异常时留空，
+                两者靠该字段区分，状态同为 ``FAILED``。
+            cost: 本次执行上报的成本明细；非空时随 ``task.failed`` 事件携带
         """
         task = await self.get_task(task_id)
 
@@ -741,11 +929,13 @@ class TaskLifecycleManager:
         await self._resolve_deferred_running(task_id)
 
         old_status = task.status
-        task.fail(error)
-        await self._task_repo.save_fields(
-            task,
-            ("status", "started_at", "error", "completed_at")
-        )
+        fields = ["status", "started_at", "error", "completed_at", "failure_reason", "duration_ms"]
+        if cost:
+            self._merge_cost(task, cost)
+            fields.extend(("estimated_cost", "cost_tracking"))
+
+        task.fail(error, failure_reason)
+        await self._task_repo.save_fields(task, fields)
         self._clear_progress_flush(task_id)
 
         if self._cache_enabled:
@@ -756,9 +946,14 @@ class TaskLifecycleManager:
         await self._future_manager.complete(task_id, error=error)
 
         await self._emit_event(
-            "task.failed",
+            EventType.FAILED,
             task_id,
-            {"error": error, "old_status": old_status.value}
+            {
+                "error": error,
+                "old_status": old_status.value,
+                "reason": task.failure_reason,
+                "cost": cost,
+            }
         )
 
         return True
@@ -780,7 +975,7 @@ class TaskLifecycleManager:
         task.cancel()
         await self._task_repo.save_fields(
             task,
-            ("status", "started_at", "completed_at")
+            ("status", "started_at", "completed_at", "duration_ms")
         )
         self._clear_progress_flush(task_id)
 
@@ -792,7 +987,7 @@ class TaskLifecycleManager:
         await self._future_manager.complete(task_id, error="Task cancelled")
 
         await self._emit_event(
-            "task.cancelled",
+            EventType.CANCELLED,
             task_id,
             {"old_status": old_status.value}
         )
@@ -816,13 +1011,15 @@ class TaskLifecycleManager:
         old_status = task.status
         task.reset_for_retry()
 
-        await self._task_repo.save_fields(
-            task,
-            (
-                "status", "started_at", "completed_at", "result", "error",
-                "node_id", "progress", "progress_message",
-            )
-        )
+        # 手动重试同样从最近一次 checkpoint 恢复（data 与标记一起写回）
+        fields = [
+            "status", "started_at", "completed_at", "result", "error",
+            "node_id", "progress", "progress_message",
+            "queue_wait_ms", "duration_ms", "data", "checkpoint_version",
+        ]
+        await self.resume_from_checkpoint(task)
+
+        await self._task_repo.save_fields(task, tuple(fields))
         self._clear_progress_flush(task_id)
 
         if self._cache_enabled:
@@ -832,7 +1029,7 @@ class TaskLifecycleManager:
         await self._future_manager.remove(task_id)
 
         await self._emit_event(
-            "task.retry",
+            EventType.RETRY,
             task_id,
             {
                 "retry_count": task.retry_count,
@@ -847,6 +1044,7 @@ class TaskLifecycleManager:
     async def delete_task(self, task_id: str) -> bool:
         """删除任务"""
         await self._task_repo.delete(task_id)
+        await self._delete_checkpoints([task_id])
         self._clear_progress_flush(task_id)
 
         if self._cache_enabled:
@@ -856,7 +1054,7 @@ class TaskLifecycleManager:
 
         await self._future_manager.remove(task_id)
 
-        await self._emit_event("task.deleted", task_id)
+        await self._emit_event(EventType.DELETED, task_id)
 
         return True
 
@@ -984,6 +1182,7 @@ class TaskLifecycleManager:
             清理的任务数量
         """
         deleted_ids = await self._task_repo.delete_expired_terminal(max_age_seconds)
+        await self._delete_checkpoints(deleted_ids)
 
         for task_id in deleted_ids:
             if self._cache_enabled:

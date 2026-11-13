@@ -28,7 +28,32 @@ from neotask.core.progress import (
     report_progress_sync,
 )
 
+# 业务级失败登记
+from neotask.core.failure import (
+    BusinessFailure,
+    get_failure_recorder,
+    report_failure,
+)
+
+# 成本上报
+from neotask.core.cost import (
+    CostRecorder,
+    get_cost_recorder,
+    report_cost,
+)
+
+# Checkpoint 断点续跑
+from neotask.core.checkpoint import (
+    CHECKPOINT_DATA_KEY,
+    CheckpointContext,
+    load_checkpoint,
+    load_checkpoint_sync,
+    save_checkpoint,
+    save_checkpoint_sync,
+)
+
 # 事件总线
+from neotask.common.constants import EventType
 from neotask.event.bus import EventBus, TaskEvent
 
 # 执行器
@@ -46,10 +71,27 @@ from neotask.lock.watchdog import WatchDog
 from neotask.lock.factory import LockFactory, LockManager
 
 # 存储
-from neotask.storage.base import TaskRepository, QueueRepository
-from neotask.storage.memory import MemoryTaskRepository, MemoryQueueRepository
-from neotask.storage.sqlite import SQLiteTaskRepository, SQLiteQueueRepository
-from neotask.storage.redis import RedisTaskRepository, RedisQueueRepository
+from neotask.storage.base import (
+    CheckpointRepository,
+    QueueRepository,
+    TaskRepository,
+)
+from neotask.storage.memory import (
+    MemoryCheckpointRepository,
+    MemoryContextStore,
+    MemoryQueueRepository,
+    MemoryTaskRepository,
+)
+from neotask.storage.sqlite import (
+    SQLiteCheckpointRepository,
+    SQLiteQueueRepository,
+    SQLiteTaskRepository,
+)
+from neotask.storage.redis import (
+    RedisCheckpointRepository,
+    RedisQueueRepository,
+    RedisTaskRepository,
+)
 from neotask.storage.factory import StorageFactory
 
 # 队列
@@ -80,7 +122,8 @@ from neotask.models.config import (
 # 异常
 from neotask.common.exceptions import (
     TaskSchedulerError, TaskNotFoundError, TaskError,
-    TaskAlreadyExistsError, QueueFullError, BatchSubmitError, TimeoutError
+    TaskAlreadyExistsError, QueueFullError, BatchSubmitError, TimeoutError,
+    NeoTaskError, UnsupportedFeatureError,
 )
 
 #
@@ -110,10 +153,23 @@ __all__ = [
     "report_progress",
     "report_progress_sync",
     "get_progress_reporter",
+    "BusinessFailure",
+    "get_failure_recorder",
+    "report_failure",
+    "CostRecorder",
+    "get_cost_recorder",
+    "report_cost",
+    "CHECKPOINT_DATA_KEY",
+    "CheckpointContext",
+    "save_checkpoint",
+    "save_checkpoint_sync",
+    "load_checkpoint",
+    "load_checkpoint_sync",
 
     # 事件
     "EventBus",
     "TaskEvent",
+    "EventType",
 
     # 执行器
     "TaskExecutor",
@@ -133,12 +189,17 @@ __all__ = [
     # 存储
     "TaskRepository",
     "QueueRepository",
+    "CheckpointRepository",
     "MemoryTaskRepository",
     "MemoryQueueRepository",
+    "MemoryCheckpointRepository",
+    "MemoryContextStore",
     "SQLiteTaskRepository",
     "SQLiteQueueRepository",
+    "SQLiteCheckpointRepository",
     "RedisTaskRepository",
     "RedisQueueRepository",
+    "RedisCheckpointRepository",
     "StorageFactory",
 
     # 队列
@@ -186,4 +247,6 @@ __all__ = [
     "TaskAlreadyExistsError",
     "QueueFullError",
     "TimeoutError",
+    "NeoTaskError",
+    "UnsupportedFeatureError",
 ]

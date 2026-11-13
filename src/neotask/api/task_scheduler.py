@@ -64,13 +64,15 @@ class TaskScheduler:
     def __init__(
             self,
             executor: Optional[Union[Callable]] = None,
-            config: Optional[SchedulerConfig] = None
+            config: Optional[SchedulerConfig] = None,
+            checkpoint_repo=None,
     ):
         """初始化定时任务调度器
 
         Args:
             executor: 任务执行函数，可以是同步或异步函数
             config: 调度器配置，包含存储、Worker、重试等配置
+            checkpoint_repo: 可选 checkpoint 仓储，透传给内部 TaskPool
         """
         self._config = config or SchedulerConfig()
 
@@ -93,9 +95,11 @@ class TaskScheduler:
             event_queue_max_size=self._config.event_queue_max_size,
             event_overflow_policy=self._config.event_overflow_policy,
             event_slow_handler_threshold=self._config.event_slow_handler_threshold,
+            enable_checkpoint=self._config.enable_checkpoint,
+            checkpoint_keep_versions=self._config.checkpoint_keep_versions,
         )
 
-        self._pool = TaskPool(executor, pool_config)
+        self._pool = TaskPool(executor, pool_config, checkpoint_repo)
 
         self._periodic_manager: Optional[PeriodicTaskManager] = None
         self._time_wheel: Optional[TimeWheel] = None
@@ -847,7 +851,9 @@ class TaskScheduler:
             task_id: Optional[str] = None,
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
             delay: float = 0,
-            ttl: int = 3600
+            ttl: int = 3600,
+            parent_task_id: Optional[str] = None,
+            resume_from_checkpoint: bool = False,
     ) -> str:
         """提交即时任务
 
@@ -857,13 +863,18 @@ class TaskScheduler:
             priority: 优先级
             delay: 延迟执行时间（秒）
             ttl: 任务超时时间（秒）
+            parent_task_id: 父任务ID（可选，仅建立关联）
+            resume_from_checkpoint: 是否从该 task_id 遗留的 checkpoint 续跑
 
         Returns:
             任务ID
 
         设计模式: Delegation Pattern - 委托给TaskPool
         """
-        return self._pool.submit(data, task_id, priority, delay, ttl)
+        return self._pool.submit(
+            data, task_id, priority, delay, ttl, parent_task_id,
+            resume_from_checkpoint,
+        )
 
     async def submit_async(
             self,
@@ -871,10 +882,15 @@ class TaskScheduler:
             task_id: Optional[str] = None,
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
             delay: float = 0,
-            ttl: int = 3600
+            ttl: int = 3600,
+            parent_task_id: Optional[str] = None,
+            resume_from_checkpoint: bool = False,
     ) -> str:
         """提交即时任务（异步版本）"""
-        return await self._pool.submit_async(data, task_id, priority, delay, ttl)
+        return await self._pool.submit_async(
+            data, task_id, priority, delay, ttl, parent_task_id,
+            resume_from_checkpoint,
+        )
 
     def submit_many(
             self,
@@ -973,6 +989,33 @@ class TaskScheduler:
         """
         return self._pool.task_exists(task_id)
 
+    async def task_exists_async(self, task_id: str) -> bool:
+        """检查任务是否存在（异步）
+
+        Args:
+            task_id: 任务ID
+
+        Returns:
+            是否存在
+        """
+        return await self._pool.task_exists_async(task_id)
+
+    def get_children(self, task_id: str) -> List[str]:
+        """列出指定任务的子任务 ID（同步）"""
+        return self._pool.get_children(task_id)
+
+    async def get_children_async(self, task_id: str) -> List[str]:
+        """列出指定任务的子任务 ID（异步）"""
+        return await self._pool.get_children_async(task_id)
+
+    def get_parent(self, task_id: str) -> Optional[str]:
+        """获取指定任务的父任务 ID（同步）"""
+        return self._pool.get_parent(task_id)
+
+    async def get_parent_async(self, task_id: str) -> Optional[str]:
+        """获取指定任务的父任务 ID（异步）"""
+        return await self._pool.get_parent_async(task_id)
+
     def cancel(self, task_id: str) -> bool:
         """取消任务
 
@@ -1016,6 +1059,130 @@ class TaskScheduler:
             是否成功重试
         """
         return self._pool.retry(task_id, delay)
+
+    def report_failure(self, task_id: str, reason: str, detail: str = "") -> bool:
+        """按业务原因终结任务
+
+        状态定为 ``FAILED`` 并记录 ``failure_reason``，不进入自动重试；
+        仅对 RUNNING 状态生效。
+
+        Args:
+            task_id: 任务ID
+            reason: 业务失败原因标识，如 ``qa_failed``
+            detail: 可选补充说明
+
+        Returns:
+            是否成功终结任务
+        """
+        return self._pool.report_failure(task_id, reason, detail)
+
+    async def report_failure_async(
+            self, task_id: str, reason: str, detail: str = ""
+    ) -> bool:
+        """按业务原因终结任务（异步）"""
+        return await self._pool.report_failure_async(task_id, reason, detail)
+
+    def report_cost(
+            self,
+            task_id: str,
+            tokens_in: int = 0,
+            tokens_out: int = 0,
+            api_calls: int = 0,
+            estimated_cost: Optional[float] = None,
+            currency: Optional[str] = None,
+    ) -> bool:
+        """累加任务成本并发布 ``task.cost_reported``（同步）"""
+        return self._pool.report_cost(
+            task_id,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            api_calls=api_calls,
+            estimated_cost=estimated_cost,
+            currency=currency,
+        )
+
+    async def report_cost_async(
+            self,
+            task_id: str,
+            tokens_in: int = 0,
+            tokens_out: int = 0,
+            api_calls: int = 0,
+            estimated_cost: Optional[float] = None,
+            currency: Optional[str] = None,
+    ) -> bool:
+        """累加任务成本并发布 ``task.cost_reported``（异步）"""
+        return await self._pool.report_cost_async(
+            task_id,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            api_calls=api_calls,
+            estimated_cost=estimated_cost,
+            currency=currency,
+        )
+
+    def get_cost_summary(
+            self, task_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """聚合任务成本（同步）"""
+        return self._pool.get_cost_summary(task_ids)
+
+    async def get_cost_summary_async(
+            self, task_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """聚合任务成本（异步）"""
+        return await self._pool.get_cost_summary_async(task_ids)
+
+    # ========== Checkpoint API ==========
+
+    def save_checkpoint(self, task_id: str, state: Dict[str, Any]) -> int:
+        """显式保存任务中间状态（同步）"""
+        return self._pool.save_checkpoint(task_id, state)
+
+    async def save_checkpoint_async(
+            self, task_id: str, state: Dict[str, Any]
+    ) -> int:
+        """显式保存任务中间状态（异步）"""
+        return await self._pool.save_checkpoint_async(task_id, state)
+
+    def load_checkpoint(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """读取任务最近一次 checkpoint（同步）"""
+        return self._pool.load_checkpoint(task_id)
+
+    async def load_checkpoint_async(
+            self, task_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """读取任务最近一次 checkpoint（异步）"""
+        return await self._pool.load_checkpoint_async(task_id)
+
+    # ========== Blackboard（本地上下文）API ==========
+
+    def context_set(
+            self, key: str, value: Any, ttl: Optional[float] = None
+    ) -> None:
+        """写入进程内共享上下文（同步，仅 Memory 后端）"""
+        self._pool.context_set(key, value, ttl)
+
+    async def context_set_async(
+            self, key: str, value: Any, ttl: Optional[float] = None
+    ) -> None:
+        """写入进程内共享上下文（异步，仅 Memory 后端）"""
+        await self._pool.context_set_async(key, value, ttl)
+
+    def context_get(self, key: str) -> Optional[Any]:
+        """读取进程内共享上下文（同步，仅 Memory 后端）"""
+        return self._pool.context_get(key)
+
+    async def context_get_async(self, key: str) -> Optional[Any]:
+        """读取进程内共享上下文（异步，仅 Memory 后端）"""
+        return await self._pool.context_get_async(key)
+
+    def context_delete(self, key: str) -> bool:
+        """删除进程内共享上下文（同步，仅 Memory 后端）"""
+        return self._pool.context_delete(key)
+
+    async def context_delete_async(self, key: str) -> bool:
+        """删除进程内共享上下文（异步，仅 Memory 后端）"""
+        return await self._pool.context_delete_async(key)
 
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息

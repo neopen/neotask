@@ -125,6 +125,32 @@ class TestTaskPoolSubmit:
             task_id = pool.submit({"test": "data"}, task_id=custom_id)
             assert task_id == custom_id
 
+    def test_submit_duplicate_custom_task_id_rejected(self):
+        """重复的外部 task_id 显式失败，不静默二次入队"""
+        from neotask.common.exceptions import TaskAlreadyExistsError
+
+        with TaskPool(executor=echo_executor) as pool:
+            custom_id = "order_dup_001"
+            pool.submit({"test": "first"}, task_id=custom_id)
+
+            with pytest.raises(TaskAlreadyExistsError):
+                pool.submit({"test": "second"}, task_id=custom_id)
+
+            # 首次提交的任务不受影响，且没有产生第二条记录
+            assert pool.get_task(custom_id)["task_id"] == custom_id
+            assert pool.get_stats()["total"] == 1
+
+    def test_task_exists_makes_resubmit_idempotent(self):
+        """先查后提构成幂等重提交语义"""
+        with TaskPool(executor=echo_executor) as pool:
+            custom_id = "order_idem_001"
+            for _ in range(3):
+                if not pool.task_exists(custom_id):
+                    pool.submit({"test": "once"}, task_id=custom_id)
+
+            assert pool.task_exists(custom_id) is True
+            assert pool.get_stats()["total"] == 1
+
     def test_submit_with_different_priorities(self):
         """测试不同优先级"""
         with TaskPool(executor=echo_executor) as pool:

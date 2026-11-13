@@ -47,6 +47,17 @@ class TaskPriority(Enum):
         return cls.NORMAL
 
 
+def _elapsed_ms(start: Optional[datetime], end: Optional[datetime]) -> Optional[float]:
+    """计算两个时间点之间的毫秒数；缺失或时区不可比时返回 None"""
+    if start is None or end is None:
+        return None
+    try:
+        return max(0.0, (end - start).total_seconds() * 1000.0)
+    except TypeError:
+        # 一个带时区、一个不带时区，无法直接相减
+        return None
+
+
 @dataclass
 class Task:
     """Task entity representing a unit of work."""
@@ -65,6 +76,21 @@ class Task:
     completed_at: Optional[datetime] = None
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    #: 业务级失败原因（如 ``qa_failed``）。状态仍是 ``FAILED``，
+    #: 仅用于与系统异常区分，不引入新状态。
+    failure_reason: Optional[str] = None
+    #: checkpoint 版本号，0 表示没有 checkpoint
+    checkpoint_version: int = 0
+    #: 父任务 ID；仅建立关联，父子完成汇总由调用方负责
+    parent_task_id: Optional[str] = None
+    #: 可聚合的成本金额（多币种时按明细中的 currency 解读）
+    estimated_cost: float = 0.0
+    #: 成本明细 ``{tokens_in, tokens_out, api_calls, currency}``，落库为 JSON 文本
+    cost_tracking: Dict[str, Any] = field(default_factory=dict)
+    #: 排队等待时长（毫秒）= started_at - created_at
+    queue_wait_ms: Optional[float] = None
+    #: 执行时长（毫秒）= completed_at - started_at
+    duration_ms: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage - 修复 None 值问题"""
@@ -83,6 +109,13 @@ class Task:
             "completed_at": self.completed_at.isoformat() if self.completed_at else "",
             "result": json.dumps(self.result) if self.result is not None else "",
             "error": self.error or "",
+            "failure_reason": self.failure_reason or "",
+            "checkpoint_version": self.checkpoint_version,
+            "parent_task_id": self.parent_task_id or "",
+            "estimated_cost": self.estimated_cost,
+            "cost_tracking": json.dumps(self.cost_tracking) if self.cost_tracking else "",
+            "queue_wait_ms": self.queue_wait_ms,
+            "duration_ms": self.duration_ms,
         }
 
     def update_progress(self, progress: float, message: str = "") -> None:
@@ -126,6 +159,19 @@ class Task:
             completed_at=parse_datetime(data.get("completed_at")),
             result=parse_json(data.get("result")),
             error=data.get("error"),
+            failure_reason=data.get("failure_reason") or None,
+            checkpoint_version=int(data.get("checkpoint_version") or 0),
+            parent_task_id=data.get("parent_task_id") or None,
+            estimated_cost=float(data.get("estimated_cost") or 0.0),
+            cost_tracking=parse_json(data.get("cost_tracking")) or {},
+            queue_wait_ms=(
+                float(data["queue_wait_ms"])
+                if data.get("queue_wait_ms") is not None else None
+            ),
+            duration_ms=(
+                float(data["duration_ms"])
+                if data.get("duration_ms") is not None else None
+            ),
         )
 
     def start(self, node_id: str) -> None:
@@ -133,23 +179,33 @@ class Task:
         self.status = TaskStatus.RUNNING
         self.node_id = node_id
         self.started_at = datetime.now(timezone.utc)
+        self.queue_wait_ms = _elapsed_ms(self.created_at, self.started_at)
 
     def complete(self, result: Dict[str, Any]) -> None:
         """Mark task as completed successfully."""
         self.status = TaskStatus.SUCCESS
         self.result = result
         self.completed_at = datetime.now(timezone.utc)
+        self.duration_ms = _elapsed_ms(self.started_at, self.completed_at)
 
-    def fail(self, error: str) -> None:
-        """Mark task as failed."""
+    def fail(self, error: str, failure_reason: Optional[str] = None) -> None:
+        """Mark task as failed.
+
+        Args:
+            error: 失败信息（系统异常文本或业务原因描述）
+            failure_reason: 业务级失败原因；系统异常时保持 ``None``
+        """
         self.status = TaskStatus.FAILED
         self.error = error
+        self.failure_reason = failure_reason
         self.completed_at = datetime.now(timezone.utc)
+        self.duration_ms = _elapsed_ms(self.started_at, self.completed_at)
 
     def cancel(self) -> None:
         """Mark task as cancelled."""
         self.status = TaskStatus.CANCELLED
         self.completed_at = datetime.now(timezone.utc)
+        self.duration_ms = _elapsed_ms(self.started_at, self.completed_at)
 
     def reset_for_retry(self) -> None:
         """Reset a terminal task back to PENDING for manual retry.
@@ -163,9 +219,12 @@ class Task:
         self.completed_at = None
         self.result = None
         self.error = None
+        self.failure_reason = None
         self.node_id = ""
         self.progress = 0.0
         self.progress_message = ""
+        self.queue_wait_ms = None
+        self.duration_ms = None
 
     def is_terminal(self) -> bool:
         """Check if task is in terminal state."""

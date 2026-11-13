@@ -58,7 +58,10 @@
 - **Event Callbacks** - Supports task lifecycle event listeners
 - **Progress Reporting** - Executors can publish progress updates; subscribers receive `task.progress` events
 - **Custom Failure Reason** *(v1.1)* - Executors can mark business-level failures (e.g. `qa_failed`) via `report_failure(reason=...)`; the `task.failed` event carries the reason, distinct from system exceptions
-- **Parent-Child Association** *(v1.1)* - Tasks carry `parent_task_id` / `child_count` / `completed_children` metadata with `get_children()` / `get_parent()` queries; auto-aggregation is intentionally left to the caller or orchestrator
+- **Cost Tracking** *(v1.1)* - Executors report tokens / API calls / estimated cost via `report_cost()`; `get_cost_summary()` aggregates per task or across a batch, with mixed currencies flagged as `MIXED`
+- **Parent-Child Association** *(v1.1)* - Tasks carry `parent_task_id` with `get_children()` / `get_parent()` queries; auto-aggregation is intentionally left to the caller or orchestrator
+- **Checkpoint & Resume** *(v1.1)* - Executors save intermediate state via `save_checkpoint()` / `load_checkpoint()` (or `pool.save_checkpoint(task_id, ...)` for process executors); `task.checkpointed` is emitted, and retries / `resume_from_checkpoint=True` resume from the latest version
+- **Local Blackboard** *(v1.1, Memory backend)* - Share process-local values with `context_set()` / `context_get()` / `context_delete()` (optional TTL); non-Memory backends raise `UnsupportedFeatureError` instead of silently degrading
 
 
 
@@ -99,6 +102,12 @@ graph TB
             FM[FutureManager<br/>Async Wait / Result Callback]
         end
 
+        subgraph Delivered["v1.1 Local Capability Components (Delivered)"]
+            CK[CheckpointRepository<br/>Checkpoint & Resume]
+            CT[CostRecorder<br/>Cost & Duration Reporting]
+            CS[MemoryContextStore<br/>Local Context (Memory only)]
+        end
+
         subgraph Internal["Internal Components"]
             EB[EventBus<br/>Event Bus]
             MC[MetricsCollector<br/>In-memory Metrics Aggregation]
@@ -126,6 +135,9 @@ graph TB
     WP --> EB
     WP --> MC
     WP --> LF
+    WP -.->|v1.1 delivered| CK
+    WP -.->|v1.1 delivered| CT
+    WP -.->|v1.1 delivered| CS
 
     LM --> MEM
     LM --> SQLITE
@@ -135,6 +147,12 @@ graph TB
     QS --> SQLITE
     QS --> REDIS
 
+    CK -.-> MEM
+    CK -.-> SQLITE
+    CK -.-> REDIS
+
+    CS -.->|in-memory only, not persisted| MEM
+
     MC -.->|in-memory only, not persisted| MEM
 
     LF --> REDIS
@@ -142,7 +160,7 @@ graph TB
 
 **Development Roadmap**
 
-> **Note**: v0.1 – v1.0 are released versions; v1.1 – v1.3 are planned iterations covering local capabilities, performance, and monitoring; v2.0 (Orchestration Integration) is **deferred** and will only start once local capabilities are stable and real multi-service demand exists. Orchestration capabilities (DAG, dynamic routing, plugin system, Web UI) are handled by the upper-layer orchestration service and are out of scope for NeoTask.
+> **Note**: v0.1 – v1.0 are released versions; v1.1 is feature-complete and pending release; v1.2 – v1.3 cover performance, monitoring and reliability. NeoTask is a self-sufficient local execution SDK — DAG decomposition, task dispatch and state progression belong to an upper-layer **control plane** (e.g. NeoFlow), which NeoTask only integrates with as an **execution plane** (pull task → run handler → report event). v2.0 (NeoFlow execution-plane integration) is **deferred**; built-in DAG, dynamic routing, plugin system and Web UI remain out of scope. The task/event wire contract is frozen across 1.x — see [docs/neotask-execution-contract.md](docs/neotask-execution-contract.md).
 
 ```mermaid
 timeline
@@ -178,11 +196,11 @@ timeline
                           : Automatic Fault Recovery
 
     section v1.1
-        Local Capability : Checkpoint & Resume
-                        : Cost Tracking
-                        : Parent-Child Association
-                        : Local Context Store
-                        : Custom Failure Reason
+        Local Capability (Delivered) : Checkpoint & Resume
+                                     : Cost Tracking
+                                     : Parent-Child Association
+                                     : Local Context Store
+                                     : Custom Failure Reason
 
     section v1.2
         Performance & Monitoring : Batch Write Optimization
@@ -198,10 +216,10 @@ timeline
                             : Retry Semantics Unification
 
     section v2.0
-        Orchestration Integration (Deferred) : OrchestratorClient
-                                            : Redis Stream Consumer
-                                            : Heartbeat & Instance Registry
-                                            : Remote Event Reporting
+        NeoFlow Execution Plane (Deferred) : Task Consumer (pull)
+                                          : Remote Event Reporting
+                                          : Control Message Handling
+                                          : Reuse Node & Heartbeat Registry
 ```
 
 ------
@@ -383,6 +401,15 @@ How the numbers are measured:
 | `pool.wait_for_result(task_id, timeout=300)`                 | Wait for result                                              |
 | `pool.get_status(task_id)`                                   | Get status                                                   |
 | `pool.cancel(task_id)`                                       | Cancel task                                                  |
+| `pool.task_exists(task_id)`                                  | Check whether a task id is taken (idempotent resubmit)       |
+| `pool.report_failure(task_id, reason, detail="")`            | Fail a running task with a business reason (skips auto-retry) |
+| `pool.submit(data, parent_task_id=parent_id)`                | Submit a child task associated with a parent                 |
+| `pool.get_children(task_id)` / `pool.get_parent(task_id)`    | Query the parent-child relation                              |
+| `pool.report_cost(task_id, tokens_in=0, tokens_out=0, api_calls=0, estimated_cost=None, currency=None)` | Add cost usage to a task and emit `task.cost_reported` |
+| `pool.get_cost_summary(task_ids=None)`                       | Aggregate cost across selected tasks or all tasks             |
+| `pool.save_checkpoint(task_id, state) / pool.load_checkpoint(task_id)` | Explicit checkpoint write / latest-state read (works for process executors) |
+| `pool.submit(..., task_id=..., resume_from_checkpoint=True)` | Resubmit with an external id and inject its latest checkpoint |
+| `pool.context_set(key, value, ttl=None) / context_get(key) / context_delete(key)` | Process-local blackboard (Memory backend only) |
 | `pool.on_progress(handler)`                                  | Subscribe to progress events                                 |
 | `scheduler.submit_delayed(data, delay_seconds)`              | Delayed task                                                 |
 | `scheduler.submit_interval(data, interval_seconds)`          | Periodic task                                                |
@@ -414,11 +441,40 @@ A few behaviors are easy to trip over, so they are documented explicitly:
 
 - **`get_result` vs `wait_for_result`**: `wait_for_result(task_id)` returns the
   executor's raw value, while `get_result(task_id)` returns a metadata wrapper
-  dict `{task_id, status, result, error, created_at, completed_at}` — the real
-  payload is under `result`.
+  dict `{task_id, status, result, error, failure_reason, parent_task_id,
+  estimated_cost, cost_tracking, queue_wait_ms, duration_ms, created_at,
+  completed_at}` — the real payload is under `result`.
+- **Cost reporting**: call `neotask.report_cost(tokens_in=..., tokens_out=...,
+  api_calls=..., estimated_cost=..., currency="USD")` inside the executor; use
+  `pool.report_cost(task_id, ...)` for process executors or usage that arrives
+  after the task finished. Repeated reports accumulate. When a task reports a
+  cost, the `task.completed` event `data` becomes `{"result": ..., "cost": {...}}`;
+  without a cost it stays the raw result.
+- **Business failure vs exception**: a task that fails because the *business*
+  said so (review rejected, risk score too low) should report a reason instead
+  of raising, so it doesn't burn the retry budget. Call
+  `neotask.report_failure("qa_failed", "score=10")` inside the executor and
+  return normally — NeoTask finalizes the task as `FAILED` with
+  `failure_reason="qa_failed"`, keeps `retry_count` at 0, and puts `reason` on
+  the `task.failed` event. From outside the executor use
+  `pool.report_failure(task_id, reason)`, which only accepts a running task.
+  Raising an exception keeps the existing retry + dead-letter behaviour.
 - **Event keys**: lifecycle event types are namespaced as `task.created` /
   `task.started` / `task.completed` / `task.failed` / `task.cancelled` / `task.retry`
-  (not bare `created`). Prefer the `pool.on_completed(...)` helpers.
+  (not bare `created`). Prefer the `pool.on_completed(...)` helpers, or subscribe
+  with the `EventType` constants (`from neotask import EventType`).
+- **Checkpoint & resume**: inside async executors call
+  `await neotask.save_checkpoint(state)` / `await neotask.load_checkpoint()`;
+  thread executors use the `_sync` variants; process executors must use
+  `pool.save_checkpoint(task_id, state)` / `pool.load_checkpoint(task_id)`.
+  Automatic and manual retries inject the latest checkpoint into
+  `task.data["__checkpoint__"]`; pass `resume_from_checkpoint=True` to
+  `submit` / `create_pending_task` (requires an explicit `task_id`). Versions are
+  pruned to `checkpoint_keep_versions` (default 5), reflected in
+  `get_task()["checkpoint_version"]`, and every write emits `task.checkpointed`.
+- **Local blackboard**: `context_set` / `context_get` / `context_delete` are
+  process-local and **Memory backend only**. SQLite / Redis raise
+  `UnsupportedFeatureError` instead of silently doing nothing.
 - **Graceful shutdown scope**: `shutdown(graceful=True)` drains tasks that are
   already enqueued (pending + running) before returning. Unexpired delayed
   tasks and periodic/cron schedules are **not** fired during shutdown — cancel
@@ -428,6 +484,11 @@ A few behaviors are easy to trip over, so they are documented explicitly:
   **enqueued** (their ids live in the persisted queue). A record created only via
   `create_pending_task()` and never pushed through `enqueue_task()` is not part
   of the queue, so it will **not** auto-run after a restart — enqueue it explicitly.
+- **Upgrading a 1.0.x SQLite database**: new columns are added automatically on
+  startup. To backfill `queue_wait_ms` / `duration_ms` for historical rows and
+  build the parent index, stop the pool and run
+  `python scripts/migrate_task_metadata.py --db <path> --apply` (preview without
+  `--apply`).
 - **Periodic task persistence**: `enable_persistence` is **on by default**. With
   `storage_type="sqlite"` or `"redis"`, interval / cron periodic tasks are persisted
   and auto-restored after a restart; slots missed while down are handled by each

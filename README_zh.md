@@ -46,7 +46,10 @@
 - **事件回调** - 支持任务生命周期事件监听
 - **进度上报** - executor 内可发布进度，订阅者收到 `task.progress` 事件
 - **自定义失败原因** *(v1.1)* - executor 可通过 `report_failure(reason=...)` 标记业务级失败（如 `qa_failed`），`task.failed` 事件携带原因，与系统异常区分
-- **父子关联** *(v1.1)* - 任务携带 `parent_task_id` / `child_count` / `completed_children` 元数据，提供 `get_children()` / `get_parent()` 查询；自动汇总交由调用方或编排层，不在 NeoTask 内实现
+- **成本采集** *(v1.1)* - executor 通过 `report_cost()` 上报 token / API 调用次数 / 预估费用，`get_cost_summary()` 可按任务或批次聚合，多币种标记为 `MIXED`
+- **父子关联** *(v1.1)* - 任务携带 `parent_task_id`，提供 `get_children()` / `get_parent()` 查询；自动汇总交由调用方或编排层，不在 NeoTask 内实现
+- **断点续跑** *(v1.1)* - 执行器用 `save_checkpoint()` / `load_checkpoint()` 保存中间状态（进程执行器用 `pool.save_checkpoint(task_id, ...)`），发布 `task.checkpointed`；重试与 `resume_from_checkpoint=True` 自动从最近版本恢复
+- **本地上下文** *(v1.1，仅 Memory)* - `context_set()` / `context_get()` / `context_delete()` 共享进程内数据（可选 TTL）；非 Memory 后端抛 `UnsupportedFeatureError`，不静默降级
 
 ------
 
@@ -83,10 +86,10 @@ graph TB
             FM[FutureManager<br/>异步等待 / 结果回调]
         end
 
-        subgraph Planned["v1.1 规划组件"]
-            CK[CheckpointManager<br/>断点续跑]
-            CT[CostTracker<br/>成本与耗时采集]
-            CS[ContextStore<br/>本地上下文存储]
+        subgraph Delivered["v1.1 本地能力组件（已交付）"]
+            CK[CheckpointRepository<br/>断点续跑]
+            CT[CostRecorder<br/>成本与耗时上报]
+            CS[MemoryContextStore<br/>本地上下文存储（仅 Memory）]
         end
 
         subgraph Internal["内部组件"]
@@ -116,9 +119,9 @@ graph TB
     WP --> EB
     WP --> MC
     WP --> LF
-    WP -.->|v1.1 规划| CK
-    WP -.->|v1.1 规划| CT
-    WP -.->|v1.1 规划| CS
+    WP -.->|v1.1 已交付| CK
+    WP -.->|v1.1 已交付| CT
+    WP -.->|v1.1 已交付| CS
 
     LM --> MEM
     LM --> SQLITE
@@ -132,9 +135,7 @@ graph TB
     CK -.-> SQLITE
     CK -.-> REDIS
 
-    CS -.-> MEM
-    CS -.-> SQLITE
-    CS -.-> REDIS
+    CS -.->|仅内存，不持久化| MEM
 
     MC -.->|仅内存，不持久化| MEM
 
@@ -143,7 +144,7 @@ graph TB
 
 **发展路线图**
 
-**图注**：v0.1 – v1.0 为已发布版本；v1.1 – v1.3 为规划中的本地能力、性能与监控迭代；v2.0 的编排集成（Orchestration Integration）为**后移项**，待本地能力稳定且有真实多服务需求时再启动。编排能力（DAG、动态路由、插件系统、Web UI）由上层编排服务负责，不在 NeoTask 范围内。
+**图注**：v0.1 – v1.0 为已发布版本；v1.1 功能已交付、待发布；v1.2 – v1.3 为性能、监控与可靠性迭代。NeoTask 是可独立自足的本地执行 SDK —— DAG 拆解、任务下发与状态推进属于上层**控制面**（如 NeoFlow），NeoTask 仅作为**执行面**与其对接（拉取任务 → 执行 Handler → 上报事件）。v2.0（NeoFlow 执行面接入）为**后移项**；内置 DAG、动态路由、插件系统与 Web UI 不在范围内。任务与事件的线协议在 1.x 内冻结，详见 [docs/neotask-execution-contract.md](docs/neotask-execution-contract.md)。
 
 ```mermaid
 timeline
@@ -179,11 +180,11 @@ timeline
                    : 故障自动恢复
 
     section v1.1
-        本地能力补全 : Checkpoint断点续跑
-                     : 成本与耗时采集
-                     : 父子任务关联
-                     : 本地上下文存储
-                     : 自定义失败状态
+        本地能力补全（已交付） : Checkpoint断点续跑
+                               : 成本与耗时采集
+                               : 父子任务关联
+                               : 本地上下文存储
+                               : 自定义失败状态
 
     section v1.2
         性能与监控 : 批量写入优化
@@ -199,10 +200,10 @@ timeline
                      : 重试语义统一
 
     section v2.0
-        编排集成 : OrchestratorClient
-                       : Redis Stream消费者
-                       : 心跳与实例注册
-                       : 远程事件上报
+        NeoFlow执行面接入（后移） : 任务拉取（TaskConsumer）
+                                 : 远程事件上报
+                                 : 控制消息处理
+                                 : 复用节点与心跳注册
 ```
 
 ------
@@ -382,6 +383,15 @@ print(result.format())        # result.to_dict() 可直接 json.dumps
 | `pool.wait_for_result(task_id, timeout=300)`                 | 等待任务结果                                                 |
 | `pool.get_status(task_id)`                                   | 获取任务状态                                                 |
 | `pool.cancel(task_id)`                                       | 取消任务                                                     |
+| `pool.task_exists(task_id)`                                  | 判断任务 ID 是否已存在（幂等重提交）                          |
+| `pool.report_failure(task_id, reason, detail="")`            | 按业务原因终结运行中的任务（不进入自动重试）                  |
+| `pool.submit(data, parent_task_id=parent_id)`                | 提交关联父任务的子任务                                       |
+| `pool.get_children(task_id)` / `pool.get_parent(task_id)`    | 查询父子关系                                                 |
+| `pool.report_cost(task_id, tokens_in=0, tokens_out=0, api_calls=0, estimated_cost=None, currency=None)` | 累加任务成本并发布 `task.cost_reported` |
+| `pool.get_cost_summary(task_ids=None)`                       | 按指定任务或全部任务聚合成本                                  |
+| `pool.save_checkpoint(task_id, state) / pool.load_checkpoint(task_id)` | 显式写入 checkpoint / 读取最近状态（进程执行器可用） |
+| `pool.submit(..., task_id=..., resume_from_checkpoint=True)` | 用外部 task_id 重提交并注入最近 checkpoint |
+| `pool.context_set(key, value, ttl=None) / context_get(key) / context_delete(key)` | 进程内 Blackboard（仅 Memory 后端） |
 | `pool.on_progress(handler)`                                  | 订阅进度事件                                                 |
 | `scheduler.submit_delayed(data, delay_seconds)`              | 提交延时任务                                                 |
 | `scheduler.submit_interval(data, interval_seconds)`          | 提交周期任务                                                 |
@@ -409,10 +419,31 @@ print(result.failed)     # [{"index": 3, "data": {...}, "error": "queue is full"
 
 - **`get_result` 与 `wait_for_result` 的区别**：`wait_for_result(task_id)` 直接返回
   executor 的原始结果；`get_result(task_id)` 返回元数据包装字典
-  `{task_id, status, result, error, created_at, completed_at}`，真实结果在 `result` 字段。
+  `{task_id, status, result, error, failure_reason, parent_task_id, estimated_cost,
+  cost_tracking, queue_wait_ms, duration_ms, created_at, completed_at}`，真实结果在 `result` 字段。
+- **成本上报**：在执行器内调用 `neotask.report_cost(tokens_in=..., tokens_out=...,
+  api_calls=..., estimated_cost=..., currency="USD")`；进程执行器或任务结束后才拿到
+  的用量改用 `pool.report_cost(task_id, ...)`。多次上报按字段累加。任务上报过成本时，
+  `task.completed` 事件的 `data` 变为 `{"result": ..., "cost": {...}}`；未上报时保持
+  原始结果不变。
+- **业务失败与异常失败**：审核不通过、风控拒绝这类"业务判失败"应在执行器内调用
+  `neotask.report_failure("qa_failed", "score=10")` 后正常返回——NeoTask 会把任务定稿为
+  `FAILED`、记录 `failure_reason="qa_failed"`、`retry_count` 保持 0，并在 `task.failed`
+  事件里带上 `reason`；抛异常仍走原有的自动重试与死信投递。执行器之外用
+  `pool.report_failure(task_id, reason)`，它只接受 RUNNING 状态的任务。
 - **事件类型串**：生命周期事件名是带命名空间的 `task.created` / `task.started` /
   `task.completed` / `task.failed` / `task.cancelled` / `task.retry`（而非裸 `created`），
-  建议直接使用 `pool.on_completed(...)` 等便捷方法。
+  建议直接使用 `pool.on_completed(...)` 等便捷方法，或用 `EventType` 常量
+  （`from neotask import EventType`）订阅。
+- **断点续跑**：异步执行器内用 `await neotask.save_checkpoint(state)` /
+  `await neotask.load_checkpoint()`；线程执行器用 `_sync` 版本；进程执行器必须用
+  `pool.save_checkpoint(task_id, state)` / `pool.load_checkpoint(task_id)`。自动重试与
+  手动重试会把最近 checkpoint 注入 `task.data["__checkpoint__"]`；
+  `submit` / `create_pending_task` 传入 `resume_from_checkpoint=True`（需显式
+  `task_id`）也会恢复。历史版本按 `checkpoint_keep_versions`（默认 5）淘汰，
+  `get_task()["checkpoint_version"]` 体现存在性，每次写入发布 `task.checkpointed`。
+- **本地上下文**：`context_set` / `context_get` / `context_delete` 仅限 **Memory
+  后端**；SQLite / Redis 会抛 `UnsupportedFeatureError`，不静默降级。
 - **优雅关闭的范围**：`shutdown(graceful=True)` 只会把已入队的任务（pending + running）
   排空后返回。未到期的延时任务、周期/Cron 调度在关闭期间**不会**被触发——请先
   `cancel_periodic` 取消周期调度，或用 `graceful=False` 立即返回。停机时会输出摘要，
@@ -421,6 +452,9 @@ print(result.failed)     # [{"index": 3, "data": {...}, "error": "queue is full"
 - **崩溃/重启恢复**：自动恢复只针对已**入队**的任务（其 id 存在于持久化队列中）。
   仅通过 `create_pending_task()` 落库、从未调用 `enqueue_task()` 入队的记录不属于队列，
   重启后**不会**自动执行——需显式入队。
+- **升级 1.0.x 的 SQLite 库**：新列在启动时自动补齐。若要回填历史任务的
+  `queue_wait_ms` / `duration_ms` 并建立父子索引，请先停机再执行
+  `python scripts/migrate_task_metadata.py --db <路径> --apply`（不加 `--apply` 为预演）。
 - **周期任务持久化**：`enable_persistence` **默认开启**。`storage_type="sqlite"` 或
   `"redis"` 时，interval / cron 周期任务会持久化并在重启后自动恢复，停机期间错过的槽位按
   各任务的 `missed_policy` 处理。`storage_type="memory"` 或显式

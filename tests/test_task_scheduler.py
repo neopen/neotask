@@ -9,6 +9,7 @@ See LICENSE File For Details.
 @GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/8 00:00
 """
+import asyncio
 import time
 from datetime import datetime, timedelta
 from typing import Dict, Any
@@ -510,6 +511,43 @@ class TestTaskSchedulerTaskManagement:
             time.sleep(0.1)
             assert scheduler.task_exists(task_id) is True
             assert scheduler.task_exists("nonexistent") is False
+
+    async def test_task_exists_async(self):
+        """测试异步存在性检查（v1.1.0 补齐 TaskScheduler 的异步形态）"""
+        scheduler = TaskScheduler(executor=echo_executor)
+        scheduler.start()
+        try:
+            task_id = await scheduler.submit_async({"test": "exists_async"})
+            assert await scheduler.task_exists_async(task_id) is True
+            assert await scheduler.task_exists_async("nonexistent") is False
+        finally:
+            scheduler.shutdown()
+
+    def test_report_failure_delegates_to_pool(self):
+        """测试显式业务失败上报（TaskScheduler 委托给内部 TaskPool）"""
+        async def slow_executor(data: Dict[str, Any]) -> Dict[str, Any]:
+            await asyncio.sleep(5)
+            return data
+
+        with TaskScheduler(executor=slow_executor) as scheduler:
+            task_id = scheduler.submit({"n": 1})
+
+            # 等到任务真正进入 RUNNING，显式上报只接受运行中的任务
+            for _ in range(100):
+                if scheduler.get_status(task_id) == "running":
+                    break
+                time.sleep(0.02)
+
+            assert scheduler.report_failure(task_id, "cancelled_by_reviewer", "manual") is True
+
+            deadline = time.time() + 5
+            while scheduler.get_status(task_id) != "failed" and time.time() < deadline:
+                time.sleep(0.02)
+
+            task = scheduler.get_task(task_id)
+            assert task["status"] == "failed"
+            assert task["failure_reason"] == "cancelled_by_reviewer"
+            assert task["error"] == "cancelled_by_reviewer: manual"
 
 
 class TestTaskSchedulerIntegration:

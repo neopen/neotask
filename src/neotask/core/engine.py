@@ -57,6 +57,10 @@ class EngineConfig:
     # 生命周期缓存上限
     cache_max_size: int = DEFAULT_LIFECYCLE_CACHE_MAX_SIZE
 
+    # 断点续跑：任务内保存的状态快照，恢复时注入 task.data["__checkpoint__"]
+    enable_checkpoint: bool = True
+    checkpoint_keep_versions: int = 5  # 单个任务保留的历史版本数
+
     # 执行器配置
     executor_func: Optional[Any] = None
     executor_type: ExecutorType = ExecutorType.AUTO
@@ -82,8 +86,16 @@ class EngineConfig:
     enable_metrics: bool = True
     metrics_interval: int = 60
 
+    # 节点标识（写入事件信封；留空时按 hostname-pid 自动派生）
+    node_id: str = ""
+
     def __post_init__(self) -> None:
         self.storage_type = StorageType.coerce(self.storage_type)
+        if not self.node_id:
+            import os
+            import socket
+            # 与 TaskPoolConfig 同口径：同机多进程时 hostname 相同，追加 pid 区分实例
+            self.node_id = f"{socket.gethostname()}-{os.getpid()}"
 
 
 class TaskEngine:
@@ -101,7 +113,18 @@ class TaskEngine:
         >>> await engine.stop()
     """
 
-    def __init__(self, config: Optional[EngineConfig] = None):
+    def __init__(
+            self,
+            config: Optional[EngineConfig] = None,
+            checkpoint_repo=None,
+    ):
+        """初始化引擎
+
+        Args:
+            config: 引擎配置
+            checkpoint_repo: 可选 checkpoint 仓储；未传且
+                ``config.enable_checkpoint`` 为 True 时自动创建
+        """
         self.config = config or EngineConfig()
         self._initialized = False
         self._running = False
@@ -116,6 +139,7 @@ class TaskEngine:
         # 基础设施
         self._task_repo: Optional[TaskRepository] = None
         self._queue_repo: Optional[QueueRepository] = None
+        self._checkpoint_repo = checkpoint_repo
         self._executor: Optional[TaskExecutor] = None
         self._event_bus: Optional[EventBus] = None
         self._metrics: Optional[MetricsCollector] = None
@@ -141,6 +165,7 @@ class TaskEngine:
             max_queue_size=self.config.event_queue_max_size,
             overflow_policy=self.config.event_overflow_policy,
             slow_handler_threshold=self.config.event_slow_handler_threshold,
+            node_id=self.config.node_id,
         )
 
         # 3. 初始化执行器
@@ -161,6 +186,8 @@ class TaskEngine:
             progress_flush_batch_interval=self.config.progress_flush_batch_interval,
             cache_max_size=self.config.cache_max_size,
             running_persist_delay=self.config.running_persist_delay,
+            checkpoint_repo=self._checkpoint_repo,
+            checkpoint_keep_versions=self.config.checkpoint_keep_versions,
         )
 
         # 6. 初始化分发器
@@ -218,6 +245,8 @@ class TaskEngine:
             raise ValueError(f"Unknown storage type: {self.config.storage_type}")
 
         self._task_repo, self._queue_repo = StorageFactory.create(storage_config)
+        if self._checkpoint_repo is None and self.config.enable_checkpoint:
+            self._checkpoint_repo = StorageFactory.create_checkpoint_repo(storage_config)
 
     async def _init_executor(self) -> None:
         """初始化执行器"""
@@ -312,6 +341,8 @@ class TaskEngine:
             await self._task_repo.close()
         if hasattr(self._queue_repo, 'close'):
             await self._queue_repo.close()
+        if self._checkpoint_repo is not None and hasattr(self._checkpoint_repo, 'close'):
+            await self._checkpoint_repo.close()
 
         # 取消后台任务
         for task in self._background_tasks:

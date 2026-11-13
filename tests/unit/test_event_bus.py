@@ -11,9 +11,11 @@ See LICENSE File For Details.
 """
 
 import asyncio
+import time
 
 import pytest
 
+from neotask.common.constants import EventType
 from neotask.event.bus import EventBus, TaskEvent
 
 
@@ -330,6 +332,120 @@ class TestEventBusConfigPassthrough:
         config = TaskPoolConfig(event_overflow_policy="block")
         with pytest.raises(ValueError):
             TaskPool(config=config)
+
+
+class TestEventTypeRegistry:
+    """事件名常量注册表测试（v1.1.0 批次 1）"""
+
+    def test_registry_values_match_1_0_strings(self):
+        """常量值与 1.0.x 既有裸字符串逐一对齐，防止改名破坏订阅兼容"""
+        expected = {
+            "CREATED": "task.created",
+            "STARTED": "task.started",
+            "COMPLETED": "task.completed",
+            "FAILED": "task.failed",
+            "CANCELLED": "task.cancelled",
+            "RETRY": "task.retry",
+            "PROGRESS": "task.progress",
+            "STATUS_CHANGED": "task.status_changed",
+            "DELETED": "task.deleted",
+            "RECLAIMED": "task.reclaimed",
+            "CHECKPOINTED": "task.checkpointed",
+            "COST_REPORTED": "task.cost_reported",
+        }
+        for name, value in expected.items():
+            assert getattr(EventType, name) == value
+
+    def test_constants_format_as_plain_event_names(self):
+        """常量参与格式化后仍是事件名字符串
+
+        事件名会写进日志与 Web UI；若改用 ``str``-Enum，3.11+ 的
+        ``__format__`` 变更会让 ``f"{EventType.COMPLETED}"`` 变成成员名。
+        """
+        assert f"{EventType.COMPLETED}" == "task.completed"
+        assert format(EventType.COMPLETED) == "task.completed"
+        assert str(EventType.COMPLETED) == "task.completed"
+
+    @pytest.mark.asyncio
+    async def test_plain_string_subscription_receives_constant_event(self, event_bus):
+        """调用方用裸字符串订阅，仍能收到以 EventType 发出的事件（双向兼容）"""
+        received = []
+
+        async def handler(event: TaskEvent):
+            received.append(event)
+
+        async with event_bus as bus:
+            bus.subscribe("task.completed", handler)
+            await bus.emit(TaskEvent(EventType.COMPLETED, "task_001"))
+            await asyncio.sleep(0.1)
+
+        assert len(received) == 1
+        assert received[0].event_type == "task.completed"
+
+    @pytest.mark.asyncio
+    async def test_constant_subscription_receives_string_event(self, event_bus):
+        """反向兼容：以 EventType 订阅，接收调用方用裸字符串发出的事件"""
+        received = []
+
+        async def handler(event: TaskEvent):
+            received.append(event)
+
+        async with event_bus as bus:
+            bus.subscribe(EventType.COMPLETED, handler)
+            await bus.emit(TaskEvent("task.completed", "task_002"))
+            await asyncio.sleep(0.1)
+
+        assert len(received) == 1
+
+
+class TestEventEnvelope:
+    """事件信封稳定化测试（v1.1.0 批次 1）"""
+
+    def test_defaults_are_populated(self):
+        """timestamp 构造时自动填充，schema_version 固定为 1"""
+        before = time.time()
+        event = TaskEvent(EventType.CREATED, "task_001")
+        assert event.schema_version == 1
+        assert event.node_id == ""
+        assert before <= event.timestamp <= time.time() + 1
+
+    def test_positional_construction_stays_compatible(self):
+        """既有三位置参数构造方式不受新增字段影响"""
+        event = TaskEvent("task.completed", "task_001", {"ok": True})
+        assert event.data == {"ok": True}
+        assert event.timestamp > 0
+
+    @pytest.mark.asyncio
+    async def test_bus_stamps_configured_node_id(self):
+        """总线按自身配置补齐缺失的 node_id"""
+        received = []
+
+        async def handler(event: TaskEvent):
+            received.append(event)
+
+        bus = EventBus(node_id="host-a-1001")
+        async with bus:
+            bus.subscribe_global(handler)
+            await bus.emit(TaskEvent(EventType.STARTED, "task_001"))
+            await asyncio.sleep(0.1)
+
+        assert received[0].node_id == "host-a-1001"
+
+    @pytest.mark.asyncio
+    async def test_explicit_node_id_not_overwritten(self):
+        """事件已带 node_id 时不被总线覆盖"""
+        received = []
+
+        async def handler(event: TaskEvent):
+            received.append(event)
+
+        bus = EventBus(node_id="host-a-1001")
+        async with bus:
+            bus.subscribe_global(handler)
+            await bus.emit(TaskEvent(EventType.STARTED, "task_001", node_id="worker-7"))
+            await asyncio.sleep(0.1)
+
+        assert received[0].node_id == "worker-7"
 
 
 if __name__ == "__main__":

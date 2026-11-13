@@ -21,6 +21,12 @@ NeoTask 示例索引（examples/）
 13_benchmark.py          性能自测        用自己的 executor 对比并发度下的吞吐/延迟
 14_event_backpressure.py EventBus 背压   有界队列丢弃策略、慢回调监控与隔离（约 2 秒）
 15_low_jitter_delay.py   低抖动延时      延迟队列 vs 时间轮的触发精度对比（约 3 秒）
+16_custom_task_id.py     外部任务 ID     业务自持 task_id、task_exists 与幂等重提交
+17_business_failure.py   业务失败上报    report_failure 登记原因、跳过自动重试、事件携带 reason
+18_cost_tracking.py      成本采集        report_cost 上报用量、单任务明细与 get_cost_summary 聚合
+19_parent_child.py       父子任务        parent_task_id 关联、get_children/get_parent 查询与汇总
+20_checkpoint.py         断点续跑        save_checkpoint/load_checkpoint、重试恢复与 task.checkpointed
+21_blackboard.py         本地上下文      Memory 后端 context_set/get/delete、TTL 与非 Memory 显式报错
 99_all_features.py       完整演示        即时+优先级+批量+事件+进度+统计+定时（约 7 秒）
 
 说明：

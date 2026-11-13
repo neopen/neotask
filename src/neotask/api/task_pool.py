@@ -17,6 +17,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Callable, Union
 
+from neotask.common.constants import EventType
+from neotask.common.exceptions import UnsupportedFeatureError
 from neotask.common.logger import error, debug, info, warning
 from neotask.core.dispatcher import TaskDispatcher
 from neotask.core.future import FutureManager
@@ -34,6 +36,7 @@ from neotask.monitor.reporter import ReporterManager, ConsoleReporter
 from neotask.queue.dead_letter import DeadLetterQueue
 from neotask.queue.queue_scheduler import QueueScheduler
 from neotask.storage.factory import StorageFactory
+from neotask.storage.memory import MemoryContextStore
 from neotask.worker.pool import WorkerPool
 from neotask.worker.supervisor import WorkerSupervisor
 from neotask.worker.reclaimer import TaskReclaimer, ReclaimerConfig
@@ -64,9 +67,17 @@ class TaskPool:
     def __init__(
             self,
             executor: Union[TaskExecutor, Callable, None] = None,
-            config: Optional[TaskPoolConfig] = None
+            config: Optional[TaskPoolConfig] = None,
+            checkpoint_repo=None,
     ):
-        """初始化任务池"""
+        """初始化任务池
+
+        Args:
+            executor: 任务执行函数或执行器
+            config: 任务池配置
+            checkpoint_repo: 可选的 checkpoint 仓储；未传且
+                ``config.enable_checkpoint`` 为 True 时按存储类型自动创建
+        """
         self._config = config or TaskPoolConfig()
 
         # 初始化执行器
@@ -74,6 +85,16 @@ class TaskPool:
 
         # 初始化存储
         self._task_repo, self._queue_repo = self._init_storage()
+
+        # checkpoint 仓储：独立工厂，默认与任务仓储共用同一 SQLite 连接
+        self._checkpoint_repo = checkpoint_repo
+        if self._checkpoint_repo is None and self._config.enable_checkpoint:
+            self._checkpoint_repo = StorageFactory.create_checkpoint_repo(self._storage_config)
+
+        # Blackboard 仅支持内存后端
+        self._context_store = (
+            MemoryContextStore() if self._config.storage_type == StorageType.MEMORY else None
+        )
 
         # 初始化锁管理器
         self._lock_manager = self._init_lock()
@@ -83,6 +104,7 @@ class TaskPool:
             max_queue_size=self._config.event_queue_max_size,
             overflow_policy=self._config.event_overflow_policy,
             slow_handler_threshold=self._config.event_slow_handler_threshold,
+            node_id=self._config.node_id,
         )
 
         # 初始化未来管理器
@@ -103,6 +125,8 @@ class TaskPool:
             progress_flush_batch_interval=self._config.progress_flush_batch_interval,
             cache_max_size=self._config.cache_max_size,
             running_persist_delay=self._config.running_persist_delay,
+            checkpoint_repo=self._checkpoint_repo,
+            checkpoint_keep_versions=self._config.checkpoint_keep_versions,
         )
 
         # 初始化分发器
@@ -287,6 +311,7 @@ class TaskPool:
         else:
             raise ValueError(f"Unknown storage type: {self._config.storage_type}")
 
+        self._storage_config = storage_config
         return StorageFactory.create(storage_config)
 
     def _init_lock(self):
@@ -312,20 +337,20 @@ class TaskPool:
             async def metrics_handler(event: TaskEvent):
                 data = event.data if isinstance(event.data, dict) else {}
 
-                if event.event_type == "task.created":
+                if event.event_type == EventType.CREATED:
                     # task.created 的 payload 是 Task.to_dict()，带 priority
                     await self._metrics.record_task_submit(
                         event.task_id, data.get("priority", TaskPriority.NORMAL.value)
                     )
-                elif event.event_type == "task.started":
+                elif event.event_type == EventType.STARTED:
                     await self._metrics.record_task_start(event.task_id)
-                elif event.event_type == "task.completed":
+                elif event.event_type == EventType.COMPLETED:
                     await self._metrics.record_task_complete(event.task_id)
-                elif event.event_type == "task.failed":
+                elif event.event_type == EventType.FAILED:
                     await self._metrics.record_task_failed(event.task_id)
-                elif event.event_type == "task.cancelled":
+                elif event.event_type == EventType.CANCELLED:
                     await self._metrics.record_task_cancelled(event.task_id)
-                elif event.event_type == "task.retry":
+                elif event.event_type == EventType.RETRY:
                     await self._metrics.record_task_retry(
                         event.task_id, data.get("retry_count", 1)
                     )
@@ -337,39 +362,39 @@ class TaskPool:
             old_status = str(data.get("old_status", "")).lower()
 
             with self._counter_lock:
-                if event.event_type == "task.created":
+                if event.event_type == EventType.CREATED:
                     self._pending_count += 1
-                elif event.event_type == "task.started":
+                elif event.event_type == EventType.STARTED:
                     self._pending_count = max(0, self._pending_count - 1)
                     self._running_count += 1
-                elif event.event_type == "task.completed":
+                elif event.event_type == EventType.COMPLETED:
                     self._running_count = max(0, self._running_count - 1)
-                elif event.event_type == "task.failed":
+                elif event.event_type == EventType.FAILED:
                     self._decrement_counter_locked(old_status or "running")
                     self._failed_count += 1
-                elif event.event_type == "task.cancelled":
+                elif event.event_type == EventType.CANCELLED:
                     self._decrement_counter_locked(old_status or "pending")
-                elif event.event_type == "task.retry":
+                elif event.event_type == EventType.RETRY:
                     self._decrement_counter_locked(old_status or "running")
                     self._pending_count += 1
 
         # 未来管理器完成
-        @self._event_bus.subscribe("task.completed")
+        @self._event_bus.subscribe(EventType.COMPLETED)
         async def complete_future_handler(event: TaskEvent):
             result = event.data.get("result") if isinstance(event.data, dict) else event.data
             await self._future_manager.complete(event.task_id, result=result)
 
-        @self._event_bus.subscribe("task.failed")
+        @self._event_bus.subscribe(EventType.FAILED)
         async def fail_future_handler(event: TaskEvent):
             err = event.data.get("error") if isinstance(event.data, dict) else str(event.data)
             await self._future_manager.complete(event.task_id, error=err)
 
-        @self._event_bus.subscribe("task.cancelled")
+        @self._event_bus.subscribe(EventType.CANCELLED)
         async def cancel_future_handler(event: TaskEvent):
             await self._future_manager.complete(event.task_id, error="Task cancelled")
 
         # 任务回收事件（用于监控）
-        @self._event_bus.subscribe("task.reclaimed")
+        @self._event_bus.subscribe(EventType.RECLAIMED)
         async def reclaim_handler(event: TaskEvent):
             debug(f"Task reclaimed: {event.task_id}, reason: {event.data}")
 
@@ -557,7 +582,10 @@ class TaskPool:
                 error(f"Error flushing pending progress: {e}")
 
             # 关闭存储连接 - 捕获异常避免循环冲突
-            for repo in [self._task_repo, self._queue_repo]:
+            repos = [self._task_repo, self._queue_repo]
+            if self._checkpoint_repo is not None:
+                repos.append(self._checkpoint_repo)
+            for repo in repos:
                 try:
                     await repo.close()
                 except RuntimeError as e:
@@ -657,12 +685,21 @@ class TaskPool:
             task_id: Optional[str] = None,
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
             delay: float = 0,
-            ttl: int = 3600
+            ttl: int = 3600,
+            parent_task_id: Optional[str] = None,
+            resume_from_checkpoint: bool = False,
     ) -> str:
-        """提交任务（同步）"""
+        """提交任务（同步）
+
+        ``resume_from_checkpoint=True`` 时（需显式 ``task_id``），会把该 ID
+        遗留的最近 checkpoint 注入 ``data["__checkpoint__"]`` 后入队。
+        """
         self._ensure_running()
         result = self._run_coroutine(
-            self._dispatcher.dispatch(data, task_id, priority, delay, ttl)
+            self._dispatcher.dispatch(
+                data, task_id, priority, delay, ttl, parent_task_id,
+                resume_from_checkpoint,
+            )
         )
         return result.task_id if hasattr(result, 'task_id') else result
 
@@ -672,11 +709,16 @@ class TaskPool:
             task_id: Optional[str] = None,
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
             delay: float = 0,
-            ttl: int = 3600
+            ttl: int = 3600,
+            parent_task_id: Optional[str] = None,
+            resume_from_checkpoint: bool = False,
     ) -> str:
         """提交任务（异步）"""
         self._ensure_running()
-        result = await self._dispatcher.dispatch(data, task_id, priority, delay, ttl)
+        result = await self._dispatcher.dispatch(
+            data, task_id, priority, delay, ttl, parent_task_id,
+            resume_from_checkpoint,
+        )
         return result.task_id if hasattr(result, 'task_id') else result
 
     def submit_many(
@@ -718,7 +760,8 @@ class TaskPool:
             data: Dict[str, Any],
             task_id: Optional[str] = None,
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
-            ttl: int = 3600
+            ttl: int = 3600,
+            resume_from_checkpoint: bool = False,
     ) -> str:
         """创建任务记录但**不入队**（同步）
 
@@ -727,7 +770,9 @@ class TaskPool:
         """
         self._ensure_running()
         return self._run_coroutine(
-            self.create_pending_task_async(data, task_id, priority, ttl)
+            self.create_pending_task_async(
+                data, task_id, priority, ttl, resume_from_checkpoint
+            )
         )
 
     async def create_pending_task_async(
@@ -735,7 +780,8 @@ class TaskPool:
             data: Dict[str, Any],
             task_id: Optional[str] = None,
             priority: Union[int, TaskPriority] = TaskPriority.NORMAL,
-            ttl: int = 3600
+            ttl: int = 3600,
+            resume_from_checkpoint: bool = False,
     ) -> str:
         """创建任务记录但**不入队**（异步）"""
         self._ensure_running()
@@ -746,6 +792,8 @@ class TaskPool:
             node_id=self._config.node_id,
             ttl=ttl
         )
+        if resume_from_checkpoint:
+            await self._lifecycle.apply_checkpoint_resume(task)
         self._remember_unenqueued(task.task_id)
         return task.task_id
 
@@ -864,6 +912,12 @@ class TaskPool:
             "status": task.status.value,
             "result": task.result,
             "error": task.error,
+            "failure_reason": task.failure_reason,
+            "parent_task_id": task.parent_task_id,
+            "estimated_cost": task.estimated_cost,
+            "cost_tracking": task.cost_tracking,
+            "queue_wait_ms": task.queue_wait_ms,
+            "duration_ms": task.duration_ms,
             "created_at": task.created_at.isoformat() if task.created_at else None,
             "completed_at": task.completed_at.isoformat() if task.completed_at else None,
         }
@@ -878,6 +932,12 @@ class TaskPool:
             "status": task.status.value,
             "result": task.result,
             "error": task.error,
+            "failure_reason": task.failure_reason,
+            "parent_task_id": task.parent_task_id,
+            "estimated_cost": task.estimated_cost,
+            "cost_tracking": task.cost_tracking,
+            "queue_wait_ms": task.queue_wait_ms,
+            "duration_ms": task.duration_ms,
             "created_at": task.created_at.isoformat() if task.created_at else None,
             "completed_at": task.completed_at.isoformat() if task.completed_at else None,
         }
@@ -899,6 +959,41 @@ class TaskPool:
     async def task_exists_async(self, task_id: str) -> bool:
         """检查任务是否存在（异步）"""
         return await self._task_repo.exists(task_id)
+
+    # ========== 父子任务查询 API ==========
+
+    def get_children(self, task_id: str) -> List[str]:
+        """列出指定任务的子任务 ID（同步）
+
+        只按 ``parent_task_id`` 关联查询，顺序为创建时间升序；不做任何
+        完成状态汇总（由调用方或编排层决定父任务何时算完成）。
+        """
+        return list(self._run_coroutine(self.get_children_async(task_id)))
+
+    async def get_children_async(self, task_id: str) -> List[str]:
+        """列出指定任务的子任务 ID（异步）"""
+        children: List[str] = []
+        offset = 0
+        while True:
+            batch = await self._task_repo.list_by_parent(
+                task_id, limit=1000, offset=offset
+            )
+            children.extend(task.task_id for task in batch)
+            if len(batch) < 1000:
+                return children
+            offset += len(batch)
+
+    def get_parent(self, task_id: str) -> Optional[str]:
+        """获取指定任务的父任务 ID（同步）；无父任务或任务不存在返回 None"""
+        parent: Optional[str] = self._run_coroutine(
+            self.get_parent_async(task_id)
+        )
+        return parent
+
+    async def get_parent_async(self, task_id: str) -> Optional[str]:
+        """获取指定任务的父任务 ID（异步）"""
+        task = await self._lifecycle.get_task(task_id)
+        return task.parent_task_id if task else None
 
     # ========== 任务管理 API ==========
 
@@ -940,6 +1035,213 @@ class TaskPool:
     async def retry_async(self, task_id: str, delay: float = 0) -> bool:
         """重试失败的任务（异步）"""
         return await self._dispatcher.redispatch(task_id, delay)
+
+    # ========== 业务失败 API ==========
+
+    def report_failure(self, task_id: str, reason: str, detail: str = "") -> bool:
+        """按业务原因终结任务（同步）
+
+        与执行体内 ``neotask.report_failure()`` 的区别只在于调用位置：本方法从
+        外部（编排层、进程执行器的父进程）立即把任务定为 ``FAILED`` 并记录
+        ``failure_reason``，**不进入自动重试**。
+
+        仅对 RUNNING 状态生效；仍在排队的 PENDING 任务请先用 ``cancel()``。
+
+        Args:
+            task_id: 任务ID
+            reason: 业务失败原因标识，如 ``qa_failed``
+            detail: 可选补充说明，会拼进任务的 ``error`` 字段
+
+        Returns:
+            是否成功终结任务
+        """
+        self._ensure_running()
+        # _run_coroutine 返回 Any，此处按声明收窄，避免公开 API 泄漏 Any
+        return bool(self._run_coroutine(
+            self._lifecycle.fail_task(
+                task_id,
+                f"{reason}: {detail}" if detail else reason,
+                failure_reason=reason,
+            )
+        ))
+
+    async def report_failure_async(
+            self,
+            task_id: str,
+            reason: str,
+            detail: str = ""
+    ) -> bool:
+        """按业务原因终结任务（异步）"""
+        return await self._lifecycle.fail_task(
+            task_id,
+            f"{reason}: {detail}" if detail else reason,
+            failure_reason=reason,
+        )
+
+    # ========== 成本上报与聚合 API ==========
+
+    def report_cost(
+            self,
+            task_id: str,
+            tokens_in: int = 0,
+            tokens_out: int = 0,
+            api_calls: int = 0,
+            estimated_cost: Optional[float] = None,
+            currency: Optional[str] = None,
+    ) -> bool:
+        """累加任务成本并发布 ``task.cost_reported``（同步）
+
+        与执行器内的 ``neotask.report_cost(...)`` 等价，区别只在于调用位置：
+        本方法适用于进程执行器的父进程等拿不到 contextvar 的场景。终态任务
+        同样接受追加成本（用量数据通常在子任务结束后才汇总）。
+
+        Args:
+            task_id: 任务ID
+            tokens_in: 输入 token 数
+            tokens_out: 输出 token 数
+            api_calls: 外部 API 调用次数
+            estimated_cost: 本次费用金额
+            currency: 币种；同一任务内出现不同币种会标记为 ``MIXED``
+
+        Returns:
+            任务存在且写入成功返回 True
+        """
+        self._ensure_running()
+        return bool(self._run_coroutine(
+            self.report_cost_async(
+                task_id,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                api_calls=api_calls,
+                estimated_cost=estimated_cost,
+                currency=currency,
+            )
+        ))
+
+    async def report_cost_async(
+            self,
+            task_id: str,
+            tokens_in: int = 0,
+            tokens_out: int = 0,
+            api_calls: int = 0,
+            estimated_cost: Optional[float] = None,
+            currency: Optional[str] = None,
+    ) -> bool:
+        """累加任务成本并发布 ``task.cost_reported``（异步）"""
+        cost: Dict[str, Any] = {
+            "tokens_in": int(tokens_in or 0),
+            "tokens_out": int(tokens_out or 0),
+            "api_calls": int(api_calls or 0),
+            "estimated_cost": float(estimated_cost or 0.0),
+        }
+        if currency:
+            cost["currency"] = currency
+        return await self._lifecycle.apply_cost(task_id, cost)
+
+    def get_cost_summary(
+            self, task_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """聚合任务成本（同步）
+
+        Args:
+            task_ids: 需要聚合的任务列表；为 None 时聚合全部任务
+
+        Returns:
+            ``{task_count, tasks_with_cost, tokens_in, tokens_out, api_calls,
+            estimated_cost, currency}``；币种混用时 ``currency`` 为 ``MIXED``。
+        """
+        summary: Dict[str, Any] = self._run_coroutine(
+            self.get_cost_summary_async(task_ids)
+        )
+        return dict(summary)
+
+    async def get_cost_summary_async(
+            self, task_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """聚合任务成本（异步）"""
+        summary: Dict[str, Any] = await self._task_repo.cost_summary(task_ids)
+        return summary
+
+    # ========== Checkpoint API ==========
+
+    def save_checkpoint(self, task_id: str, state: Dict[str, Any]) -> int:
+        """显式保存任务的中间状态（同步）
+
+        适用于进程执行器的父进程等拿不到 contextvar 的场景；执行器内部请使用
+        ``neotask.save_checkpoint(state)``。返回新版本号，任务不存在或
+        checkpoint 未启用时返回 0。
+        """
+        self._ensure_running()
+        version: int = self._run_coroutine(
+            self.save_checkpoint_async(task_id, state)
+        )
+        return version
+
+    async def save_checkpoint_async(
+            self, task_id: str, state: Dict[str, Any]
+    ) -> int:
+        """显式保存任务的中间状态（异步）"""
+        return await self._lifecycle.save_checkpoint(task_id, state)
+
+    def load_checkpoint(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """读取任务最近一次 checkpoint（同步）"""
+        self._ensure_running()
+        checkpoint: Optional[Dict[str, Any]] = self._run_coroutine(
+            self.load_checkpoint_async(task_id)
+        )
+        return checkpoint
+
+    async def load_checkpoint_async(
+            self, task_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """读取任务最近一次 checkpoint（异步）"""
+        return await self._lifecycle.load_checkpoint(task_id)
+
+    # ========== Blackboard（本地上下文）API ==========
+
+    def _require_context_store(self) -> MemoryContextStore:
+        if self._context_store is None:
+            raise UnsupportedFeatureError(
+                "blackboard", str(self._config.storage_type)
+            )
+        return self._context_store
+
+    def context_set(
+            self, key: str, value: Any, ttl: Optional[float] = None
+    ) -> None:
+        """写入进程内共享上下文（同步，仅 Memory 后端）
+
+        Args:
+            key: 上下文键
+            value: 任意可深拷贝的值
+            ttl: 过期时间（秒）；None 表示不过期
+
+        Raises:
+            UnsupportedFeatureError: 存储后端不是 Memory
+        """
+        self._require_context_store().set(key, value, ttl)
+
+    async def context_set_async(
+            self, key: str, value: Any, ttl: Optional[float] = None
+    ) -> None:
+        """写入进程内共享上下文（异步，仅 Memory 后端）"""
+        self._require_context_store().set(key, value, ttl)
+
+    def context_get(self, key: str) -> Optional[Any]:
+        """读取进程内共享上下文（同步，仅 Memory 后端）"""
+        return self._require_context_store().get(key)
+
+    async def context_get_async(self, key: str) -> Optional[Any]:
+        """读取进程内共享上下文（异步，仅 Memory 后端）"""
+        return self._require_context_store().get(key)
+
+    def context_delete(self, key: str) -> bool:
+        """删除进程内共享上下文（同步，仅 Memory 后端）"""
+        return self._require_context_store().delete(key)
+
+    async def context_delete_async(self, key: str) -> bool:
+        """删除进程内共享上下文（异步，仅 Memory 后端）"""
+        return self._require_context_store().delete(key)
 
     # ========== 终态清理 API ==========
 
@@ -1188,28 +1490,28 @@ class TaskPool:
 
     def on_created(self, handler: Callable) -> None:
         """注册任务创建回调"""
-        self._event_bus.subscribe("task.created", handler)
+        self._event_bus.subscribe(EventType.CREATED, handler)
 
     def on_started(self, handler: Callable) -> None:
         """注册任务开始回调"""
-        self._event_bus.subscribe("task.started", handler)
+        self._event_bus.subscribe(EventType.STARTED, handler)
 
     def on_completed(self, handler: Callable) -> None:
         """注册任务完成回调"""
-        self._event_bus.subscribe("task.completed", handler)
+        self._event_bus.subscribe(EventType.COMPLETED, handler)
 
     def on_failed(self, handler: Callable) -> None:
         """注册任务失败回调"""
-        self._event_bus.subscribe("task.failed", handler)
+        self._event_bus.subscribe(EventType.FAILED, handler)
 
     def on_cancelled(self, handler: Callable) -> None:
         """注册任务取消回调"""
-        self._event_bus.subscribe("task.cancelled", handler)
+        self._event_bus.subscribe(EventType.CANCELLED, handler)
 
     def on_progress(self, handler: Callable) -> None:
         """注册任务进度回调"""
-        self._event_bus.subscribe("task.progress", handler)
+        self._event_bus.subscribe(EventType.PROGRESS, handler)
 
     def on_reclaimed(self, handler: Callable) -> None:
         """注册任务回收回调"""
-        self._event_bus.subscribe("task.reclaimed", handler)
+        self._event_bus.subscribe(EventType.RECLAIMED, handler)

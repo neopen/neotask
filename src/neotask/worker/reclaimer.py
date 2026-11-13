@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
 
+from neotask.common.constants import EventType
 from neotask.common.logger import warning
 from neotask.models.task import Task, TaskStatus
 from neotask.storage.base import TaskRepository
@@ -376,7 +377,7 @@ class TaskReclaimer:
 
                     if self._event_bus:
                         await self._event_bus.emit(TaskEvent(
-                            "task.reclaimed",
+                            EventType.RECLAIMED,
                             task.task_id,
                             {"reason": reason.value, "action": "failed"}
                         ))
@@ -396,7 +397,7 @@ class TaskReclaimer:
                 # 发送事件
                 if self._event_bus:
                     await self._event_bus.emit(TaskEvent(
-                        "task.reclaimed",
+                        EventType.RECLAIMED,
                         task.task_id,
                         {
                             "reason": reason.value,
@@ -429,7 +430,7 @@ class TaskReclaimer:
                 # 发送事件
                 if self._event_bus:
                     await self._event_bus.emit(TaskEvent(
-                        "task.reclaimed",
+                        EventType.RECLAIMED,
                         task.task_id,
                         {
                             "reason": reason.value,

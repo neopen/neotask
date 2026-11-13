@@ -12,12 +12,19 @@ See LICENSE File For Details.
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from neotask.models.task import Task, TaskPriority, TaskStatus
-from neotask.storage.base import TaskRepository, QueueRepository
+from neotask.storage.base import (
+    CheckpointRecord,
+    CheckpointRepository,
+    TaskRepository,
+    QueueRepository,
+    merge_cost_detail,
+    new_cost_summary,
+)
 from neotask.utils import sqlite_compat
 
 #: DELETE ... RETURNING 自 SQLite 3.35 起支持；多进程下用它把「取任务 + 出队」
@@ -31,8 +38,22 @@ _BATCH_CHUNK = 500
 _TASK_COLUMNS = {
     "data", "status", "priority", "node_id", "retry_count", "ttl",
     "created_at", "started_at", "completed_at", "result", "error",
-    "progress", "progress_message",
+    "progress", "progress_message", "failure_reason",
+    "checkpoint_version", "parent_task_id", "estimated_cost",
+    "cost_tracking", "queue_wait_ms", "duration_ms",
 }
+
+#: v1.1.0 起新增的任务列：老库文件在启动期按此表自动补列。
+#: 仅限“新增列 + 有默认值 + 不搬运数据”，跨后端搬迁仍走 scripts/migrate_*.py。
+_NEW_TASK_COLUMNS = (
+    ("failure_reason", "TEXT"),
+    ("checkpoint_version", "INTEGER NOT NULL DEFAULT 0"),
+    ("parent_task_id", "TEXT"),
+    ("estimated_cost", "REAL NOT NULL DEFAULT 0.0"),
+    ("cost_tracking", "TEXT"),
+    ("queue_wait_ms", "REAL"),
+    ("duration_ms", "REAL"),
+)
 
 
 def _serialize_field(name: str, value: Any) -> Any:
@@ -49,8 +70,40 @@ def _serialize_field(name: str, value: Any) -> Any:
         return json.dumps(value) if value is not None else "{}"
     if name == "result":
         return json.dumps(value) if value is not None else None
+    if name == "cost_tracking":
+        return json.dumps(value) if value else None
     return value
 
+
+def _row_to_task(row: Dict[str, Any]) -> Task:
+    """tasks 表的一行还原成 Task
+
+    ``get`` / 条件查询 / ``list`` 三条读取路径共用：新增列只需在这里登记一次，
+    避免多处手工映射漏字段。老库尚未补列时由 ``.get`` 兜默认值。
+    """
+    return Task.from_dict({
+        "task_id": row["task_id"],
+        "data": row["data"],
+        "status": row["status"],
+        "priority": row["priority"],
+        "node_id": row["node_id"],
+        "retry_count": row["retry_count"],
+        "ttl": row.get("ttl", 3600),
+        "created_at": row["created_at"],
+        "started_at": row["started_at"],
+        "completed_at": row["completed_at"],
+        "result": row["result"],
+        "error": row["error"],
+        "progress": row.get("progress", 0.0),
+        "progress_message": row.get("progress_message", ""),
+        "failure_reason": row.get("failure_reason"),
+        "checkpoint_version": row.get("checkpoint_version", 0),
+        "parent_task_id": row.get("parent_task_id"),
+        "estimated_cost": row.get("estimated_cost", 0.0),
+        "cost_tracking": row.get("cost_tracking"),
+        "queue_wait_ms": row.get("queue_wait_ms"),
+        "duration_ms": row.get("duration_ms"),
+    })
 
 
 class SQLiteTaskRepository(TaskRepository):
@@ -116,6 +169,9 @@ class SQLiteTaskRepository(TaskRepository):
                 progress_message TEXT DEFAULT ''
             )
         """)
+        # v1.1.0 起的新列不写进上面的 CREATE TABLE，统一由 _add_missing_columns 补齐：
+        # 新建库当场 ALTER 一次，1.0.x 老库同样走这条路，新列只在一处声明。
+        await self._add_missing_columns(conn)
         await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_tasks_status 
             ON tasks(status)
@@ -129,7 +185,31 @@ class SQLiteTaskRepository(TaskRepository):
             CREATE INDEX IF NOT EXISTS idx_tasks_created_at
             ON tasks(created_at)
         """)
+        # 父子查询路径：get_children() 按 parent_task_id 过滤
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_tasks_parent
+            ON tasks(parent_task_id)
+        """)
         await conn.commit()
+
+    async def _add_missing_columns(self, conn) -> None:
+        """启动期为已存在的 ``tasks`` 表补齐新增列（只加列，不搬运数据）
+
+        1.0.x 的老库文件缺列时逐条 ``ALTER TABLE ADD COLUMN``；新列默认值由
+        SQLite 在读取时给出，无需回填。列名来自模块常量而非外部输入，
+        因此拼接 DDL 不存在注入面。
+        """
+        cursor = await conn.execute("PRAGMA table_info(tasks)")
+        try:
+            rows = await cursor.fetchall()
+        finally:
+            await cursor.close()
+
+        present = {row[1] for row in rows}
+        for name, column_type in _NEW_TASK_COLUMNS:
+            if name in present:
+                continue
+            await conn.execute(f"ALTER TABLE tasks ADD COLUMN {name} {column_type}")
 
     @staticmethod
     def _task_values(task: Task) -> tuple:
@@ -148,7 +228,14 @@ class SQLiteTaskRepository(TaskRepository):
             json.dumps(task.result) if task.result is not None else None,
             task.error,
             getattr(task, 'progress', 0.0),
-            getattr(task, 'progress_message', '')
+            getattr(task, 'progress_message', ''),
+            getattr(task, 'failure_reason', None),
+            getattr(task, 'checkpoint_version', 0),
+            getattr(task, 'parent_task_id', None),
+            getattr(task, 'estimated_cost', 0.0),
+            json.dumps(task.cost_tracking) if task.cost_tracking else None,
+            getattr(task, 'queue_wait_ms', None),
+            getattr(task, 'duration_ms', None),
         )
 
     async def save(self, task: Task) -> None:
@@ -156,8 +243,10 @@ class SQLiteTaskRepository(TaskRepository):
         await self._conn.execute("""
             INSERT OR REPLACE INTO tasks 
             (task_id, data, status, priority, node_id, retry_count, ttl,
-             created_at, started_at, completed_at, result, error, progress, progress_message)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             created_at, started_at, completed_at, result, error, progress, progress_message,
+             failure_reason, checkpoint_version, parent_task_id, estimated_cost,
+             cost_tracking, queue_wait_ms, duration_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, self._task_values(task))
         await self._conn.commit()
 
@@ -167,8 +256,10 @@ class SQLiteTaskRepository(TaskRepository):
         cursor = await self._conn.execute("""
             INSERT OR IGNORE INTO tasks 
             (task_id, data, status, priority, node_id, retry_count, ttl,
-             created_at, started_at, completed_at, result, error, progress, progress_message)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             created_at, started_at, completed_at, result, error, progress, progress_message,
+             failure_reason, checkpoint_version, parent_task_id, estimated_cost,
+             cost_tracking, queue_wait_ms, duration_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, self._task_values(task))
         inserted = cursor.rowcount > 0
         await cursor.close()
@@ -205,32 +296,17 @@ class SQLiteTaskRepository(TaskRepository):
         if not new_tasks:
             return []
 
-        params = [
-            (
-                task.task_id,
-                json.dumps(task.data),
-                task.status.value,
-                task.priority.value,
-                task.node_id,
-                task.retry_count,
-                getattr(task, 'ttl', 3600),
-                task.created_at.isoformat(),
-                task.started_at.isoformat() if task.started_at else None,
-                task.completed_at.isoformat() if task.completed_at else None,
-                json.dumps(task.result) if task.result is not None else None,
-                task.error,
-                getattr(task, 'progress', 0.0),
-                getattr(task, 'progress_message', ''),
-            )
-            for task in new_tasks
-        ]
+        # 参数顺序由 _task_values 单点定义，避免批量写入与单条写入漏列
+        params = [self._task_values(task) for task in new_tasks]
         # 单事务写入：整批原子提交。事务在专用 loop 内一次执行并全程持写锁，
         # 避免并发批量/单条写在共享连接上交错触发 BEGIN/COMMIT 竞态。
         await self._conn.executemany_transaction("""
             INSERT OR IGNORE INTO tasks
             (task_id, data, status, priority, node_id, retry_count, ttl,
-             created_at, started_at, completed_at, result, error, progress, progress_message)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             created_at, started_at, completed_at, result, error, progress, progress_message,
+             failure_reason, checkpoint_version, parent_task_id, estimated_cost,
+             cost_tracking, queue_wait_ms, duration_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, params)
         return [task.task_id for task in new_tasks]
 
@@ -325,24 +401,7 @@ class SQLiteTaskRepository(TaskRepository):
         if not row:
             return None
 
-        data = dict(zip(columns, row))
-
-        return Task.from_dict({
-            "task_id": data["task_id"],
-            "data": data["data"],
-            "status": data["status"],
-            "priority": data["priority"],
-            "node_id": data["node_id"],
-            "retry_count": data["retry_count"],
-            "ttl": data.get("ttl", 3600),
-            "created_at": data["created_at"],
-            "started_at": data["started_at"],
-            "completed_at": data["completed_at"],
-            "result": data["result"],
-            "error": data["error"],
-            "progress": data.get("progress", 0.0),
-            "progress_message": data.get("progress_message", "")
-        })
+        return _row_to_task(dict(zip(columns, row)))
 
     async def delete(self, task_id: str) -> None:
         await self._ensure_init()
@@ -377,23 +436,7 @@ class SQLiteTaskRepository(TaskRepository):
 
         tasks = []
         for row in rows:
-            data = dict(zip(columns, row))
-            tasks.append(Task.from_dict({
-                "task_id": data["task_id"],
-                "data": data["data"],
-                "status": data["status"],
-                "priority": data["priority"],
-                "node_id": data["node_id"],
-                "retry_count": data["retry_count"],
-                "ttl": data.get("ttl", 3600),
-                "created_at": data["created_at"],
-                "started_at": data["started_at"],
-                "completed_at": data["completed_at"],
-                "result": data["result"],
-                "error": data["error"],
-                "progress": data.get("progress", 0.0),
-                "progress_message": data.get("progress_message", "")
-            }))
+            tasks.append(_row_to_task(dict(zip(columns, row))))
 
         return tasks
 
@@ -408,6 +451,73 @@ class SQLiteTaskRepository(TaskRepository):
         finally:
             await cursor.close()
         return int(row[0]) if row else 0
+
+    async def list_by_parent(
+            self, parent_task_id: str, limit: int = 100, offset: int = 0
+    ) -> List[Task]:
+        """走 ``idx_tasks_parent`` 索引按创建时间列出子任务"""
+        await self._ensure_init()
+        # 存量实现里 _conn 的类型标注为 None，这里用局部变量避开同类告警
+        conn: Any = self._conn
+        cursor = await conn.execute(
+            "SELECT * FROM tasks WHERE parent_task_id = ? "
+            "ORDER BY created_at ASC LIMIT ? OFFSET ?",
+            (parent_task_id, limit, offset)
+        )
+        try:
+            rows = await cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+        finally:
+            await cursor.close()
+        return [
+            _row_to_task(dict(zip(columns, row)))
+            for row in rows
+        ]
+
+    async def cost_summary(self, task_ids=None) -> Dict[str, Any]:
+        """成本聚合：金额与计数下推 SQL，明细 JSON 在 Python 侧累加"""
+        if task_ids is not None:
+            # 指定任务列表时复用基类（按主键逐条读取，无需全表扫描）
+            return await super().cost_summary(task_ids)
+
+        await self._ensure_init()
+        conn: Any = self._conn
+        cursor = await conn.execute(
+            "SELECT COUNT(*), "
+            "COALESCE(SUM(estimated_cost), 0), "
+            "SUM(CASE WHEN estimated_cost <> 0 "
+            "OR (cost_tracking IS NOT NULL AND cost_tracking <> '') "
+            "THEN 1 ELSE 0 END) "
+            "FROM tasks"
+        )
+        try:
+            row = await cursor.fetchone()
+        finally:
+            await cursor.close()
+
+        summary = new_cost_summary()
+        if row:
+            summary["task_count"] = int(row[0] or 0)
+            summary["tasks_with_cost"] = int(row[2] or 0)
+            summary["estimated_cost"] = float(row[1] or 0.0)
+
+        cursor = await conn.execute(
+            "SELECT cost_tracking FROM tasks "
+            "WHERE cost_tracking IS NOT NULL AND cost_tracking <> ''"
+        )
+        try:
+            rows = await cursor.fetchall()
+        finally:
+            await cursor.close()
+
+        for (raw,) in rows:
+            try:
+                detail = json.loads(raw)
+            except (ValueError, TypeError):
+                continue
+            if isinstance(detail, dict):
+                merge_cost_detail(summary, detail)
+        return summary
 
     async def update_status(self, task_id: str, status: TaskStatus, **kwargs) -> bool:
         await self._ensure_init()
@@ -490,23 +600,7 @@ class SQLiteTaskRepository(TaskRepository):
 
         tasks = []
         for row in rows:
-            data = dict(zip(columns, row))
-            tasks.append(Task.from_dict({
-                "task_id": data["task_id"],
-                "data": data["data"],
-                "status": data["status"],
-                "priority": data["priority"],
-                "node_id": data["node_id"],
-                "retry_count": data["retry_count"],
-                "ttl": data.get("ttl", 3600),
-                "created_at": data["created_at"],
-                "started_at": data["started_at"],
-                "completed_at": data["completed_at"],
-                "result": data["result"],
-                "error": data["error"],
-                "progress": data.get("progress", 0.0),
-                "progress_message": data.get("progress_message", "")
-            }))
+            tasks.append(_row_to_task(dict(zip(columns, row))))
 
         return tasks
 
@@ -669,4 +763,160 @@ class SQLiteQueueRepository(QueueRepository):
         self._conn = None
         self._initialized = False
         if conn is not None:
+            await sqlite_compat.release_shared_connection(conn)
+
+
+def _row_to_checkpoint(row: Tuple[Any, ...]) -> CheckpointRecord:
+    """task_checkpoints 表的一行还原成 CheckpointRecord"""
+    task_id, version, state, created_at = row
+    try:
+        parsed_state = json.loads(state) if state else {}
+    except (ValueError, TypeError):
+        parsed_state = {}
+    if not isinstance(parsed_state, dict):
+        parsed_state = {}
+    try:
+        created = datetime.fromisoformat(created_at)
+    except (ValueError, TypeError):
+        created = datetime.now(timezone.utc)
+    return CheckpointRecord(
+        task_id=task_id,
+        version=int(version),
+        state=parsed_state,
+        created_at=created,
+    )
+
+
+class SQLiteCheckpointRepository(CheckpointRepository):
+    """SQLite checkpoint 存储（独立表 + 原子标记更新）"""
+
+    #: save() 在同一事务内更新 tasks.checkpoint_version
+    handles_task_marker = True
+
+    def __init__(
+            self,
+            db_path: Optional[str] = None,
+            *,
+            pragmas: Optional[Iterable[str]] = None,
+            connection: Optional[Any] = None,
+    ):
+        self.db_path = Path(db_path or "/data/tasks.db")
+        self._pragmas = pragmas
+        # connection= 为测试注入：调用方持有生命周期，close() 不释放它。
+        # 默认路径按 db_path 取共享连接（引用计数 +1），与任务仓储共用一条连接。
+        self._conn = connection
+        self._owns_connection = connection is None
+        if self._owns_connection:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._initialized = False
+
+    async def _ensure_init(self) -> None:
+        if self._initialized:
+            return
+        if self._conn is None:
+            self._conn = sqlite_compat.acquire_shared_connection(
+                self.db_path,
+                pragmas=self._pragmas,
+            )
+        conn = self._conn
+        await self._init_db(conn)
+        if self._conn is conn:
+            self._initialized = True
+
+    async def _init_db(self, conn: Any) -> None:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS task_checkpoints (
+                task_id TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                state TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (task_id, version)
+            )
+        """)
+        await conn.commit()
+
+    async def save(self, task_id: str, version: int, state: Dict[str, Any]) -> None:
+        """写 checkpoint 并更新任务标记：两条语句同一事务提交"""
+        await self._ensure_init()
+        conn: Any = self._conn
+        await conn.statements_transaction([
+            (
+                "INSERT OR REPLACE INTO task_checkpoints "
+                "(task_id, version, state, created_at) VALUES (?, ?, ?, ?)",
+                (
+                    task_id,
+                    int(version),
+                    json.dumps(state, ensure_ascii=False),
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            ),
+            (
+                "UPDATE tasks SET checkpoint_version = ? WHERE task_id = ?",
+                (int(version), task_id),
+            ),
+        ])
+
+    async def load_latest(self, task_id: str) -> Optional[CheckpointRecord]:
+        await self._ensure_init()
+        conn: Any = self._conn
+        cursor = await conn.execute(
+            "SELECT task_id, version, state, created_at FROM task_checkpoints "
+            "WHERE task_id = ? ORDER BY version DESC LIMIT 1",
+            (task_id,)
+        )
+        try:
+            row = await cursor.fetchone()
+        finally:
+            await cursor.close()
+        return _row_to_checkpoint(row) if row else None
+
+    async def load(self, task_id: str, version: int) -> Optional[CheckpointRecord]:
+        await self._ensure_init()
+        conn: Any = self._conn
+        cursor = await conn.execute(
+            "SELECT task_id, version, state, created_at FROM task_checkpoints "
+            "WHERE task_id = ? AND version = ?",
+            (task_id, int(version))
+        )
+        try:
+            row = await cursor.fetchone()
+        finally:
+            await cursor.close()
+        return _row_to_checkpoint(row) if row else None
+
+    async def prune(self, task_id: str, keep: int) -> int:
+        """只保留版本号最大的 keep 个 checkpoint，返回淘汰数量"""
+        await self._ensure_init()
+        conn: Any = self._conn
+        keep = max(0, int(keep))
+        if keep == 0:
+            cursor = await conn.execute(
+                "DELETE FROM task_checkpoints WHERE task_id = ?", (task_id,)
+            )
+        else:
+            cursor = await conn.execute(
+                "DELETE FROM task_checkpoints WHERE task_id = ? "
+                "AND version NOT IN ("
+                "SELECT version FROM task_checkpoints WHERE task_id = ? "
+                "ORDER BY version DESC LIMIT ?)",
+                (task_id, task_id, keep)
+            )
+        removed = cursor.rowcount
+        await cursor.close()
+        await conn.commit()
+        return max(0, int(removed or 0))
+
+    async def delete(self, task_id: str) -> None:
+        await self._ensure_init()
+        conn: Any = self._conn
+        await conn.execute(
+            "DELETE FROM task_checkpoints WHERE task_id = ?", (task_id,)
+        )
+        await conn.commit()
+
+    async def close(self) -> None:
+        conn = self._conn
+        self._conn = None
+        self._initialized = False
+        if conn is not None and self._owns_connection:
             await sqlite_compat.release_shared_connection(conn)

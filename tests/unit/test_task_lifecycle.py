@@ -479,6 +479,10 @@ class TestTaskLifecycleWithEvents:
         assert events_received[0].data == {
             "error": "Something went wrong",
             "old_status": "running",
+            # 技术性失败不带业务原因，字段恒在以便消费方稳定读取
+            "reason": None,
+            # 未上报成本时字段同样存在，值为 None
+            "cost": None,
         }
 
     @pytest.mark.asyncio

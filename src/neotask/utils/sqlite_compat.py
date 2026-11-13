@@ -280,6 +280,41 @@ class LoopBoundSQLiteConnection:
 
         await self._run(_factory)
 
+    async def statements_transaction(
+            self,
+            items: Iterable[Tuple[str, Iterable[Any]]],
+    ) -> None:
+        """多语句单事务：``BEGIN IMMEDIATE → 逐条 execute → COMMIT``。
+
+        与 :meth:`executemany_transaction` 的区别是每条语句可以不同
+        （如「写 checkpoint 分表 + 更新任务标记」）。原子性约定与实现纪律相同：
+
+        - 整个事务作为**一次**投递在专用 loop 内执行，并全程持有写串行锁；
+        - 事务体内直接使用底层 ``conn``，不得回调本代理的 execute/commit
+          等加锁方法，否则会对非重入锁二次加锁而死锁；
+        - 任一语句失败整体 ``rollback`` 并原样抛出。
+
+        空列表视为 no-op。
+        """
+        statements = list(items)
+        if not statements:
+            return
+
+        async def _factory(conn: aiosqlite.Connection) -> None:
+            async with self._write_lock_on_loop():
+                begin_cursor = await conn.execute("BEGIN IMMEDIATE")
+                await begin_cursor.close()
+                try:
+                    for sql, parameters in statements:
+                        cursor = await conn.execute(sql, parameters)
+                        await cursor.close()
+                    await conn.commit()
+                except Exception:
+                    await conn.rollback()
+                    raise
+
+        await self._run(_factory)
+
     async def executescript(self, sql_script: str) -> LoopBoundCursor:
         """执行 SQL 脚本。"""
 

@@ -6,6 +6,37 @@
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [1.1.0](https://github.com/neopen/neotask/compare/v1.0.8...v1.1.0) (2026-11-13)
+
+
+### ✨ Features (新功能)
+
+* **api:** 定稿外部 task_id 幂等语义并补齐 TaskScheduler 异步存在性检查 ([ee0d77c](https://github.com/neopen/neotask/commit/ee0d77ce38fc6782b67a08ecc7c3385e1c0f264e))
+* **checkpoint:** CheckpointRepository 三后端实现与独立工厂 ([ca4c629](https://github.com/neopen/neotask/commit/ca4c629b656e475065ec008943e314199e24fcee))
+* **checkpoint:** 配置装配、双形态 API 与断点续跑恢复路径 ([cb4ae87](https://github.com/neopen/neotask/commit/cb4ae877cf5c29e1e2e53e9d6159228babfb8e53))
+* **context:** 新增 Memory-only 本地 Blackboard 上下文 ([d448497](https://github.com/neopen/neotask/commit/d448497cb1ba42fae216275fff947556d86aaae8))
+* **core:** 新增业务级失败上报 report_failure，定稿 FAILED 收尾语义 ([70ffe29](https://github.com/neopen/neotask/commit/70ffe299fe5a4685ef782346bf93155089353ff1))
+* **cost,parent:** 成本采集、耗时字段与父子任务公开 API ([758b108](https://github.com/neopen/neotask/commit/758b10800e48f9fd1a5a51968c207a5dabd6f3ca))
+* **event:** TaskEvent 信封稳定化，补齐 timestamp/node_id/schema_version ([b41ba69](https://github.com/neopen/neotask/commit/b41ba691c4f3224d7b493fa2cef58fa18cb9c3cf))
+* **event:** 新增 EventType 事件名常量注册表并替换散写字符串 ([1606202](https://github.com/neopen/neotask/commit/1606202c61f3f643fe15959e0846da9d7e002cee))
+* **model,storage:** Task 元数据字段与三后端新列 ([c139b08](https://github.com/neopen/neotask/commit/c139b081545efc395deddf49c880b7edcbf6f67d))
+* **scripts:** migrate_task_metadata 存量回填与索引重建 ([8a9f1b2](https://github.com/neopen/neotask/commit/8a9f1b2314fc8a01ea17f4ddc5a02c82c426a811))
+* **storage:** 新增 statements_transaction 多语句事务原语 ([c61fc0f](https://github.com/neopen/neotask/commit/c61fc0fc4080e82ced0baa6076bbde5c5b16423f))
+
+
+### 📝 Documentation (文档更新)
+
+* **contract:** 冻结执行面线协议并改写路线图为控制面/执行面定位 ([ae95075](https://github.com/neopen/neotask/commit/ae95075be4d3505b984b1e6c450180aa684bc2d9))
+* **examples:** 批次 3 Checkpoint 与 Blackboard 示例、索引导航与文档同步 ([a0cc31e](https://github.com/neopen/neotask/commit/a0cc31ed8fabd90243af40f0737cca42f8bd7ada))
+* **readme:** 双语路线图与架构图同步 v1.1 已交付与执行面定位 ([a6c865e](https://github.com/neopen/neotask/commit/a6c865e43e7b300bb1dd8511d5ef330735fae6c0))
+* 批次 2 文档、示例索引与设计进度同步 ([e5fc224](https://github.com/neopen/neotask/commit/e5fc224ab42953f8a6e6579f0e6b499e7f062929))
+
+
+### 🔧 Other Changes (其他变更)
+
+* **merge:** 合并 dev 的 1.1.0 本地能力组件到 main ([09b5872](https://github.com/neopen/neotask/commit/09b587212007fe8142fe75bcb7822a467fcc9554))
+* **merge:** 合并 main（v1.0.8）到 dev，保留 1.0.8 版本基线 ([5ed9988](https://github.com/neopen/neotask/commit/5ed9988c57d46508fa585bd5470aa25a43449fb6))
+
 ## [1.0.8](https://github.com/neopen/neotask/compare/v1.0.7...v1.0.8) (2026-11-11)
 
 

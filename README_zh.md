@@ -86,10 +86,10 @@ graph TB
             FM[FutureManager<br/>异步等待 / 结果回调]
         end
 
-        subgraph Planned["v1.1 本地能力组件"]
-            CK[CheckpointManager<br/>断点续跑]
-            CT[CostTracker<br/>成本与耗时采集]
-            CS[ContextStore<br/>本地上下文存储]
+        subgraph Delivered["v1.1 本地能力组件（已交付）"]
+            CK[CheckpointRepository<br/>断点续跑]
+            CT[CostRecorder<br/>成本与耗时上报]
+            CS[MemoryContextStore<br/>本地上下文存储（仅 Memory）]
         end
 
         subgraph Internal["内部组件"]
@@ -119,9 +119,9 @@ graph TB
     WP --> EB
     WP --> MC
     WP --> LF
-    WP -.->|v1.1 规划| CK
-    WP -.->|v1.1 规划| CT
-    WP -.->|v1.1 规划| CS
+    WP -.->|v1.1 已交付| CK
+    WP -.->|v1.1 已交付| CT
+    WP -.->|v1.1 已交付| CS
 
     LM --> MEM
     LM --> SQLITE
@@ -135,9 +135,7 @@ graph TB
     CK -.-> SQLITE
     CK -.-> REDIS
 
-    CS -.-> MEM
-    CS -.-> SQLITE
-    CS -.-> REDIS
+    CS -.->|仅内存，不持久化| MEM
 
     MC -.->|仅内存，不持久化| MEM
 
@@ -146,7 +144,7 @@ graph TB
 
 **发展路线图**
 
-**图注**：v0.1 – v1.0 为已发布版本；v1.1 – v1.3 为规划中的本地能力、性能与监控迭代；v2.0 的编排集成（Orchestration Integration）为**后移项**，待本地能力稳定且有真实多服务需求时再启动。编排能力（DAG、动态路由、插件系统、Web UI）由上层编排服务负责，不在 NeoTask 范围内。
+**图注**：v0.1 – v1.0 为已发布版本；v1.1 功能已交付、待发布；v1.2 – v1.3 为性能、监控与可靠性迭代。NeoTask 是可独立自足的本地执行 SDK —— DAG 拆解、任务下发与状态推进属于上层**控制面**（如 NeoFlow），NeoTask 仅作为**执行面**与其对接（拉取任务 → 执行 Handler → 上报事件）。v2.0（NeoFlow 执行面接入）为**后移项**；内置 DAG、动态路由、插件系统与 Web UI 不在范围内。任务与事件的线协议在 1.x 内冻结，详见 [docs/neotask-execution-contract.md](docs/neotask-execution-contract.md)。
 
 ```mermaid
 timeline
@@ -182,11 +180,11 @@ timeline
                    : 故障自动恢复
 
     section v1.1
-        本地能力补全 : Checkpoint断点续跑
-                     : 成本与耗时采集
-                     : 父子任务关联
-                     : 本地上下文存储
-                     : 自定义失败状态
+        本地能力补全（已交付） : Checkpoint断点续跑
+                               : 成本与耗时采集
+                               : 父子任务关联
+                               : 本地上下文存储
+                               : 自定义失败状态
 
     section v1.2
         性能与监控 : 批量写入优化
@@ -202,10 +200,10 @@ timeline
                      : 重试语义统一
 
     section v2.0
-        编排集成 : OrchestratorClient
-                       : Redis Stream消费者
-                       : 心跳与实例注册
-                       : 远程事件上报
+        NeoFlow执行面接入（后移） : 任务拉取（TaskConsumer）
+                                 : 远程事件上报
+                                 : 控制消息处理
+                                 : 复用节点与心跳注册
 ```
 
 ------

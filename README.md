@@ -102,6 +102,12 @@ graph TB
             FM[FutureManager<br/>Async Wait / Result Callback]
         end
 
+        subgraph Delivered["v1.1 Local Capability Components (Delivered)"]
+            CK[CheckpointRepository<br/>Checkpoint & Resume]
+            CT[CostRecorder<br/>Cost & Duration Reporting]
+            CS[MemoryContextStore<br/>Local Context (Memory only)]
+        end
+
         subgraph Internal["Internal Components"]
             EB[EventBus<br/>Event Bus]
             MC[MetricsCollector<br/>In-memory Metrics Aggregation]
@@ -129,6 +135,9 @@ graph TB
     WP --> EB
     WP --> MC
     WP --> LF
+    WP -.->|v1.1 delivered| CK
+    WP -.->|v1.1 delivered| CT
+    WP -.->|v1.1 delivered| CS
 
     LM --> MEM
     LM --> SQLITE
@@ -138,6 +147,12 @@ graph TB
     QS --> SQLITE
     QS --> REDIS
 
+    CK -.-> MEM
+    CK -.-> SQLITE
+    CK -.-> REDIS
+
+    CS -.->|in-memory only, not persisted| MEM
+
     MC -.->|in-memory only, not persisted| MEM
 
     LF --> REDIS
@@ -145,7 +160,7 @@ graph TB
 
 **Development Roadmap**
 
-> **Note**: v0.1 – v1.0 are released versions; v1.1 – v1.3 are planned iterations covering local capabilities, performance, and monitoring; v2.0 (Orchestration Integration) is **deferred** and will only start once local capabilities are stable and real multi-service demand exists. Orchestration capabilities (DAG, dynamic routing, plugin system, Web UI) are handled by the upper-layer orchestration service and are out of scope for NeoTask.
+> **Note**: v0.1 – v1.0 are released versions; v1.1 is feature-complete and pending release; v1.2 – v1.3 cover performance, monitoring and reliability. NeoTask is a self-sufficient local execution SDK — DAG decomposition, task dispatch and state progression belong to an upper-layer **control plane** (e.g. NeoFlow), which NeoTask only integrates with as an **execution plane** (pull task → run handler → report event). v2.0 (NeoFlow execution-plane integration) is **deferred**; built-in DAG, dynamic routing, plugin system and Web UI remain out of scope. The task/event wire contract is frozen across 1.x — see [docs/neotask-execution-contract.md](docs/neotask-execution-contract.md).
 
 ```mermaid
 timeline
@@ -181,11 +196,11 @@ timeline
                           : Automatic Fault Recovery
 
     section v1.1
-        Local Capability : Checkpoint & Resume
-                        : Cost Tracking
-                        : Parent-Child Association
-                        : Local Context Store
-                        : Custom Failure Reason
+        Local Capability (Delivered) : Checkpoint & Resume
+                                     : Cost Tracking
+                                     : Parent-Child Association
+                                     : Local Context Store
+                                     : Custom Failure Reason
 
     section v1.2
         Performance & Monitoring : Batch Write Optimization
@@ -201,10 +216,10 @@ timeline
                             : Retry Semantics Unification
 
     section v2.0
-        Orchestration Integration (Deferred) : OrchestratorClient
-                                            : Redis Stream Consumer
-                                            : Heartbeat & Instance Registry
-                                            : Remote Event Reporting
+        NeoFlow Execution Plane (Deferred) : Task Consumer (pull)
+                                          : Remote Event Reporting
+                                          : Control Message Handling
+                                          : Reuse Node & Heartbeat Registry
 ```
 
 ------

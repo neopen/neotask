@@ -118,7 +118,7 @@
   }
   </script>
 </head>
-<body class="docs-page">
+<body class="docs-page" id="top">
   <a class="skip-link" href="#main">跳到主要内容</a>
 <header class="site-header">
   <div class="container header-inner">
@@ -205,7 +205,7 @@
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       <p class="docs-nav-empty" id="docsNavEmpty" hidden>没有匹配的文档</p>
@@ -257,7 +257,7 @@
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       
@@ -413,6 +413,9 @@ await manager.start()</code></pre>
 <p>指标由生命周期事件推导：<code>task.created</code>、<code>task.started</code>、<code>task.completed</code>、<code>task.failed</code>、<code>task.cancelled</code>、<code>task.retry</code>。因此指标只覆盖当前进程产生或消费的事件，跨节点汇总需要把各节点数据送到同一个监控系统。有界事件队列发生丢弃时，依赖事件的统计也会缺失对应记录。</p>
 
         </div>
+        <footer class="article-foot">
+          <a class="article-top" href="#top">回到顶部 <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></a>
+        </footer>
       </article>
       <nav class="docs-pager" aria-label="上一篇与下一篇">
       <a class="pager-prev" href="/docs/v1.0/prefetch.html"><span>上一篇</span><strong>预取机制</strong></a>

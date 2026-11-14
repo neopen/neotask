@@ -597,6 +597,41 @@ body.docs-page {
   color: var(--brand-ink);
 }
 
+/* Back to top -------------------------------------------------------------- */
+
+.article-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 48px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.article-top {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12.5px;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.article-top:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-soft);
+  color: var(--brand-ink);
+  transform: translateY(-1px);
+}
+
+.docs-main > .article + .docs-pager {
+  margin-top: 30px;
+  padding-top: 0;
+  border-top: 0;
+}
+
 /* Pager ------------------------------------------------------------------- */
 
 .docs-pager {

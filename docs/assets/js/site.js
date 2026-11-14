@@ -559,6 +559,138 @@
     headings.forEach(function (h) { observer.observe(h); });
   }
 
+  // Scroll progress bar and reveal-on-scroll
+  (function () {
+    var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    var bar = document.createElement('div');
+    bar.className = 'scroll-progress';
+    bar.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(bar);
+
+    var docEl = document.scrollingElement || document.documentElement;
+    var pending = [];
+    var observer = null;
+    var ticking = false;
+
+    function updateProgress() {
+      var max = docEl.scrollHeight - window.innerHeight;
+      var ratio = max > 0 ? docEl.scrollTop / max : 0;
+      bar.style.transform = 'scaleX(' + Math.min(1, Math.max(0, ratio)) + ')';
+    }
+
+    function reveal(el) {
+      if (!el.classList.contains('reveal') || el.classList.contains('is-visible')) return;
+      el.classList.add('is-visible');
+      if (observer) observer.unobserve(el);
+      var index = pending.indexOf(el);
+      if (index !== -1) pending.splice(index, 1);
+      var delay = parseFloat(el.style.getPropertyValue('--reveal-delay')) || 0;
+      window.setTimeout(function () {
+        el.classList.remove('reveal', 'is-visible');
+        el.style.removeProperty('--reveal-delay');
+      }, 800 + delay);
+    }
+
+    function revealAll(immediate) {
+      pending.slice().forEach(function (el) {
+        if (!immediate) return reveal(el);
+        if (observer) observer.unobserve(el);
+        el.classList.remove('reveal', 'is-visible');
+        el.style.removeProperty('--reveal-delay');
+        var index = pending.indexOf(el);
+        if (index !== -1) pending.splice(index, 1);
+      });
+    }
+
+    if (!reduceMotion) {
+      var selector = [
+        '.section-head',
+        '.proof-item',
+        '.value-card',
+        '.bento-card',
+        '.code-layout',
+        '.compare-wrap',
+        '.compare-note',
+        '.use-card',
+        '.arch-layer',
+        '.deploy-panel',
+        '.bench-card',
+        '.bench-note',
+        '.home-doc',
+        '.faq-item',
+        '.cta-copy',
+        '.cta-actions',
+        '.feature-row',
+        '.contrib-card',
+        '.dev-setup',
+        '.contrib-steps',
+        '.gh-card',
+        '.aside-card',
+        '.release',
+        '.version-card',
+        '.doc-feature',
+        '.doc-card',
+        '.doc-group-head',
+        '.article-body > h2',
+        '.article-body > ul',
+        '.article-body > ol',
+        '.article-body > table',
+        '.article-body > .doc-note',
+        '.article-body > .doc-warning',
+        '.article-body .code-shell',
+        '.article-body .diagram-shell'
+      ].join(',');
+      var nodes = Array.prototype.slice.call(document.querySelectorAll(selector));
+      var groups = new Map();
+      var threshold = window.innerHeight * 0.92;
+
+      nodes.forEach(function (el) {
+        if (el.getBoundingClientRect().top < threshold) return;
+        el.classList.add('reveal');
+        var siblings = groups.get(el.parentElement) || [];
+        var delay = Math.min(siblings.length * 60, 240);
+        if (delay) el.style.setProperty('--reveal-delay', delay + 'ms');
+        siblings.push(el);
+        groups.set(el.parentElement, siblings);
+        pending.push(el);
+      });
+
+      if ('IntersectionObserver' in window) {
+        observer = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) reveal(entry.target);
+          });
+        }, { rootMargin: '0px 0px -8% 0px', threshold: 0.01 });
+        pending.forEach(function (el) { observer.observe(el); });
+      }
+
+      var hubSearch = document.getElementById('docsHubSearch');
+      if (hubSearch) {
+        hubSearch.addEventListener('input', function () { revealAll(true); });
+      }
+    }
+
+    function onScroll() {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(function () {
+        ticking = false;
+        updateProgress();
+        if (pending.length) {
+          var limit = window.innerHeight * 0.95;
+          pending.slice().forEach(function (el) {
+            if (el.getBoundingClientRect().top < limit) reveal(el);
+          });
+        }
+      });
+    }
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', updateProgress);
+    updateProgress();
+  })();
+
   // Smooth in-page anchors with sticky header offset
   document.addEventListener('click', function (e) {
     var link = e.target.closest('a[href^="#"]');
@@ -568,7 +700,7 @@
     var target = document.getElementById(decodeURIComponent(hash.slice(1)));
     if (!target) return;
     e.preventDefault();
-    var top = target.getBoundingClientRect().top + window.pageYOffset - 84;
+    var top = target.id === 'top' ? 0 : target.getBoundingClientRect().top + window.pageYOffset - 84;
     window.scrollTo({ top: top, behavior: 'smooth' });
     history.replaceState(null, '', hash);
   });

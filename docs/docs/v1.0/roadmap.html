@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>版本路线图 · NeoTask v1.0 文档</title>
-  <meta name="description" content="1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。">
-  <meta name="keywords" content="版本路线图, 版本路线图 教程, 版本路线图 文档, 路线图, NeoTask v1.0 文档, NeoTask 1.0.x, Python 任务队列">
+  <meta name="description" content="1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。">
+  <meta name="keywords" content="版本路线图, 版本路线图 教程, 版本路线图 文档, 路线图, NeoTask v1.0 文档, NeoTask 1.0.x, Python 任务队列, NeoFlow, DAG 工作流编排, 上层编排服务">
   <meta name="author" content="NeoPen">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
   <link rel="canonical" href="https://task.helpenx.com/docs/v1.0/roadmap.html">
@@ -13,7 +13,7 @@
   <meta property="og:locale" content="zh_CN">
   <meta property="og:type" content="article">
   <meta property="og:title" content="版本路线图 · NeoTask v1.0 文档">
-  <meta property="og:description" content="1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。">
+  <meta property="og:description" content="1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。">
   <meta property="og:url" content="https://task.helpenx.com/docs/v1.0/roadmap.html">
   <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
   <meta property="og:image:type" content="image/png">
@@ -25,7 +25,7 @@
   <meta property="article:section" content="路线图">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="版本路线图 · NeoTask v1.0 文档">
-  <meta name="twitter:description" content="1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。">
+  <meta name="twitter:description" content="1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。">
   <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
   <meta name="twitter:image:alt" content="版本路线图 · NeoTask 文档">
   <meta name="theme-color" content="#0b1713">
@@ -44,7 +44,7 @@
         "@id": "https://task.helpenx.com/docs/v1.0/roadmap.html#article",
         "headline": "版本路线图",
         "name": "版本路线图 · NeoTask v1.0 文档",
-        "description": "1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。",
+        "description": "1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。",
         "image": "https://task.helpenx.com/assets/img/og.png",
         "url": "https://task.helpenx.com/docs/v1.0/roadmap.html",
         "mainEntityOfPage": "https://task.helpenx.com/docs/v1.0/roadmap.html",
@@ -52,7 +52,7 @@
         "datePublished": "2026-10-29",
         "dateModified": "2026-11-11",
         "articleSection": "路线图",
-        "keywords": "版本路线图, 版本路线图 教程, 版本路线图 文档, 路线图, NeoTask v1.0 文档, NeoTask 1.0.x, Python 任务队列",
+        "keywords": "版本路线图, 版本路线图 教程, 版本路线图 文档, 路线图, NeoTask v1.0 文档, NeoTask 1.0.x, Python 任务队列, NeoFlow, DAG 工作流编排, 上层编排服务",
         "author": {
           "@type": "Organization",
           "name": "NeoPen",
@@ -82,6 +82,12 @@
           "applicationCategory": "DeveloperApplication",
           "operatingSystem": "OS Independent",
           "url": "https://task.helpenx.com/"
+        },
+        "mentions": {
+          "@type": "SoftwareApplication",
+          "name": "NeoFlow",
+          "applicationCategory": "DeveloperApplication",
+          "description": "DAG 工作流编排引擎，负责任务拓扑、条件分支与状态推进；NeoTask 作为其执行层。"
         }
       },
       {
@@ -118,7 +124,7 @@
   }
   </script>
 </head>
-<body class="docs-page">
+<body class="docs-page" id="top">
   <a class="skip-link" href="#main">跳到主要内容</a>
 <header class="site-header">
   <div class="container header-inner">
@@ -205,7 +211,7 @@
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link is-active" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       <p class="docs-nav-empty" id="docsNavEmpty" hidden>没有匹配的文档</p>
@@ -257,7 +263,7 @@
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link is-active" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       
@@ -266,7 +272,7 @@
         <header class="article-header">
           <p class="article-eyebrow">路线图</p>
           <h1>版本路线图</h1>
-          <p class="article-lede">1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。</p>
+          <p class="article-lede">1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。</p>
           <div class="article-meta">
             <span class="article-version">v1.0 · NeoTask 1.0.x</span>
             <span class="dot"></span>
@@ -278,7 +284,9 @@
           </div>
         </header>
         <div class="article-body">
-<p>NeoTask 的定位是轻量、可嵌入、可被编排的执行层。复杂任务编排不再由本库承担：DAG、条件分支、动态路由与插件系统交给上层编排服务，NeoTask 只负责可靠地执行单个任务，并提供轻量监控指标。</p>
+<p>NeoTask 的定位是轻量、可嵌入、可被编排的执行层。复杂任务编排不再由本库承担：DAG、条件分支、动态路由与插件系统交给上层编排服务 <strong>NeoFlow</strong>，NeoTask 只负责可靠地执行单个任务，并提供轻量监控指标。</p>
+
+<div class="doc-note"><strong>与 NeoFlow 的分工：</strong>NeoFlow 是 NeoTask 的上层 DAG 编排服务，负责工作流拆解、任务下发、事件监听与状态推进；NeoTask 负责任务的排队、执行、重试、持久化与回收。两层通过公开 API 与生命周期事件协作，可以独立部署和演进。</div>
 
 <h2 id="1.0 能力边界">1.0 能力边界</h2>
 <table>
@@ -294,14 +302,14 @@
 <tr><td>终态任务自动清理</td><td>已支持</td><td>默认开启，保留期可配置</td></tr>
 <tr><td>命令行与轻量基准</td><td>已支持</td><td><code>neotask --benchmark</code>、<code>--version</code>、<code>--help</code></td></tr>
 <tr><td>轻量监控指标</td><td>基础能力已支持</td><td><code>get_stats()</code>、健康检查与事件总线统计；标准化快照与 UI 指标规划于 v1.2</td></tr>
-<tr><td>DAG 工作流与条件分支</td><td>不在范围内</td><td>由上层编排服务负责，NeoTask 只执行单个任务</td></tr>
+<tr><td>DAG 工作流与条件分支</td><td>不在范围内</td><td>由上层编排服务 NeoFlow 负责，NeoTask 只执行单个任务</td></tr>
 <tr><td>多租户与独立管理后台</td><td>不在范围内</td><td>由上层平台或编排服务提供</td></tr>
 <tr><td>Web UI</td><td>可选轻量入口</td><td><code>neotask[ui]</code> 的 <code>WebUIServer</code> 提供 <code>/api/stats</code>，不是独立编排后台</td></tr>
 </tbody>
 </table>
 
 <h2 id="1.0 上的替代方案">1.0 上的替代方案</h2>
-<p>不在库内的能力通常可以由业务代码组合现有原语实现，或交给上层编排服务；状态与失败处理需要自行承担。</p>
+<p>不在库内的能力通常可以由业务代码组合现有原语实现，或交给上层编排服务 NeoFlow；状态与失败处理需要自行承担。</p>
 <table>
 <thead><tr><th>需求</th><th>1.0 做法</th><th>需要自行处理</th></tr></thead>
 <tbody>
@@ -341,13 +349,13 @@
 </ul>
 
 <h2 id="v2.0：编排集成（后移）">v2.0：编排集成（后移）</h2>
-<p>待本地能力稳定且有真实多服务需求后再启动，不属于当前版本承诺。集成以上层编排服务客户端的形态提供：</p>
+<p>待本地能力稳定且有真实多服务需求后再启动，不属于当前版本承诺。集成以上层编排服务 NeoFlow 客户端的形态提供：</p>
 <ul>
 <li><code>OrchestratorClient</code>：任务消费、事件上报、心跳与本地重试存储；</li>
 <li>Redis Stream 消费者组与跨语言协议；</li>
 <li>实例注册、失联任务回收与控制消息处理。</li>
 </ul>
-<p>以下能力由上层编排服务负责，不在 NeoTask 内实现：DAG 工作流、条件分支、并行编排、动态路由、插件系统、独立 Web UI、多租户隔离。</p>
+<p>以下能力由 NeoFlow 编排层负责，不在 NeoTask 内实现：DAG 工作流、条件分支、并行编排、动态路由、插件系统、独立 Web UI、多租户隔离。</p>
 
 <h2 id="升级准备">升级准备</h2>
 <ul>
@@ -370,6 +378,9 @@
 <div class="doc-note"><strong>版本策略：</strong>文档按版本发布，1.0 文档只描述 1.0.x 的行为。后续版本文档会以新路径提供，旧版本链接保持可访问。</div>
 
         </div>
+        <footer class="article-foot">
+          <a class="article-top" href="#top">回到顶部 <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></a>
+        </footer>
       </article>
       <nav class="docs-pager" aria-label="上一篇与下一篇">
       <a class="pager-prev" href="/docs/v1.0/benchmarks.html"><span>上一篇</span><strong>性能基准</strong></a>

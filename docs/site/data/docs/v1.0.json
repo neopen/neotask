@@ -174,7 +174,7 @@
       "slug": "roadmap",
       "title": "版本路线图",
       "category": "roadmap",
-      "description": "1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；编排由上层服务承担。",
+      "description": "1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。",
       "updated": "2026-11-11",
       "icon": "workflow",
       "time": "5 分钟"

@@ -237,6 +237,30 @@ code {
   background: var(--brand);
 }
 
+.site-nav-external {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nav-external-icon {
+  width: 12px;
+  height: 12px;
+  opacity: 0.5;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.site-nav-external:hover .nav-external-icon {
+  opacity: 1;
+  transform: translate(1px, -1px);
+}
+
+@media (min-width: 921px) and (max-width: 1120px) {
+  .nav-brand-cn {
+    display: none;
+  }
+}
+
 .header-actions {
   display: flex;
   align-items: center;

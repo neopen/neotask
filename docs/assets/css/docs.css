@@ -1467,10 +1467,196 @@ body.docs-page {
   color: #c9ddd6;
   line-height: 1.55;
   font-size: 12px;
+  cursor: zoom-in;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.article-body pre.diagram:hover,
+.article-body pre.diagram:focus-visible {
+  border-color: rgba(45, 212, 191, 0.55);
+  box-shadow: 0 0 0 3px rgba(15, 159, 143, 0.13);
+  outline: none;
 }
 
 .article-body pre.diagram code {
   color: inherit;
+}
+
+.diagram-shell .doc-expand {
+  opacity: 0.72;
+}
+
+body.diagram-open {
+  overflow: hidden;
+}
+
+/* Diagram lightbox --------------------------------------------------------- */
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  background: rgba(7, 13, 11, 0.94);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.diagram-lightbox.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.diagram-lightbox-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 18px;
+  border-bottom: 1px solid rgba(201, 220, 211, 0.14);
+  background: rgba(9, 17, 14, 0.9);
+}
+
+.diagram-lightbox-title {
+  margin: 0;
+  color: #e7f3ee;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.diagram-lightbox-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.diagram-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid rgba(201, 220, 211, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #cfe4db;
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.diagram-tool:hover {
+  border-color: rgba(45, 212, 191, 0.5);
+  background: rgba(15, 159, 143, 0.18);
+  color: #f2faf6;
+}
+
+.diagram-tool:focus-visible {
+  outline: 2px solid #2dd4bf;
+  outline-offset: 2px;
+}
+
+.diagram-tool-level {
+  min-width: 62px;
+  color: #9db9ae;
+  font-size: 12px;
+}
+
+.diagram-tool-close {
+  margin-left: 6px;
+  font-size: 14px;
+}
+
+.diagram-lightbox-stage {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+
+.diagram-lightbox-stage.is-dragging {
+  cursor: grabbing;
+}
+
+.diagram-lightbox-canvas {
+  width: max-content;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.diagram-lightbox-content {
+  width: max-content;
+  margin: 0;
+  padding: 22px 26px;
+  border: 1px solid rgba(201, 220, 211, 0.16);
+  border-radius: 14px;
+  background: #0b1511;
+  color: #d8eae2;
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: 1.65;
+  text-align: left;
+  white-space: pre;
+  tab-size: 4;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+}
+
+.diagram-lightbox-content.is-mermaid {
+  background: #fff;
+  border-color: #e3e8e2;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+}
+
+.diagram-lightbox-content.is-mermaid svg {
+  display: block;
+  max-width: none !important;
+  height: auto;
+}
+
+.diagram-lightbox-hint {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  margin: 0;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(9, 17, 14, 0.72);
+  color: rgba(217, 235, 227, 0.72);
+  font-size: 11.5px;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.hint-mobile {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .diagram-lightbox-bar { padding: 10px 12px; }
+  .diagram-lightbox-title { font-size: 12px; }
+  .diagram-tool { min-width: 32px; height: 32px; }
+  .diagram-lightbox-content { font-size: 13px; padding: 16px 18px; }
+  .diagram-lightbox-hint { bottom: 10px; font-size: 11px; }
+  .hint-desktop { display: none; }
+  .hint-mobile { display: inline; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diagram-lightbox,
+  .article-body pre.diagram { transition: none; }
 }
 
 /* Benchmark report --------------------------------------------------------- */

@@ -89,7 +89,7 @@
 
   // Docs article code blocks: add copy buttons
   document.querySelectorAll('.article-body pre').forEach(function (pre, i) {
-    if (pre.classList.contains('mermaid')) return;
+    if (pre.classList.contains('mermaid') || pre.classList.contains('diagram')) return;
     var wrap = document.createElement('div');
     wrap.className = 'code-shell';
     pre.parentNode.insertBefore(wrap, pre);
@@ -103,6 +103,321 @@
     btn.setAttribute('aria-label', '复制代码');
     wrap.appendChild(btn);
   });
+
+  // Docs diagrams: click to view fullscreen with zoom and pan
+  (function () {
+    var sources = Array.prototype.slice.call(document.querySelectorAll('.article-body pre.diagram, .article-body pre.mermaid'));
+    if (!sources.length) return;
+
+    var MIN_SCALE = 0.25;
+    var MAX_SCALE = 8;
+    var box = null;
+    var stage = null;
+    var canvas = null;
+    var content = null;
+    var titleEl = null;
+    var levelEl = null;
+    var lastFocus = null;
+    var fitScale = 1;
+    var scale = 1;
+    var tx = 0;
+    var ty = 0;
+    var pointers = new Map();
+    var drag = null;
+    var pinch = null;
+    var suppressClick = false;
+
+    function clamp(value, lo, hi) {
+      return Math.min(hi, Math.max(lo, value));
+    }
+
+    function headingFor(pre) {
+      var node = pre;
+      while (node && node !== document.body) {
+        var sib = node.previousElementSibling;
+        while (sib) {
+          if (/^H[1-4]$/.test(sib.tagName)) return sib.textContent.trim();
+          sib = sib.previousElementSibling;
+        }
+        node = node.parentElement;
+      }
+      var h1 = document.querySelector('.article-header h1');
+      return h1 ? h1.textContent.trim() : '图形预览';
+    }
+
+    function apply() {
+      canvas.style.transform = 'translate3d(' + tx + 'px,' + ty + 'px,0) scale(' + scale + ')';
+      if (levelEl) levelEl.textContent = Math.round((scale / fitScale) * 100) + '%';
+    }
+
+    function fit() {
+      if (!stage) return;
+      canvas.style.transform = 'none';
+      var pad = 48;
+      var availW = Math.max(120, stage.clientWidth - pad * 2);
+      var availH = Math.max(120, stage.clientHeight - pad * 2);
+      var w = content.offsetWidth || 1;
+      var h = content.offsetHeight || 1;
+      fitScale = clamp(Math.min(availW / w, availH / h), 0.8, 2.6);
+      scale = fitScale;
+      tx = 0;
+      ty = 0;
+      apply();
+    }
+
+    function zoomBy(factor, clientX, clientY) {
+      var next = clamp(scale * factor, MIN_SCALE, MAX_SCALE);
+      if (Math.abs(next - scale) < 0.0001) return;
+      if (typeof clientX === 'number' && typeof clientY === 'number') {
+        var rect = stage.getBoundingClientRect();
+        var ox = clientX - rect.left - rect.width / 2;
+        var oy = clientY - rect.top - rect.height / 2;
+        var k = next / scale;
+        tx = ox - (ox - tx) * k;
+        ty = oy - (oy - ty) * k;
+      }
+      scale = next;
+      apply();
+    }
+
+    function distance(a, b) {
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    function build() {
+      box = document.createElement('div');
+      box.className = 'diagram-lightbox';
+      box.setAttribute('role', 'dialog');
+      box.setAttribute('aria-modal', 'true');
+      box.setAttribute('aria-hidden', 'true');
+      box.setAttribute('aria-label', '图形全屏预览');
+      box.innerHTML = '<div class="diagram-lightbox-bar">' +
+        '<p class="diagram-lightbox-title" data-diagram-title></p>' +
+        '<div class="diagram-lightbox-tools">' +
+        '<button type="button" class="diagram-tool" data-diagram-zoom="out" aria-label="缩小">−</button>' +
+        '<button type="button" class="diagram-tool diagram-tool-level" data-diagram-reset aria-label="重置缩放">100%</button>' +
+        '<button type="button" class="diagram-tool" data-diagram-zoom="in" aria-label="放大">+</button>' +
+        '<button type="button" class="diagram-tool diagram-tool-close" data-diagram-close aria-label="关闭预览">✕</button>' +
+        '</div></div>' +
+        '<div class="diagram-lightbox-stage" data-diagram-stage>' +
+        '<div class="diagram-lightbox-canvas" data-diagram-canvas>' +
+        '<pre class="diagram-lightbox-content" data-diagram-content></pre>' +
+        '</div>' +
+        '<p class="diagram-lightbox-hint"><span class="hint-desktop">滚轮 / 双击缩放 · 拖拽移动 · Esc 关闭</span><span class="hint-mobile">双指缩放 · 拖拽移动</span></p></div>';
+      document.body.appendChild(box);
+
+      titleEl = box.querySelector('[data-diagram-title]');
+      levelEl = box.querySelector('[data-diagram-reset]');
+      stage = box.querySelector('[data-diagram-stage]');
+      canvas = box.querySelector('[data-diagram-canvas]');
+      content = box.querySelector('[data-diagram-content]');
+
+      box.addEventListener('click', function (e) {
+        if (e.target.closest('[data-diagram-close]')) {
+          close();
+          return;
+        }
+        var zoomBtn = e.target.closest('[data-diagram-zoom]');
+        if (zoomBtn) {
+          zoomBy(zoomBtn.getAttribute('data-diagram-zoom') === 'in' ? 1.25 : 0.8);
+          return;
+        }
+        if (e.target.closest('[data-diagram-reset]')) fit();
+      });
+
+      stage.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        zoomBy(Math.exp(-e.deltaY * 0.0016), e.clientX, e.clientY);
+      }, { passive: false });
+
+      stage.addEventListener('dblclick', function (e) {
+        if (scale > fitScale * 1.5) fit();
+        else zoomBy((fitScale * 2.6) / scale, e.clientX, e.clientY);
+      });
+
+      stage.addEventListener('pointerdown', function (e) {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        try {
+          stage.setPointerCapture(e.pointerId);
+        } catch (err) {}
+        suppressClick = false;
+        if (pointers.size === 1) {
+          drag = { x: e.clientX, y: e.clientY, tx: tx, ty: ty, moved: false };
+          pinch = null;
+          stage.classList.add('is-dragging');
+        } else if (pointers.size === 2) {
+          var pts = Array.from(pointers.values());
+          pinch = {
+            dist: distance(pts[0], pts[1]),
+            midX: (pts[0].x + pts[1].x) / 2,
+            midY: (pts[0].y + pts[1].y) / 2
+          };
+          drag = null;
+        }
+      });
+
+      stage.addEventListener('pointermove', function (e) {
+        if (!pointers.has(e.pointerId)) return;
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+        if (pointers.size >= 2 && pinch) {
+          var pts = Array.from(pointers.values()).slice(0, 2);
+          var dist = distance(pts[0], pts[1]);
+          var midX = (pts[0].x + pts[1].x) / 2;
+          var midY = (pts[0].y + pts[1].y) / 2;
+          if (pinch.dist > 0) zoomBy(dist / pinch.dist, midX, midY);
+          tx += midX - pinch.midX;
+          ty += midY - pinch.midY;
+          pinch.dist = dist;
+          pinch.midX = midX;
+          pinch.midY = midY;
+          suppressClick = true;
+          apply();
+          return;
+        }
+
+        if (drag && pointers.size === 1) {
+          var dx = e.clientX - drag.x;
+          var dy = e.clientY - drag.y;
+          if (!drag.moved && Math.hypot(dx, dy) > 3) {
+            drag.moved = true;
+            suppressClick = true;
+          }
+          if (drag.moved) {
+            tx = drag.tx + dx;
+            ty = drag.ty + dy;
+            apply();
+          }
+        }
+      });
+
+      function release(e) {
+        pointers.delete(e.pointerId);
+        if (pointers.size === 1) {
+          var rest = Array.from(pointers.values())[0];
+          drag = { x: rest.x, y: rest.y, tx: tx, ty: ty, moved: true };
+          pinch = null;
+        } else if (pointers.size === 0) {
+          drag = null;
+          pinch = null;
+          stage.classList.remove('is-dragging');
+        }
+      }
+
+      stage.addEventListener('pointerup', release);
+      stage.addEventListener('pointercancel', release);
+
+      stage.addEventListener('click', function (e) {
+        var suppressed = suppressClick;
+        suppressClick = false;
+        if (suppressed || e.target.closest('.diagram-lightbox-content')) return;
+        close();
+      });
+
+      document.addEventListener('keydown', function (e) {
+        if (!box.classList.contains('is-open')) return;
+        if (e.key === 'Escape') {
+          close();
+          return;
+        }
+        if (e.key === '+' || e.key === '=') {
+          e.preventDefault();
+          zoomBy(1.25);
+        } else if (e.key === '-' || e.key === '_') {
+          e.preventDefault();
+          zoomBy(0.8);
+        } else if (e.key === '0') {
+          e.preventDefault();
+          fit();
+        } else if (e.key === 'Tab') {
+          var focusable = box.querySelectorAll('button');
+          var first = focusable[0];
+          var last = focusable[focusable.length - 1];
+          if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      });
+
+      window.addEventListener('resize', function () {
+        if (box.classList.contains('is-open')) fit();
+      });
+    }
+
+    function open(pre) {
+      if (!box) build();
+      lastFocus = document.activeElement;
+      titleEl.textContent = headingFor(pre);
+
+      content.className = 'diagram-lightbox-content';
+      content.textContent = '';
+      var svg = pre.querySelector('svg');
+      if (svg) {
+        var clone = svg.cloneNode(true);
+        var vb = svg.viewBox && svg.viewBox.baseVal;
+        clone.style.maxWidth = 'none';
+        if (vb && vb.width) {
+          clone.setAttribute('width', vb.width);
+          clone.setAttribute('height', vb.height);
+        }
+        content.classList.add('is-mermaid');
+        content.appendChild(clone);
+      } else {
+        var code = pre.querySelector('code') || pre;
+        content.textContent = code.textContent.replace(/\s+$/, '');
+      }
+
+      document.body.classList.add('diagram-open');
+      box.classList.add('is-open');
+      box.setAttribute('aria-hidden', 'false');
+      fit();
+      box.querySelector('[data-diagram-close]').focus();
+    }
+
+    function close() {
+      if (!box || !box.classList.contains('is-open')) return;
+      box.classList.remove('is-open');
+      box.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('diagram-open');
+      if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
+    }
+
+    sources.forEach(function (pre) {
+      var wrap = document.createElement('div');
+      wrap.className = 'code-shell diagram-shell';
+      pre.parentNode.insertBefore(wrap, pre);
+      wrap.appendChild(pre);
+
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'doc-copy doc-expand';
+      btn.textContent = '放大';
+      btn.setAttribute('aria-label', '全屏查看图形');
+      btn.addEventListener('click', function () {
+        open(pre);
+      });
+      wrap.appendChild(btn);
+
+      pre.setAttribute('role', 'button');
+      pre.setAttribute('tabindex', '0');
+      pre.setAttribute('aria-label', '全屏查看：' + headingFor(pre));
+      pre.setAttribute('title', '点击全屏查看');
+      pre.addEventListener('click', function () {
+        open(pre);
+      });
+      pre.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+          e.preventDefault();
+          open(pre);
+        }
+      });
+    });
+  })();
 
   // Landing code tabs
   var tabButtons = document.querySelectorAll('[data-code-tab]');

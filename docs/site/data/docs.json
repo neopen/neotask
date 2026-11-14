@@ -5,11 +5,11 @@
       "id": "v1.0",
       "label": "v1.0",
       "status": "latest",
-      "library": "NeoTask 1.0.x",
+      "library": "NeoTask 1.x",
       "baseline": "1.0.8",
       "released": "2026-10-29",
       "updated": "2026-11-11",
-      "description": "覆盖 1.0 系列（基线 1.0.8）的安装、配置、核心能力、可靠性与 API。",
+      "description": "覆盖 1.x 系列（当前基线 1.0.8）的安装、配置、核心能力、可靠性与 API；1.x 只做兼容增强，2.0 发布时另设文档线。",
       "data": "docs/v1.0.json",
       "benchmarks": "benchmarks/v1.0.8.json"
     }

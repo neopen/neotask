@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>最佳实践 · NeoTask v1.0 文档</title>
   <meta name="description" content="执行器、并发、重试、超时、存储选型与生产部署建议。">
-  <meta name="keywords" content="最佳实践, 最佳实践 教程, 最佳实践 文档, 开始使用, NeoTask v1.0 文档, NeoTask 1.0.x, Python 任务队列">
+  <meta name="keywords" content="最佳实践, 最佳实践 教程, 最佳实践 文档, 开始使用, NeoTask v1.0 文档, NeoTask 1.x, Python 任务队列">
   <meta name="author" content="NeoPen">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
   <link rel="canonical" href="https://task.helpenx.com/docs/v1.0/best-practices.html">
@@ -52,7 +52,7 @@
         "datePublished": "2026-10-29",
         "dateModified": "2026-11-11",
         "articleSection": "开始使用",
-        "keywords": "最佳实践, 最佳实践 教程, 最佳实践 文档, 开始使用, NeoTask v1.0 文档, NeoTask 1.0.x, Python 任务队列",
+        "keywords": "最佳实践, 最佳实践 教程, 最佳实践 文档, 开始使用, NeoTask v1.0 文档, NeoTask 1.x, Python 任务队列",
         "author": {
           "@type": "Organization",
           "name": "NeoPen",
@@ -169,7 +169,7 @@
           </select>
           <a class="docs-version-all" href="/docs/">所有版本</a>
         </div>
-        <p class="docs-version-note">适用于 NeoTask 1.0.x</p>
+        <p class="docs-version-note">适用于 NeoTask 1.x</p>
       </div>
       <div class="docs-search-wrap">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -224,7 +224,7 @@
           </select>
           <a class="docs-version-all" href="/docs/">所有版本</a>
         </div>
-        <p class="docs-version-note">适用于 NeoTask 1.0.x</p>
+        <p class="docs-version-note">适用于 NeoTask 1.x</p>
       </div>
       
       <nav class="docs-nav" id="docsNavMobile" aria-label="文档导航">
@@ -268,7 +268,7 @@
           <h1>最佳实践</h1>
           <p class="article-lede">执行器、并发、重试、超时、存储选型与生产部署建议。</p>
           <div class="article-meta">
-            <span class="article-version">v1.0 · NeoTask 1.0.x</span>
+            <span class="article-version">v1.0 · NeoTask 1.x</span>
             <span class="dot"></span>
             <span>更新于 2026-11-11</span>
             <span class="dot"></span>
@@ -278,7 +278,7 @@
           </div>
         </header>
         <div class="article-body">
-<p>以下建议来自 1.0 系列的实际行为约束，不是通用最佳实践清单。每条都对应一个具体限制。</p>
+<p>以下建议来自 1.x 系列的实际行为约束，不是通用最佳实践清单。每条都对应一个具体限制。</p>
 
 <h2 id="生产配置模板">生产配置模板</h2>
 <p>下面是一份 Redis 多节点部署的起点配置，不是所有场景的通用答案。每个实例必须使用唯一 <code>node_id</code>。使用 <code>TaskPoolConfig.redis()</code> 工厂时 <code>lock_type</code> 会自动设为 <code>redis</code>；这里直接构造配置，因此需要显式指定。</p>

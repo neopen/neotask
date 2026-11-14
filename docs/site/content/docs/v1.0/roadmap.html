@@ -76,17 +76,18 @@
 <li>保持任务幂等：上层编排重跑、故障恢复和人工重试都会再次执行任务。</li>
 <li>只依赖公开 API：不要直接读写 Redis 键或调用内部模块，存储结构可能随版本变化。</li>
 <li>记录当前配置：升级前保存 <code>TaskPoolConfig</code> 与 <code>SchedulerConfig</code>，发布后逐项对照新版配置参考。</li>
-<li>不要把规划项写进生产依赖，也不要在 1.0 上导入尚不存在的 <code>workflow</code> 模块。</li>
+<li>不要把规划项写进生产依赖，也不要在 1.x 上导入尚不存在的 <code>workflow</code> 模块。</li>
 </ul>
 
 <h2>版本与文档路径</h2>
+<p>1.x 只做兼容的功能增强与性能优化，不引入破坏性变更；大版本能力留到 2.0。文档目前规划两条线：<strong>1.0</strong> 覆盖整条 1.x，<strong>2.0</strong> 随 2.x 新增。</p>
 <table>
 <thead><tr><th>库版本</th><th>文档路径</th><th>说明</th></tr></thead>
 <tbody>
-<tr><td>1.0.x</td><td><code>/docs/v1.0/</code></td><td>当前版本；补丁版本共享此路径</td></tr>
-<tr><td>后续 1.x</td><td><code>/docs/v1.x/</code></td><td>发布时新增，旧路径继续保留</td></tr>
+<tr><td>1.x（含 1.1、1.2…）</td><td><code>/docs/v1.0/</code></td><td>当前文档线；持续增强与缺陷修复都更新在此路径</td></tr>
+<tr><td>2.0</td><td><code>/docs/v2.0/</code></td><td>2.0 发布时新增；大版本功能与不兼容变更在此时说明</td></tr>
 </tbody>
 </table>
-<p>文档按次版本线固定路径，补丁版本不会改变链接；升级后请切换到目标版本文档阅读配置与 API 变化。</p>
+<p>1.x 内的小版本升级不会改变文档链接；升级到 2.0 时请切换到新文档线对照配置与 API 变化。</p>
 
-<div class="doc-note"><strong>版本策略：</strong>文档按版本发布，1.0 文档只描述 1.0.x 的行为。后续版本文档会以新路径提供，旧版本链接保持可访问。</div>
+<div class="doc-note"><strong>版本策略：</strong>1.0 文档覆盖整条 1.x 版本线，1.x 只做兼容增强，文档在原路径持续更新；2.0 引入大版本能力时另开文档路径，旧链接保持可访问。</div>

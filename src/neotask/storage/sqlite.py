@@ -148,6 +148,9 @@ class SQLiteTaskRepository(TaskRepository):
         if self._conn is conn:
             self._initialized = True
 
+    async def ensure_ready(self) -> None:
+        """启动期建表并补齐新增列（1.0.x 老库升级）"""
+        await self._ensure_init()
 
     async def _init_db(self, conn) -> None:
         """Initialize database tables asynchronously."""
@@ -209,7 +212,13 @@ class SQLiteTaskRepository(TaskRepository):
         for name, column_type in _NEW_TASK_COLUMNS:
             if name in present:
                 continue
-            await conn.execute(f"ALTER TABLE tasks ADD COLUMN {name} {column_type}")
+            try:
+                await conn.execute(f"ALTER TABLE tasks ADD COLUMN {name} {column_type}")
+            except sqlite3.OperationalError as exc:
+                # 启动期并发（同库多仓储 / 多进程同时打开老库）：另一方可先补列，
+                # 此时本次 ALTER 必然报重复列，忽略即可；其它错误照常抛出。
+                if "duplicate column name" not in str(exc).lower():
+                    raise
 
     @staticmethod
     def _task_values(task: Task) -> tuple:
@@ -822,6 +831,10 @@ class SQLiteCheckpointRepository(CheckpointRepository):
         await self._init_db(conn)
         if self._conn is conn:
             self._initialized = True
+
+    async def ensure_ready(self) -> None:
+        """启动期创建 task_checkpoints 表"""
+        await self._ensure_init()
 
     async def _init_db(self, conn: Any) -> None:
         await conn.execute("""

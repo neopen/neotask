@@ -101,6 +101,15 @@ def _is_terminal_expired(
 class TaskRepository(ABC):
     """Repository interface for task storage."""
 
+    async def ensure_ready(self) -> None:
+        """确保存储结构就绪（建表、补列等）
+
+        默认无操作。持久化后端可覆盖，把惰性初始化提前到引擎/任务池启动
+        阶段：升级失败在 ``start()`` / ``initialize()`` 时暴露，首个任务也无需
+        承担 DDL 开销。
+        """
+        return None
+
     @abstractmethod
     async def save(self, task: Task) -> None:
         """Save task to storage."""
@@ -398,6 +407,10 @@ class CheckpointRepository(ABC):
 
     #: save() 是否同时原子维护任务上的 checkpoint_version 标记
     handles_task_marker: bool = False
+
+    async def ensure_ready(self) -> None:
+        """确保 checkpoint 存储结构就绪（默认无操作，SQLite 建表）"""
+        return None
 
     @abstractmethod
     async def save(self, task_id: str, version: int, state: Dict[str, Any]) -> None:

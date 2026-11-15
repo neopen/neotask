@@ -40,6 +40,21 @@ async def test_task_pool_submit_and_wait():
         pool.shutdown()
 
 
+def test_start_surfaces_storage_error(tmp_path):
+    """存储初始化失败时 start() 直接抛出原始异常，不留下“半启动”状态"""
+    import sqlite3
+
+    db_path = tmp_path / "db-as-dir"
+    db_path.mkdir()
+    pool = TaskPool(
+        executor=_executor,
+        config=TaskPoolConfig(storage_type="sqlite", sqlite_path=str(db_path)),
+    )
+
+    with pytest.raises(sqlite3.OperationalError, match="unable to open database file"):
+        pool.start()
+
+
 def test_task_scheduler_interval():
     """TaskScheduler 周期任务应至少执行两次"""
     scheduler = TaskScheduler(executor=_executor, config=SchedulerConfig.memory())

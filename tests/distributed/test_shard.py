@@ -29,6 +29,16 @@ except ImportError:
     DISTRIBUTED_AVAILABLE = False
 
 
+def _coverage_active() -> bool:
+    """是否运行在覆盖率插桩下（插桩会显著拖慢纯 CPU 吞吐）"""
+    try:
+        from coverage import Coverage
+    except ImportError:
+        return False
+    return Coverage.current() is not None
+
+
+
     # 创建占位符
     class ConsistentHashSharder:
         def __init__(self, *args, **kwargs):
@@ -327,6 +337,10 @@ class TestRangeSharder:
 class TestSharderPerformance:
     """分片器性能测试"""
 
+    @pytest.mark.skipif(
+        _coverage_active(),
+        reason="覆盖率插桩会放大纯 CPU 吞吐，性能断言只在无覆盖率运行下校验",
+    )
     def test_consistent_hash_performance(self):
         """测试一致性哈希性能"""
         nodes = [f"node_{i}" for i in range(10)]

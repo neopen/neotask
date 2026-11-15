@@ -16,7 +16,7 @@ import time
 
 import pytest
 
-from neotask import TaskPool, TaskPoolConfig, report_failure
+from neotask import TaskPool, TaskPoolConfig, get_failure_recorder, report_failure
 from neotask.common.constants import EventType
 from neotask.core.failure import BusinessFailure
 from neotask.models.task import Task, TaskStatus
@@ -64,6 +64,7 @@ class TestBusinessFailure:
 
     def test_report_failure_outside_worker_returns_false(self):
         """不在 Worker 执行上下文中调用时返回 False，不抛异常"""
+        assert get_failure_recorder() is None
         assert report_failure("qa_failed") is False
 
 
@@ -76,6 +77,7 @@ class TestReportFailureInExecutor:
 
         async def executor(data):
             invocations.append(data)
+            assert get_failure_recorder() is not None
             assert report_failure("qa_failed", "score=10") is True
             return {"score": data["score"]}
 

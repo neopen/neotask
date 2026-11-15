@@ -468,8 +468,14 @@ class MetricsCollector:
         return self._system_metrics
 
     def get_summary(self) -> Dict[str, Any]:
-        """获取指标摘要"""
-        return self._metrics.to_dict()
+        """获取指标摘要
+
+        与异步版本共用同一把锁：同步接口常被非事件循环线程调用，
+        而 worker 在锁内 append 执行时间样本，无锁遍历 deque 会抛
+        ``deque mutated during iteration``。
+        """
+        with self._lock:
+            return self._metrics.to_dict()
 
     async def get_summary_async(self) -> Dict[str, Any]:
         """异步获取指标摘要"""
@@ -478,7 +484,8 @@ class MetricsCollector:
 
     def get_full_summary(self) -> Dict[str, Any]:
         """获取完整摘要（包含系统指标）"""
-        result = self._metrics.to_dict()
+        with self._lock:
+            result = self._metrics.to_dict()
         if self._system_metrics:
             result["system"] = self._system_metrics.to_dict()
         return result
@@ -514,6 +521,11 @@ class MetricsCollector:
         Returns:
             Prometheus 格式的指标字符串
         """
+        # 导出同样会遍历样本 deque，需与 worker 的 append 互斥
+        with self._lock:
+            return self._build_prometheus_lines()
+
+    def _build_prometheus_lines(self) -> str:
         metrics = self._metrics
         lines = []
 

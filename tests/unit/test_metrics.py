@@ -13,6 +13,7 @@ See LICENSE File For Details.
 import pytest
 import asyncio
 import random
+import threading
 
 from neotask.monitor.metrics import MetricsCollector, TaskMetrics
 
@@ -247,6 +248,55 @@ class TestMetricsCollector:
             assert summary["running"] == 0
         finally:
             await collector.stop()
+
+    @pytest.mark.asyncio
+    async def test_summary_read_survives_concurrent_recording(self):
+        """同步摘要/导出与记录并发时不应抛 deque mutated during iteration"""
+        collector = MetricsCollector(window_size=1000)
+        stop = threading.Event()
+        errors = []
+
+        def reader():
+            while not stop.is_set():
+                try:
+                    collector.get_full_summary()
+                    collector.to_prometheus_format()
+                except Exception as exc:
+                    errors.append(exc)
+                    stop.set()
+
+        thread = threading.Thread(target=reader, daemon=True)
+        thread.start()
+
+        try:
+            for i in range(300):
+                task_id = f"task_{i}"
+                await collector.record_task_submit(task_id)
+                await collector.record_task_start(task_id)
+                await collector.record_task_complete(task_id)
+                if errors:
+                    break
+        finally:
+            stop.set()
+            thread.join(5)
+
+        assert not errors, errors
+
+    async def test_summary_read_takes_collector_lock(self):
+        """同步摘要读取必须与 record_* 的写锁互斥（不再有无锁遍历 deque 的窗口）"""
+        collector = MetricsCollector()
+        done = threading.Event()
+
+        def reader():
+            collector.get_full_summary()
+            done.set()
+
+        with collector._lock:
+            thread = threading.Thread(target=reader, daemon=True)
+            thread.start()
+            assert not done.wait(0.2)
+        assert done.wait(2)
+        thread.join(2)
 
     @pytest.mark.asyncio
     async def test_get_metrics_object(self, metrics_collector):

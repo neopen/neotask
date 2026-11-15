@@ -27,7 +27,8 @@
 | 版本   | 主题                             | 状态                       |
 | ------ | -------------------------------- | -------------------------- |
 | v1.0.x | 基础任务池、定时调度、分布式基础、可观测性基础 | 已发布          |
-| v1.1.0 | 本地任务能力补全                 | 功能已交付，待发布         |
+| v1.1.0 | 本地任务能力补全                 | 已发布                     |
+| v1.1.1 | 稳定性与升级体验修复             | 开发中                     |
 | v1.2.0 | 性能优化与基准测试、轻量监控     | 规划中                     |
 | v1.3.0 | 监控导出器与可靠性补强           | 规划中                     |
 | v2.0.0 | NeoFlow 执行面接入               | 后移                       |
@@ -109,9 +110,39 @@
 - [x] `src/neotask/core/checkpoint.py` 覆盖率 75.6% → 100%（补齐 sync 分支与上下文读取）
 - [x] `TaskEngine` 的 `checkpoint_repo` 注入路径补测试
 - [x] README / README_zh 状态同步（v1.1 已交付、架构图去掉“规划”标注、链接契约页）
-- [ ] release-please 依据 conventional commits 生成 1.1.0 与 CHANGELOG（不手改）
+- [x] release-please 依据 conventional commits 生成 1.1.0 与 CHANGELOG（不手改）
 - [ ] 发布说明提示 1.0.x 升级：checkpoint 表启动时自动创建，历史任务耗时回填运行
       `scripts/migrate_task_metadata.py`；官网 API 文档同步
+
+---
+
+## 二点一、v1.1.1 — 稳定性与升级体验修复
+
+**目标**：不新增公开能力，只修复 1.1.0 暴露的启动期稳定性与升级可用性问题，
+语义保持向后兼容。
+
+### 修复项
+
+- **SQLite 老库并发升级**：同一 1.0.x 库被多仓储/多进程同时打开时，重复
+  `ALTER TABLE ADD COLUMN` 会抛 `duplicate column name` 导致启动失败；改为容忍
+  重复列并继续，其它错误照常抛出。
+- **启动期完成 schema 升级**：`TaskRepository` / `CheckpointRepository` 增加
+  `ensure_ready()`，SQLite 后端建表、补列与 `task_checkpoints` 建表提前到
+  `TaskPool.start()` / `TaskEngine.initialize()`，使“新列在启动时自动补齐”成为真实
+  保证，升级失败在启动阶段暴露，首个任务不再承担 DDL 延迟。
+- **start() 就绪语义**：`TaskPool.start()` 等组件初始化完成后再返回，启动失败
+  直接抛出原始异常，不再留下“半启动”状态。
+- **依赖可用性**：`neotask[redis]` 的 redis-py 上界由 `<6` 放宽到 `<8`
+  （4.5–7.x 验证可用；8.x 的 RESP3 `HELLO` 与旧版 Redis/Memurai 3.2 不兼容）。
+- **指标读取并发安全**：`get_summary()` / `get_full_summary()` /
+  `to_prometheus_format()` 与 worker 记录共用同一把锁，避免遍历样本 deque 时
+  并发 append 抛 `deque mutated during iteration`（压测下可复现）。
+
+### 验收标准
+
+- 1.0.8 真实库在 1.1.1 下启动即完成补列与 checkpoint 建表，历史任务可正常读取。
+- 并发初始化回归用例通过，重复补列不再抛错。
+- 全量测试通过；redis-py 5.x / 7.1 下 Redis 与 checkpoint 用例均通过。
 
 ---
 

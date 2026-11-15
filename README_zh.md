@@ -144,7 +144,7 @@ graph TB
 
 **发展路线图**
 
-**图注**：v0.1 – v1.0 为已发布版本；v1.1 功能已交付、待发布；v1.2 – v1.3 为性能、监控与可靠性迭代。NeoTask 是可独立自足的本地执行 SDK —— DAG 拆解、任务下发与状态推进属于上层**控制面**（如 NeoFlow），NeoTask 仅作为**执行面**与其对接（拉取任务 → 执行 Handler → 上报事件）。v2.0（NeoFlow 执行面接入）为**后移项**；内置 DAG、动态路由、插件系统与 Web UI 不在范围内。任务与事件的线协议在 1.x 内冻结，详见 [docs/neotask-execution-contract.md](docs/neotask-execution-contract.md)。
+**图注**：v0.1 – v1.0 为已发布版本；v1.1.0 已发布（v1.1.1 为稳定性与升级体验补丁）；v1.2 – v1.3 为性能、监控与可靠性迭代。NeoTask 是可独立自足的本地执行 SDK —— DAG 拆解、任务下发与状态推进属于上层**控制面**（如 NeoFlow），NeoTask 仅作为**执行面**与其对接（拉取任务 → 执行 Handler → 上报事件）。v2.0（NeoFlow 执行面接入）为**后移项**；内置 DAG、动态路由、插件系统与 Web UI 不在范围内。任务与事件的线协议在 1.x 内冻结，详见 [docs/neotask-execution-contract.md](docs/neotask-execution-contract.md)。
 
 ```mermaid
 timeline
@@ -452,7 +452,9 @@ print(result.failed)     # [{"index": 3, "data": {...}, "error": "queue is full"
 - **崩溃/重启恢复**：自动恢复只针对已**入队**的任务（其 id 存在于持久化队列中）。
   仅通过 `create_pending_task()` 落库、从未调用 `enqueue_task()` 入队的记录不属于队列，
   重启后**不会**自动执行——需显式入队。
-- **升级 1.0.x 的 SQLite 库**：新列在启动时自动补齐。若要回填历史任务的
+- **升级 1.0.x 的 SQLite 库**：新列与 `task_checkpoints` 表在 `start()` 阶段自动
+  补齐/创建（多实例并发启动安全），启动失败会直接抛出而不是留到首个任务。
+  若要回填历史任务的
   `queue_wait_ms` / `duration_ms` 并建立父子索引，请先停机再执行
   `python scripts/migrate_task_metadata.py --db <路径> --apply`（不加 `--apply` 为预演）。
 - **周期任务持久化**：`enable_persistence` **默认开启**。`storage_type="sqlite"` 或

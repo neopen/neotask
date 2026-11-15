@@ -195,6 +195,9 @@ class TaskPool:
         # 运行状态
         self._running = False
         self._started = False
+        # start() 等到组件就绪再返回；启动失败时把异常带回调用方
+        self._ready_event = threading.Event()
+        self._startup_error: Optional[BaseException] = None
 
         # 线程安全的执行器
         self._executor_service = ThreadPoolExecutor(max_workers=1, thread_name_prefix="TaskPool")
@@ -446,6 +449,14 @@ class TaskPool:
             self._loop = loop
 
             async def start_components():
+                # 启动期完成存储初始化/升级：升级失败在 start() 暴露，
+                # 首个任务也无需承担建表/补列开销
+                if hasattr(self._task_repo, "ensure_ready"):
+                    await self._task_repo.ensure_ready()
+                if self._checkpoint_repo is not None and hasattr(
+                    self._checkpoint_repo, "ensure_ready"
+                ):
+                    await self._checkpoint_repo.ensure_ready()
                 # 启动核心组件
                 self._lifecycle.start_progress_flusher()
                 await self._event_bus.start()
@@ -492,7 +503,12 @@ class TaskPool:
 
             try:
                 loop.run_until_complete(start_components())
+                self._ready_event.set()
                 loop.run_forever()
+            except BaseException as exc:
+                # 记录启动失败并静默退出线程，由 start() 在调用方线程重抛
+                self._startup_error = exc
+                self._ready_event.set()
             finally:
                 # 关闭循环，避免每次 start/shutdown 残留一个常驻循环线程
                 try:
@@ -500,18 +516,16 @@ class TaskPool:
                 except Exception:
                     pass
 
+        self._startup_error = None
+        self._ready_event.clear()
         self._loop_thread = threading.Thread(target=run_loop, daemon=True)
         self._loop_thread.start()
 
-        # 等待循环启动
-        import time
-        timeout = 5
-        start_time = time.time()
-        while self._loop is None and time.time() - start_time < timeout:
-            time.sleep(0.01)
-
-        if self._loop is None:
-            raise RuntimeError("Failed to start event loop")
+        # 等待组件启动完成（含存储建表/补列），失败时把原始异常抛给调用方
+        if not self._ready_event.wait(timeout=5):
+            raise RuntimeError("Failed to start TaskPool: startup timed out")
+        if self._startup_error is not None:
+            raise self._startup_error
 
         self._running = True
         self._started = True

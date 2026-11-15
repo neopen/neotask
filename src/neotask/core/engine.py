@@ -159,6 +159,13 @@ class TaskEngine:
 
         # 1. 初始化存储
         await self._init_storage()
+        # 启动期完成建表/补列：升级失败在 start() 暴露，首个任务不承担 DDL 开销
+        if self._task_repo is not None:
+            await self._task_repo.ensure_ready()
+        if self._checkpoint_repo is not None and hasattr(
+            self._checkpoint_repo, "ensure_ready"
+        ):
+            await self._checkpoint_repo.ensure_ready()
 
         # 2. 初始化事件总线
         self._event_bus = EventBus(

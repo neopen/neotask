@@ -192,7 +192,11 @@ class TestEventBus:
             events = [TaskEvent("test.event", f"task_{i}") for i in range(10)]
             await asyncio.gather(*[bus.emit(e) for e in events])
 
-            await asyncio.sleep(0.2)
+            # 处理器串行消费且带 0.01s 延迟，覆盖率插桩下固定睡眠不够，
+            # 改为带超时的轮询等待
+            deadline = time.monotonic() + 5
+            while received_count < 10 and time.monotonic() < deadline:
+                await asyncio.sleep(0.01)
 
             assert received_count == 10
 

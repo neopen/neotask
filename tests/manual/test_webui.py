@@ -9,16 +9,17 @@ See LICENSE File For Details.
 @GitHub: https://github.com/neopen/neotask
 @Time: 2026/4/2 19:05
 """
-"""Web UI manual test."""
 
 import asyncio
 import json
+import os
+import socket
 import time
 import urllib.request
 
 import pytest
 
-from neotask import TaskScheduler, TaskExecutor, SchedulerConfig
+from neotask import SchedulerConfig, TaskExecutor, TaskScheduler
 
 
 class DemoExecutor(TaskExecutor):
@@ -36,6 +37,16 @@ class DemoExecutor(TaskExecutor):
             "duration": duration,
             "completed_at": time.time()
         }
+
+
+def _resolve_port() -> int:
+    """取可用端口：优先环境变量，否则向系统申请空闲端口"""
+    env_port = os.environ.get("NEOTASK_WEBUI_PORT")
+    if env_port:
+        return int(env_port)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
 
 
 def _wait_for_stats(url: str, timeout: float = 5.0):
@@ -71,11 +82,13 @@ def test_webui_embedded():
     )
     scheduler.start()
 
-    server = WebUIServer(scheduler, host="127.0.0.1", port=8080, auto_open=False)
+    port = _resolve_port()
+    server = WebUIServer(scheduler, host="127.0.0.1", port=port, auto_open=False)
+    base_url = f"http://127.0.0.1:{port}"
 
     try:
         server.start()
-        print("Web UI: http://127.0.0.1:8080")
+        print(f"Web UI: {base_url}")
 
         print("\nSubmitting demo tasks...")
         tasks = [
@@ -94,7 +107,7 @@ def test_webui_embedded():
         for task_id in task_ids:
             scheduler.wait_for_result(task_id, timeout=10)
 
-        status, stats = _wait_for_stats("http://127.0.0.1:8080/api/stats")
+        status, stats = _wait_for_stats(f"{base_url}/api/stats")
         assert status == 200
         assert isinstance(stats, dict)
         print(f"Stats response: {stats}")

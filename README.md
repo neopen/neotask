@@ -160,7 +160,7 @@ graph TB
 
 **Development Roadmap**
 
-> **Note**: v0.1 – v1.0 are released versions; v1.1 is feature-complete and pending release; v1.2 – v1.3 cover performance, monitoring and reliability. NeoTask is a self-sufficient local execution SDK — DAG decomposition, task dispatch and state progression belong to an upper-layer **control plane** (e.g. NeoFlow), which NeoTask only integrates with as an **execution plane** (pull task → run handler → report event). v2.0 (NeoFlow execution-plane integration) is **deferred**; built-in DAG, dynamic routing, plugin system and Web UI remain out of scope. The task/event wire contract is frozen across 1.x — see [docs/neotask-execution-contract.md](docs/neotask-execution-contract.md).
+> **Note**: v0.1 – v1.0 are released versions; v1.1.0 is released (v1.1.1 is a stability and upgrade-experience patch); v1.2 – v1.3 cover performance, monitoring and reliability. NeoTask is a self-sufficient local execution SDK — DAG decomposition, task dispatch and state progression belong to an upper-layer **control plane** (e.g. NeoFlow), which NeoTask only integrates with as an **execution plane** (pull task → run handler → report event). v2.0 (NeoFlow execution-plane integration) is **deferred**; built-in DAG, dynamic routing, plugin system and Web UI remain out of scope. The task/event wire contract is frozen across 1.x — see [docs/neotask-execution-contract.md](docs/neotask-execution-contract.md).
 
 ```mermaid
 timeline
@@ -484,8 +484,10 @@ A few behaviors are easy to trip over, so they are documented explicitly:
   **enqueued** (their ids live in the persisted queue). A record created only via
   `create_pending_task()` and never pushed through `enqueue_task()` is not part
   of the queue, so it will **not** auto-run after a restart — enqueue it explicitly.
-- **Upgrading a 1.0.x SQLite database**: new columns are added automatically on
-  startup. To backfill `queue_wait_ms` / `duration_ms` for historical rows and
+- **Upgrading a 1.0.x SQLite database**: new columns and the
+  `task_checkpoints` table are created during `start()` (concurrent-start safe);
+  startup failures are raised immediately instead of surfacing on the first task.
+  To backfill `queue_wait_ms` / `duration_ms` for historical rows and
   build the parent index, stop the pool and run
   `python scripts/migrate_task_metadata.py --db <path> --apply` (preview without
   `--apply`).

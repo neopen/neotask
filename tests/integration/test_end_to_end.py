@@ -143,23 +143,28 @@ class TestEndToEnd:
         """测试队列管理"""
         pool, _ = task_pool
 
-        # 获取初始队列大小
-        initial_size = await pool.get_queue_size_async()
+        # 先暂停消费：worker 正在运行时会即时取走任务，队列大小无法稳定断言
+        await pool.pause_async()
 
-        # 提交任务
-        for i in range(10):
-            await pool.submit_async({"id": i})
+        try:
+            initial_size = await pool.get_queue_size_async()
 
-        # 队列应该增加了
-        size = await pool.get_queue_size_async()
-        assert size >= initial_size + 10
+            # 提交任务
+            for i in range(10):
+                await pool.submit_async({"id": i})
 
-        # 清空队列
-        await pool.clear_queue_async()
+            # 队列应该增加了
+            size = await pool.get_queue_size_async()
+            assert size >= initial_size + 10
 
-        # 队列应该为空
-        size = await pool.get_queue_size_async()
-        assert size == 0
+            # 清空队列
+            await pool.clear_queue_async()
+
+            # 队列应该为空
+            size = await pool.get_queue_size_async()
+            assert size == 0
+        finally:
+            await pool.resume_async()
 
     @pytest.mark.asyncio
     async def test_health_check(self, task_pool):

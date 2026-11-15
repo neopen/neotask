@@ -40,6 +40,17 @@ class TestBlackboard:
         await asyncio.sleep(0.1)
         assert store.get("short") is None
 
+    async def test_write_sweeps_expired_entries(self):
+        """写入时顺带清扫已过期条目，避免只写不读时无限增长"""
+        store = MemoryContextStore()
+        store.set("stale", "old", ttl=0.05)
+        await asyncio.sleep(0.1)
+
+        store.set("fresh", "new")
+
+        assert "stale" not in store._data
+        assert store.get("fresh") == "new"
+
     async def test_pool_context_api(self):
         async def work(data):
             return "done"

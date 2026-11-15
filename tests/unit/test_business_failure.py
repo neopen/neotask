@@ -16,7 +16,7 @@ import time
 
 import pytest
 
-from neotask import TaskPool, TaskPoolConfig, report_failure
+from neotask import TaskPool, TaskPoolConfig, get_failure_recorder, report_failure
 from neotask.common.constants import EventType
 from neotask.core.failure import BusinessFailure
 from neotask.models.task import Task, TaskStatus
@@ -64,6 +64,7 @@ class TestBusinessFailure:
 
     def test_report_failure_outside_worker_returns_false(self):
         """不在 Worker 执行上下文中调用时返回 False，不抛异常"""
+        assert get_failure_recorder() is None
         assert report_failure("qa_failed") is False
 
 
@@ -76,6 +77,7 @@ class TestReportFailureInExecutor:
 
         async def executor(data):
             invocations.append(data)
+            assert get_failure_recorder() is not None
             assert report_failure("qa_failed", "score=10") is True
             return {"score": data["score"]}
 
@@ -321,3 +323,82 @@ class TestLegacySchemaUpgrade:
             assert loaded.failure_reason is None
         finally:
             await repo.close()
+
+    async def test_pool_start_upgrades_legacy_db_eagerly(self, tmp_path):
+        """start() 阶段即补列并创建 checkpoint 表，不等到首个任务"""
+        import aiosqlite
+
+        db_path = str(tmp_path / "v108-pool.db")
+        async with aiosqlite.connect(db_path) as conn:
+            await conn.execute(self.LEGACY_DDL)
+            await conn.execute(
+                "INSERT INTO tasks (task_id, data, status, priority, node_id,"
+                " retry_count, created_at) VALUES ('legacy-pool', '{}', 'pending',"
+                " 2, 'node-a', 0, '2026-01-01T00:00:00+00:00')"
+            )
+            await conn.commit()
+
+        async def work(data):
+            return "ok"
+
+        config = TaskPoolConfig(storage_type="sqlite", sqlite_path=db_path)
+        pool = TaskPool(executor=work, config=config)
+        try:
+            pool.start()
+
+            async with aiosqlite.connect(db_path) as conn:
+                cursor = await conn.execute("PRAGMA table_info(tasks)")
+                columns = {row[1] for row in await cursor.fetchall()}
+                await cursor.close()
+                cursor = await conn.execute(
+                    "SELECT name FROM sqlite_master"
+                    " WHERE type='table' AND name='task_checkpoints'"
+                )
+                checkpoint_table = await cursor.fetchone()
+                await cursor.close()
+
+            expected = {
+                "failure_reason", "checkpoint_version", "parent_task_id",
+                "estimated_cost", "cost_tracking", "queue_wait_ms", "duration_ms",
+            }
+            assert expected <= columns
+            assert checkpoint_table is not None
+
+            legacy = pool.get_task("legacy-pool")
+            assert legacy["status"] == "pending"
+            assert legacy["failure_reason"] in (None, "")
+
+            task_id = pool.submit({})
+            assert pool.wait_for_result(task_id, timeout=10) == "ok"
+        finally:
+            pool.shutdown()
+
+    async def test_concurrent_init_on_legacy_db_does_not_crash(self, tmp_path):
+        """同库多仓储并发初始化：重复补列应被容忍，不抛 duplicate column"""
+        import aiosqlite
+
+        db_path = str(tmp_path / "race.db")
+        async with aiosqlite.connect(db_path) as conn:
+            await conn.execute(self.LEGACY_DDL)
+            await conn.commit()
+
+        repos = [SQLiteTaskRepository(db_path) for _ in range(2)]
+        try:
+            results = await asyncio.gather(
+                *(repo.get(f"missing-{i}") for repo in repos for i in range(2)),
+                return_exceptions=True,
+            )
+            assert all(result is None for result in results), results
+
+            async with aiosqlite.connect(db_path) as conn:
+                cursor = await conn.execute("PRAGMA table_info(tasks)")
+                columns = {row[1] for row in await cursor.fetchall()}
+
+            expected = {
+                "failure_reason", "checkpoint_version", "parent_task_id",
+                "estimated_cost", "cost_tracking", "queue_wait_ms", "duration_ms",
+            }
+            assert expected <= columns
+        finally:
+            for repo in repos:
+                await repo.close()

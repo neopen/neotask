@@ -107,7 +107,7 @@
 
 - [x] 协议契约页：[neotask-execution-contract.md](./neotask-execution-contract.md)
 - [x] `src/neotask/core/checkpoint.py` 覆盖率 75.6% → 100%（补齐 sync 分支与上下文读取）
-- [ ] `TaskEngine` 的 `checkpoint_repo` 注入路径补测试
+- [x] `TaskEngine` 的 `checkpoint_repo` 注入路径补测试
 - [x] README / README_zh 状态同步（v1.1 已交付、架构图去掉“规划”标注、链接契约页）
 - [ ] release-please 依据 conventional commits 生成 1.1.0 与 CHANGELOG（不手改）
 - [ ] 发布说明提示 1.0.x 升级：checkpoint 表启动时自动创建，历史任务耗时回填运行

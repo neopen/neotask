@@ -49,6 +49,42 @@ pool.on_reclaimed(on_reclaimed)</code></pre>
 
 <p>死信保存在 <code>neotask:dead_letter</code> 列表与 <code>neotask:dead_letter:index</code> 哈希中，默认保留 7 天、最多 10000 条。当前版本没有公开的查询或重放 API，需要人工通过 Redis 客户端读取 <code>DeadLetterQueue</code> 数据结构，或自行封装。</p>
 
+<h2>业务失败与系统异常</h2>
+<p>1.1 起，执行器可以主动登记“业务判定不通过”。它与抛异常的处理方式不同：业务失败直接定稿为 <code>failed</code>，不进入自动重试，也不写入死信队列。</p>
+
+<table>
+<thead><tr><th></th><th>系统异常</th><th>业务失败</th></tr></thead>
+<tbody>
+<tr><td>触发方式</td><td>执行器抛出异常、超时或被回收</td><td>调用 <code>report_failure()</code> 登记原因</td></tr>
+<tr><td>自动重试</td><td>按 <code>max_retries</code> 重试</td><td>不重试，<code>retry_count</code> 保持不变</td></tr>
+<tr><td><code>failure_reason</code></td><td><code>None</code></td><td>登记的原因标识，如 <code>qa_failed</code></td></tr>
+<tr><td>死信队列</td><td>重试耗尽后写入（Redis）</td><td>不写入</td></tr>
+<tr><td>事件</td><td><code>task.failed</code></td><td><code>task.failed</code></td></tr>
+</tbody>
+</table>
+
+<pre><code class="language-python">from neotask import report_failure
+
+async def review(data):
+    score = await grade(data["answer"])
+    if score &lt; 60:
+        report_failure("qa_failed", f"score={score}")
+    return {"score": score}</code></pre>
+
+<p>执行器内的 <code>report_failure()</code> 是同步函数，只做登记，不中断业务代码；任务函数自然返回后，Worker 按登记的原因把任务置为 <code>failed</code>。首次登记生效，后续调用不会覆盖原因。线程执行器同样可用；进程执行器拿不到该上下文，返回 <code>False</code>。</p>
+
+<p>进程执行器的父进程或外部编排组件使用任务级 API：</p>
+
+<pre><code class="language-python"># 仅对 running 任务生效
+pool.report_failure(task_id, "qa_failed", "score=42")</code></pre>
+
+<ul>
+<li>任务级 <code>report_failure()</code> 立即终结任务；仍在 <code>pending</code> 的任务请先用 <code>cancel()</code>。</li>
+<li>任务的 <code>error</code> 字段为 <code>reason: detail</code>；未提供 <code>detail</code> 时只写入原因。</li>
+<li>判定结果通过 <code>get_result()</code> / <code>get_task()</code> 的 <code>failure_reason</code> 读取，可与重试耗尽区分。</li>
+<li>业务失败不会自动续跑；需要利用 checkpoint 继续执行时，显式调用 <code>retry(task_id)</code>。</li>
+</ul>
+
 <h2>边界与前提</h2>
 <ul>
 <li>自动回收只在 <code>storage_type="redis"</code> 且配置 <code>redis_url</code> 时创建。<code>enable_reclaimer</code> 与 <code>enable_heartbeat</code> 在 1.0.8 起会真正控制组件创建；关闭心跳会失去节点存活视图，孤儿回收将被跳过。</li>

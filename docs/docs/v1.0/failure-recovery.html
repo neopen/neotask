@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>故障恢复 · NeoTask v1.0 文档</title>
-  <meta name="description" content="超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">
+  <meta name="description" content="超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。">
   <meta name="keywords" content="故障恢复, 故障恢复 教程, 故障恢复 文档, 可靠性, NeoTask v1.0 文档, NeoTask 1.x, Python 任务队列">
   <meta name="author" content="NeoPen">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
@@ -13,7 +13,7 @@
   <meta property="og:locale" content="zh_CN">
   <meta property="og:type" content="article">
   <meta property="og:title" content="故障恢复 · NeoTask v1.0 文档">
-  <meta property="og:description" content="超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">
+  <meta property="og:description" content="超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。">
   <meta property="og:url" content="https://task.helpenx.com/docs/v1.0/failure-recovery.html">
   <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
   <meta property="og:image:type" content="image/png">
@@ -21,11 +21,11 @@
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="故障恢复 · NeoTask 文档">
   <meta property="article:published_time" content="2026-10-29">
-  <meta property="article:modified_time" content="2026-11-11">
+  <meta property="article:modified_time" content="2026-11-17">
   <meta property="article:section" content="可靠性">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="故障恢复 · NeoTask v1.0 文档">
-  <meta name="twitter:description" content="超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">
+  <meta name="twitter:description" content="超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。">
   <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
   <meta name="twitter:image:alt" content="故障恢复 · NeoTask 文档">
   <meta name="theme-color" content="#0b1713">
@@ -44,13 +44,13 @@
         "@id": "https://task.helpenx.com/docs/v1.0/failure-recovery.html#article",
         "headline": "故障恢复",
         "name": "故障恢复 · NeoTask v1.0 文档",
-        "description": "超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。",
+        "description": "超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。",
         "image": "https://task.helpenx.com/assets/img/og.png",
         "url": "https://task.helpenx.com/docs/v1.0/failure-recovery.html",
         "mainEntityOfPage": "https://task.helpenx.com/docs/v1.0/failure-recovery.html",
         "inLanguage": "zh-CN",
         "datePublished": "2026-10-29",
-        "dateModified": "2026-11-11",
+        "dateModified": "2026-11-17",
         "articleSection": "可靠性",
         "keywords": "故障恢复, 故障恢复 教程, 故障恢复 文档, 可靠性, NeoTask v1.0 文档, NeoTask 1.x, Python 任务队列",
         "author": {
@@ -129,7 +129,7 @@
         <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
       </svg>
       <span class="brand-name">NeoTask</span>
-      <span class="brand-version">v1.0.8</span>
+      <span class="brand-version">v1.1.1</span>
     </a>
 
     <nav class="site-nav" id="siteNav" aria-label="主导航">
@@ -186,6 +186,7 @@
         <p class="docs-nav-label">核心概念</p>
         <a class="docs-nav-link" href="/docs/v1.0/architecture.html" data-search="架构概览 TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。">架构概览</a>
         <a class="docs-nav-link" href="/docs/v1.0/task-lifecycle.html" data-search="任务生命周期 任务从提交到终态的状态流转、事件回调与结果获取方式。">任务生命周期</a>
+        <a class="docs-nav-link" href="/docs/v1.0/task-context.html" data-search="任务关联与共享上下文 父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。">任务关联与共享上下文</a>
         <a class="docs-nav-link" href="/docs/v1.0/priority-queue.html" data-search="优先级队列 四级优先级的排序规则、同级 FIFO 边界与批量提交行为。">优先级队列</a>
         <a class="docs-nav-link" href="/docs/v1.0/delayed-tasks.html" data-search="延时与周期任务 延时、指定时间、固定间隔与 Cron 任务的提交、管理和错过策略。">延时与周期任务</a>
         <a class="docs-nav-link" href="/docs/v1.0/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。">持久化存储</a>
@@ -193,19 +194,21 @@
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">可靠性</p>
-        <a class="docs-nav-link is-active" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/checkpoint.html" data-search="断点续跑 保存任务中间状态，并在自动重试、手动重试或显式提交时从最近 checkpoint 恢复。">断点续跑</a>
+        <a class="docs-nav-link" href="/docs/v1.0/cost-tracking.html" data-search="成本与耗时 上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">成本与耗时</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
         <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
         <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
-        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">API 参考</a>
         <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">性能基准</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       <p class="docs-nav-empty" id="docsNavEmpty" hidden>没有匹配的文档</p>
@@ -238,6 +241,7 @@
         <p class="docs-nav-label">核心概念</p>
         <a class="docs-nav-link" href="/docs/v1.0/architecture.html" data-search="架构概览 TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。">架构概览</a>
         <a class="docs-nav-link" href="/docs/v1.0/task-lifecycle.html" data-search="任务生命周期 任务从提交到终态的状态流转、事件回调与结果获取方式。">任务生命周期</a>
+        <a class="docs-nav-link" href="/docs/v1.0/task-context.html" data-search="任务关联与共享上下文 父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。">任务关联与共享上下文</a>
         <a class="docs-nav-link" href="/docs/v1.0/priority-queue.html" data-search="优先级队列 四级优先级的排序规则、同级 FIFO 边界与批量提交行为。">优先级队列</a>
         <a class="docs-nav-link" href="/docs/v1.0/delayed-tasks.html" data-search="延时与周期任务 延时、指定时间、固定间隔与 Cron 任务的提交、管理和错过策略。">延时与周期任务</a>
         <a class="docs-nav-link" href="/docs/v1.0/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。">持久化存储</a>
@@ -245,19 +249,21 @@
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">可靠性</p>
-        <a class="docs-nav-link is-active" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/checkpoint.html" data-search="断点续跑 保存任务中间状态，并在自动重试、手动重试或显式提交时从最近 checkpoint 恢复。">断点续跑</a>
+        <a class="docs-nav-link" href="/docs/v1.0/cost-tracking.html" data-search="成本与耗时 上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">成本与耗时</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
         <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
         <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
-        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">API 参考</a>
         <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">性能基准</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       
@@ -266,13 +272,13 @@
         <header class="article-header">
           <p class="article-eyebrow">可靠性</p>
           <h1>故障恢复</h1>
-          <p class="article-lede">超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。</p>
+          <p class="article-lede">超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。</p>
           <div class="article-meta">
             <span class="article-version">v1.0 · NeoTask 1.x</span>
             <span class="dot"></span>
-            <span>更新于 2026-11-11</span>
+            <span>更新于 2026-11-17</span>
             <span class="dot"></span>
-            <span>约 7 分钟 读完</span>
+            <span>约 8 分钟 读完</span>
             <span class="dot"></span>
             <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg></a>
           </div>
@@ -329,6 +335,42 @@ pool.on_reclaimed(on_reclaimed)</code></pre>
 
 <p>死信保存在 <code>neotask:dead_letter</code> 列表与 <code>neotask:dead_letter:index</code> 哈希中，默认保留 7 天、最多 10000 条。当前版本没有公开的查询或重放 API，需要人工通过 Redis 客户端读取 <code>DeadLetterQueue</code> 数据结构，或自行封装。</p>
 
+<h2 id="业务失败与系统异常">业务失败与系统异常</h2>
+<p>1.1 起，执行器可以主动登记“业务判定不通过”。它与抛异常的处理方式不同：业务失败直接定稿为 <code>failed</code>，不进入自动重试，也不写入死信队列。</p>
+
+<table>
+<thead><tr><th></th><th>系统异常</th><th>业务失败</th></tr></thead>
+<tbody>
+<tr><td>触发方式</td><td>执行器抛出异常、超时或被回收</td><td>调用 <code>report_failure()</code> 登记原因</td></tr>
+<tr><td>自动重试</td><td>按 <code>max_retries</code> 重试</td><td>不重试，<code>retry_count</code> 保持不变</td></tr>
+<tr><td><code>failure_reason</code></td><td><code>None</code></td><td>登记的原因标识，如 <code>qa_failed</code></td></tr>
+<tr><td>死信队列</td><td>重试耗尽后写入（Redis）</td><td>不写入</td></tr>
+<tr><td>事件</td><td><code>task.failed</code></td><td><code>task.failed</code></td></tr>
+</tbody>
+</table>
+
+<pre><code class="language-python">from neotask import report_failure
+
+async def review(data):
+    score = await grade(data["answer"])
+    if score &lt; 60:
+        report_failure("qa_failed", f"score={score}")
+    return {"score": score}</code></pre>
+
+<p>执行器内的 <code>report_failure()</code> 是同步函数，只做登记，不中断业务代码；任务函数自然返回后，Worker 按登记的原因把任务置为 <code>failed</code>。首次登记生效，后续调用不会覆盖原因。线程执行器同样可用；进程执行器拿不到该上下文，返回 <code>False</code>。</p>
+
+<p>进程执行器的父进程或外部编排组件使用任务级 API：</p>
+
+<pre><code class="language-python"># 仅对 running 任务生效
+pool.report_failure(task_id, "qa_failed", "score=42")</code></pre>
+
+<ul>
+<li>任务级 <code>report_failure()</code> 立即终结任务；仍在 <code>pending</code> 的任务请先用 <code>cancel()</code>。</li>
+<li>任务的 <code>error</code> 字段为 <code>reason: detail</code>；未提供 <code>detail</code> 时只写入原因。</li>
+<li>判定结果通过 <code>get_result()</code> / <code>get_task()</code> 的 <code>failure_reason</code> 读取，可与重试耗尽区分。</li>
+<li>业务失败不会自动续跑；需要利用 checkpoint 继续执行时，显式调用 <code>retry(task_id)</code>。</li>
+</ul>
+
 <h2 id="边界与前提">边界与前提</h2>
 <ul>
 <li>自动回收只在 <code>storage_type="redis"</code> 且配置 <code>redis_url</code> 时创建。<code>enable_reclaimer</code> 与 <code>enable_heartbeat</code> 在 1.0.8 起会真正控制组件创建；关闭心跳会失去节点存活视图，孤儿回收将被跳过。</li>
@@ -347,11 +389,11 @@ pool.on_reclaimed(on_reclaimed)</code></pre>
       </article>
       <nav class="docs-pager" aria-label="上一篇与下一篇">
       <a class="pager-prev" href="/docs/v1.0/distributed.html"><span>上一篇</span><strong>分布式部署</strong></a>
-      <a class="pager-next" href="/docs/v1.0/distributed-lock.html"><span>下一篇</span><strong>分布式锁</strong></a>
+      <a class="pager-next" href="/docs/v1.0/checkpoint.html"><span>下一篇</span><strong>断点续跑</strong></a>
     </nav>
       <p class="docs-feedback">发现文档问题？欢迎在 <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">GitHub Issues</a> 反馈。</p>
     </main>
-    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#%E6%81%A2%E5%A4%8D%E6%9D%A5%E6%BA%90">恢复来源</a><a href="#%E6%97%B6%E9%97%B4%E5%8F%82%E6%95%B0">时间参数</a><a href="#%E5%9B%9E%E6%94%B6%E6%B5%81%E7%A8%8B">回收流程</a><a href="#%E6%AD%BB%E4%BF%A1%E9%98%9F%E5%88%97">死信队列</a><a href="#%E8%BE%B9%E7%95%8C%E4%B8%8E%E5%89%8D%E6%8F%90">边界与前提</a></nav>
+    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#%E6%81%A2%E5%A4%8D%E6%9D%A5%E6%BA%90">恢复来源</a><a href="#%E6%97%B6%E9%97%B4%E5%8F%82%E6%95%B0">时间参数</a><a href="#%E5%9B%9E%E6%94%B6%E6%B5%81%E7%A8%8B">回收流程</a><a href="#%E6%AD%BB%E4%BF%A1%E9%98%9F%E5%88%97">死信队列</a><a href="#%E4%B8%9A%E5%8A%A1%E5%A4%B1%E8%B4%A5%E4%B8%8E%E7%B3%BB%E7%BB%9F%E5%BC%82%E5%B8%B8">业务失败与系统异常</a><a href="#%E8%BE%B9%E7%95%8C%E4%B8%8E%E5%89%8D%E6%8F%90">边界与前提</a></nav>
   </div>
   <footer class="site-footer">
   <div class="container">
@@ -366,7 +408,7 @@ pool.on_reclaimed(on_reclaimed)</code></pre>
           <span class="brand-name">NeoTask</span>
         </a>
         <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
-        <div class="footer-status"><span class="status-dot"></span> v1.0.8 · 发布于 2026-11-11</div>
+        <div class="footer-status"><span class="status-dot"></span> v1.1.1 · 发布于 2026-11-15</div>
       </div>
 
       <div class="footer-col">

@@ -29,6 +29,8 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 <li><strong>数据尽量小。</strong>任务数据随每条记录存储并参与事件传递，大对象会放大存储与网络开销。</li>
 <li><strong>同步阻塞代码使用线程执行器。</strong>直接传同步函数时它仍运行在事件循环线程，会阻塞其他任务。</li>
 <li><strong>CPU 密集任务使用进程执行器。</strong>注意函数需可 pickle；进度上报在进程执行器中不可用。</li>
+<li><strong>长任务保存 checkpoint。</strong>自动重试与手动重试都会注入最近一次状态；保存点之间的工作仍会重复执行，业务步骤需幂等。进程执行器由父进程调用 <code>pool.save_checkpoint()</code>。</li>
+<li><strong>业务拒绝用 <code>report_failure()</code>。</strong>数据校验失败、审核不通过等确定性结果直接终结任务，不要用异常触发无意义的重试。</li>
 </ul>
 
 <h2>并发与超时</h2>
@@ -40,7 +42,9 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 
 <h2>重试</h2>
 <ul>
-<li>自动重试只适合瞬时故障。参数错误、数据校验失败等确定性错误应直接抛出，避免无意义重试。</li>
+<li>自动重试只适合瞬时故障。参数错误、数据校验失败等确定性结果应使用 <code>report_failure()</code> 终结，而不是依赖重试。</li>
+<li>业务判定不通过用 <code>report_failure()</code>：任务直接进入 <code>failed</code>，记录 <code>failure_reason</code>，不消耗重试预算，也不写死信队列。</li>
+<li>重试会读取最近 checkpoint；需要从头执行时不要保存 checkpoint，或删除任务记录后重建。</li>
 <li>第 n 次重试延迟为 <code>retry_delay × n</code>，不是指数退避。</li>
 <li>手动 <code>retry()</code> 只接受终态任务；<code>retry_count</code> 会保留，不会重置自动重试预算。</li>
 </ul>
@@ -88,6 +92,7 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 <li><code>get_stats()</code> 适合按需拉取；高频轮询会增加存储查询压力。</li>
 <li><code>get_health_status()</code> 结果缓存 5 秒，不会每次调用都触发检查。</li>
 <li>进度上报是尽力而为：任务已结束或存储暂不可写时会被丢弃，不影响任务结果。</li>
+<li><code>get_result()</code> 提供 <code>queue_wait_ms</code>、<code>duration_ms</code> 与成本字段；跨任务汇总使用 <code>get_cost_summary()</code>，不要用事件计数代替存储查询。</li>
 <li>指标依赖事件投递；事件被丢弃或订阅者过慢时计数会滞后。排查时同时查看 <code>pool.event_bus.get_stats()</code>。</li>
 </ul>
 
@@ -98,7 +103,9 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 <tr><td>存储</td><td>Redis 可重连；多节点模式下每个实例的 <code>node_id</code> 唯一；SQLite 仅用于单机低频写入，并接受多 Worker 下的串行化开销</td></tr>
 <tr><td>幂等</td><td>同一任务重复执行不会产生重复扣款、重复通知等副作用</td></tr>
 <tr><td>超时</td><td><code>task_timeout</code> 与任务 <code>ttl</code> 都已设置，且 <code>ttl</code> 大于正常执行时长的上界</td></tr>
-<tr><td>重试</td><td>只对瞬时错误启用重试；业务能接受 <code>retry_delay × n</code> 的线性延迟</td></tr>
+<tr><td>重试</td><td>只对瞬时错误启用重试；业务拒绝使用 <code>report_failure()</code>；业务能接受 <code>retry_delay × n</code> 的线性延迟</td></tr>
+<tr><td>断点续跑</td><td>长任务已保存 checkpoint，保存点之间可安全重复执行；checkpoint 体积可控；进程执行器使用父进程 API</td></tr>
+<tr><td>成本</td><td>已上报 token、API 次数与预估费用；同一任务币种一致；需要长期报表时已归档</td></tr>
 <tr><td>并发</td><td><code>worker_concurrency</code> 与执行器类型匹配；CPU 密集任务没有超配核心数</td></tr>
 <tr><td>锁</td><td>多节点部署使用 <code>TaskPoolConfig.redis()</code>，或直接构造时显式设置 <code>lock_type="redis"</code>；手动锁键不会与运行中的任务 ID 冲突</td></tr>
 <tr><td>事件</td><td>订阅者快速返回；事件量大时已设置 <code>event_queue_max_size</code>；<code>dropped_events</code> 与慢回调有监控</td></tr>

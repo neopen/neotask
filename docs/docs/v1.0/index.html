@@ -40,7 +40,7 @@
         "@type": "CollectionPage",
         "@id": "https://task.helpenx.com/docs/v1.0/#collection",
         "name": "NeoTask v1.0 文档",
-        "description": "覆盖 1.x 系列（当前基线 1.0.8）的安装、配置、核心能力、可靠性与 API；1.x 只做兼容增强，2.0 发布时另设文档线。",
+        "description": "覆盖 1.x 系列（当前基线 1.1.1）的安装、配置、核心能力、可靠性与 API；1.x 只做兼容增强，2.0 发布时另设文档线。",
         "url": "https://task.helpenx.com/docs/v1.0/",
         "inLanguage": "zh-CN",
         "isPartOf": {
@@ -88,6 +88,12 @@
           },
           {
             "@type": "TechArticle",
+            "headline": "任务关联与共享上下文",
+            "description": "父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。",
+            "url": "https://task.helpenx.com/docs/v1.0/task-context.html"
+          },
+          {
+            "@type": "TechArticle",
             "headline": "优先级队列",
             "description": "四级优先级的排序规则、同级 FIFO 边界与批量提交行为。",
             "url": "https://task.helpenx.com/docs/v1.0/priority-queue.html"
@@ -113,8 +119,20 @@
           {
             "@type": "TechArticle",
             "headline": "故障恢复",
-            "description": "超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。",
+            "description": "超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。",
             "url": "https://task.helpenx.com/docs/v1.0/failure-recovery.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "断点续跑",
+            "description": "保存任务中间状态，并在自动重试、手动重试或显式提交时从最近 checkpoint 恢复。",
+            "url": "https://task.helpenx.com/docs/v1.0/checkpoint.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "成本与耗时",
+            "description": "上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。",
+            "url": "https://task.helpenx.com/docs/v1.0/cost-tracking.html"
           },
           {
             "@type": "TechArticle",
@@ -137,7 +155,7 @@
           {
             "@type": "TechArticle",
             "headline": "API 参考",
-            "description": "TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。",
+            "description": "TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。",
             "url": "https://task.helpenx.com/docs/v1.0/api-reference.html"
           },
           {
@@ -149,7 +167,7 @@
           {
             "@type": "TechArticle",
             "headline": "版本路线图",
-            "description": "1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。",
+            "description": "1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。",
             "url": "https://task.helpenx.com/docs/v1.0/roadmap.html"
           }
         ]
@@ -218,7 +236,7 @@
         <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
       </svg>
       <span class="brand-name">NeoTask</span>
-      <span class="brand-version">v1.0.8</span>
+      <span class="brand-version">v1.1.1</span>
     </a>
 
     <nav class="site-nav" id="siteNav" aria-label="主导航">
@@ -253,7 +271,7 @@
       <div class="docs-hero-inner">
         <span class="eyebrow">DOCUMENTATION · v1.0</span>
         <h1>NeoTask 文档</h1>
-        <p>当前为 v1.0 文档，适用于 NeoTask 1.x，文档基线 v1.0.8。内容覆盖安装、配置、核心能力、可靠性与 API 参考。</p>
+        <p>当前为 v1.0 文档，适用于 NeoTask 1.x，文档基线 v1.1.1。内容覆盖安装、配置、核心能力、可靠性与 API 参考。</p>
         <div class="docs-hero-actions">
           <a class="btn btn-primary" href="/docs/v1.0/quickstart.html">快速上手 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
           <a class="btn btn-outline" href="/docs/v1.0/api-reference.html">API 参考</a>
@@ -261,11 +279,11 @@
           <a class="btn btn-outline" href="https://github.com/neopen/neotask" target="_blank" rel="noopener"><svg class="icon icon-sm"><use href="#i-github"/></svg> 源码仓库</a>
         </div>
         <div class="docs-meta-row">
-          <span>16 篇文档</span>
+          <span>19 篇文档</span>
           <span>v1.0</span>
           <span>适用于 NeoTask 1.x</span>
-          <span>基线 v1.0.8</span>
-          <span>更新于 2026-11-11</span>
+          <span>基线 v1.1.1</span>
+          <span>更新于 2026-11-17</span>
         </div>
       </div>
     </section>
@@ -276,7 +294,7 @@
         <select id="docsVersionHub" data-docs-version>
           <option value="v1.0" selected>v1.0（最新）</option>
         </select>
-        <span>适用于 NeoTask 1.x · 基线 v1.0.8</span>
+        <span>适用于 NeoTask 1.x · 基线 v1.1.1</span>
         <a href="/docs/">所有版本</a>
       </div>
 
@@ -355,21 +373,21 @@
           </span>
           <span class="doc-feature-arrow" aria-hidden="true">→</span>
         </a>
-        <a class="doc-feature" href="/docs/v1.0/failure-recovery.html" data-doc-card data-doc-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。 可靠性">
+        <a class="doc-feature" href="/docs/v1.0/failure-recovery.html" data-doc-card data-doc-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。 可靠性">
           <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
           <span class="doc-feature-body">
             <span class="doc-feature-cat">可靠性</span>
             <strong>故障恢复</strong>
-            <span>超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。</span>
+            <span>超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。</span>
           </span>
           <span class="doc-feature-arrow" aria-hidden="true">→</span>
         </a>
-        <a class="doc-feature" href="/docs/v1.0/api-reference.html" data-doc-card data-doc-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。 参考">
+        <a class="doc-feature" href="/docs/v1.0/api-reference.html" data-doc-card data-doc-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。 参考">
           <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg></span>
           <span class="doc-feature-body">
             <span class="doc-feature-cat">参考</span>
             <strong>API 参考</strong>
-            <span>TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。</span>
+            <span>TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。</span>
           </span>
           <span class="doc-feature-arrow" aria-hidden="true">→</span>
         </a>
@@ -415,7 +433,7 @@
       <section class="doc-group" data-doc-group id="concepts">
         <div class="doc-group-head">
           <h2>核心概念</h2>
-          <span>06</span>
+          <span>07</span>
         </div>
         <div class="doc-card-grid">
           <a class="doc-card" href="/docs/v1.0/architecture.html" data-doc-card data-doc-search="架构概览 TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。 核心概念">
@@ -428,6 +446,12 @@
             <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 9 5-9 5-9-5 9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg></span>
             <span class="doc-card-title">任务生命周期</span>
             <span class="doc-card-desc">任务从提交到终态的状态流转、事件回调与结果获取方式。</span>
+            <span class="doc-card-meta">6 分钟</span>
+          </a>
+          <a class="doc-card" href="/docs/v1.0/task-context.html" data-doc-card data-doc-search="任务关联与共享上下文 父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。 核心概念">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07l-1.41 1.41"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.41-1.41"/></svg></span>
+            <span class="doc-card-title">任务关联与共享上下文</span>
+            <span class="doc-card-desc">父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。</span>
             <span class="doc-card-meta">6 分钟</span>
           </a>
           <a class="doc-card" href="/docs/v1.0/priority-queue.html" data-doc-card data-doc-search="优先级队列 四级优先级的排序规则、同级 FIFO 边界与批量提交行为。 核心概念">
@@ -459,14 +483,26 @@
       <section class="doc-group" data-doc-group id="reliability">
         <div class="doc-group-head">
           <h2>可靠性</h2>
-          <span>04</span>
+          <span>06</span>
         </div>
         <div class="doc-card-grid">
-          <a class="doc-card" href="/docs/v1.0/failure-recovery.html" data-doc-card data-doc-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。 可靠性">
+          <a class="doc-card" href="/docs/v1.0/failure-recovery.html" data-doc-card data-doc-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。 可靠性">
             <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
             <span class="doc-card-title">故障恢复</span>
-            <span class="doc-card-desc">超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。</span>
+            <span class="doc-card-desc">超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。</span>
+            <span class="doc-card-meta">8 分钟</span>
+          </a>
+          <a class="doc-card" href="/docs/v1.0/checkpoint.html" data-doc-card data-doc-search="断点续跑 保存任务中间状态，并在自动重试、手动重试或显式提交时从最近 checkpoint 恢复。 可靠性">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg></span>
+            <span class="doc-card-title">断点续跑</span>
+            <span class="doc-card-desc">保存任务中间状态，并在自动重试、手动重试或显式提交时从最近 checkpoint 恢复。</span>
             <span class="doc-card-meta">7 分钟</span>
+          </a>
+          <a class="doc-card" href="/docs/v1.0/cost-tracking.html" data-doc-card data-doc-search="成本与耗时 上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。 可靠性">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg></span>
+            <span class="doc-card-title">成本与耗时</span>
+            <span class="doc-card-desc">上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。</span>
+            <span class="doc-card-meta">6 分钟</span>
           </a>
           <a class="doc-card" href="/docs/v1.0/distributed-lock.html" data-doc-card data-doc-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。 可靠性">
             <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
@@ -494,10 +530,10 @@
           <span>02</span>
         </div>
         <div class="doc-card-grid">
-          <a class="doc-card" href="/docs/v1.0/api-reference.html" data-doc-card data-doc-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。 参考">
+          <a class="doc-card" href="/docs/v1.0/api-reference.html" data-doc-card data-doc-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。 参考">
             <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg></span>
             <span class="doc-card-title">API 参考</span>
-            <span class="doc-card-desc">TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。</span>
+            <span class="doc-card-desc">TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。</span>
             <span class="doc-card-meta">12 分钟</span>
           </a>
           <a class="doc-card" href="/docs/v1.0/benchmarks.html" data-doc-card data-doc-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。 参考">
@@ -514,10 +550,10 @@
           <span>01</span>
         </div>
         <div class="doc-card-grid">
-          <a class="doc-card" href="/docs/v1.0/roadmap.html" data-doc-card data-doc-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。 路线图">
+          <a class="doc-card" href="/docs/v1.0/roadmap.html" data-doc-card data-doc-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。 路线图">
             <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="6" rx="1.5"/><rect x="14" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 9v5a4 4 0 0 0 4 4H14"/></svg></span>
             <span class="doc-card-title">版本路线图<em class="tag-soon">规划</em></span>
-            <span class="doc-card-desc">1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。</span>
+            <span class="doc-card-desc">1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。</span>
             <span class="doc-card-meta">5 分钟</span>
           </a>
         </div>
@@ -549,7 +585,7 @@
           <span class="brand-name">NeoTask</span>
         </a>
         <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
-        <div class="footer-status"><span class="status-dot"></span> v1.0.8 · 发布于 2026-11-11</div>
+        <div class="footer-status"><span class="status-dot"></span> v1.1.1 · 发布于 2026-11-15</div>
       </div>
 
       <div class="footer-col">

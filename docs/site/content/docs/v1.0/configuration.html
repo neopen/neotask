@@ -36,6 +36,8 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 <tr><td><code>enable_reporter</code></td><td><code>False</code></td><td>每 60 秒输出一次控制台指标摘要</td></tr>
 <tr><td><code>max_retries</code></td><td><code>3</code></td><td>失败后的自动重试次数</td></tr>
 <tr><td><code>retry_delay</code></td><td><code>1.0</code></td><td>重试延迟基数；第 n 次重试延迟为 <code>retry_delay × n</code></td></tr>
+<tr><td><code>enable_checkpoint</code></td><td><code>True</code></td><td>启用断点续跑；关闭后 checkpoint 仓储不创建，相关 API 返回 0 / <code>False</code></td></tr>
+<tr><td><code>checkpoint_keep_versions</code></td><td><code>5</code></td><td>单个任务保留的 checkpoint 版本数；0 表示不保留</td></tr>
 <tr><td><code>enable_prefetch</code></td><td><code>True</code></td><td>启用批量预取</td></tr>
 <tr><td><code>prefetch_min_threshold</code></td><td><code>5</code></td><td>当前版本未生效，阈值由 <code>prefetch_size</code> 推导</td></tr>
 <tr><td><code>enable_terminal_cleanup</code></td><td><code>True</code></td><td>周期清理成功、失败与取消的终态任务</td></tr>
@@ -64,6 +66,7 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 <tr><td><code>sqlite_path</code> / <code>redis_url</code></td><td>同 TaskPoolConfig</td><td>存储连接参数</td></tr>
 <tr><td><code>worker_concurrency</code></td><td><code>10</code></td><td>同时执行的任务数</td></tr>
 <tr><td><code>max_retries</code> / <code>retry_delay</code></td><td><code>3</code> / <code>1.0</code></td><td>失败重试策略</td></tr>
+<tr><td><code>enable_checkpoint</code> / <code>checkpoint_keep_versions</code></td><td><code>True</code> / <code>5</code></td><td>断点续跑开关与版本保留数，传入内部 TaskPool</td></tr>
 <tr><td><code>event_queue_max_size</code> / <code>event_overflow_policy</code></td><td><code>None</code> / <code>"drop"</code></td><td>与 TaskPoolConfig 相同，传入内部 TaskPool</td></tr>
 <tr><td><code>event_slow_handler_threshold</code></td><td><code>1.0</code></td><td>慢事件回调告警阈值（秒）</td></tr>
 <tr><td><code>enable_persistence</code></td><td><code>True</code></td><td>周期任务写入 SQLite / Redis，重启后可恢复</td></tr>
@@ -77,7 +80,7 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 </tbody>
 </table>
 
-<div class="doc-warning"><strong>配置只部分向下传递：</strong><code>TaskScheduler</code> 会把存储、<code>worker_concurrency</code>、重试、进度写回、缓存上限、停机延时处理与事件总线字段传给内部 <code>TaskPool</code>，并根据存储类型设置锁类型。预取、监控、<code>task_timeout</code>、队列容量、死信等参数仍需直接构造 <code>TaskPool</code> 或修改底层配置；<code>SchedulerConfig</code> 当前没有暴露这些字段。</div>
+<div class="doc-warning"><strong>配置只部分向下传递：</strong><code>TaskScheduler</code> 会把存储、<code>worker_concurrency</code>、重试、checkpoint、进度写回、缓存上限、停机延时处理与事件总线字段传给内部 <code>TaskPool</code>，并根据存储类型设置锁类型。预取、监控、<code>task_timeout</code>、队列容量、死信等参数仍需直接构造 <code>TaskPool</code> 或修改底层配置；<code>SchedulerConfig</code> 当前没有暴露这些字段。</div>
 
 <h2>常用档位</h2>
 <table>

@@ -8,12 +8,12 @@
     {
       "id": "concepts",
       "label": "核心概念",
-      "description": "架构、任务状态、优先级、延时与存储。"
+      "description": "架构、任务状态、任务关联、优先级、延时与存储。"
     },
     {
       "id": "reliability",
       "label": "可靠性",
-      "description": "故障恢复、分布式锁、预取与监控。"
+      "description": "故障恢复、断点续跑、成本采集、分布式锁、预取与监控。"
     },
     {
       "id": "reference",
@@ -33,7 +33,7 @@
       "category": "start",
       "featured": true,
       "description": "安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。",
-      "updated": "2026-11-11",
+      "updated": "2026-11-17",
       "icon": "rocket",
       "time": "7 分钟"
     },
@@ -43,7 +43,7 @@
       "category": "start",
       "featured": true,
       "description": "TaskPoolConfig 与 SchedulerConfig 的字段、默认值、生效范围和常用配置档位。",
-      "updated": "2026-11-11",
+      "updated": "2026-11-17",
       "icon": "sliders",
       "time": "10 分钟"
     },
@@ -52,7 +52,7 @@
       "title": "最佳实践",
       "category": "start",
       "description": "执行器、并发、重试、超时、存储选型与生产部署建议。",
-      "updated": "2026-11-11",
+      "updated": "2026-11-17",
       "icon": "check",
       "time": "8 分钟"
     },
@@ -62,7 +62,7 @@
       "category": "concepts",
       "featured": true,
       "description": "TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。",
-      "updated": "2026-11-11",
+      "updated": "2026-11-17",
       "icon": "blocks",
       "time": "6 分钟"
     },
@@ -72,8 +72,17 @@
       "category": "concepts",
       "featured": true,
       "description": "任务从提交到终态的状态流转、事件回调与结果获取方式。",
-      "updated": "2026-11-11",
+      "updated": "2026-11-17",
       "icon": "layers",
+      "time": "6 分钟"
+    },
+    {
+      "slug": "task-context",
+      "title": "任务关联与共享上下文",
+      "category": "concepts",
+      "description": "父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。",
+      "updated": "2026-11-17",
+      "icon": "link",
       "time": "6 分钟"
     },
     {
@@ -99,7 +108,7 @@
       "title": "持久化存储",
       "category": "concepts",
       "description": "Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。",
-      "updated": "2026-11-11",
+      "updated": "2026-11-17",
       "icon": "database",
       "time": "7 分钟"
     },
@@ -118,10 +127,28 @@
       "title": "故障恢复",
       "category": "reliability",
       "featured": true,
-      "description": "超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。",
-      "updated": "2026-11-11",
+      "description": "超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。",
+      "updated": "2026-11-17",
       "icon": "shield",
+      "time": "8 分钟"
+    },
+    {
+      "slug": "checkpoint",
+      "title": "断点续跑",
+      "category": "reliability",
+      "description": "保存任务中间状态，并在自动重试、手动重试或显式提交时从最近 checkpoint 恢复。",
+      "updated": "2026-11-17",
+      "icon": "bookmark",
       "time": "7 分钟"
+    },
+    {
+      "slug": "cost-tracking",
+      "title": "成本与耗时",
+      "category": "reliability",
+      "description": "上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。",
+      "updated": "2026-11-17",
+      "icon": "coins",
+      "time": "6 分钟"
     },
     {
       "slug": "distributed-lock",
@@ -146,7 +173,7 @@
       "title": "监控与健康检查",
       "category": "reliability",
       "description": "指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。",
-      "updated": "2026-11-11",
+      "updated": "2026-11-17",
       "icon": "activity",
       "time": "7 分钟"
     },
@@ -155,8 +182,8 @@
       "title": "API 参考",
       "category": "reference",
       "featured": true,
-      "description": "TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。",
-      "updated": "2026-11-11",
+      "description": "TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。",
+      "updated": "2026-11-17",
       "icon": "code",
       "time": "12 分钟"
     },
@@ -166,7 +193,7 @@
       "category": "reference",
       "featured": true,
       "description": "提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。",
-      "updated": "2026-11-11",
+      "updated": "2026-11-17",
       "icon": "chart",
       "time": "9 分钟"
     },
@@ -174,8 +201,8 @@
       "slug": "roadmap",
       "title": "版本路线图",
       "category": "roadmap",
-      "description": "1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。",
-      "updated": "2026-11-11",
+      "description": "1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。",
+      "updated": "2026-11-17",
       "icon": "workflow",
       "time": "5 分钟"
     }

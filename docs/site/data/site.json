@@ -2,8 +2,8 @@
   "name": "NeoTask",
   "tagline": "轻量级 Python 异步任务队列",
   "description": "NeoTask 是纯 Python 实现的轻量级异步任务队列与调度器：嵌入式设计、零外部服务、支持优先级、延时、周期与 Cron 任务，可通过 Redis 平滑扩展到分布式集群。",
-  "version": "1.0.8",
-  "releaseDate": "2026-11-11",
+  "version": "1.1.1",
+  "releaseDate": "2026-11-15",
   "python": "3.8+",
   "license": "MIT",
   "homepage": "https://task.helpenx.com",
@@ -23,6 +23,34 @@
     "topics": 20
   },
   "releases": [
+    {
+      "version": "1.1.1",
+      "date": "2026-11-15",
+      "type": "patch",
+      "summary": "升级体验与稳定性补丁：老库并发升级、启动期 schema 就绪与指标读取竞态。",
+      "items": [
+        "老库并发补列按幂等处理，修复 duplicate column name 导致启动崩溃",
+        "新增 TaskRepository.ensure_ready()，启动完成后才返回",
+        "修复指标并发读取时的 deque 遍历崩溃",
+        "redis extra 上界放宽到 <8，兼容 redis-py 7.x"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.1.1"
+    },
+    {
+      "version": "1.1.0",
+      "date": "2026-11-13",
+      "type": "minor",
+      "summary": "本地任务能力补全：断点续跑、业务失败、成本与耗时、父子任务与 Blackboard。",
+      "items": [
+        "新增 CheckpointRepository 三后端实现与断点续跑恢复路径",
+        "新增业务失败上报 report_failure() 与 failure_reason 字段",
+        "新增成本采集、queue_wait_ms / duration_ms 与父子任务 API",
+        "新增 memory-only Blackboard 本地上下文",
+        "新增 task.checkpointed / task.cost_reported 事件与外部 task_id 幂等语义",
+        "SQLite 老库启动期自动补列，新增 task_checkpoints 表"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.1.0"
+    },
     {
       "version": "1.0.8",
       "date": "2026-11-11",

@@ -11,11 +11,14 @@
   <url><loc>https://task.helpenx.com/docs/v1.0/best-practices.html</loc></url>
   <url><loc>https://task.helpenx.com/docs/v1.0/architecture.html</loc></url>
   <url><loc>https://task.helpenx.com/docs/v1.0/task-lifecycle.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/v1.0/task-context.html</loc></url>
   <url><loc>https://task.helpenx.com/docs/v1.0/priority-queue.html</loc></url>
   <url><loc>https://task.helpenx.com/docs/v1.0/delayed-tasks.html</loc></url>
   <url><loc>https://task.helpenx.com/docs/v1.0/persistence.html</loc></url>
   <url><loc>https://task.helpenx.com/docs/v1.0/distributed.html</loc></url>
   <url><loc>https://task.helpenx.com/docs/v1.0/failure-recovery.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/v1.0/checkpoint.html</loc></url>
+  <url><loc>https://task.helpenx.com/docs/v1.0/cost-tracking.html</loc></url>
   <url><loc>https://task.helpenx.com/docs/v1.0/distributed-lock.html</loc></url>
   <url><loc>https://task.helpenx.com/docs/v1.0/prefetch.html</loc></url>
   <url><loc>https://task.helpenx.com/docs/v1.0/monitoring.html</loc></url>

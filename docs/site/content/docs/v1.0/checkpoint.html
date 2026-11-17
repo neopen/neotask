@@ -1,0 +1,103 @@
+<p>1.1 起 NeoTask 支持断点续跑：任务在执行过程中把中间状态写入 checkpoint 仓储，任务被重试或重新提交时，最近一次状态会注入 <code>data["__checkpoint__"]</code>，业务代码不必从头开始。它适合分页导入、批量处理、长链路调用等可以按进度切分的任务。</p>
+
+<h2>启用与配置</h2>
+<pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
+
+config = TaskPoolConfig(
+    enable_checkpoint=True,        # 默认开启
+    checkpoint_keep_versions=5,    # 每个任务保留最近 5 个版本
+)
+pool = TaskPool(executor=handle, config=config)</code></pre>
+
+<table>
+<thead><tr><th>字段</th><th>默认值</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>enable_checkpoint</code></td><td><code>True</code></td><td>关闭后不创建 checkpoint 仓储；<code>save_checkpoint()</code> 返回 0 / <code>False</code>，不抛异常</td></tr>
+<tr><td><code>checkpoint_keep_versions</code></td><td><code>5</code></td><td>单个任务保留的版本数；每次保存后裁剪更旧的版本，0 表示不保留</td></tr>
+</tbody>
+</table>
+
+<p><code>SchedulerConfig</code> 提供同名字段，并传递给内部 <code>TaskPool</code>。三种存储后端都实现了 checkpoint 仓储：memory 保存在进程内，SQLite 写入 <code>task_checkpoints</code> 表，Redis 写入 <code>neotask:ckpt:{task_id}</code> 哈希。</p>
+
+<h2>保存与读取</h2>
+<p>执行器内部使用模块级函数，按执行器类型选择异步或同步版本：</p>
+
+<pre><code class="language-python">from neotask import load_checkpoint, save_checkpoint
+from neotask import load_checkpoint_sync, save_checkpoint_sync
+
+async def async_job(data):
+    state = await load_checkpoint() or {"cursor": 0}
+    for index in range(state["cursor"], data["total"]):
+        await handle_row(index)
+        if index % 100 == 0:
+            await save_checkpoint({"cursor": index + 1})
+    return {"rows": data["total"]}
+
+def thread_job(data):
+    state = load_checkpoint_sync() or {"cursor": 0}
+    for index in range(state["cursor"], data["total"]):
+        handle_row(index)
+        if index % 100 == 0:
+            save_checkpoint_sync({"cursor": index + 1})
+    return {"rows": data["total"]}</code></pre>
+
+<p>拿不到执行上下文时（进程执行器的父进程、外部调度组件），使用任务级 API：</p>
+
+<pre><code class="language-python">version = pool.save_checkpoint(task_id, {"cursor": 42})
+state = pool.load_checkpoint(task_id)</code></pre>
+
+<table>
+<thead><tr><th>调用位置</th><th>方法</th><th>返回值</th></tr></thead>
+<tbody>
+<tr><td>异步执行器</td><td><code>await save_checkpoint(state)</code> / <code>await load_checkpoint()</code></td><td><code>bool</code> / <code>dict | None</code></td></tr>
+<tr><td>线程执行器</td><td><code>save_checkpoint_sync(state, timeout=5.0)</code> / <code>load_checkpoint_sync(timeout=5.0)</code></td><td><code>bool</code> / <code>dict | None</code></td></tr>
+<tr><td>进程执行器父进程 / 外部调用</td><td><code>pool.save_checkpoint(task_id, state)</code> / <code>pool.load_checkpoint(task_id)</code></td><td>新版本号，失败为 0 / <code>dict | None</code></td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>返回 False 的含义：</strong>执行器内的函数在任务上下文外被调用、任务已结束或 checkpoint 未启用时返回 <code>False</code> / <code>None</code>，不抛异常。业务代码应把保存失败视为“这次没有进度可续”，而不是任务失败。</div>
+
+<h2>三种恢复路径</h2>
+<table>
+<thead><tr><th>路径</th><th>触发方式</th><th>行为</th></tr></thead>
+<tbody>
+<tr><td>自动重试</td><td>执行抛异常且 <code>retry_count &lt; max_retries</code></td><td>写回最近 checkpoint 到 <code>task.data</code>，按 <code>retry_delay × n</code> 重新入队</td></tr>
+<tr><td>手动重试</td><td><code>pool.retry(task_id)</code></td><td>终态任务重置为 <code>pending</code>，注入最近 checkpoint 后重新入队；<code>retry_count</code> 保留</td></tr>
+<tr><td>显式提交</td><td><code>submit(data, task_id="job-1", resume_from_checkpoint=True)</code></td><td>先创建任务记录并注入 checkpoint，再入队，避免 Worker 抢先执行</td></tr>
+</tbody>
+</table>
+
+<p>显式提交必须同时提供 <code>task_id</code>，否则 <code>resume_from_checkpoint</code> 不生效，任务按普通提交执行。没有找到 checkpoint 时也不会报错，任务使用原始 <code>data</code> 运行。</p>
+
+<div class="doc-warning"><strong>同一个 <code>task_id</code> 不能重复提交：</strong>只要任务记录仍存在（包括已经成功或失败），<code>submit()</code> 都会抛 <code>TaskAlreadyExistsError</code>。要复用已有记录从断点继续，应调用 <code>retry(task_id)</code>；只有记录被删除、或在另一个进程中首次创建时，才使用 <code>resume_from_checkpoint=True</code> 的提交方式。</div>
+
+<h2>版本、事件与查询</h2>
+<p>每次保存都会生成递增版本号，并把任务记录的 <code>checkpoint_version</code> 更新为新版本。超过 <code>checkpoint_keep_versions</code> 的旧版本会被裁剪；恢复时总是读取最新版本。</p>
+
+<pre><code class="language-python">task = pool.get_task(task_id)
+print(task["checkpoint_version"])
+
+async def on_checkpointed(event):
+    print(event.task_id, event.data)   # {"version": 3}
+
+pool.event_bus.subscribe("task.checkpointed", on_checkpointed)</code></pre>
+
+<p>1.1 新增 <code>task.checkpointed</code> 事件，<code>event.data</code> 形如 <code>{"version": 3}</code>。它没有 <code>on_checkpointed()</code> 便捷方法，通过 <code>event_bus.subscribe()</code> 订阅。</p>
+
+<h2>生命周期与清理</h2>
+<ul>
+<li>删除任务（<code>delete()</code>）会同时删除该任务的 checkpoint。</li>
+<li>终态清理删除过期任务记录时，一并删除对应 checkpoint；需要跨清理周期恢复时，先调大 <code>terminal_retention_seconds</code>。</li>
+<li>memory 后端的 checkpoint 随进程退出丢失；SQLite 与 Redis 的 checkpoint 跨重启保留。</li>
+<li>Redis 模式下 checkpoint 由所有节点共享，任务被其他节点接管后仍能读取最近版本。</li>
+</ul>
+
+<h2>边界</h2>
+<ul>
+<li><code>state</code> 必须可 JSON 序列化，保存的是完整快照而不是增量日志。状态应保持精简，避免把大结果反复写入存储。</li>
+<li>checkpoint 不是事务。保存成功代表业务进度已落库，保存之后、下一次保存之前的工作在恢复时仍会重复执行，因此每个步骤仍需幂等。</li>
+<li>保留键 <code>__checkpoint__</code> 会覆盖 <code>data</code> 中的同名业务字段，业务数据不要使用该键。</li>
+<li>业务失败（<code>report_failure</code>）不会触发自动重试，因此不会自动续跑；需要续跑时显式调用 <code>retry()</code>。</li>
+</ul>
+
+<div class="doc-note"><strong>相关页面：</strong><a href="/docs/failure-recovery.html">故障恢复</a> · <a href="/docs/persistence.html">持久化存储</a> · <a href="/docs/api-reference.html">API 参考</a> · <a href="/docs/task-lifecycle.html">任务生命周期</a></div>

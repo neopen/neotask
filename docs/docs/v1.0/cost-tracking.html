@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>成本与耗时 · NeoTask v1.0 文档</title>
+  <meta name="description" content="上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">
+  <meta name="keywords" content="成本与耗时, 成本与耗时 教程, 成本与耗时 文档, 可靠性, NeoTask v1.0 文档, NeoTask 1.x, Python 任务队列">
+  <meta name="author" content="NeoPen">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+  <link rel="canonical" href="https://task.helpenx.com/docs/v1.0/cost-tracking.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="成本与耗时 · NeoTask v1.0 文档">
+  <meta property="og:description" content="上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">
+  <meta property="og:url" content="https://task.helpenx.com/docs/v1.0/cost-tracking.html">
+  <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="成本与耗时 · NeoTask 文档">
+  <meta property="article:published_time" content="2026-10-29">
+  <meta property="article:modified_time" content="2026-11-17">
+  <meta property="article:section" content="可靠性">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="成本与耗时 · NeoTask v1.0 文档">
+  <meta name="twitter:description" content="上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">
+  <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta name="twitter:image:alt" content="成本与耗时 · NeoTask 文档">
+  <meta name="theme-color" content="#0b1713">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/css/site.css">
+  <link rel="stylesheet" href="/assets/css/docs.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "@id": "https://task.helpenx.com/docs/v1.0/cost-tracking.html#article",
+        "headline": "成本与耗时",
+        "name": "成本与耗时 · NeoTask v1.0 文档",
+        "description": "上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。",
+        "image": "https://task.helpenx.com/assets/img/og.png",
+        "url": "https://task.helpenx.com/docs/v1.0/cost-tracking.html",
+        "mainEntityOfPage": "https://task.helpenx.com/docs/v1.0/cost-tracking.html",
+        "inLanguage": "zh-CN",
+        "datePublished": "2026-10-29",
+        "dateModified": "2026-11-17",
+        "articleSection": "可靠性",
+        "keywords": "成本与耗时, 成本与耗时 教程, 成本与耗时 文档, 可靠性, NeoTask v1.0 文档, NeoTask 1.x, Python 任务队列",
+        "author": {
+          "@type": "Organization",
+          "name": "NeoPen",
+          "url": "https://task.helpenx.com",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://task.helpenx.com/assets/img/favicon.svg"
+          }
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "NeoPen",
+          "url": "https://task.helpenx.com",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://task.helpenx.com/assets/img/favicon.svg"
+          }
+        },
+        "isPartOf": {
+          "@type": "WebSite",
+          "name": "NeoTask",
+          "url": "https://task.helpenx.com/"
+        },
+        "about": {
+          "@type": "SoftwareApplication",
+          "name": "NeoTask",
+          "applicationCategory": "DeveloperApplication",
+          "operatingSystem": "OS Independent",
+          "url": "https://task.helpenx.com/"
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "@id": "https://task.helpenx.com/docs/v1.0/cost-tracking.html#breadcrumb",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "首页",
+            "item": "https://task.helpenx.com/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "文档",
+            "item": "https://task.helpenx.com/docs/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": "v1.0",
+            "item": "https://task.helpenx.com/docs/v1.0/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 4,
+            "name": "成本与耗时",
+            "item": "https://task.helpenx.com/docs/v1.0/cost-tracking.html"
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body class="docs-page" id="top">
+  <a class="skip-link" href="#main">跳到主要内容</a>
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="/" aria-label="NeoTask 首页">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="9" fill="#0b1713"/>
+        <path d="M9.5 22.5v-13l13 13v-13" fill="none" stroke="#2dd4bf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
+      </svg>
+      <span class="brand-name">NeoTask</span>
+      <span class="brand-version">v1.1.1</span>
+    </a>
+
+    <nav class="site-nav" id="siteNav" aria-label="主导航">
+      <a class="site-nav-link " href="/features.html">产品能力</a>
+      <a class="site-nav-link " href="/docs/v1.0/benchmarks.html">性能</a>
+      <a class="site-nav-link is-active" href="/docs/">文档</a>
+      <a class="site-nav-link " href="/changelog.html">更新日志</a>
+      <a class="site-nav-link " href="/community.html">社区</a>
+      <a class="site-nav-link site-nav-external" href="https://helpenx.com/" target="_blank" rel="noopener">
+        HelpEnx Hub<span class="nav-brand-cn">（星阵工坊）</span>
+        <svg class="icon icon-xs nav-external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
+      </a>
+    </nav>
+
+    <div class="header-actions">
+      <a class="gh-star" href="https://github.com/neopen/neotask" target="_blank" rel="noopener" aria-label="在 GitHub 上为 NeoTask 加 Star">
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.9 5.33.9 11.6c0 4.9 3.17 9.05 7.57 10.52.55.1.75-.24.75-.53v-1.85c-3.08.67-3.73-1.48-3.73-1.48-.5-1.28-1.23-1.62-1.23-1.62-1-.69.08-.68.08-.68 1.11.08 1.7 1.14 1.7 1.14.98 1.69 2.58 1.2 3.2.92.1-.71.39-1.2.7-1.48-2.46-.28-5.05-1.23-5.05-5.48 0-1.21.43-2.2 1.14-2.98-.11-.28-.49-1.4.11-2.92 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.6 1.52.22 2.64.11 2.92.71.78 1.14 1.77 1.14 2.98 0 4.26-2.6 5.2-5.06 5.47.4.35.76 1.03.76 2.07v3.07c0 .29.2.64.76.53a11.1 11.1 0 0 0 7.56-10.52C23.1 5.33 18.27.5 12 .5z"/></svg>
+        <span>Star</span>
+        <span class="gh-star-count">8</span>
+      </a>
+      <a class="btn btn-primary btn-sm header-cta" href="/docs/v1.0/quickstart.html">快速开始</a>
+      <button class="nav-toggle" id="navToggle" aria-label="打开菜单" aria-expanded="false" aria-controls="siteNav">
+        <span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+  <div class="docs-shell">
+    <aside class="docs-sidebar" id="docsSidebar">
+      <a class="docs-sidebar-home" href="/docs/"><span class="docs-sidebar-badge">DOCS</span> 文档中心</a>
+      <div class="docs-version-picker">
+        <span class="docs-version-caption">文档版本</span>
+        <div class="docs-version-row">
+          <select class="docs-version-select" data-docs-version aria-label="切换文档版本">
+            <option value="v1.0" selected>v1.0（最新）</option>
+          </select>
+          <a class="docs-version-all" href="/docs/">所有版本</a>
+        </div>
+        <p class="docs-version-note">适用于 NeoTask 1.x</p>
+      </div>
+      <div class="docs-search-wrap">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="docsSearch" type="search" placeholder="搜索文档" autocomplete="off" aria-label="搜索文档">
+      </div>
+      <nav class="docs-nav" id="docsNav" aria-label="文档导航">
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">开始使用</p>
+        <a class="docs-nav-link" href="/docs/v1.0/quickstart.html" data-search="快速开始 安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。">快速开始</a>
+        <a class="docs-nav-link" href="/docs/v1.0/configuration.html" data-search="配置参考 TaskPoolConfig 与 SchedulerConfig 的字段、默认值、生效范围和常用配置档位。">配置参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/best-practices.html" data-search="最佳实践 执行器、并发、重试、超时、存储选型与生产部署建议。">最佳实践</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">核心概念</p>
+        <a class="docs-nav-link" href="/docs/v1.0/architecture.html" data-search="架构概览 TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。">架构概览</a>
+        <a class="docs-nav-link" href="/docs/v1.0/task-lifecycle.html" data-search="任务生命周期 任务从提交到终态的状态流转、事件回调与结果获取方式。">任务生命周期</a>
+        <a class="docs-nav-link" href="/docs/v1.0/task-context.html" data-search="任务关联与共享上下文 父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。">任务关联与共享上下文</a>
+        <a class="docs-nav-link" href="/docs/v1.0/priority-queue.html" data-search="优先级队列 四级优先级的排序规则、同级 FIFO 边界与批量提交行为。">优先级队列</a>
+        <a class="docs-nav-link" href="/docs/v1.0/delayed-tasks.html" data-search="延时与周期任务 延时、指定时间、固定间隔与 Cron 任务的提交、管理和错过策略。">延时与周期任务</a>
+        <a class="docs-nav-link" href="/docs/v1.0/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。">持久化存储</a>
+        <a class="docs-nav-link" href="/docs/v1.0/distributed.html" data-search="分布式部署 多节点共享队列、节点心跳、任务回收与 Redis 部署要求。">分布式部署</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">可靠性</p>
+        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/checkpoint.html" data-search="断点续跑 保存任务中间状态，并在自动重试、手动重试或显式提交时从最近 checkpoint 恢复。">断点续跑</a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/cost-tracking.html" data-search="成本与耗时 上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">成本与耗时</a>
+        <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
+        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">参考</p>
+        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">性能基准</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">路线图</p>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
+      </div>
+      </nav>
+      <p class="docs-nav-empty" id="docsNavEmpty" hidden>没有匹配的文档</p>
+    </aside>
+    <main class="docs-main" id="main">
+      <nav class="breadcrumb" aria-label="面包屑">
+        <a href="/">首页</a><span>/</span><a href="/docs/">文档</a><span>/</span><a href="/docs/v1.0/">v1.0</a><span>/</span><span>可靠性</span>
+      </nav>
+      <details class="docs-mobile-nav">
+        <summary>文档导航 · v1.0</summary>
+        <div class="docs-version-picker">
+        <span class="docs-version-caption">文档版本</span>
+        <div class="docs-version-row">
+          <select class="docs-version-select" data-docs-version aria-label="切换文档版本">
+            <option value="v1.0" selected>v1.0（最新）</option>
+          </select>
+          <a class="docs-version-all" href="/docs/">所有版本</a>
+        </div>
+        <p class="docs-version-note">适用于 NeoTask 1.x</p>
+      </div>
+      
+      <nav class="docs-nav" id="docsNavMobile" aria-label="文档导航">
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">开始使用</p>
+        <a class="docs-nav-link" href="/docs/v1.0/quickstart.html" data-search="快速开始 安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。">快速开始</a>
+        <a class="docs-nav-link" href="/docs/v1.0/configuration.html" data-search="配置参考 TaskPoolConfig 与 SchedulerConfig 的字段、默认值、生效范围和常用配置档位。">配置参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/best-practices.html" data-search="最佳实践 执行器、并发、重试、超时、存储选型与生产部署建议。">最佳实践</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">核心概念</p>
+        <a class="docs-nav-link" href="/docs/v1.0/architecture.html" data-search="架构概览 TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。">架构概览</a>
+        <a class="docs-nav-link" href="/docs/v1.0/task-lifecycle.html" data-search="任务生命周期 任务从提交到终态的状态流转、事件回调与结果获取方式。">任务生命周期</a>
+        <a class="docs-nav-link" href="/docs/v1.0/task-context.html" data-search="任务关联与共享上下文 父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。">任务关联与共享上下文</a>
+        <a class="docs-nav-link" href="/docs/v1.0/priority-queue.html" data-search="优先级队列 四级优先级的排序规则、同级 FIFO 边界与批量提交行为。">优先级队列</a>
+        <a class="docs-nav-link" href="/docs/v1.0/delayed-tasks.html" data-search="延时与周期任务 延时、指定时间、固定间隔与 Cron 任务的提交、管理和错过策略。">延时与周期任务</a>
+        <a class="docs-nav-link" href="/docs/v1.0/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。">持久化存储</a>
+        <a class="docs-nav-link" href="/docs/v1.0/distributed.html" data-search="分布式部署 多节点共享队列、节点心跳、任务回收与 Redis 部署要求。">分布式部署</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">可靠性</p>
+        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/checkpoint.html" data-search="断点续跑 保存任务中间状态，并在自动重试、手动重试或显式提交时从最近 checkpoint 恢复。">断点续跑</a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/cost-tracking.html" data-search="成本与耗时 上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">成本与耗时</a>
+        <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
+        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">参考</p>
+        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">性能基准</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">路线图</p>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
+      </div>
+      </nav>
+      
+      </details>
+      <article class="article">
+        <header class="article-header">
+          <p class="article-eyebrow">可靠性</p>
+          <h1>成本与耗时</h1>
+          <p class="article-lede">上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。</p>
+          <div class="article-meta">
+            <span class="article-version">v1.0 · NeoTask 1.x</span>
+            <span class="dot"></span>
+            <span>更新于 2026-11-17</span>
+            <span class="dot"></span>
+            <span>约 6 分钟 读完</span>
+            <span class="dot"></span>
+            <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg></a>
+          </div>
+        </header>
+        <div class="article-body">
+<p>1.1 起，任务记录会保存执行耗时与业务成本。耗时由 NeoTask 自动计算；成本需要执行器主动上报 token、API 调用次数与预估费用。NeoTask 只做累加与查询，不负责定价、计费或对账。</p>
+
+<h2 id="自动耗时字段">自动耗时字段</h2>
+<table>
+<thead><tr><th>字段</th><th>计算方式</th><th>何时写入</th></tr></thead>
+<tbody>
+<tr><td><code>queue_wait_ms</code></td><td><code>started_at - created_at</code></td><td>任务开始执行时</td></tr>
+<tr><td><code>duration_ms</code></td><td><code>completed_at - started_at</code></td><td>进入终态时</td></tr>
+</tbody>
+</table>
+
+<p>两个字段出现在 <code>get_result()</code> 与 <code>get_task()</code> 的返回中。任务重试时计时会重新开始，旧一轮的数值被覆盖；成本则相反，历次执行的消耗都会累加。</p>
+
+<h2 id="上报成本">上报成本</h2>
+<pre><code class="language-python">from neotask import report_cost
+
+async def llm_task(data):
+    response = await call_model(data["prompt"])
+    report_cost(
+        tokens_in=120,
+        tokens_out=48,
+        api_calls=1,
+        estimated_cost=0.0012,
+        currency="USD",
+    )
+    return {"text": response}</code></pre>
+
+<p><code>report_cost()</code> 是同步函数，在异步任务与线程执行的同步任务中都可直接调用，不需要 <code>await</code>。进程执行器拿不到该上下文，改为在父进程调用 <code>pool.report_cost(task_id, ...)</code>。</p>
+
+<table>
+<thead><tr><th>参数</th><th>默认值</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>tokens_in</code> / <code>tokens_out</code></td><td><code>0</code></td><td>输入与输出 token 数，累加</td></tr>
+<tr><td><code>api_calls</code></td><td><code>0</code></td><td>外部 API 调用次数，累加</td></tr>
+<tr><td><code>estimated_cost</code></td><td><code>None</code></td><td>本次费用金额；<code>None</code> 时只累加其它字段</td></tr>
+<tr><td><code>currency</code></td><td><code>None</code></td><td>币种标识，如 <code>USD</code></td></tr>
+</tbody>
+</table>
+
+<ul>
+<li>多次上报按字段累加，任务记录中的 <code>estimated_cost</code> 是总额，<code>cost_tracking</code> 保存明细与币种。</li>
+<li>币种以首次上报为准；同一任务内出现不同币种时标记为 <code>MIXED</code>，避免把不同币种金额静默相加。</li>
+<li>终态任务仍接受追加成本，适合父进程在子任务结束后才拿到用量数据的场景。</li>
+<li>执行器内上报返回 <code>bool</code>；不在任务上下文中（如进程执行器）返回 <code>False</code>。</li>
+</ul>
+
+<h2 id="聚合查询">聚合查询</h2>
+<pre><code class="language-python">summary = pool.get_cost_summary(child_ids)
+print(summary)
+# {
+#   "task_count": 20, "tasks_with_cost": 18,
+#   "tokens_in": 2400, "tokens_out": 960,
+#   "api_calls": 20, "estimated_cost": 0.024, "currency": "USD"
+# }
+
+total = pool.get_cost_summary()   # task_ids=None 时聚合全部任务</code></pre>
+
+<table>
+<thead><tr><th>字段</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>task_count</code></td><td>参与聚合的任务数</td></tr>
+<tr><td><code>tasks_with_cost</code></td><td>至少有一条成本记录的任务数</td></tr>
+<tr><td><code>tokens_in</code> / <code>tokens_out</code> / <code>api_calls</code></td><td>明细累加值</td></tr>
+<tr><td><code>estimated_cost</code></td><td>金额累加值；浮点数，不适用于财务结算</td></tr>
+<tr><td><code>currency</code></td><td>唯一币种、空字符串或 <code>MIXED</code></td></tr>
+</tbody>
+</table>
+
+<p>聚合在存储层完成，不需要把任务记录逐个读入进程。<code>task_ids</code> 中不存在的 ID 会被忽略，不会报错。</p>
+
+<h2 id="成本事件">成本事件</h2>
+<pre><code class="language-python">async def on_cost(event):
+    print(event.task_id, event.data)
+    # {"tokens_in": 120, "tokens_out": 48, "api_calls": 1,
+    #  "estimated_cost": 0.0012, "currency": "USD"}
+
+pool.event_bus.subscribe("task.cost_reported", on_cost)</code></pre>
+
+<p><code>task.cost_reported</code> 的负载是<strong>本次上报</strong>的明细，不是累计值。<code>event.data</code> 中只有本次传入的字段，未传 <code>currency</code> 时不含该键。该事件没有专用便捷方法，使用 <code>event_bus.subscribe()</code> 订阅。</p>
+
+<h2 id="边界">边界</h2>
+<ul>
+<li>费用完全由调用方提供，NeoTask 不解析模型价格，也不校验金额单位。</li>
+<li>重试与人工重试产生的成本都会保留并累加；任务最终失败也不影响已记录的消耗。</li>
+<li>终态清理删除任务时会一并删除成本明细，需要长期成本报表时应定期聚合后外部归档。</li>
+<li>事件可能因有界队列丢弃而缺失，成本汇总请以 <code>get_cost_summary()</code> 的存储结果为准。</li>
+</ul>
+
+<div class="doc-note"><strong>相关页面：</strong><a href="/docs/v1.0/api-reference.html">API 参考</a> · <a href="/docs/v1.0/task-context.html">任务关联与共享上下文</a> · <a href="/docs/v1.0/monitoring.html">监控与健康检查</a> · <a href="/docs/v1.0/task-lifecycle.html">任务生命周期</a></div>
+
+        </div>
+        <footer class="article-foot">
+          <a class="article-top" href="#top">回到顶部 <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></a>
+        </footer>
+      </article>
+      <nav class="docs-pager" aria-label="上一篇与下一篇">
+      <a class="pager-prev" href="/docs/v1.0/checkpoint.html"><span>上一篇</span><strong>断点续跑</strong></a>
+      <a class="pager-next" href="/docs/v1.0/distributed-lock.html"><span>下一篇</span><strong>分布式锁</strong></a>
+    </nav>
+      <p class="docs-feedback">发现文档问题？欢迎在 <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">GitHub Issues</a> 反馈。</p>
+    </main>
+    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#%E8%87%AA%E5%8A%A8%E8%80%97%E6%97%B6%E5%AD%97%E6%AE%B5">自动耗时字段</a><a href="#%E4%B8%8A%E6%8A%A5%E6%88%90%E6%9C%AC">上报成本</a><a href="#%E8%81%9A%E5%90%88%E6%9F%A5%E8%AF%A2">聚合查询</a><a href="#%E6%88%90%E6%9C%AC%E4%BA%8B%E4%BB%B6">成本事件</a><a href="#%E8%BE%B9%E7%95%8C">边界</a></nav>
+  </div>
+  <footer class="site-footer">
+  <div class="container">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a class="brand" href="/" aria-label="NeoTask 首页">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="9" fill="#10211b"/>
+            <path d="M9.5 22.5v-13l13 13v-13" fill="none" stroke="#2dd4bf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
+          </svg>
+          <span class="brand-name">NeoTask</span>
+        </a>
+        <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
+        <div class="footer-status"><span class="status-dot"></span> v1.1.1 · 发布于 2026-11-15</div>
+      </div>
+
+      <div class="footer-col">
+        <h3>产品</h3>
+        <a href="/features.html">产品能力</a>
+        <a href="/docs/">文档中心</a>
+        <a href="/changelog.html">更新日志</a>
+        <a href="https://pypi.org/project/neotask/" target="_blank" rel="noopener">PyPI</a>
+      </div>
+      <div class="footer-col">
+        <h3>文档</h3>
+        <a href="/docs/v1.0/quickstart.html">快速上手</a>
+        <a href="/docs/v1.0/architecture.html">架构设计</a>
+        <a href="/docs/v1.0/api-reference.html">API 参考</a>
+        <a href="/docs/v1.0/benchmarks.html">性能基准</a>
+      </div>
+      <div class="footer-col">
+        <h3>社区</h3>
+        <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/neopen/neotask/discussions" target="_blank" rel="noopener">Discussions</a>
+        <a href="https://github.com/neopen/neotask/tree/main/examples" target="_blank" rel="noopener">示例代码</a>
+      </div>
+      <div class="footer-col">
+        <h3>资源</h3>
+        <a href="/community.html">参与贡献</a>
+        <a href="https://pengline.cn" target="_blank" rel="noopener">技术博客</a>
+        <a href="https://github.com/neopen/neotask/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+        <a href="https://github.com/neopen/neotask/releases" target="_blank" rel="noopener">Release Notes</a>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p>© 2026 NeoTask · 由 <a href="https://pengline.cn" target="_blank" rel="noopener">NeoTask 作者 NeoPen</a> 维护 · 基于 MIT 协议开源</p>
+      <p class="footer-motto">Embedded by design. Observable by default.</p>
+    </div>
+  </div>
+</footer>
+
+  <script src="/assets/js/site.js" defer></script>
+</body>
+</html>

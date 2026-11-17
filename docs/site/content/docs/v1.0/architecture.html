@@ -11,9 +11,12 @@
         │      ├── Prefetcher
         │      └── Supervisor
         │
-        ├── TaskLifecycleManager ─► TaskRepository / QueueRepository
+        ├── TaskLifecycleManager ─► TaskRepository / QueueRepository /
+        │                            CheckpointRepository
         ├── EventBus ─────────────► on_created / started / completed / failed /
-        │                            cancelled / progress / reclaimed
+        │                            cancelled / progress / reclaimed /
+        │                            checkpointed / cost_reported
+        ├── MemoryContextStore ───► Blackboard（仅 memory 后端）
         ├── LockManager ──────────► MemoryLock / RedisLock + WatchDog
         │
         └── Redis 模式附加组件
@@ -31,6 +34,8 @@
 <tr><td><code>WorkerPool</code></td><td>按 <code>worker_concurrency</code> 消费任务；预取由本地队列消费进度驱动，空闲时由入队事件唤醒</td></tr>
 <tr><td><code>TaskLifecycleManager</code></td><td>维护状态机、结果、进度与等待者通知；周期清理过期终态任务</td></tr>
 <tr><td><code>TaskRepository</code></td><td>任务记录持久化；Memory / SQLite / Redis 三种实现</td></tr>
+<tr><td><code>CheckpointRepository</code></td><td>保存任务中间状态，按版本裁剪；Memory / SQLite / Redis 三种实现，供自动重试与手动重试恢复</td></tr>
+<tr><td><code>MemoryContextStore</code></td><td>进程内 Blackboard 键值空间；仅 memory 存储后端创建</td></tr>
 <tr><td><code>EventBus</code></td><td>异步事件队列；可选有界丢弃、慢回调告警，派发不阻塞任务主链路</td></tr>
 <tr><td><code>TaskReclaimer</code></td><td>仅 Redis 模式：回收超时、孤儿任务与僵尸锁</td></tr>
 </tbody>
@@ -40,10 +45,12 @@
 <ol>
 <li>调用 <code>submit()</code> 或 <code>submit_async()</code>，<code>TaskDispatcher</code> 创建 <code>PENDING</code> 任务并写入存储。</li>
 <li><code>QueueScheduler</code> 将任务放入优先队列；<code>delay &gt; 0</code> 时先进入延时队列，并唤醒等待中的消费者。</li>
-<li><code>WorkerPool</code> 出队并将任务置为 <code>RUNNING</code>，获取任务锁后调用执行器。</li>
-<li>执行完成写入 <code>SUCCESS</code> / <code>FAILED</code>，把事件投递到 EventBus 并唤醒 <code>wait_for_result()</code>。</li>
-<li>失败且未超过 <code>max_retries</code> 时重置为 <code>PENDING</code>，按线性延迟重新入队。</li>
+<li><code>WorkerPool</code> 出队并将任务置为 <code>RUNNING</code>，获取任务锁后绑定 checkpoint、成本与失败登记上下文，再调用执行器。</li>
+<li>执行完成写入 <code>SUCCESS</code> / <code>FAILED</code>，把事件投递到 EventBus 并唤醒 <code>wait_for_result()</code>；业务失败按 <code>failure_reason</code> 定稿，执行耗时与成本写入任务记录。</li>
+<li>失败且未超过 <code>max_retries</code> 时重置为 <code>PENDING</code>，注入最近 checkpoint，按线性延迟重新入队。</li>
 </ol>
+
+<div class="doc-note"><strong>执行上下文：</strong>checkpoint、成本与业务失败登记都通过 contextvars 绑定到单次执行。异步与线程执行器可直接使用模块级函数；进程执行器运行在独立进程中，拿不到这些上下文，需要在父进程调用 <code>pool.save_checkpoint()</code>、<code>pool.report_cost()</code> 或 <code>pool.report_failure()</code>。</div>
 
 <h2>事件驱动与背压</h2>
 <p>1.0.8 起，Worker 不再按固定间隔轮询队列：本地队列见底时预取器立即补货，共享队列为空时等待入队通知。空闲后提交的任务唤醒延迟中位约 1.3 ms。EventBus 同样使用后台队列，任务线程只负责投递，不等待订阅者处理完成。</p>
@@ -81,8 +88,8 @@
 <thead><tr><th>执行器</th><th>实现</th><th>说明</th></tr></thead>
 <tbody>
 <tr><td>AsyncExecutor</td><td>直接 <code>await</code></td><td>默认；同步函数会被包装为异步调用，仍运行在事件循环线程</td></tr>
-<tr><td>ThreadExecutor</td><td>线程池</td><td>适合阻塞 IO；支持 <code>report_progress_sync()</code></td></tr>
-<tr><td>ProcessExecutor</td><td>进程池</td><td>适合 CPU 密集任务；不支持进度上报</td></tr>
+<tr><td>ThreadExecutor</td><td>线程池</td><td>适合阻塞 IO；支持 <code>report_progress_sync()</code>、<code>save_checkpoint_sync()</code> 与成本/失败上报</td></tr>
+<tr><td>ProcessExecutor</td><td>进程池</td><td>适合 CPU 密集任务；不支持进度上报，也拿不到 checkpoint、成本与业务失败上下文</td></tr>
 <tr><td>ClassExecutor</td><td>调用对象 <code>execute()</code></td><td>适合带状态的服务对象</td></tr>
 </tbody>
 </table>

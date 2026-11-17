@@ -68,6 +68,23 @@ print(stats["metrics"]["p95_execution_time"])</code></pre>
 
 <div class="doc-note"><strong>采样窗口：</strong>耗时分位数基于滑动窗口（默认 1000 条），不是全量历史。窗口填满后旧样本会被丢弃，长尾指标需结合外部监控系统。</div>
 
+<h2>任务级耗时与成本（1.1）</h2>
+<p>除聚合指标外，每条任务记录都保存排队与执行耗时，以及调用方上报的成本：</p>
+
+<pre><code class="language-python">result = pool.get_result(task_id)
+print(result["queue_wait_ms"], result["duration_ms"])
+print(result["estimated_cost"], result["cost_tracking"])
+# cost_tracking: {"tokens_in": 120, "tokens_out": 48,
+#                 "api_calls": 1, "estimated_cost": 0.0012, "currency": "USD"}
+
+pool.get_cost_summary(task_ids)   # 跨任务聚合</code></pre>
+
+<ul>
+<li><code>queue_wait_ms</code> 与 <code>duration_ms</code> 由 NeoTask 自动计算，重试后按新一轮覆盖。</li>
+<li>成本是执行器通过 <code>report_cost()</code> 或 <code>pool.report_cost()</code> 累加的，未上报的任务不产生成本数据。</li>
+<li><code>task.cost_reported</code> 与 <code>task.checkpointed</code> 事件可用于实时看板，但事件可能被有界队列丢弃，统计口径以存储查询为准。</li>
+</ul>
+
 <h2>健康检查</h2>
 <pre><code class="language-python">health = pool.get_health_status()
 # {
@@ -131,3 +148,4 @@ await manager.start()</code></pre>
 
 <h2>事件驱动采集</h2>
 <p>指标由生命周期事件推导：<code>task.created</code>、<code>task.started</code>、<code>task.completed</code>、<code>task.failed</code>、<code>task.cancelled</code>、<code>task.retry</code>。因此指标只覆盖当前进程产生或消费的事件，跨节点汇总需要把各节点数据送到同一个监控系统。有界事件队列发生丢弃时，依赖事件的统计也会缺失对应记录。</p>
+<p>1.1 新增的 <code>task.checkpointed</code> 与 <code>task.cost_reported</code> 不参与内置吞吐与耗时统计，可用于业务侧采集 checkpoint 版本与成本明细。</p>

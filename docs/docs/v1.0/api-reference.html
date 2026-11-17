@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>API 参考 · NeoTask v1.0 文档</title>
-  <meta name="description" content="TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。">
+  <meta name="description" content="TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">
   <meta name="keywords" content="API 参考, API 参考 教程, API 参考 文档, 参考, NeoTask v1.0 文档, NeoTask 1.x, Python 任务队列">
   <meta name="author" content="NeoPen">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
@@ -13,7 +13,7 @@
   <meta property="og:locale" content="zh_CN">
   <meta property="og:type" content="article">
   <meta property="og:title" content="API 参考 · NeoTask v1.0 文档">
-  <meta property="og:description" content="TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。">
+  <meta property="og:description" content="TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">
   <meta property="og:url" content="https://task.helpenx.com/docs/v1.0/api-reference.html">
   <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
   <meta property="og:image:type" content="image/png">
@@ -21,11 +21,11 @@
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="API 参考 · NeoTask 文档">
   <meta property="article:published_time" content="2026-10-29">
-  <meta property="article:modified_time" content="2026-11-11">
+  <meta property="article:modified_time" content="2026-11-17">
   <meta property="article:section" content="参考">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="API 参考 · NeoTask v1.0 文档">
-  <meta name="twitter:description" content="TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。">
+  <meta name="twitter:description" content="TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">
   <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
   <meta name="twitter:image:alt" content="API 参考 · NeoTask 文档">
   <meta name="theme-color" content="#0b1713">
@@ -44,13 +44,13 @@
         "@id": "https://task.helpenx.com/docs/v1.0/api-reference.html#article",
         "headline": "API 参考",
         "name": "API 参考 · NeoTask v1.0 文档",
-        "description": "TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。",
+        "description": "TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。",
         "image": "https://task.helpenx.com/assets/img/og.png",
         "url": "https://task.helpenx.com/docs/v1.0/api-reference.html",
         "mainEntityOfPage": "https://task.helpenx.com/docs/v1.0/api-reference.html",
         "inLanguage": "zh-CN",
         "datePublished": "2026-10-29",
-        "dateModified": "2026-11-11",
+        "dateModified": "2026-11-17",
         "articleSection": "参考",
         "keywords": "API 参考, API 参考 教程, API 参考 文档, 参考, NeoTask v1.0 文档, NeoTask 1.x, Python 任务队列",
         "author": {
@@ -129,7 +129,7 @@
         <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
       </svg>
       <span class="brand-name">NeoTask</span>
-      <span class="brand-version">v1.0.8</span>
+      <span class="brand-version">v1.1.1</span>
     </a>
 
     <nav class="site-nav" id="siteNav" aria-label="主导航">
@@ -186,6 +186,7 @@
         <p class="docs-nav-label">核心概念</p>
         <a class="docs-nav-link" href="/docs/v1.0/architecture.html" data-search="架构概览 TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。">架构概览</a>
         <a class="docs-nav-link" href="/docs/v1.0/task-lifecycle.html" data-search="任务生命周期 任务从提交到终态的状态流转、事件回调与结果获取方式。">任务生命周期</a>
+        <a class="docs-nav-link" href="/docs/v1.0/task-context.html" data-search="任务关联与共享上下文 父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。">任务关联与共享上下文</a>
         <a class="docs-nav-link" href="/docs/v1.0/priority-queue.html" data-search="优先级队列 四级优先级的排序规则、同级 FIFO 边界与批量提交行为。">优先级队列</a>
         <a class="docs-nav-link" href="/docs/v1.0/delayed-tasks.html" data-search="延时与周期任务 延时、指定时间、固定间隔与 Cron 任务的提交、管理和错过策略。">延时与周期任务</a>
         <a class="docs-nav-link" href="/docs/v1.0/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。">持久化存储</a>
@@ -193,19 +194,21 @@
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">可靠性</p>
-        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/checkpoint.html" data-search="断点续跑 保存任务中间状态，并在自动重试、手动重试或显式提交时从最近 checkpoint 恢复。">断点续跑</a>
+        <a class="docs-nav-link" href="/docs/v1.0/cost-tracking.html" data-search="成本与耗时 上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">成本与耗时</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
         <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
         <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
-        <a class="docs-nav-link is-active" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">API 参考</a>
         <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">性能基准</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       <p class="docs-nav-empty" id="docsNavEmpty" hidden>没有匹配的文档</p>
@@ -238,6 +241,7 @@
         <p class="docs-nav-label">核心概念</p>
         <a class="docs-nav-link" href="/docs/v1.0/architecture.html" data-search="架构概览 TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。">架构概览</a>
         <a class="docs-nav-link" href="/docs/v1.0/task-lifecycle.html" data-search="任务生命周期 任务从提交到终态的状态流转、事件回调与结果获取方式。">任务生命周期</a>
+        <a class="docs-nav-link" href="/docs/v1.0/task-context.html" data-search="任务关联与共享上下文 父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。">任务关联与共享上下文</a>
         <a class="docs-nav-link" href="/docs/v1.0/priority-queue.html" data-search="优先级队列 四级优先级的排序规则、同级 FIFO 边界与批量提交行为。">优先级队列</a>
         <a class="docs-nav-link" href="/docs/v1.0/delayed-tasks.html" data-search="延时与周期任务 延时、指定时间、固定间隔与 Cron 任务的提交、管理和错过策略。">延时与周期任务</a>
         <a class="docs-nav-link" href="/docs/v1.0/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。">持久化存储</a>
@@ -245,19 +249,21 @@
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">可靠性</p>
-        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/checkpoint.html" data-search="断点续跑 保存任务中间状态，并在自动重试、手动重试或显式提交时从最近 checkpoint 恢复。">断点续跑</a>
+        <a class="docs-nav-link" href="/docs/v1.0/cost-tracking.html" data-search="成本与耗时 上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">成本与耗时</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
         <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
         <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
-        <a class="docs-nav-link is-active" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">API 参考</a>
         <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">性能基准</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       
@@ -266,11 +272,11 @@
         <header class="article-header">
           <p class="article-eyebrow">参考</p>
           <h1>API 参考</h1>
-          <p class="article-lede">TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。</p>
+          <p class="article-lede">TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。</p>
           <div class="article-meta">
             <span class="article-version">v1.0 · NeoTask 1.x</span>
             <span class="dot"></span>
-            <span>更新于 2026-11-11</span>
+            <span>更新于 2026-11-17</span>
             <span class="dot"></span>
             <span>约 12 分钟 读完</span>
             <span class="dot"></span>
@@ -278,7 +284,7 @@
           </div>
         </header>
         <div class="article-body">
-<p>公开入口为 <code>TaskPool</code> 与 <code>TaskScheduler</code>。除特别标注外，每个同步方法都有一个同名的 <code>_async</code> 版本，参数与返回值一致。</p>
+<p>公开入口为 <code>TaskPool</code> 与 <code>TaskScheduler</code>。除特别标注外，每个同步方法都有一个同名的 <code>_async</code> 版本，参数与返回值一致。当前文档基线为 1.1.1，标注“1.1”的方法与事件为新增能力。</p>
 
 <pre><code class="language-python">from neotask import TaskPool, TaskScheduler, TaskPoolConfig, SchedulerConfig</code></pre>
 
@@ -292,9 +298,9 @@
 <tbody>
 <tr><td><code>start()</code></td><td>显式启动；首次提交也会自动启动</td></tr>
 <tr><td><code>shutdown(graceful=True, timeout=30)</code></td><td>停止接收新任务，等待队列清空后关闭</td></tr>
-<tr><td><code>submit(data, task_id=None, priority=NORMAL, delay=0, ttl=3600)</code></td><td>提交任务，返回任务 ID</td></tr>
-<tr><td><code>submit_batch(tasks, priority=NORMAL)</code></td><td>逐条提交任务列表，返回 ID 列表</td></tr>
-<tr><td><code>create_pending_task(data, task_id=None, priority=NORMAL, ttl=3600)</code></td><td>只创建记录，不入队</td></tr>
+<tr><td><code>submit(data, task_id=None, priority=NORMAL, delay=0, ttl=3600, parent_task_id=None, resume_from_checkpoint=False)</code></td><td>提交任务，返回任务 ID；<code>resume_from_checkpoint</code> 需配合显式 <code>task_id</code></td></tr>
+<tr><td><code>submit_batch(tasks, priority=NORMAL, ttl=3600, partial_on_error=False)</code></td><td>逐条提交任务列表，返回 ID 列表；不支持父子关联参数</td></tr>
+<tr><td><code>create_pending_task(data, task_id=None, priority=NORMAL, ttl=3600, resume_from_checkpoint=False)</code></td><td>只创建记录，不入队</td></tr>
 <tr><td><code>enqueue_task(task_id)</code></td><td>把 <code>pending</code> 任务入队；非 <code>pending</code> 返回 <code>False</code></td></tr>
 </tbody>
 </table>
@@ -324,6 +330,40 @@
 <tr><td><code>clear_queue()</code></td><td>清空队列；不修改已创建的任务记录</td></tr>
 </tbody>
 </table>
+
+<h3>断点续跑（1.1）</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>save_checkpoint(task_id, state)</code></td><td>保存完整状态快照，返回新版本号；任务不存在或未启用时返回 <code>0</code></td></tr>
+<tr><td><code>load_checkpoint(task_id)</code></td><td>读取最近一次 checkpoint；没有或未启用时返回 <code>None</code></td></tr>
+</tbody>
+</table>
+<p>执行器内部使用模块级函数：异步任务用 <code>await save_checkpoint(state)</code> / <code>await load_checkpoint()</code>，线程任务用 <code>save_checkpoint_sync()</code> / <code>load_checkpoint_sync()</code>；进程执行器由父进程调用上表方法。详见 <a href="/docs/v1.0/checkpoint.html">断点续跑</a>。</p>
+
+<h3>成本、失败与关联（1.1）</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>get_children(task_id)</code></td><td>按 <code>parent_task_id</code> 返回子任务 ID 列表，创建时间升序</td></tr>
+<tr><td><code>get_parent(task_id)</code></td><td>返回父任务 ID，没有时返回 <code>None</code></td></tr>
+<tr><td><code>report_failure(task_id, reason, detail="")</code></td><td>外部终结业务失败任务；仅 <code>running</code> 状态生效，不进入自动重试</td></tr>
+<tr><td><code>report_cost(task_id, tokens_in=0, tokens_out=0, api_calls=0, estimated_cost=None, currency=None)</code></td><td>累加任务成本；终态任务也可追加</td></tr>
+<tr><td><code>get_cost_summary(task_ids=None)</code></td><td>聚合成本，返回任务数、token、API 次数、金额与币种；<code>None</code> 表示全部任务</td></tr>
+</tbody>
+</table>
+<p>执行器内部使用 <code>report_failure(reason, detail)</code> 与 <code>report_cost(...)</code>，两者都是同步函数。详见 <a href="/docs/v1.0/failure-recovery.html">故障恢复</a> 与 <a href="/docs/v1.0/cost-tracking.html">成本与耗时</a>。</p>
+
+<h3>Blackboard（1.1，仅 memory）</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>context_set(key, value, ttl=None)</code></td><td>写入进程内共享上下文；<code>ttl</code> 为秒，<code>None</code> 表示不过期</td></tr>
+<tr><td><code>context_get(key)</code></td><td>读取；不存在或过期返回 <code>None</code></td></tr>
+<tr><td><code>context_delete(key)</code></td><td>删除；返回是否命中</td></tr>
+</tbody>
+</table>
+<p>非 memory 后端调用时抛 <code>UnsupportedFeatureError</code>。作用域为当前 <code>TaskPool</code> 实例，不跨进程、不持久化。详见 <a href="/docs/v1.0/task-context.html">任务关联与共享上下文</a>。</p>
 
 <h3>统计与健康</h3>
 <table>
@@ -359,8 +399,11 @@
 <tr><td><code>on_cancelled(handler)</code></td><td><code>task.cancelled</code></td></tr>
 <tr><td><code>on_progress(handler)</code></td><td><code>task.progress</code></td></tr>
 <tr><td><code>on_reclaimed(handler)</code></td><td><code>task.reclaimed</code></td></tr>
+<tr><td><code>event_bus.subscribe("task.checkpointed", handler)</code></td><td><code>task.checkpointed</code>（1.1），<code>data</code> 为 <code>{"version": n}</code></td></tr>
+<tr><td><code>event_bus.subscribe("task.cost_reported", handler)</code></td><td><code>task.cost_reported</code>（1.1），<code>data</code> 为本次上报明细</td></tr>
 </tbody>
 </table>
+<p>1.1 新增的两个事件没有 <code>on_*</code> 便捷方法，只能通过 <code>event_bus.subscribe()</code> 订阅。</p>
 
 <h2 id="TaskScheduler">TaskScheduler</h2>
 <pre><code class="language-python">TaskScheduler(executor=None, config=None)</code></pre>
@@ -400,6 +443,10 @@
 <tr><td><code>get_stats</code> / <code>get_queue_size</code> / <code>get_health_status</code></td><td>汇总周期与时间轮统计</td></tr>
 <tr><td><code>event_bus</code></td><td>返回内部 TaskPool 的 EventBus</td></tr>
 <tr><td><code>pause</code> / <code>resume</code> / <code>clear_queue</code></td><td>同 TaskPool</td></tr>
+<tr><td><code>get_children</code> / <code>get_parent</code></td><td>同 TaskPool</td></tr>
+<tr><td><code>report_failure</code> / <code>report_cost</code> / <code>get_cost_summary</code></td><td>同 TaskPool</td></tr>
+<tr><td><code>save_checkpoint</code> / <code>load_checkpoint</code></td><td>同 TaskPool</td></tr>
+<tr><td><code>context_set</code> / <code>context_get</code> / <code>context_delete</code></td><td>同 TaskPool；仅 memory 后端</td></tr>
 <tr><td><code>on_created</code> 等 6 个回调</td><td>同 TaskPool；无 <code>on_reclaimed</code></td></tr>
 </tbody>
 </table>
@@ -412,6 +459,11 @@
 <tr><td><code>wait_for_result</code></td><td>执行器返回值</td><td>抛异常；超时抛 <code>TimeoutError</code></td></tr>
 <tr><td><code>get_status</code> / <code>get_result</code> / <code>get_task</code></td><td>对应数据</td><td><code>None</code></td></tr>
 <tr><td><code>cancel</code> / <code>retry</code> / <code>delete</code></td><td><code>True</code></td><td><code>False</code></td></tr>
+<tr><td><code>save_checkpoint</code></td><td>新版本号</td><td><code>0</code>（任务不存在或未启用）</td></tr>
+<tr><td><code>load_checkpoint</code></td><td>状态字典</td><td><code>None</code></td></tr>
+<tr><td><code>report_failure</code> / <code>report_cost</code></td><td><code>True</code></td><td><code>False</code>（状态不符或任务不存在）</td></tr>
+<tr><td><code>get_children</code> / <code>get_parent</code></td><td>ID 列表 / 父 ID</td><td>空列表 / <code>None</code></td></tr>
+<tr><td><code>get_cost_summary</code></td><td>聚合字典</td><td>零值字典（未知 ID 被忽略）</td></tr>
 </tbody>
 </table>
 
@@ -421,9 +473,10 @@
 <tbody>
 <tr><td><code>TaskSchedulerError</code></td><td>所有异常的基类</td></tr>
 <tr><td><code>TaskNotFoundError</code></td><td>等待不存在的任务</td></tr>
-<tr><td><code>TaskAlreadyExistsError</code></td><td>使用已存在的 <code>task_id</code> 提交</td></tr>
+<tr><td><code>TaskAlreadyExistsError</code></td><td>使用已存在的 <code>task_id</code> 提交，包括任务已进入终态</td></tr>
 <tr><td><code>QueueFullError</code></td><td>队列达到 <code>queue_max_size</code></td></tr>
 <tr><td><code>TimeoutError</code></td><td><code>wait_for_result</code> 超时</td></tr>
+<tr><td><code>UnsupportedFeatureError</code></td><td>当前存储后端不支持该能力，例如非 memory 后端调用 Blackboard</td></tr>
 <tr><td><code>TaskError</code></td><td>已定义但当前版本未使用</td></tr>
 </tbody>
 </table>
@@ -450,7 +503,8 @@ neotask --benchmark --tasks 2000 --concurrency 10 --json</code></pre>
 <p>代码内可调用 <code>run_benchmark()</code> / <code>run_benchmark_async()</code>，返回 <code>BenchmarkResult</code>；基准默认关闭健康检查、指标与 Reporter。</p>
 
 <h2 id="其他导出">其他导出</h2>
-<p><code>neotask</code> 还导出执行器、存储、队列、锁、监控与分布式组件：<code>AsyncExecutor</code>、<code>ThreadExecutor</code>、<code>ProcessExecutor</code>、<code>MemoryTaskRepository</code>、<code>SQLiteTaskRepository</code>、<code>RedisTaskRepository</code>、<code>PriorityQueue</code>、<code>DelayedQueue</code>、<code>MemoryLock</code>、<code>RedisLock</code>、<code>WatchDog</code>、<code>MetricsCollector</code>、<code>HealthChecker</code>、<code>NodeManager</code>、<code>Coordinator</code> 等。完整列表见 <code>neotask.__all__</code>。</p>
+<p><code>neotask</code> 还导出执行器、存储、队列、锁、监控与分布式组件：<code>AsyncExecutor</code>、<code>ThreadExecutor</code>、<code>ProcessExecutor</code>、<code>MemoryTaskRepository</code>、<code>SQLiteTaskRepository</code>、<code>RedisTaskRepository</code>、<code>MemoryCheckpointRepository</code>、<code>SQLiteCheckpointRepository</code>、<code>RedisCheckpointRepository</code>、<code>PriorityQueue</code>、<code>DelayedQueue</code>、<code>MemoryLock</code>、<code>RedisLock</code>、<code>WatchDog</code>、<code>MetricsCollector</code>、<code>HealthChecker</code>、<code>NodeManager</code>、<code>Coordinator</code> 等。</p>
+<p>1.1 新增的执行器内函数 <code>report_failure</code>、<code>report_cost</code>、<code>save_checkpoint</code>、<code>load_checkpoint</code> 与同步版本 <code>save_checkpoint_sync</code>、<code>load_checkpoint_sync</code> 也直接导出。完整列表见 <code>neotask.__all__</code>。</p>
 
         </div>
         <footer class="article-foot">
@@ -478,7 +532,7 @@ neotask --benchmark --tasks 2000 --concurrency 10 --json</code></pre>
           <span class="brand-name">NeoTask</span>
         </a>
         <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
-        <div class="footer-status"><span class="status-dot"></span> v1.0.8 · 发布于 2026-11-11</div>
+        <div class="footer-status"><span class="status-dot"></span> v1.1.1 · 发布于 2026-11-15</div>
       </div>
 
       <div class="footer-col">

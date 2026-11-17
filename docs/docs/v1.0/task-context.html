@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>任务关联与共享上下文 · NeoTask v1.0 文档</title>
+  <meta name="description" content="父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。">
+  <meta name="keywords" content="任务关联与共享上下文, 任务关联与共享上下文 教程, 任务关联与共享上下文 文档, 核心概念, NeoTask v1.0 文档, NeoTask 1.x, Python 任务队列">
+  <meta name="author" content="NeoPen">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+  <link rel="canonical" href="https://task.helpenx.com/docs/v1.0/task-context.html">
+  <meta property="og:site_name" content="NeoTask 文档">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="任务关联与共享上下文 · NeoTask v1.0 文档">
+  <meta property="og:description" content="父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。">
+  <meta property="og:url" content="https://task.helpenx.com/docs/v1.0/task-context.html">
+  <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="任务关联与共享上下文 · NeoTask 文档">
+  <meta property="article:published_time" content="2026-10-29">
+  <meta property="article:modified_time" content="2026-11-17">
+  <meta property="article:section" content="核心概念">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="任务关联与共享上下文 · NeoTask v1.0 文档">
+  <meta name="twitter:description" content="父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。">
+  <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta name="twitter:image:alt" content="任务关联与共享上下文 · NeoTask 文档">
+  <meta name="theme-color" content="#0b1713">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/css/site.css">
+  <link rel="stylesheet" href="/assets/css/docs.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "@id": "https://task.helpenx.com/docs/v1.0/task-context.html#article",
+        "headline": "任务关联与共享上下文",
+        "name": "任务关联与共享上下文 · NeoTask v1.0 文档",
+        "description": "父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。",
+        "image": "https://task.helpenx.com/assets/img/og.png",
+        "url": "https://task.helpenx.com/docs/v1.0/task-context.html",
+        "mainEntityOfPage": "https://task.helpenx.com/docs/v1.0/task-context.html",
+        "inLanguage": "zh-CN",
+        "datePublished": "2026-10-29",
+        "dateModified": "2026-11-17",
+        "articleSection": "核心概念",
+        "keywords": "任务关联与共享上下文, 任务关联与共享上下文 教程, 任务关联与共享上下文 文档, 核心概念, NeoTask v1.0 文档, NeoTask 1.x, Python 任务队列",
+        "author": {
+          "@type": "Organization",
+          "name": "NeoPen",
+          "url": "https://task.helpenx.com",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://task.helpenx.com/assets/img/favicon.svg"
+          }
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "NeoPen",
+          "url": "https://task.helpenx.com",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://task.helpenx.com/assets/img/favicon.svg"
+          }
+        },
+        "isPartOf": {
+          "@type": "WebSite",
+          "name": "NeoTask",
+          "url": "https://task.helpenx.com/"
+        },
+        "about": {
+          "@type": "SoftwareApplication",
+          "name": "NeoTask",
+          "applicationCategory": "DeveloperApplication",
+          "operatingSystem": "OS Independent",
+          "url": "https://task.helpenx.com/"
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "@id": "https://task.helpenx.com/docs/v1.0/task-context.html#breadcrumb",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "首页",
+            "item": "https://task.helpenx.com/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "文档",
+            "item": "https://task.helpenx.com/docs/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": "v1.0",
+            "item": "https://task.helpenx.com/docs/v1.0/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 4,
+            "name": "任务关联与共享上下文",
+            "item": "https://task.helpenx.com/docs/v1.0/task-context.html"
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body class="docs-page" id="top">
+  <a class="skip-link" href="#main">跳到主要内容</a>
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="/" aria-label="NeoTask 首页">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="9" fill="#0b1713"/>
+        <path d="M9.5 22.5v-13l13 13v-13" fill="none" stroke="#2dd4bf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
+      </svg>
+      <span class="brand-name">NeoTask</span>
+      <span class="brand-version">v1.1.1</span>
+    </a>
+
+    <nav class="site-nav" id="siteNav" aria-label="主导航">
+      <a class="site-nav-link " href="/features.html">产品能力</a>
+      <a class="site-nav-link " href="/docs/v1.0/benchmarks.html">性能</a>
+      <a class="site-nav-link is-active" href="/docs/">文档</a>
+      <a class="site-nav-link " href="/changelog.html">更新日志</a>
+      <a class="site-nav-link " href="/community.html">社区</a>
+      <a class="site-nav-link site-nav-external" href="https://helpenx.com/" target="_blank" rel="noopener">
+        HelpEnx Hub<span class="nav-brand-cn">（星阵工坊）</span>
+        <svg class="icon icon-xs nav-external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
+      </a>
+    </nav>
+
+    <div class="header-actions">
+      <a class="gh-star" href="https://github.com/neopen/neotask" target="_blank" rel="noopener" aria-label="在 GitHub 上为 NeoTask 加 Star">
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.9 5.33.9 11.6c0 4.9 3.17 9.05 7.57 10.52.55.1.75-.24.75-.53v-1.85c-3.08.67-3.73-1.48-3.73-1.48-.5-1.28-1.23-1.62-1.23-1.62-1-.69.08-.68.08-.68 1.11.08 1.7 1.14 1.7 1.14.98 1.69 2.58 1.2 3.2.92.1-.71.39-1.2.7-1.48-2.46-.28-5.05-1.23-5.05-5.48 0-1.21.43-2.2 1.14-2.98-.11-.28-.49-1.4.11-2.92 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.6 1.52.22 2.64.11 2.92.71.78 1.14 1.77 1.14 2.98 0 4.26-2.6 5.2-5.06 5.47.4.35.76 1.03.76 2.07v3.07c0 .29.2.64.76.53a11.1 11.1 0 0 0 7.56-10.52C23.1 5.33 18.27.5 12 .5z"/></svg>
+        <span>Star</span>
+        <span class="gh-star-count">8</span>
+      </a>
+      <a class="btn btn-primary btn-sm header-cta" href="/docs/v1.0/quickstart.html">快速开始</a>
+      <button class="nav-toggle" id="navToggle" aria-label="打开菜单" aria-expanded="false" aria-controls="siteNav">
+        <span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+  <div class="docs-shell">
+    <aside class="docs-sidebar" id="docsSidebar">
+      <a class="docs-sidebar-home" href="/docs/"><span class="docs-sidebar-badge">DOCS</span> 文档中心</a>
+      <div class="docs-version-picker">
+        <span class="docs-version-caption">文档版本</span>
+        <div class="docs-version-row">
+          <select class="docs-version-select" data-docs-version aria-label="切换文档版本">
+            <option value="v1.0" selected>v1.0（最新）</option>
+          </select>
+          <a class="docs-version-all" href="/docs/">所有版本</a>
+        </div>
+        <p class="docs-version-note">适用于 NeoTask 1.x</p>
+      </div>
+      <div class="docs-search-wrap">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="docsSearch" type="search" placeholder="搜索文档" autocomplete="off" aria-label="搜索文档">
+      </div>
+      <nav class="docs-nav" id="docsNav" aria-label="文档导航">
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">开始使用</p>
+        <a class="docs-nav-link" href="/docs/v1.0/quickstart.html" data-search="快速开始 安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。">快速开始</a>
+        <a class="docs-nav-link" href="/docs/v1.0/configuration.html" data-search="配置参考 TaskPoolConfig 与 SchedulerConfig 的字段、默认值、生效范围和常用配置档位。">配置参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/best-practices.html" data-search="最佳实践 执行器、并发、重试、超时、存储选型与生产部署建议。">最佳实践</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">核心概念</p>
+        <a class="docs-nav-link" href="/docs/v1.0/architecture.html" data-search="架构概览 TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。">架构概览</a>
+        <a class="docs-nav-link" href="/docs/v1.0/task-lifecycle.html" data-search="任务生命周期 任务从提交到终态的状态流转、事件回调与结果获取方式。">任务生命周期</a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/task-context.html" data-search="任务关联与共享上下文 父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。">任务关联与共享上下文</a>
+        <a class="docs-nav-link" href="/docs/v1.0/priority-queue.html" data-search="优先级队列 四级优先级的排序规则、同级 FIFO 边界与批量提交行为。">优先级队列</a>
+        <a class="docs-nav-link" href="/docs/v1.0/delayed-tasks.html" data-search="延时与周期任务 延时、指定时间、固定间隔与 Cron 任务的提交、管理和错过策略。">延时与周期任务</a>
+        <a class="docs-nav-link" href="/docs/v1.0/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。">持久化存储</a>
+        <a class="docs-nav-link" href="/docs/v1.0/distributed.html" data-search="分布式部署 多节点共享队列、节点心跳、任务回收与 Redis 部署要求。">分布式部署</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">可靠性</p>
+        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/checkpoint.html" data-search="断点续跑 保存任务中间状态，并在自动重试、手动重试或显式提交时从最近 checkpoint 恢复。">断点续跑</a>
+        <a class="docs-nav-link" href="/docs/v1.0/cost-tracking.html" data-search="成本与耗时 上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">成本与耗时</a>
+        <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
+        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">参考</p>
+        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">性能基准</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">路线图</p>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
+      </div>
+      </nav>
+      <p class="docs-nav-empty" id="docsNavEmpty" hidden>没有匹配的文档</p>
+    </aside>
+    <main class="docs-main" id="main">
+      <nav class="breadcrumb" aria-label="面包屑">
+        <a href="/">首页</a><span>/</span><a href="/docs/">文档</a><span>/</span><a href="/docs/v1.0/">v1.0</a><span>/</span><span>核心概念</span>
+      </nav>
+      <details class="docs-mobile-nav">
+        <summary>文档导航 · v1.0</summary>
+        <div class="docs-version-picker">
+        <span class="docs-version-caption">文档版本</span>
+        <div class="docs-version-row">
+          <select class="docs-version-select" data-docs-version aria-label="切换文档版本">
+            <option value="v1.0" selected>v1.0（最新）</option>
+          </select>
+          <a class="docs-version-all" href="/docs/">所有版本</a>
+        </div>
+        <p class="docs-version-note">适用于 NeoTask 1.x</p>
+      </div>
+      
+      <nav class="docs-nav" id="docsNavMobile" aria-label="文档导航">
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">开始使用</p>
+        <a class="docs-nav-link" href="/docs/v1.0/quickstart.html" data-search="快速开始 安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。">快速开始</a>
+        <a class="docs-nav-link" href="/docs/v1.0/configuration.html" data-search="配置参考 TaskPoolConfig 与 SchedulerConfig 的字段、默认值、生效范围和常用配置档位。">配置参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/best-practices.html" data-search="最佳实践 执行器、并发、重试、超时、存储选型与生产部署建议。">最佳实践</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">核心概念</p>
+        <a class="docs-nav-link" href="/docs/v1.0/architecture.html" data-search="架构概览 TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。">架构概览</a>
+        <a class="docs-nav-link" href="/docs/v1.0/task-lifecycle.html" data-search="任务生命周期 任务从提交到终态的状态流转、事件回调与结果获取方式。">任务生命周期</a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/task-context.html" data-search="任务关联与共享上下文 父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。">任务关联与共享上下文</a>
+        <a class="docs-nav-link" href="/docs/v1.0/priority-queue.html" data-search="优先级队列 四级优先级的排序规则、同级 FIFO 边界与批量提交行为。">优先级队列</a>
+        <a class="docs-nav-link" href="/docs/v1.0/delayed-tasks.html" data-search="延时与周期任务 延时、指定时间、固定间隔与 Cron 任务的提交、管理和错过策略。">延时与周期任务</a>
+        <a class="docs-nav-link" href="/docs/v1.0/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。">持久化存储</a>
+        <a class="docs-nav-link" href="/docs/v1.0/distributed.html" data-search="分布式部署 多节点共享队列、节点心跳、任务回收与 Redis 部署要求。">分布式部署</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">可靠性</p>
+        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/checkpoint.html" data-search="断点续跑 保存任务中间状态，并在自动重试、手动重试或显式提交时从最近 checkpoint 恢复。">断点续跑</a>
+        <a class="docs-nav-link" href="/docs/v1.0/cost-tracking.html" data-search="成本与耗时 上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">成本与耗时</a>
+        <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
+        <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">参考</p>
+        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">性能基准</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">路线图</p>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
+      </div>
+      </nav>
+      
+      </details>
+      <article class="article">
+        <header class="article-header">
+          <p class="article-eyebrow">核心概念</p>
+          <h1>任务关联与共享上下文</h1>
+          <p class="article-lede">父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。</p>
+          <div class="article-meta">
+            <span class="article-version">v1.0 · NeoTask 1.x</span>
+            <span class="dot"></span>
+            <span>更新于 2026-11-17</span>
+            <span class="dot"></span>
+            <span>约 6 分钟 读完</span>
+            <span class="dot"></span>
+            <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg></a>
+          </div>
+        </header>
+        <div class="article-body">
+<p>1.1 补齐了三类“任务之间”的能力：父子任务关联、外部指定 <code>task_id</code>，以及 memory 模式下的进程内共享上下文（Blackboard）。NeoTask 只负责记录、查询与保存，不做依赖编排、状态汇总或跨节点共享。</p>
+
+<h2 id="父子任务关联">父子任务关联</h2>
+<p>提交时传入 <code>parent_task_id</code>，即可把子任务挂在父任务下。关联只写入任务记录，不校验父任务是否存在，也不会改变执行顺序或触发父任务等待。</p>
+
+<pre><code class="language-python">parent_id = pool.submit({"batch": "2026-11"}, task_id="batch-2026-11")
+child_ids = [
+    pool.submit({"doc": doc}, parent_task_id=parent_id)
+    for doc in documents
+]</code></pre>
+
+<table>
+<thead><tr><th>方法</th><th>返回</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>get_children(task_id)</code></td><td><code>List[str]</code></td><td>按 <code>parent_task_id</code> 查询，创建时间升序；父任务不存在时返回空列表</td></tr>
+<tr><td><code>get_parent(task_id)</code></td><td><code>str | None</code></td><td>任务不存在或没有父任务时返回 <code>None</code></td></tr>
+<tr><td><code>get_result(task_id)</code></td><td><code>dict</code></td><td>包含 <code>parent_task_id</code></td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>不做自动汇总：</strong>父任务按自己的执行器返回值结束，子任务的成功或失败不会改变父任务状态。<code>get_children()</code> 只返回 ID，需要汇总时由业务代码或上层编排服务（NeoFlow）调用 <code>wait_all()</code>、<code>get_result()</code> 自行判断。</div>
+
+<p><code>submit_batch()</code> 与 <code>create_pending_task()</code> 当前没有 <code>parent_task_id</code> 参数；需要父子关联时逐条调用 <code>submit()</code>。Redis 与 SQLite 会为父任务维护查询索引，单个父任务下大量子任务时仍建议分页消费。</p>
+
+<h2 id="外部指定 task_id">外部指定 task_id</h2>
+<p><code>submit()</code>、<code>submit_async()</code>、<code>create_pending_task()</code> 都接受调用方提供的 <code>task_id</code>，便于把业务主键映射到任务 ID。</p>
+
+<pre><code class="language-python">pool.submit({"order_id": 42}, task_id="order-42")
+
+# 同一 ID 已存在（包括已进入终态）时再次提交
+pool.submit({"order_id": 42}, task_id="order-42")
+# TaskAlreadyExistsError</code></pre>
+
+<ul>
+<li>唯一性由存储层原子创建保证：多节点同时提交同一 ID 时只有一个成功，其余抛 <code>TaskAlreadyExistsError</code>。</li>
+<li>它只防止重复<strong>创建</strong>，不代表任务只执行一次；重试、回收和人工 <code>retry()</code> 仍会再次执行，业务需保持幂等。</li>
+<li>要重新执行已有 ID 的任务，调用 <code>retry(task_id)</code>；删除记录后可以重新创建，但该任务的 checkpoint 也会被删除。</li>
+</ul>
+
+<h2 id="Blackboard：进程内共享上下文">Blackboard：进程内共享上下文</h2>
+<p>Blackboard 是每个 <code>TaskPool</code> 实例自带的键值空间，供同一进程内的任务读取共享状态，例如功能开关、临时凭证或批次元数据。仅 memory 存储后端提供。</p>
+
+<pre><code class="language-python">pool.context_set("feature_flags", {"qa": True}, ttl=600)
+flags = pool.context_get("feature_flags") or {}
+pool.context_delete("feature_flags")</code></pre>
+
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>context_set(key, value, ttl=None)</code></td><td>写入或覆盖；<code>ttl</code> 为秒，<code>None</code> 表示不过期</td></tr>
+<tr><td><code>context_get(key)</code></td><td>读取；不存在或已过期返回 <code>None</code></td></tr>
+<tr><td><code>context_delete(key)</code></td><td>删除；返回是否命中</td></tr>
+</tbody>
+</table>
+
+<ul>
+<li>写入与读取都会深拷贝值，修改返回值不会影响已存内容。</li>
+<li>TTL 采用惰性过期：读取时判定，写入时顺带清理过期键，不启动后台线程。</li>
+<li>上下文只存在当前进程内，不跨进程、不跨节点、不随任务持久化；进程退出即丢失。</li>
+<li><code>storage_type</code> 不是 <code>memory</code> 时调用这些方法会抛 <code>UnsupportedFeatureError</code>；多节点共享状态应使用外部存储。</li>
+<li><code>TaskScheduler</code> 的 <code>context_*</code> 委托给内部 <code>TaskPool</code>，作用域同样限于该调度器实例。</li>
+</ul>
+
+<div class="doc-warning"><strong>并发写入：</strong>Blackboard 只保证单键读写的线程安全，不提供跨键事务。多个任务同时“读-改-写”同一键时会互相覆盖，需要原子计数或状态机时应使用数据库或 Redis。</div>
+
+<div class="doc-note"><strong>相关页面：</strong><a href="/docs/v1.0/api-reference.html">API 参考</a> · <a href="/docs/v1.0/checkpoint.html">断点续跑</a> · <a href="/docs/v1.0/cost-tracking.html">成本与耗时</a> · <a href="/docs/v1.0/persistence.html">持久化存储</a></div>
+
+        </div>
+        <footer class="article-foot">
+          <a class="article-top" href="#top">回到顶部 <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></a>
+        </footer>
+      </article>
+      <nav class="docs-pager" aria-label="上一篇与下一篇">
+      <a class="pager-prev" href="/docs/v1.0/task-lifecycle.html"><span>上一篇</span><strong>任务生命周期</strong></a>
+      <a class="pager-next" href="/docs/v1.0/priority-queue.html"><span>下一篇</span><strong>优先级队列</strong></a>
+    </nav>
+      <p class="docs-feedback">发现文档问题？欢迎在 <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">GitHub Issues</a> 反馈。</p>
+    </main>
+    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#%E7%88%B6%E5%AD%90%E4%BB%BB%E5%8A%A1%E5%85%B3%E8%81%94">父子任务关联</a><a href="#%E5%A4%96%E9%83%A8%E6%8C%87%E5%AE%9A%20task_id">外部指定 task_id</a><a href="#Blackboard%EF%BC%9A%E8%BF%9B%E7%A8%8B%E5%86%85%E5%85%B1%E4%BA%AB%E4%B8%8A%E4%B8%8B%E6%96%87">Blackboard：进程内共享上下文</a></nav>
+  </div>
+  <footer class="site-footer">
+  <div class="container">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a class="brand" href="/" aria-label="NeoTask 首页">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="9" fill="#10211b"/>
+            <path d="M9.5 22.5v-13l13 13v-13" fill="none" stroke="#2dd4bf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
+          </svg>
+          <span class="brand-name">NeoTask</span>
+        </a>
+        <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
+        <div class="footer-status"><span class="status-dot"></span> v1.1.1 · 发布于 2026-11-15</div>
+      </div>
+
+      <div class="footer-col">
+        <h3>产品</h3>
+        <a href="/features.html">产品能力</a>
+        <a href="/docs/">文档中心</a>
+        <a href="/changelog.html">更新日志</a>
+        <a href="https://pypi.org/project/neotask/" target="_blank" rel="noopener">PyPI</a>
+      </div>
+      <div class="footer-col">
+        <h3>文档</h3>
+        <a href="/docs/v1.0/quickstart.html">快速上手</a>
+        <a href="/docs/v1.0/architecture.html">架构设计</a>
+        <a href="/docs/v1.0/api-reference.html">API 参考</a>
+        <a href="/docs/v1.0/benchmarks.html">性能基准</a>
+      </div>
+      <div class="footer-col">
+        <h3>社区</h3>
+        <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/neopen/neotask/discussions" target="_blank" rel="noopener">Discussions</a>
+        <a href="https://github.com/neopen/neotask/tree/main/examples" target="_blank" rel="noopener">示例代码</a>
+      </div>
+      <div class="footer-col">
+        <h3>资源</h3>
+        <a href="/community.html">参与贡献</a>
+        <a href="https://pengline.cn" target="_blank" rel="noopener">技术博客</a>
+        <a href="https://github.com/neopen/neotask/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+        <a href="https://github.com/neopen/neotask/releases" target="_blank" rel="noopener">Release Notes</a>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p>© 2026 NeoTask · 由 <a href="https://pengline.cn" target="_blank" rel="noopener">NeoTask 作者 NeoPen</a> 维护 · 基于 MIT 协议开源</p>
+      <p class="footer-motto">Embedded by design. Observable by default.</p>
+    </div>
+  </div>
+</footer>
+
+  <script src="/assets/js/site.js" defer></script>
+</body>
+</html>

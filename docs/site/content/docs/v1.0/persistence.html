@@ -17,18 +17,19 @@
 <pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
 
 pool = TaskPool(executor=handle, config=TaskPoolConfig.memory())</code></pre>
-<p>任务、队列、周期定义都只存在当前进程。进程退出后全部丢失，也不会创建心跳、回收器或死信队列。</p>
+<p>任务、队列、周期定义都只存在当前进程。进程退出后全部丢失，也不会创建心跳、回收器或死信队列。Blackboard 共享上下文仅在此后端可用，同样不持久化。</p>
 
 <h2>SQLite</h2>
 <pre><code class="language-python">config = TaskPoolConfig.sqlite("/var/lib/neotask/neotask.db")
 pool = TaskPool(executor=handle, config=config)</code></pre>
 
-<p>数据库包含三组表：</p>
+<p>数据库包含四组表：</p>
 <table>
 <thead><tr><th>表</th><th>内容</th></tr></thead>
 <tbody>
-<tr><td><code>tasks</code></td><td>任务数据、状态、优先级、节点、重试次数、结果、进度</td></tr>
+<tr><td><code>tasks</code></td><td>任务数据、状态、优先级、节点、重试次数、结果、进度、失败原因、父子关联、成本与耗时</td></tr>
 <tr><td><code>queue</code></td><td>待执行任务的 ID、优先级、入队时间</td></tr>
+<tr><td><code>task_checkpoints</code></td><td>断点续跑状态，按 <code>(task_id, version)</code> 保存</td></tr>
 <tr><td><code>periodic_tasks</code> / <code>periodic_executions</code></td><td>周期任务定义与执行记录（启用持久化时）</td></tr>
 </tbody>
 </table>
@@ -49,6 +50,7 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 <thead><tr><th>键</th><th>类型</th><th>用途</th></tr></thead>
 <tbody>
 <tr><td><code>task:{task_id}</code></td><td>String / JSON</td><td>任务记录</td></tr>
+<tr><td><code>neotask:ckpt:{task_id}</code></td><td>Hash</td><td>checkpoint 版本，field 为版本号</td></tr>
 <tr><td><code>queue:priority</code></td><td>ZSET</td><td>优先队列，score 为优先级</td></tr>
 <tr><td><code>queue:delayed</code></td><td>ZSET</td><td>仓储层延时索引</td></tr>
 <tr><td><code>lock:task:{task_id}</code></td><td>String</td><td>任务级互斥锁</td></tr>
@@ -69,10 +71,21 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 <tr><td>任务记录与结果</td><td>是（SQLite / Redis）</td><td>写入后跨重启保留；终态记录会按保留期清理</td></tr>
 <tr><td>优先队列</td><td>是（SQLite / Redis）</td><td>未出队任务可恢复</td></tr>
 <tr><td>周期任务定义</td><td>是（需启用持久化）</td><td>memory 模式除外</td></tr>
+<tr><td>Checkpoint</td><td>是（SQLite / Redis）</td><td>memory 仅进程内；任务删除或终态清理时一并删除</td></tr>
+<tr><td>Blackboard 上下文</td><td>否</td><td>仅 memory 后端提供，进程退出即丢失</td></tr>
 <tr><td>延时堆 / 时间轮</td><td>否</td><td>仅进程内，重启后等待中的任务不会自动入队</td></tr>
 <tr><td>指标、事件、进度回调</td><td>否</td><td>运行时数据</td></tr>
 </tbody>
 </table>
+
+<h2>老库自动升级（1.1）</h2>
+<p>1.1.0 为任务记录新增 <code>failure_reason</code>、<code>checkpoint_version</code>、<code>parent_task_id</code>、<code>estimated_cost</code>、<code>cost_tracking</code>、<code>queue_wait_ms</code>、<code>duration_ms</code> 七列，并新增 <code>task_checkpoints</code> 表。从 1.0.x 升级不需要手工执行迁移：</p>
+<ul>
+<li>打开已有 SQLite 文件时，启动流程逐条 <code>ALTER TABLE ADD COLUMN</code> 补齐缺失列，缺失的 <code>task_checkpoints</code> 表会自动创建；</li>
+<li>1.1.1 新增 <code>TaskRepository.ensure_ready()</code>，<code>TaskPool.start()</code> 在 schema 就绪后才返回，避免启动瞬间查询缺列；</li>
+<li>多个仓储或进程同时打开同一个老库时，重复补列按幂等处理，不再因 <code>duplicate column name</code> 崩溃；其它错误仍会抛出。</li>
+</ul>
+<p>自动升级只做“新增列 + 默认值”，不搬运数据，也不替代跨后端迁移脚本。升级前仍建议备份 SQLite 文件；新列在旧记录上按默认值读取，无需回填。</p>
 
 <h2>清理</h2>
 <p>1.0.8 默认启用终态清理：每 <code>terminal_cleanup_interval</code>（默认 60 秒）扫描一次，删除超过保留期的 <code>success</code> / <code>failed</code> / <code>cancelled</code> 记录。保留期由 <code>terminal_retention_seconds</code> 决定，0 表示沿用任务自身 <code>ttl</code>（默认 3600 秒）。</p>
@@ -86,4 +99,4 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 # 手动触发一次清理，返回删除数量
 pool.cleanup_terminal_tasks()</code></pre>
 
-<p>任务级 <code>ttl</code> 同时用于回收器判断 <code>running</code> 超时，因此它既影响故障回收，也影响默认的终态保留时长。需要长期保留审计记录时，应关闭自动清理或设置更大的 <code>terminal_retention_seconds</code>，并自行归档。死信队列仍按 <code>dead_letter_ttl</code>（默认 7 天）过期，不受终态清理影响。</p>
+<p>任务级 <code>ttl</code> 同时用于回收器判断 <code>running</code> 超时，因此它既影响故障回收，也影响默认的终态保留时长。需要长期保留审计记录时，应关闭自动清理或设置更大的 <code>terminal_retention_seconds</code>，并自行归档。被清理任务的 checkpoint 会一并删除；死信队列仍按 <code>dead_letter_ttl</code>（默认 7 天）过期，不受终态清理影响。</p>

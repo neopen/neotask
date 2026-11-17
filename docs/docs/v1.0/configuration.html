@@ -21,7 +21,7 @@
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="配置参考 · NeoTask 文档">
   <meta property="article:published_time" content="2026-10-29">
-  <meta property="article:modified_time" content="2026-11-11">
+  <meta property="article:modified_time" content="2026-11-17">
   <meta property="article:section" content="开始使用">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="配置参考 · NeoTask v1.0 文档">
@@ -50,7 +50,7 @@
         "mainEntityOfPage": "https://task.helpenx.com/docs/v1.0/configuration.html",
         "inLanguage": "zh-CN",
         "datePublished": "2026-10-29",
-        "dateModified": "2026-11-11",
+        "dateModified": "2026-11-17",
         "articleSection": "开始使用",
         "keywords": "配置参考, 配置参考 教程, 配置参考 文档, 开始使用, NeoTask v1.0 文档, NeoTask 1.x, Python 任务队列",
         "author": {
@@ -129,7 +129,7 @@
         <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
       </svg>
       <span class="brand-name">NeoTask</span>
-      <span class="brand-version">v1.0.8</span>
+      <span class="brand-version">v1.1.1</span>
     </a>
 
     <nav class="site-nav" id="siteNav" aria-label="主导航">
@@ -186,6 +186,7 @@
         <p class="docs-nav-label">核心概念</p>
         <a class="docs-nav-link" href="/docs/v1.0/architecture.html" data-search="架构概览 TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。">架构概览</a>
         <a class="docs-nav-link" href="/docs/v1.0/task-lifecycle.html" data-search="任务生命周期 任务从提交到终态的状态流转、事件回调与结果获取方式。">任务生命周期</a>
+        <a class="docs-nav-link" href="/docs/v1.0/task-context.html" data-search="任务关联与共享上下文 父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。">任务关联与共享上下文</a>
         <a class="docs-nav-link" href="/docs/v1.0/priority-queue.html" data-search="优先级队列 四级优先级的排序规则、同级 FIFO 边界与批量提交行为。">优先级队列</a>
         <a class="docs-nav-link" href="/docs/v1.0/delayed-tasks.html" data-search="延时与周期任务 延时、指定时间、固定间隔与 Cron 任务的提交、管理和错过策略。">延时与周期任务</a>
         <a class="docs-nav-link" href="/docs/v1.0/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。">持久化存储</a>
@@ -193,19 +194,21 @@
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">可靠性</p>
-        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/checkpoint.html" data-search="断点续跑 保存任务中间状态，并在自动重试、手动重试或显式提交时从最近 checkpoint 恢复。">断点续跑</a>
+        <a class="docs-nav-link" href="/docs/v1.0/cost-tracking.html" data-search="成本与耗时 上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">成本与耗时</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
         <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
         <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
-        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">API 参考</a>
         <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">性能基准</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       <p class="docs-nav-empty" id="docsNavEmpty" hidden>没有匹配的文档</p>
@@ -238,6 +241,7 @@
         <p class="docs-nav-label">核心概念</p>
         <a class="docs-nav-link" href="/docs/v1.0/architecture.html" data-search="架构概览 TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。">架构概览</a>
         <a class="docs-nav-link" href="/docs/v1.0/task-lifecycle.html" data-search="任务生命周期 任务从提交到终态的状态流转、事件回调与结果获取方式。">任务生命周期</a>
+        <a class="docs-nav-link" href="/docs/v1.0/task-context.html" data-search="任务关联与共享上下文 父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。">任务关联与共享上下文</a>
         <a class="docs-nav-link" href="/docs/v1.0/priority-queue.html" data-search="优先级队列 四级优先级的排序规则、同级 FIFO 边界与批量提交行为。">优先级队列</a>
         <a class="docs-nav-link" href="/docs/v1.0/delayed-tasks.html" data-search="延时与周期任务 延时、指定时间、固定间隔与 Cron 任务的提交、管理和错过策略。">延时与周期任务</a>
         <a class="docs-nav-link" href="/docs/v1.0/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。">持久化存储</a>
@@ -245,19 +249,21 @@
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">可靠性</p>
-        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/checkpoint.html" data-search="断点续跑 保存任务中间状态，并在自动重试、手动重试或显式提交时从最近 checkpoint 恢复。">断点续跑</a>
+        <a class="docs-nav-link" href="/docs/v1.0/cost-tracking.html" data-search="成本与耗时 上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">成本与耗时</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
         <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
         <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
-        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">API 参考</a>
         <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">性能基准</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       
@@ -270,7 +276,7 @@
           <div class="article-meta">
             <span class="article-version">v1.0 · NeoTask 1.x</span>
             <span class="dot"></span>
-            <span>更新于 2026-11-11</span>
+            <span>更新于 2026-11-17</span>
             <span class="dot"></span>
             <span>约 10 分钟 读完</span>
             <span class="dot"></span>
@@ -316,6 +322,8 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 <tr><td><code>enable_reporter</code></td><td><code>False</code></td><td>每 60 秒输出一次控制台指标摘要</td></tr>
 <tr><td><code>max_retries</code></td><td><code>3</code></td><td>失败后的自动重试次数</td></tr>
 <tr><td><code>retry_delay</code></td><td><code>1.0</code></td><td>重试延迟基数；第 n 次重试延迟为 <code>retry_delay × n</code></td></tr>
+<tr><td><code>enable_checkpoint</code></td><td><code>True</code></td><td>启用断点续跑；关闭后 checkpoint 仓储不创建，相关 API 返回 0 / <code>False</code></td></tr>
+<tr><td><code>checkpoint_keep_versions</code></td><td><code>5</code></td><td>单个任务保留的 checkpoint 版本数；0 表示不保留</td></tr>
 <tr><td><code>enable_prefetch</code></td><td><code>True</code></td><td>启用批量预取</td></tr>
 <tr><td><code>prefetch_min_threshold</code></td><td><code>5</code></td><td>当前版本未生效，阈值由 <code>prefetch_size</code> 推导</td></tr>
 <tr><td><code>enable_terminal_cleanup</code></td><td><code>True</code></td><td>周期清理成功、失败与取消的终态任务</td></tr>
@@ -344,6 +352,7 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 <tr><td><code>sqlite_path</code> / <code>redis_url</code></td><td>同 TaskPoolConfig</td><td>存储连接参数</td></tr>
 <tr><td><code>worker_concurrency</code></td><td><code>10</code></td><td>同时执行的任务数</td></tr>
 <tr><td><code>max_retries</code> / <code>retry_delay</code></td><td><code>3</code> / <code>1.0</code></td><td>失败重试策略</td></tr>
+<tr><td><code>enable_checkpoint</code> / <code>checkpoint_keep_versions</code></td><td><code>True</code> / <code>5</code></td><td>断点续跑开关与版本保留数，传入内部 TaskPool</td></tr>
 <tr><td><code>event_queue_max_size</code> / <code>event_overflow_policy</code></td><td><code>None</code> / <code>"drop"</code></td><td>与 TaskPoolConfig 相同，传入内部 TaskPool</td></tr>
 <tr><td><code>event_slow_handler_threshold</code></td><td><code>1.0</code></td><td>慢事件回调告警阈值（秒）</td></tr>
 <tr><td><code>enable_persistence</code></td><td><code>True</code></td><td>周期任务写入 SQLite / Redis，重启后可恢复</td></tr>
@@ -357,7 +366,7 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 </tbody>
 </table>
 
-<div class="doc-warning"><strong>配置只部分向下传递：</strong><code>TaskScheduler</code> 会把存储、<code>worker_concurrency</code>、重试、进度写回、缓存上限、停机延时处理与事件总线字段传给内部 <code>TaskPool</code>，并根据存储类型设置锁类型。预取、监控、<code>task_timeout</code>、队列容量、死信等参数仍需直接构造 <code>TaskPool</code> 或修改底层配置；<code>SchedulerConfig</code> 当前没有暴露这些字段。</div>
+<div class="doc-warning"><strong>配置只部分向下传递：</strong><code>TaskScheduler</code> 会把存储、<code>worker_concurrency</code>、重试、checkpoint、进度写回、缓存上限、停机延时处理与事件总线字段传给内部 <code>TaskPool</code>，并根据存储类型设置锁类型。预取、监控、<code>task_timeout</code>、队列容量、死信等参数仍需直接构造 <code>TaskPool</code> 或修改底层配置；<code>SchedulerConfig</code> 当前没有暴露这些字段。</div>
 
 <h2 id="常用档位">常用档位</h2>
 <table>
@@ -400,7 +409,7 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
           <span class="brand-name">NeoTask</span>
         </a>
         <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
-        <div class="footer-status"><span class="status-dot"></span> v1.0.8 · 发布于 2026-11-11</div>
+        <div class="footer-status"><span class="status-dot"></span> v1.1.1 · 发布于 2026-11-15</div>
       </div>
 
       <div class="footer-col">

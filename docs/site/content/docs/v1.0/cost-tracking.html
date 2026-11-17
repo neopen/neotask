@@ -1,0 +1,89 @@
+<p>1.1 起，任务记录会保存执行耗时与业务成本。耗时由 NeoTask 自动计算；成本需要执行器主动上报 token、API 调用次数与预估费用。NeoTask 只做累加与查询，不负责定价、计费或对账。</p>
+
+<h2>自动耗时字段</h2>
+<table>
+<thead><tr><th>字段</th><th>计算方式</th><th>何时写入</th></tr></thead>
+<tbody>
+<tr><td><code>queue_wait_ms</code></td><td><code>started_at - created_at</code></td><td>任务开始执行时</td></tr>
+<tr><td><code>duration_ms</code></td><td><code>completed_at - started_at</code></td><td>进入终态时</td></tr>
+</tbody>
+</table>
+
+<p>两个字段出现在 <code>get_result()</code> 与 <code>get_task()</code> 的返回中。任务重试时计时会重新开始，旧一轮的数值被覆盖；成本则相反，历次执行的消耗都会累加。</p>
+
+<h2>上报成本</h2>
+<pre><code class="language-python">from neotask import report_cost
+
+async def llm_task(data):
+    response = await call_model(data["prompt"])
+    report_cost(
+        tokens_in=120,
+        tokens_out=48,
+        api_calls=1,
+        estimated_cost=0.0012,
+        currency="USD",
+    )
+    return {"text": response}</code></pre>
+
+<p><code>report_cost()</code> 是同步函数，在异步任务与线程执行的同步任务中都可直接调用，不需要 <code>await</code>。进程执行器拿不到该上下文，改为在父进程调用 <code>pool.report_cost(task_id, ...)</code>。</p>
+
+<table>
+<thead><tr><th>参数</th><th>默认值</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>tokens_in</code> / <code>tokens_out</code></td><td><code>0</code></td><td>输入与输出 token 数，累加</td></tr>
+<tr><td><code>api_calls</code></td><td><code>0</code></td><td>外部 API 调用次数，累加</td></tr>
+<tr><td><code>estimated_cost</code></td><td><code>None</code></td><td>本次费用金额；<code>None</code> 时只累加其它字段</td></tr>
+<tr><td><code>currency</code></td><td><code>None</code></td><td>币种标识，如 <code>USD</code></td></tr>
+</tbody>
+</table>
+
+<ul>
+<li>多次上报按字段累加，任务记录中的 <code>estimated_cost</code> 是总额，<code>cost_tracking</code> 保存明细与币种。</li>
+<li>币种以首次上报为准；同一任务内出现不同币种时标记为 <code>MIXED</code>，避免把不同币种金额静默相加。</li>
+<li>终态任务仍接受追加成本，适合父进程在子任务结束后才拿到用量数据的场景。</li>
+<li>执行器内上报返回 <code>bool</code>；不在任务上下文中（如进程执行器）返回 <code>False</code>。</li>
+</ul>
+
+<h2>聚合查询</h2>
+<pre><code class="language-python">summary = pool.get_cost_summary(child_ids)
+print(summary)
+# {
+#   "task_count": 20, "tasks_with_cost": 18,
+#   "tokens_in": 2400, "tokens_out": 960,
+#   "api_calls": 20, "estimated_cost": 0.024, "currency": "USD"
+# }
+
+total = pool.get_cost_summary()   # task_ids=None 时聚合全部任务</code></pre>
+
+<table>
+<thead><tr><th>字段</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>task_count</code></td><td>参与聚合的任务数</td></tr>
+<tr><td><code>tasks_with_cost</code></td><td>至少有一条成本记录的任务数</td></tr>
+<tr><td><code>tokens_in</code> / <code>tokens_out</code> / <code>api_calls</code></td><td>明细累加值</td></tr>
+<tr><td><code>estimated_cost</code></td><td>金额累加值；浮点数，不适用于财务结算</td></tr>
+<tr><td><code>currency</code></td><td>唯一币种、空字符串或 <code>MIXED</code></td></tr>
+</tbody>
+</table>
+
+<p>聚合在存储层完成，不需要把任务记录逐个读入进程。<code>task_ids</code> 中不存在的 ID 会被忽略，不会报错。</p>
+
+<h2>成本事件</h2>
+<pre><code class="language-python">async def on_cost(event):
+    print(event.task_id, event.data)
+    # {"tokens_in": 120, "tokens_out": 48, "api_calls": 1,
+    #  "estimated_cost": 0.0012, "currency": "USD"}
+
+pool.event_bus.subscribe("task.cost_reported", on_cost)</code></pre>
+
+<p><code>task.cost_reported</code> 的负载是<strong>本次上报</strong>的明细，不是累计值。<code>event.data</code> 中只有本次传入的字段，未传 <code>currency</code> 时不含该键。该事件没有专用便捷方法，使用 <code>event_bus.subscribe()</code> 订阅。</p>
+
+<h2>边界</h2>
+<ul>
+<li>费用完全由调用方提供，NeoTask 不解析模型价格，也不校验金额单位。</li>
+<li>重试与人工重试产生的成本都会保留并累加；任务最终失败也不影响已记录的消耗。</li>
+<li>终态清理删除任务时会一并删除成本明细，需要长期成本报表时应定期聚合后外部归档。</li>
+<li>事件可能因有界队列丢弃而缺失，成本汇总请以 <code>get_cost_summary()</code> 的存储结果为准。</li>
+</ul>
+
+<div class="doc-note"><strong>相关页面：</strong><a href="/docs/api-reference.html">API 参考</a> · <a href="/docs/task-context.html">任务关联与共享上下文</a> · <a href="/docs/monitoring.html">监控与健康检查</a> · <a href="/docs/task-lifecycle.html">任务生命周期</a></div>

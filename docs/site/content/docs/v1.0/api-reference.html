@@ -1,4 +1,4 @@
-<p>公开入口为 <code>TaskPool</code> 与 <code>TaskScheduler</code>。除特别标注外，每个同步方法都有一个同名的 <code>_async</code> 版本，参数与返回值一致。</p>
+<p>公开入口为 <code>TaskPool</code> 与 <code>TaskScheduler</code>。除特别标注外，每个同步方法都有一个同名的 <code>_async</code> 版本，参数与返回值一致。当前文档基线为 1.1.1，标注“1.1”的方法与事件为新增能力。</p>
 
 <pre><code class="language-python">from neotask import TaskPool, TaskScheduler, TaskPoolConfig, SchedulerConfig</code></pre>
 
@@ -12,9 +12,9 @@
 <tbody>
 <tr><td><code>start()</code></td><td>显式启动；首次提交也会自动启动</td></tr>
 <tr><td><code>shutdown(graceful=True, timeout=30)</code></td><td>停止接收新任务，等待队列清空后关闭</td></tr>
-<tr><td><code>submit(data, task_id=None, priority=NORMAL, delay=0, ttl=3600)</code></td><td>提交任务，返回任务 ID</td></tr>
-<tr><td><code>submit_batch(tasks, priority=NORMAL)</code></td><td>逐条提交任务列表，返回 ID 列表</td></tr>
-<tr><td><code>create_pending_task(data, task_id=None, priority=NORMAL, ttl=3600)</code></td><td>只创建记录，不入队</td></tr>
+<tr><td><code>submit(data, task_id=None, priority=NORMAL, delay=0, ttl=3600, parent_task_id=None, resume_from_checkpoint=False)</code></td><td>提交任务，返回任务 ID；<code>resume_from_checkpoint</code> 需配合显式 <code>task_id</code></td></tr>
+<tr><td><code>submit_batch(tasks, priority=NORMAL, ttl=3600, partial_on_error=False)</code></td><td>逐条提交任务列表，返回 ID 列表；不支持父子关联参数</td></tr>
+<tr><td><code>create_pending_task(data, task_id=None, priority=NORMAL, ttl=3600, resume_from_checkpoint=False)</code></td><td>只创建记录，不入队</td></tr>
 <tr><td><code>enqueue_task(task_id)</code></td><td>把 <code>pending</code> 任务入队；非 <code>pending</code> 返回 <code>False</code></td></tr>
 </tbody>
 </table>
@@ -44,6 +44,40 @@
 <tr><td><code>clear_queue()</code></td><td>清空队列；不修改已创建的任务记录</td></tr>
 </tbody>
 </table>
+
+<h3>断点续跑（1.1）</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>save_checkpoint(task_id, state)</code></td><td>保存完整状态快照，返回新版本号；任务不存在或未启用时返回 <code>0</code></td></tr>
+<tr><td><code>load_checkpoint(task_id)</code></td><td>读取最近一次 checkpoint；没有或未启用时返回 <code>None</code></td></tr>
+</tbody>
+</table>
+<p>执行器内部使用模块级函数：异步任务用 <code>await save_checkpoint(state)</code> / <code>await load_checkpoint()</code>，线程任务用 <code>save_checkpoint_sync()</code> / <code>load_checkpoint_sync()</code>；进程执行器由父进程调用上表方法。详见 <a href="/docs/checkpoint.html">断点续跑</a>。</p>
+
+<h3>成本、失败与关联（1.1）</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>get_children(task_id)</code></td><td>按 <code>parent_task_id</code> 返回子任务 ID 列表，创建时间升序</td></tr>
+<tr><td><code>get_parent(task_id)</code></td><td>返回父任务 ID，没有时返回 <code>None</code></td></tr>
+<tr><td><code>report_failure(task_id, reason, detail="")</code></td><td>外部终结业务失败任务；仅 <code>running</code> 状态生效，不进入自动重试</td></tr>
+<tr><td><code>report_cost(task_id, tokens_in=0, tokens_out=0, api_calls=0, estimated_cost=None, currency=None)</code></td><td>累加任务成本；终态任务也可追加</td></tr>
+<tr><td><code>get_cost_summary(task_ids=None)</code></td><td>聚合成本，返回任务数、token、API 次数、金额与币种；<code>None</code> 表示全部任务</td></tr>
+</tbody>
+</table>
+<p>执行器内部使用 <code>report_failure(reason, detail)</code> 与 <code>report_cost(...)</code>，两者都是同步函数。详见 <a href="/docs/failure-recovery.html">故障恢复</a> 与 <a href="/docs/cost-tracking.html">成本与耗时</a>。</p>
+
+<h3>Blackboard（1.1，仅 memory）</h3>
+<table>
+<thead><tr><th>方法</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>context_set(key, value, ttl=None)</code></td><td>写入进程内共享上下文；<code>ttl</code> 为秒，<code>None</code> 表示不过期</td></tr>
+<tr><td><code>context_get(key)</code></td><td>读取；不存在或过期返回 <code>None</code></td></tr>
+<tr><td><code>context_delete(key)</code></td><td>删除；返回是否命中</td></tr>
+</tbody>
+</table>
+<p>非 memory 后端调用时抛 <code>UnsupportedFeatureError</code>。作用域为当前 <code>TaskPool</code> 实例，不跨进程、不持久化。详见 <a href="/docs/task-context.html">任务关联与共享上下文</a>。</p>
 
 <h3>统计与健康</h3>
 <table>
@@ -79,8 +113,11 @@
 <tr><td><code>on_cancelled(handler)</code></td><td><code>task.cancelled</code></td></tr>
 <tr><td><code>on_progress(handler)</code></td><td><code>task.progress</code></td></tr>
 <tr><td><code>on_reclaimed(handler)</code></td><td><code>task.reclaimed</code></td></tr>
+<tr><td><code>event_bus.subscribe("task.checkpointed", handler)</code></td><td><code>task.checkpointed</code>（1.1），<code>data</code> 为 <code>{"version": n}</code></td></tr>
+<tr><td><code>event_bus.subscribe("task.cost_reported", handler)</code></td><td><code>task.cost_reported</code>（1.1），<code>data</code> 为本次上报明细</td></tr>
 </tbody>
 </table>
+<p>1.1 新增的两个事件没有 <code>on_*</code> 便捷方法，只能通过 <code>event_bus.subscribe()</code> 订阅。</p>
 
 <h2>TaskScheduler</h2>
 <pre><code class="language-python">TaskScheduler(executor=None, config=None)</code></pre>
@@ -120,6 +157,10 @@
 <tr><td><code>get_stats</code> / <code>get_queue_size</code> / <code>get_health_status</code></td><td>汇总周期与时间轮统计</td></tr>
 <tr><td><code>event_bus</code></td><td>返回内部 TaskPool 的 EventBus</td></tr>
 <tr><td><code>pause</code> / <code>resume</code> / <code>clear_queue</code></td><td>同 TaskPool</td></tr>
+<tr><td><code>get_children</code> / <code>get_parent</code></td><td>同 TaskPool</td></tr>
+<tr><td><code>report_failure</code> / <code>report_cost</code> / <code>get_cost_summary</code></td><td>同 TaskPool</td></tr>
+<tr><td><code>save_checkpoint</code> / <code>load_checkpoint</code></td><td>同 TaskPool</td></tr>
+<tr><td><code>context_set</code> / <code>context_get</code> / <code>context_delete</code></td><td>同 TaskPool；仅 memory 后端</td></tr>
 <tr><td><code>on_created</code> 等 6 个回调</td><td>同 TaskPool；无 <code>on_reclaimed</code></td></tr>
 </tbody>
 </table>
@@ -132,6 +173,11 @@
 <tr><td><code>wait_for_result</code></td><td>执行器返回值</td><td>抛异常；超时抛 <code>TimeoutError</code></td></tr>
 <tr><td><code>get_status</code> / <code>get_result</code> / <code>get_task</code></td><td>对应数据</td><td><code>None</code></td></tr>
 <tr><td><code>cancel</code> / <code>retry</code> / <code>delete</code></td><td><code>True</code></td><td><code>False</code></td></tr>
+<tr><td><code>save_checkpoint</code></td><td>新版本号</td><td><code>0</code>（任务不存在或未启用）</td></tr>
+<tr><td><code>load_checkpoint</code></td><td>状态字典</td><td><code>None</code></td></tr>
+<tr><td><code>report_failure</code> / <code>report_cost</code></td><td><code>True</code></td><td><code>False</code>（状态不符或任务不存在）</td></tr>
+<tr><td><code>get_children</code> / <code>get_parent</code></td><td>ID 列表 / 父 ID</td><td>空列表 / <code>None</code></td></tr>
+<tr><td><code>get_cost_summary</code></td><td>聚合字典</td><td>零值字典（未知 ID 被忽略）</td></tr>
 </tbody>
 </table>
 
@@ -141,9 +187,10 @@
 <tbody>
 <tr><td><code>TaskSchedulerError</code></td><td>所有异常的基类</td></tr>
 <tr><td><code>TaskNotFoundError</code></td><td>等待不存在的任务</td></tr>
-<tr><td><code>TaskAlreadyExistsError</code></td><td>使用已存在的 <code>task_id</code> 提交</td></tr>
+<tr><td><code>TaskAlreadyExistsError</code></td><td>使用已存在的 <code>task_id</code> 提交，包括任务已进入终态</td></tr>
 <tr><td><code>QueueFullError</code></td><td>队列达到 <code>queue_max_size</code></td></tr>
 <tr><td><code>TimeoutError</code></td><td><code>wait_for_result</code> 超时</td></tr>
+<tr><td><code>UnsupportedFeatureError</code></td><td>当前存储后端不支持该能力，例如非 memory 后端调用 Blackboard</td></tr>
 <tr><td><code>TaskError</code></td><td>已定义但当前版本未使用</td></tr>
 </tbody>
 </table>
@@ -170,4 +217,5 @@ neotask --benchmark --tasks 2000 --concurrency 10 --json</code></pre>
 <p>代码内可调用 <code>run_benchmark()</code> / <code>run_benchmark_async()</code>，返回 <code>BenchmarkResult</code>；基准默认关闭健康检查、指标与 Reporter。</p>
 
 <h2>其他导出</h2>
-<p><code>neotask</code> 还导出执行器、存储、队列、锁、监控与分布式组件：<code>AsyncExecutor</code>、<code>ThreadExecutor</code>、<code>ProcessExecutor</code>、<code>MemoryTaskRepository</code>、<code>SQLiteTaskRepository</code>、<code>RedisTaskRepository</code>、<code>PriorityQueue</code>、<code>DelayedQueue</code>、<code>MemoryLock</code>、<code>RedisLock</code>、<code>WatchDog</code>、<code>MetricsCollector</code>、<code>HealthChecker</code>、<code>NodeManager</code>、<code>Coordinator</code> 等。完整列表见 <code>neotask.__all__</code>。</p>
+<p><code>neotask</code> 还导出执行器、存储、队列、锁、监控与分布式组件：<code>AsyncExecutor</code>、<code>ThreadExecutor</code>、<code>ProcessExecutor</code>、<code>MemoryTaskRepository</code>、<code>SQLiteTaskRepository</code>、<code>RedisTaskRepository</code>、<code>MemoryCheckpointRepository</code>、<code>SQLiteCheckpointRepository</code>、<code>RedisCheckpointRepository</code>、<code>PriorityQueue</code>、<code>DelayedQueue</code>、<code>MemoryLock</code>、<code>RedisLock</code>、<code>WatchDog</code>、<code>MetricsCollector</code>、<code>HealthChecker</code>、<code>NodeManager</code>、<code>Coordinator</code> 等。</p>
+<p>1.1 新增的执行器内函数 <code>report_failure</code>、<code>report_cost</code>、<code>save_checkpoint</code>、<code>load_checkpoint</code> 与同步版本 <code>save_checkpoint_sync</code>、<code>load_checkpoint_sync</code> 也直接导出。完整列表见 <code>neotask.__all__</code>。</p>

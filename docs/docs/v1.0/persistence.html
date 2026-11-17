@@ -21,7 +21,7 @@
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="持久化存储 · NeoTask 文档">
   <meta property="article:published_time" content="2026-10-29">
-  <meta property="article:modified_time" content="2026-11-11">
+  <meta property="article:modified_time" content="2026-11-17">
   <meta property="article:section" content="核心概念">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="持久化存储 · NeoTask v1.0 文档">
@@ -50,7 +50,7 @@
         "mainEntityOfPage": "https://task.helpenx.com/docs/v1.0/persistence.html",
         "inLanguage": "zh-CN",
         "datePublished": "2026-10-29",
-        "dateModified": "2026-11-11",
+        "dateModified": "2026-11-17",
         "articleSection": "核心概念",
         "keywords": "持久化存储, 持久化存储 教程, 持久化存储 文档, 核心概念, NeoTask v1.0 文档, NeoTask 1.x, Python 任务队列",
         "author": {
@@ -129,7 +129,7 @@
         <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
       </svg>
       <span class="brand-name">NeoTask</span>
-      <span class="brand-version">v1.0.8</span>
+      <span class="brand-version">v1.1.1</span>
     </a>
 
     <nav class="site-nav" id="siteNav" aria-label="主导航">
@@ -186,6 +186,7 @@
         <p class="docs-nav-label">核心概念</p>
         <a class="docs-nav-link" href="/docs/v1.0/architecture.html" data-search="架构概览 TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。">架构概览</a>
         <a class="docs-nav-link" href="/docs/v1.0/task-lifecycle.html" data-search="任务生命周期 任务从提交到终态的状态流转、事件回调与结果获取方式。">任务生命周期</a>
+        <a class="docs-nav-link" href="/docs/v1.0/task-context.html" data-search="任务关联与共享上下文 父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。">任务关联与共享上下文</a>
         <a class="docs-nav-link" href="/docs/v1.0/priority-queue.html" data-search="优先级队列 四级优先级的排序规则、同级 FIFO 边界与批量提交行为。">优先级队列</a>
         <a class="docs-nav-link" href="/docs/v1.0/delayed-tasks.html" data-search="延时与周期任务 延时、指定时间、固定间隔与 Cron 任务的提交、管理和错过策略。">延时与周期任务</a>
         <a class="docs-nav-link is-active" href="/docs/v1.0/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。">持久化存储</a>
@@ -193,19 +194,21 @@
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">可靠性</p>
-        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/checkpoint.html" data-search="断点续跑 保存任务中间状态，并在自动重试、手动重试或显式提交时从最近 checkpoint 恢复。">断点续跑</a>
+        <a class="docs-nav-link" href="/docs/v1.0/cost-tracking.html" data-search="成本与耗时 上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">成本与耗时</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
         <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
         <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
-        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">API 参考</a>
         <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">性能基准</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       <p class="docs-nav-empty" id="docsNavEmpty" hidden>没有匹配的文档</p>
@@ -238,6 +241,7 @@
         <p class="docs-nav-label">核心概念</p>
         <a class="docs-nav-link" href="/docs/v1.0/architecture.html" data-search="架构概览 TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。">架构概览</a>
         <a class="docs-nav-link" href="/docs/v1.0/task-lifecycle.html" data-search="任务生命周期 任务从提交到终态的状态流转、事件回调与结果获取方式。">任务生命周期</a>
+        <a class="docs-nav-link" href="/docs/v1.0/task-context.html" data-search="任务关联与共享上下文 父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。">任务关联与共享上下文</a>
         <a class="docs-nav-link" href="/docs/v1.0/priority-queue.html" data-search="优先级队列 四级优先级的排序规则、同级 FIFO 边界与批量提交行为。">优先级队列</a>
         <a class="docs-nav-link" href="/docs/v1.0/delayed-tasks.html" data-search="延时与周期任务 延时、指定时间、固定间隔与 Cron 任务的提交、管理和错过策略。">延时与周期任务</a>
         <a class="docs-nav-link is-active" href="/docs/v1.0/persistence.html" data-search="持久化存储 Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。">持久化存储</a>
@@ -245,19 +249,21 @@
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">可靠性</p>
-        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，以及死信队列的使用方式。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/failure-recovery.html" data-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。">故障恢复</a>
+        <a class="docs-nav-link" href="/docs/v1.0/checkpoint.html" data-search="断点续跑 保存任务中间状态，并在自动重试、手动重试或显式提交时从最近 checkpoint 恢复。">断点续跑</a>
+        <a class="docs-nav-link" href="/docs/v1.0/cost-tracking.html" data-search="成本与耗时 上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">成本与耗时</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
         <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
         <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
-        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">API 参考</a>
         <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">性能基准</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.0 能力边界，以及 v1.1–v1.3 的本地能力、性能与轻量监控规划；DAG 编排由上层服务 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       
@@ -270,7 +276,7 @@
           <div class="article-meta">
             <span class="article-version">v1.0 · NeoTask 1.x</span>
             <span class="dot"></span>
-            <span>更新于 2026-11-11</span>
+            <span>更新于 2026-11-17</span>
             <span class="dot"></span>
             <span>约 7 分钟 读完</span>
             <span class="dot"></span>
@@ -297,18 +303,19 @@
 <pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
 
 pool = TaskPool(executor=handle, config=TaskPoolConfig.memory())</code></pre>
-<p>任务、队列、周期定义都只存在当前进程。进程退出后全部丢失，也不会创建心跳、回收器或死信队列。</p>
+<p>任务、队列、周期定义都只存在当前进程。进程退出后全部丢失，也不会创建心跳、回收器或死信队列。Blackboard 共享上下文仅在此后端可用，同样不持久化。</p>
 
 <h2 id="SQLite">SQLite</h2>
 <pre><code class="language-python">config = TaskPoolConfig.sqlite("/var/lib/neotask/neotask.db")
 pool = TaskPool(executor=handle, config=config)</code></pre>
 
-<p>数据库包含三组表：</p>
+<p>数据库包含四组表：</p>
 <table>
 <thead><tr><th>表</th><th>内容</th></tr></thead>
 <tbody>
-<tr><td><code>tasks</code></td><td>任务数据、状态、优先级、节点、重试次数、结果、进度</td></tr>
+<tr><td><code>tasks</code></td><td>任务数据、状态、优先级、节点、重试次数、结果、进度、失败原因、父子关联、成本与耗时</td></tr>
 <tr><td><code>queue</code></td><td>待执行任务的 ID、优先级、入队时间</td></tr>
+<tr><td><code>task_checkpoints</code></td><td>断点续跑状态，按 <code>(task_id, version)</code> 保存</td></tr>
 <tr><td><code>periodic_tasks</code> / <code>periodic_executions</code></td><td>周期任务定义与执行记录（启用持久化时）</td></tr>
 </tbody>
 </table>
@@ -329,6 +336,7 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 <thead><tr><th>键</th><th>类型</th><th>用途</th></tr></thead>
 <tbody>
 <tr><td><code>task:{task_id}</code></td><td>String / JSON</td><td>任务记录</td></tr>
+<tr><td><code>neotask:ckpt:{task_id}</code></td><td>Hash</td><td>checkpoint 版本，field 为版本号</td></tr>
 <tr><td><code>queue:priority</code></td><td>ZSET</td><td>优先队列，score 为优先级</td></tr>
 <tr><td><code>queue:delayed</code></td><td>ZSET</td><td>仓储层延时索引</td></tr>
 <tr><td><code>lock:task:{task_id}</code></td><td>String</td><td>任务级互斥锁</td></tr>
@@ -349,10 +357,21 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 <tr><td>任务记录与结果</td><td>是（SQLite / Redis）</td><td>写入后跨重启保留；终态记录会按保留期清理</td></tr>
 <tr><td>优先队列</td><td>是（SQLite / Redis）</td><td>未出队任务可恢复</td></tr>
 <tr><td>周期任务定义</td><td>是（需启用持久化）</td><td>memory 模式除外</td></tr>
+<tr><td>Checkpoint</td><td>是（SQLite / Redis）</td><td>memory 仅进程内；任务删除或终态清理时一并删除</td></tr>
+<tr><td>Blackboard 上下文</td><td>否</td><td>仅 memory 后端提供，进程退出即丢失</td></tr>
 <tr><td>延时堆 / 时间轮</td><td>否</td><td>仅进程内，重启后等待中的任务不会自动入队</td></tr>
 <tr><td>指标、事件、进度回调</td><td>否</td><td>运行时数据</td></tr>
 </tbody>
 </table>
+
+<h2 id="老库自动升级（1.1）">老库自动升级（1.1）</h2>
+<p>1.1.0 为任务记录新增 <code>failure_reason</code>、<code>checkpoint_version</code>、<code>parent_task_id</code>、<code>estimated_cost</code>、<code>cost_tracking</code>、<code>queue_wait_ms</code>、<code>duration_ms</code> 七列，并新增 <code>task_checkpoints</code> 表。从 1.0.x 升级不需要手工执行迁移：</p>
+<ul>
+<li>打开已有 SQLite 文件时，启动流程逐条 <code>ALTER TABLE ADD COLUMN</code> 补齐缺失列，缺失的 <code>task_checkpoints</code> 表会自动创建；</li>
+<li>1.1.1 新增 <code>TaskRepository.ensure_ready()</code>，<code>TaskPool.start()</code> 在 schema 就绪后才返回，避免启动瞬间查询缺列；</li>
+<li>多个仓储或进程同时打开同一个老库时，重复补列按幂等处理，不再因 <code>duplicate column name</code> 崩溃；其它错误仍会抛出。</li>
+</ul>
+<p>自动升级只做“新增列 + 默认值”，不搬运数据，也不替代跨后端迁移脚本。升级前仍建议备份 SQLite 文件；新列在旧记录上按默认值读取，无需回填。</p>
 
 <h2 id="清理">清理</h2>
 <p>1.0.8 默认启用终态清理：每 <code>terminal_cleanup_interval</code>（默认 60 秒）扫描一次，删除超过保留期的 <code>success</code> / <code>failed</code> / <code>cancelled</code> 记录。保留期由 <code>terminal_retention_seconds</code> 决定，0 表示沿用任务自身 <code>ttl</code>（默认 3600 秒）。</p>
@@ -366,7 +385,7 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 # 手动触发一次清理，返回删除数量
 pool.cleanup_terminal_tasks()</code></pre>
 
-<p>任务级 <code>ttl</code> 同时用于回收器判断 <code>running</code> 超时，因此它既影响故障回收，也影响默认的终态保留时长。需要长期保留审计记录时，应关闭自动清理或设置更大的 <code>terminal_retention_seconds</code>，并自行归档。死信队列仍按 <code>dead_letter_ttl</code>（默认 7 天）过期，不受终态清理影响。</p>
+<p>任务级 <code>ttl</code> 同时用于回收器判断 <code>running</code> 超时，因此它既影响故障回收，也影响默认的终态保留时长。需要长期保留审计记录时，应关闭自动清理或设置更大的 <code>terminal_retention_seconds</code>，并自行归档。被清理任务的 checkpoint 会一并删除；死信队列仍按 <code>dead_letter_ttl</code>（默认 7 天）过期，不受终态清理影响。</p>
 
         </div>
         <footer class="article-foot">
@@ -379,7 +398,7 @@ pool.cleanup_terminal_tasks()</code></pre>
     </nav>
       <p class="docs-feedback">发现文档问题？欢迎在 <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">GitHub Issues</a> 反馈。</p>
     </main>
-    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#%E5%AF%B9%E6%AF%94">对比</a><a href="#memory">memory</a><a href="#SQLite">SQLite</a><a href="#Redis">Redis</a><a href="#%E5%AE%9E%E9%99%85%E6%8C%81%E4%B9%85%E5%8C%96%E8%8C%83%E5%9B%B4">实际持久化范围</a><a href="#%E6%B8%85%E7%90%86">清理</a></nav>
+    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#%E5%AF%B9%E6%AF%94">对比</a><a href="#memory">memory</a><a href="#SQLite">SQLite</a><a href="#Redis">Redis</a><a href="#%E5%AE%9E%E9%99%85%E6%8C%81%E4%B9%85%E5%8C%96%E8%8C%83%E5%9B%B4">实际持久化范围</a><a href="#%E8%80%81%E5%BA%93%E8%87%AA%E5%8A%A8%E5%8D%87%E7%BA%A7%EF%BC%881.1%EF%BC%89">老库自动升级（1.1）</a><a href="#%E6%B8%85%E7%90%86">清理</a></nav>
   </div>
   <footer class="site-footer">
   <div class="container">
@@ -394,7 +413,7 @@ pool.cleanup_terminal_tasks()</code></pre>
           <span class="brand-name">NeoTask</span>
         </a>
         <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
-        <div class="footer-status"><span class="status-dot"></span> v1.0.8 · 发布于 2026-11-11</div>
+        <div class="footer-status"><span class="status-dot"></span> v1.1.1 · 发布于 2026-11-15</div>
       </div>
 
       <div class="footer-col">

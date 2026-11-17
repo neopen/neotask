@@ -2,7 +2,7 @@
 
 <div class="doc-note"><strong>与 NeoFlow 的分工：</strong>NeoFlow 是 NeoTask 的上层 DAG 编排服务，负责工作流拆解、任务下发、事件监听与状态推进；NeoTask 负责任务的排队、执行、重试、持久化与回收。两层通过公开 API 与生命周期事件协作，可以独立部署和演进。</div>
 
-<h2>1.0 能力边界</h2>
+<h2>1.x 能力边界（基线 1.1.1）</h2>
 <table>
 <thead><tr><th>能力</th><th>状态</th><th>说明</th></tr></thead>
 <tbody>
@@ -11,6 +11,12 @@
 <tr><td>延时、固定间隔、Cron</td><td>已支持</td><td><code>TaskScheduler</code></td></tr>
 <tr><td>Memory / SQLite / Redis</td><td>已支持</td><td>Redis 支持多节点共享队列</td></tr>
 <tr><td>自动重试、超时、进度</td><td>已支持</td><td>重试为线性延迟</td></tr>
+<tr><td>断点续跑</td><td>已支持（1.1）</td><td><code>save_checkpoint()</code> / <code>load_checkpoint()</code>，自动与手动重试都会注入最近 checkpoint</td></tr>
+<tr><td>业务失败上报</td><td>已支持（1.1）</td><td><code>report_failure()</code>，记录 <code>failure_reason</code>，不进入自动重试</td></tr>
+<tr><td>成本与耗时采集</td><td>已支持（1.1）</td><td><code>report_cost()</code>、<code>get_cost_summary()</code> 与 <code>queue_wait_ms</code> / <code>duration_ms</code></td></tr>
+<tr><td>父子任务与外部 ID</td><td>已支持（1.1）</td><td><code>parent_task_id</code>、<code>get_children()</code> / <code>get_parent()</code>；只关联不汇总</td></tr>
+<tr><td>进程内共享上下文</td><td>已支持（1.1）</td><td>Blackboard 仅 memory 后端，不跨进程、不持久化</td></tr>
+<tr><td>SQLite 老库自动升级</td><td>已支持（1.1.1）</td><td>启动期补列与建表，并发补列幂等</td></tr>
 <tr><td>节点心跳、任务回收、死信</td><td>已支持（Redis）</td><td>死信无公开查询 API</td></tr>
 <tr><td>生命周期事件与背压</td><td>已支持</td><td>EventBus 异步投递，可配置队列上限与溢出策略</td></tr>
 <tr><td>终态任务自动清理</td><td>已支持</td><td>默认开启，保留期可配置</td></tr>
@@ -22,37 +28,41 @@
 </tbody>
 </table>
 
-<h2>1.0 上的替代方案</h2>
-<p>不在库内的能力通常可以由业务代码组合现有原语实现，或交给上层编排服务 NeoFlow；状态与失败处理需要自行承担。</p>
+<h2>1.x 上的替代方案</h2>
+<p>不在库内的能力通常可以由业务代码组合现有原语实现，或交给上层编排服务 NeoFlow；状态与失败处理需要自行承担。1.x 已内置 checkpoint、业务失败与成本采集，但都不提供跨任务编排语义。</p>
 <table>
 <thead><tr><th>需求</th><th>1.0 做法</th><th>需要自行处理</th></tr></thead>
 <tbody>
-<tr><td>串联多个任务</td><td>在任务完成事件或 <code>wait_for_result()</code> 返回后提交下一步</td><td>失败传播、超时、重复提交与断点恢复</td></tr>
+<tr><td>串联多个任务</td><td>用 <code>parent_task_id</code> 建立关联，在任务完成事件或 <code>wait_for_result()</code> 返回后提交下一步</td><td>依赖顺序、失败传播、超时与跨任务断点恢复</td></tr>
 <tr><td>条件分支</td><td>任务返回结构化结果，由业务层决定提交哪个后续任务</td><td>分支状态记录与失败补偿</td></tr>
-<tr><td>并行子任务</td><td><code>submit_batch()</code> + <code>wait_all()</code></td><td>部分失败时的清理与重试策略</td></tr>
+<tr><td>并行子任务</td><td><code>submit_batch()</code> 或逐条提交并设置 <code>parent_task_id</code>，再用 <code>wait_all()</code> 汇总</td><td>部分失败时的清理、重试与父子状态汇总</td></tr>
+<tr><td>业务判定不通过</td><td><code>report_failure()</code> 记录 <code>failure_reason</code> 并直接终结，跳过自动重试</td><td>原因码规范、补偿流程与人工复核</td></tr>
+<tr><td>长任务续跑</td><td>用 <code>save_checkpoint()</code> 保存进度，重试时读取 <code>data["__checkpoint__"]</code></td><td>业务步骤仍需幂等；memory 模式下 checkpoint 随进程退出丢失</td></tr>
 <tr><td>定时编排</td><td>用 <code>TaskScheduler</code> 分别定义周期任务</td><td>多实例重复触发；同一周期定义只应有一个调度者</td></tr>
 <tr><td>多租户</td><td>不在库内；由上层平台为每个租户部署独立 TaskPool 与存储</td><td>资源配额、统一鉴权与跨租户统计</td></tr>
 <tr><td>可视化管理</td><td>使用 <code>neotask[ui]</code> 查看任务与指标，或基于 <code>get_stats()</code> 自行构建</td><td>编排视图与运维后台交给上层服务</td></tr>
 </tbody>
 </table>
 
-<h2>v1.1：本地任务能力补全</h2>
+<h2>v1.1：本地任务能力补全（已交付）</h2>
+<p>1.1.0 于 2026-11-13 发布，1.1.1 于 2026-11-15 补齐老库自动升级的并发与启动期就绪问题。以下能力均已可用：</p>
 <ul>
-<li>Checkpoint 断点续跑：<code>save_checkpoint()</code> / <code>load_checkpoint()</code>，重试时从检查点恢复；</li>
+<li>Checkpoint 断点续跑：<code>save_checkpoint()</code> / <code>load_checkpoint()</code>，自动重试、手动重试与显式提交三条恢复路径；</li>
 <li>成本与耗时采集：<code>report_cost()</code>、<code>queue_wait_ms</code> / <code>duration_ms</code> 与 <code>get_cost_summary()</code>；</li>
-<li>父子任务关联：<code>parent_task_id</code>、<code>get_children()</code> / <code>get_parent()</code>，不做自动汇总；</li>
-<li>本地上下文读写（Blackboard）与自定义失败状态 <code>report_failure()</code>；</li>
-<li>补充 <code>task.checkpointed</code> / <code>task.cost_reported</code> 事件，支持外部指定 <code>task_id</code>。</li>
+<li>父子任务关联：<code>parent_task_id</code>、<code>get_children()</code> / <code>get_parent()</code>，只关联不汇总；</li>
+<li>本地上下文读写（Blackboard）与业务失败上报 <code>report_failure()</code>；</li>
+<li>补充 <code>task.checkpointed</code> / <code>task.cost_reported</code> 事件，支持外部指定 <code>task_id</code>；</li>
+<li>SQLite 老库在启动期自动补列与建表，无需手工迁移。</li>
 </ul>
+<p>具体语义见 <a href="/docs/checkpoint.html">断点续跑</a>、<a href="/docs/cost-tracking.html">成本与耗时</a>、<a href="/docs/task-context.html">任务关联与共享上下文</a> 与 <a href="/docs/failure-recovery.html">故障恢复</a>。</p>
 
 <h2>v1.2：性能优化与轻量监控</h2>
 <ul>
 <li>批量提交单事务写入、状态查询索引、调度开销优化与进度上报节流；</li>
-<li>SQLite WAL 与连接复用，减少每任务新建连接的开销；</li>
 <li>标准化 <code>get_metrics()</code> 快照与 <code>on_metrics()</code> 定时推送；</li>
-<li>轻量 UI 监控指标：展示状态计数、队列深度、最老 pending 等待、存储健康等，不建设独立编排后台；</li>
-<li><code>benchmarks/</code> 基准套件，发布前跑基准防止性能回退。</li>
+<li>轻量 UI 监控指标：展示状态计数、队列深度、最老 pending 等待、存储健康等，不建设独立编排后台。</li>
 </ul>
+<p>SQLite WAL、连接复用与 <code>neotask --benchmark</code> 已在 1.0.8 交付，不再列入 v1.2。</p>
 
 <h2>v1.3：监控导出与可靠性</h2>
 <ul>
@@ -76,11 +86,12 @@
 <li>保持任务幂等：上层编排重跑、故障恢复和人工重试都会再次执行任务。</li>
 <li>只依赖公开 API：不要直接读写 Redis 键或调用内部模块，存储结构可能随版本变化。</li>
 <li>记录当前配置：升级前保存 <code>TaskPoolConfig</code> 与 <code>SchedulerConfig</code>，发布后逐项对照新版配置参考。</li>
+<li>1.0.x → 1.1.x 无需手工迁移：启动期自动补列并创建 <code>task_checkpoints</code> 表；升级前仍建议备份 SQLite 文件。memory 模式下的 checkpoint 与 Blackboard 不持久化，重启即丢失。</li>
 <li>不要把规划项写进生产依赖，也不要在 1.x 上导入尚不存在的 <code>workflow</code> 模块。</li>
 </ul>
 
 <h2>版本与文档路径</h2>
-<p>1.x 只做兼容的功能增强与性能优化，不引入破坏性变更；大版本能力留到 2.0。文档目前规划两条线：<strong>1.0</strong> 覆盖整条 1.x，<strong>2.0</strong> 随 2.x 新增。</p>
+<p>1.x 只做兼容的功能增强与性能优化，不引入破坏性变更；大版本能力留到 2.0。文档目前规划两条线：<strong>1.0</strong> 覆盖整条 1.x（当前基线 1.1.1），<strong>2.0</strong> 随 2.x 新增。</p>
 <table>
 <thead><tr><th>库版本</th><th>文档路径</th><th>说明</th></tr></thead>
 <tbody>

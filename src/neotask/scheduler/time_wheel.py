@@ -27,6 +27,10 @@ class TimeWheelTask:
     data: Optional[Dict] = None
     round: int = 0
     execute_at: float = 0.0
+    # 单调时钟（perf_counter）截止时间，仅用于轮内判定。
+    # Windows 上 time.time() 只有 ~15.6ms 粒度，直接拿它做相位计算会让
+    # 槽位取整产生半个 tick 级的系统性偏差。
+    deadline: float = 0.0
 
 
 class TimeWheel:
@@ -73,7 +77,7 @@ class TimeWheel:
         """
         self._callback = callback
         self._running = True
-        self._next_tick_at = time.time()
+        self._next_tick_at = time.perf_counter()
         self._ticker_task = asyncio.create_task(self._ticker_loop())
 
     async def stop(self) -> None:
@@ -111,15 +115,16 @@ class TimeWheel:
             return 0
 
         execute_at = time.time() + delay
+        deadline = time.perf_counter() + delay
 
         with self._lock:
             # 按相位取最近的滴答槽位：下次滴答（k=0）处理 current_slot，之后
             # 每 tick 前进一格。向上取整在"刚好错过本 tick 几毫秒"时会多等
-            # 一整轮；取最近值把误差压到 ±半个 tick，执行前再由 execute_at
-            # 容忍窗口防止明显提前。
+            # 一整轮；取最近值把误差压到 ±半个 tick（执行前的容忍窗口与此
+            # 一致，见 _tick）。
             if self._next_tick_at > 0:
                 slots_needed = max(0, math.floor(
-                    (execute_at - self._next_tick_at) / self._tick_interval + 0.5
+                    (deadline - self._next_tick_at) / self._tick_interval + 0.5
                 ))
             else:
                 slots_needed = max(1, math.ceil(
@@ -137,7 +142,8 @@ class TimeWheel:
                 priority=priority,
                 data=data,
                 round=rounds,
-                execute_at=execute_at
+                execute_at=execute_at,
+                deadline=deadline
             )
 
             self._slots[target_slot].append(task)
@@ -196,13 +202,13 @@ class TimeWheel:
         使用绝对滴答时间累加，避免每轮 ``tick - elapsed`` 的睡眠误差累积
         （Windows 上 asyncio.sleep 粒度约 15ms，按相对间隔睡会持续漂移）。
         """
-        next_tick_at = time.time()
+        next_tick_at = time.perf_counter()
         while self._running:
             try:
                 with self._lock:
                     self._next_tick_at = next_tick_at
 
-                wait = next_tick_at - time.time()
+                wait = next_tick_at - time.perf_counter()
                 if wait > 0:
                     await asyncio.sleep(wait)
 
@@ -211,19 +217,19 @@ class TimeWheel:
                 next_tick_at += self._tick_interval
                 # 轻微落后时下一轮 wait<=0，立即补处理落后槽位（追帧），
                 # 不重置绝对时间轴，避免反复右移累积延迟。
-                if time.time() - next_tick_at > 1.0:
+                if time.perf_counter() - next_tick_at > 1.0:
                     # 落后过多（如长回调阻塞）：放弃追帧，重新对齐
-                    next_tick_at = time.time() + self._tick_interval
+                    next_tick_at = time.perf_counter() + self._tick_interval
             except asyncio.CancelledError:
                 break
             except Exception:
                 await asyncio.sleep(self._tick_interval)
-                next_tick_at = time.time() + self._tick_interval
+                next_tick_at = time.perf_counter() + self._tick_interval
 
     async def _tick(self) -> None:
         """执行一次滴答"""
         tasks_to_execute = []
-        now = time.time()
+        now = time.perf_counter()
 
         with self._lock:
             # 获取当前槽位的任务
@@ -234,9 +240,11 @@ class TimeWheel:
             while current_slot_tasks:
                 task = current_slot_tasks.popleft()
                 if task.round == 0:
-                    # 允许最多 10% tick 的提前量：槽位取最近滴答时，恰好
-                    # 落在 tick 边界附近的任务会差几毫秒；超出则推迟一槽复检。
-                    if task.execute_at > now + self._tick_interval * 0.1:
+                    # 容忍半个 tick 的提前量：add_task 按最近滴答取槽，槽位
+                    # 时间最多比截止时间早半个 tick。容忍窗口与取整误差一致，
+                    # 否则落在槽位前半段的到期任务会被整槽推迟，抖动反而放大。
+                    # 超出该窗口（时钟回拨等异常）仍推迟一槽复检。
+                    if task.deadline > now + self._tick_interval * 0.5:
                         deferred_tasks.append(task)
                     else:
                         tasks_to_execute.append((task.task_id, task.priority, task.data))
@@ -254,6 +262,11 @@ class TimeWheel:
             for task in deferred_tasks:
                 self._slots[next_slot].append(task)
             self._current_slot = next_slot
+            # 回调会 await，期间可能有并发 add_task。此刻 current_slot 已前进，
+            # _next_tick_at 必须同步指向处理新槽位的下一次滴答，否则这些任务
+            # 会整体偏移一个槽位。
+            if self._next_tick_at > 0:
+                self._next_tick_at += self._tick_interval
 
         # 执行回调（在锁外执行，避免阻塞）
         for task_id, priority, data in tasks_to_execute:

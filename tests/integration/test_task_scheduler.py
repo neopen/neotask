@@ -12,6 +12,7 @@ See LICENSE File For Details.
 
 import pytest
 import asyncio
+import time
 from datetime import datetime, timedelta
 
 from neotask.api.task_scheduler import TaskScheduler
@@ -334,6 +335,168 @@ async def test_drain_delayed_on_shutdown_executes_pending_delayed_task():
         stored = await scheduler._pool._task_repo.get(task_id)
         assert stored is not None
         assert stored.status.value == "success"
+    finally:
+        if scheduler._running:
+            scheduler.shutdown(graceful=False)
+
+
+async def test_submit_delayed_through_time_wheel():
+    """启用时间轮时，延时任务仍走 落库 -> 入轮 -> 到期入队 全链路"""
+    async def executor(data):
+        return {"result": "done", "data": data}
+
+    config = SchedulerConfig(
+        storage_type="memory",
+        scan_interval=0.05,
+        enable_periodic_manager=False,
+        enable_time_wheel=True,
+        time_wheel_slots=64,
+        time_wheel_tick=0.05,
+    )
+    scheduler = TaskScheduler(executor=executor, config=config)
+    scheduler.start()
+    try:
+        started = time.perf_counter()
+        task_id = await scheduler.submit_delayed_async({"i": 1}, delay_seconds=0.2)
+        result = await scheduler.wait_for_result_async(task_id, timeout=5)
+        elapsed = time.perf_counter() - started
+
+        assert result["result"] == "done"
+        # 最近槽位取整最多提前半个 tick，不允许明显提前触发
+        assert elapsed >= 0.17, f"time wheel fired too early: {elapsed:.3f}s"
+        assert scheduler.get_stats()["time_wheel"]["total_tasks"] == 0
+    finally:
+        scheduler.shutdown()
+
+
+async def test_drain_time_wheel_on_shutdown_executes_pending_delayed_task():
+    """时间轮中的未到期任务在停机时转回延时队列，并按 drain 配置立即执行"""
+    async def executor(data):
+        return {"result": "done", "data": data}
+
+    config = SchedulerConfig(
+        storage_type="memory",
+        scan_interval=0.05,
+        enable_periodic_manager=False,
+        enable_time_wheel=True,
+        time_wheel_slots=64,
+        time_wheel_tick=0.05,
+        drain_delayed_on_shutdown=True,
+    )
+    scheduler = TaskScheduler(executor=executor, config=config)
+    scheduler.start()
+    try:
+        task_id = scheduler.submit_delayed({"i": 1}, delay_seconds=60)
+        assert scheduler.get_stats()["time_wheel"]["total_tasks"] == 1
+        scheduler.shutdown(graceful=True, timeout=10)
+        stored = await scheduler._pool._task_repo.get(task_id)
+        assert stored is not None
+        assert stored.status.value == "success"
+    finally:
+        if scheduler._running:
+            scheduler.shutdown(graceful=False)
+
+
+async def test_cancel_time_wheel_task_removes_it_from_wheel():
+    """取消时间轮任务时同时移出轮盘，停机后也不会被 drain 复活"""
+    executed = []
+
+    async def executor(data):
+        executed.append(data)
+        return {"result": "done"}
+
+    config = SchedulerConfig(
+        storage_type="memory",
+        scan_interval=0.05,
+        enable_periodic_manager=False,
+        enable_time_wheel=True,
+        time_wheel_slots=64,
+        time_wheel_tick=0.05,
+    )
+    scheduler = TaskScheduler(executor=executor, config=config)
+    scheduler.start()
+    try:
+        task_id = scheduler.submit_delayed({"i": 1}, delay_seconds=60)
+        assert scheduler.get_stats()["time_wheel"]["total_tasks"] == 1
+
+        assert scheduler.cancel(task_id) is True
+        assert scheduler.get_stats()["time_wheel"]["total_tasks"] == 0
+        assert scheduler.get_status(task_id) == "cancelled"
+
+        scheduler.shutdown(graceful=True, timeout=5)
+
+        stored = await scheduler._pool._task_repo.get(task_id)
+        assert stored is not None
+        assert stored.status.value == "cancelled"
+        assert executed == []
+    finally:
+        if scheduler._running:
+            scheduler.shutdown(graceful=False)
+
+
+async def test_delete_time_wheel_task_removes_it_from_wheel():
+    """删除时间轮任务时同时移出轮盘，避免停机 drain 时把已删任务复活"""
+    executed = []
+
+    async def executor(data):
+        executed.append(data)
+        return {"result": "done"}
+
+    config = SchedulerConfig(
+        storage_type="memory",
+        scan_interval=0.05,
+        enable_periodic_manager=False,
+        enable_time_wheel=True,
+        time_wheel_slots=64,
+        time_wheel_tick=0.05,
+    )
+    scheduler = TaskScheduler(executor=executor, config=config)
+    scheduler.start()
+    try:
+        task_id = scheduler.submit_delayed({"i": 1}, delay_seconds=60)
+        assert scheduler.get_stats()["time_wheel"]["total_tasks"] == 1
+
+        assert scheduler.delete(task_id) is True
+        assert scheduler.get_stats()["time_wheel"]["total_tasks"] == 0
+        assert scheduler.task_exists(task_id) is False
+
+        scheduler.shutdown(graceful=True, timeout=5)
+        assert executed == []
+    finally:
+        if scheduler._running:
+            scheduler.shutdown(graceful=False)
+
+
+async def test_shutdown_does_not_resurrect_terminal_wheel_task():
+    """轮内任务已终态（如取消）却仍在轮中时，drain 不得重置为 PENDING"""
+    executed = []
+
+    async def executor(data):
+        executed.append(data)
+        return {"result": "done"}
+
+    config = SchedulerConfig(
+        storage_type="memory",
+        scan_interval=0.05,
+        enable_periodic_manager=False,
+        enable_time_wheel=True,
+        time_wheel_slots=64,
+        time_wheel_tick=0.05,
+    )
+    scheduler = TaskScheduler(executor=executor, config=config)
+    scheduler.start()
+    try:
+        task_id = scheduler.submit_delayed({"i": 1}, delay_seconds=60)
+        # 模拟取消竞态：只标记状态，轮盘条目仍保留
+        await scheduler._pool.cancel_async(task_id)
+        assert scheduler.get_stats()["time_wheel"]["total_tasks"] == 1
+
+        scheduler.shutdown(graceful=True, timeout=5)
+
+        stored = await scheduler._pool._task_repo.get(task_id)
+        assert stored is not None
+        assert stored.status.value == "cancelled"
+        assert executed == []
     finally:
         if scheduler._running:
             scheduler.shutdown(graceful=False)

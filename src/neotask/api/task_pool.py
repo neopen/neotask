@@ -26,7 +26,7 @@ from neotask.core.lifecycle import TaskLifecycleManager
 from neotask.core.heartbeat import HeartbeatManager, HeartbeatConfig
 from neotask.event.bus import EventBus, TaskEvent
 from neotask.executor.base import TaskExecutor
-from neotask.executor.factory import ExecutorFactory
+from neotask.executor.factory import ExecutorFactory, ExecutorType
 from neotask.lock.factory import LockFactory
 from neotask.models.config import StorageConfig, LockConfig, TaskPoolConfig, StorageType
 from neotask.models.task import TaskPriority, TaskStatus, BatchSubmitResult
@@ -285,8 +285,12 @@ class TaskPool:
         if isinstance(executor, TaskExecutor):
             return executor
 
-        # 如果是同步函数，包装为异步函数
-        if not inspect.iscoroutinefunction(executor):
+        # 显式要求 thread / process / class 时，必须把原始同步函数交给工厂，
+        # 否则会被包装成协程并在事件循环线程里直接调用，配置形同虚设。
+        # ASYNC / AUTO 保持原有包装行为（同步函数在事件循环内执行）。
+        if (not inspect.iscoroutinefunction(executor)
+                and self._config.executor_type
+                not in (ExecutorType.THREAD, ExecutorType.PROCESS, ExecutorType.CLASS)):
             async def wrapped_executor(data):
                 return executor(data)
             return ExecutorFactory.create(wrapped_executor)

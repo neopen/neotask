@@ -16,6 +16,15 @@ from neotask.core.engine import EngineConfig, TaskEngine
 from neotask.storage.memory import MemoryCheckpointRepository
 
 
+def test_engine_available_from_package_root():
+    """文档承诺的 from neotask import TaskEngine, EngineConfig 必须可用"""
+    from neotask import EngineConfig as RootEngineConfig
+    from neotask import TaskEngine as RootTaskEngine
+
+    assert RootTaskEngine is TaskEngine
+    assert RootEngineConfig is EngineConfig
+
+
 class _ClosingRepo(MemoryCheckpointRepository):
     def __init__(self):
         super().__init__()

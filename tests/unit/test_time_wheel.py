@@ -12,8 +12,9 @@ See LICENSE File For Details.
 
 import pytest
 import asyncio
+import time
 from typing import List
-from neotask.scheduler.time_wheel import TimeWheel
+from neotask.scheduler.time_wheel import TimeWheel, TimeWheelTask
 
 
 class TestTimeWheel:
@@ -130,8 +131,8 @@ class TestTimeWheel:
     async def test_scheduled_task_not_fired_early(self):
         """任务不应明显早于延迟时间触发，且误差在 tick 量级内
 
-        时间轮内部按 ``time.time()`` 取相位（Windows 粒度约 15.6ms），且允许
-        最多 10% tick 的提前量；这里用宽松下界只拦截「整槽提前」这类真实回归。
+        时间轮按 ``perf_counter`` 取相位并取最近滴答，槽位可能比截止时间
+        早半个 tick；这里用宽松下界只拦截「整槽提前」这类真实回归。
         """
         executed = {}
 
@@ -284,6 +285,92 @@ class TestTimeWheel:
         assert executed[0] == "task_first", f"First should be task_first, got {executed}"
         assert executed[1] == "task_second", f"Second should be task_second, got {executed}"
         assert executed[2] == "task_third", f"Third should be task_third, got {executed}"
+
+    async def test_nearest_slot_rounding(self):
+        """槽位按最近的滴答取整，相位基于单调高精度时钟"""
+        wheel = TimeWheel(slot_count=100, tick_interval=0.1)
+        wheel._next_tick_at = time.perf_counter()
+        wheel._current_slot = 0
+
+        slot_short = await wheel.add_task("short", 1, 0.24)
+        slot_long = await wheel.add_task("long", 1, 0.26)
+        slot_exact = await wheel.add_task("exact", 1, 0.5)
+
+        assert slot_short == 2, f"0.24s 应落在第 2 槽，实际 {slot_short}"
+        assert slot_long == 3, f"0.26s 应落在第 3 槽，实际 {slot_long}"
+        assert slot_exact == 5, f"0.5s 应落在第 5 槽，实际 {slot_exact}"
+
+    async def test_half_tick_early_task_not_deferred(self):
+        """槽位取整误差最大为半个 tick，落在此范围内的任务不应被整槽推迟"""
+        executed: List[str] = []
+
+        async def callback(task_id, priority, data=None):
+            executed.append(task_id)
+
+        wheel = TimeWheel(slot_count=10, tick_interval=0.05)
+        wheel._callback = callback
+        # 距截止还有 20ms（0.4 tick）：仍在取整误差内，本槽应执行
+        task = TimeWheelTask(
+            task_id="almost_due",
+            priority=1,
+            deadline=time.perf_counter() + 0.02,
+        )
+        wheel._slots[0].append(task)
+        wheel._task_index[task.task_id] = task
+
+        await wheel._tick()
+
+        assert executed == ["almost_due"], f"应按时执行，实际 {executed}"
+
+    async def test_more_than_half_tick_early_task_deferred(self):
+        """提前超过半个 tick（时钟异常等）时，任务推迟一槽而不是提前执行"""
+        executed: List[str] = []
+
+        async def callback(task_id, priority, data=None):
+            executed.append(task_id)
+
+        wheel = TimeWheel(slot_count=10, tick_interval=0.05)
+        wheel._callback = callback
+        task = TimeWheelTask(
+            task_id="too_early",
+            priority=1,
+            deadline=time.perf_counter() + 0.04,
+        )
+        wheel._slots[0].append(task)
+        wheel._task_index[task.task_id] = task
+
+        await wheel._tick()
+
+        assert executed == [], f"过早任务不应执行，实际 {executed}"
+        assert "too_early" in wheel._task_index
+        assert [t.task_id for t in wheel._slots[1]] == ["too_early"]
+
+    async def test_next_tick_advances_before_callbacks(self):
+        """滴答回调中并发添加任务时，槽位相对下一次滴答计算"""
+        wheel = TimeWheel(slot_count=100, tick_interval=0.1)
+        added_slot = []
+
+        async def callback(task_id, priority, data=None):
+            if task_id == "due":
+                added_slot.append(await wheel.add_task("inside", 1, 0.5))
+
+        wheel._callback = callback
+        wheel._current_slot = 7
+        wheel._next_tick_at = time.perf_counter()
+        task = TimeWheelTask(
+            task_id="due",
+            priority=1,
+            deadline=time.perf_counter(),
+        )
+        wheel._slots[7].append(task)
+        wheel._task_index[task.task_id] = task
+
+        await wheel._tick()
+
+        # 回调时 current_slot 已前进到 8，下一次滴答在 0.1s 后；
+        # 0.5s 相对该滴答应为 +4 槽 -> 目标 12。若 _next_tick_at 未前进，
+        # 会被算成 +5 槽 -> 13。
+        assert added_slot == [12], f"槽位应相对下一次滴答计算，实际 {added_slot}"
 
 
 if __name__ == "__main__":

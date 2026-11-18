@@ -23,7 +23,7 @@ from neotask.common.logger import debug, warning
 from neotask.event.bus import EventBus
 from neotask.models.config import SchedulerConfig, StorageType
 from neotask.models.schedule import PeriodicTask
-from neotask.models.task import TaskPriority
+from neotask.models.task import TaskPriority, TaskStatus
 from neotask.scheduler.cron_parser import CronParser
 from neotask.scheduler.periodic import PeriodicTaskManager
 from neotask.scheduler.time_wheel import TimeWheel
@@ -361,6 +361,13 @@ class TaskScheduler:
             # 静默丢弃（存储里只剩 PENDING 记录，内存模式下再无人推进）
             remaining = self._run_async(self._time_wheel.drain())
             for wheel_task in remaining:
+                # 轮内任务应仍为 PENDING；取消/删除竞态下可能已终态，
+                # 此时 retry 会把终态任务重置回 PENDING，等于复活已取消任务。
+                status = self._run_async(
+                    self._pool.get_status_async(wheel_task.task_id)
+                )
+                if status != TaskStatus.PENDING.value:
+                    continue
                 delay = max(0.0, wheel_task.execute_at - time.time())
                 self._run_async(self._pool.retry_async(wheel_task.task_id, delay))
             if remaining:
@@ -1035,7 +1042,13 @@ class TaskScheduler:
         if task_id in self._periodic_tasks:
             return self.cancel_periodic(task_id)
 
-        return self._pool.cancel(task_id)
+        result = self._pool.cancel(task_id)
+        if self._time_wheel:
+            # 时间轮任务不在队列中，pool.cancel 只会标记状态；必须同时移出
+            # 轮盘，否则会占住槽位直到原定到期时间，且停机 drain 时可能被
+            # retry 重置回 PENDING（见 shutdown 中的状态检查）。
+            self._run_async(self._time_wheel.cancel_task(task_id))
+        return result
 
     def delete(self, task_id: str) -> bool:
         """删除任务
@@ -1046,7 +1059,10 @@ class TaskScheduler:
         Returns:
             是否成功删除
         """
-        return self._pool.delete(task_id)
+        result = self._pool.delete(task_id)
+        if self._time_wheel:
+            self._run_async(self._time_wheel.cancel_task(task_id))
+        return result
 
     def retry(self, task_id: str, delay: float = 0) -> bool:
         """重试失败的任务

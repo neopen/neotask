@@ -321,6 +321,10 @@ class TaskPoolConfig:
 
     def __post_init__(self):
         self.storage_type = StorageType.coerce(self.storage_type)
+        # 文档承诺 executor_type 同时接受枚举与字符串；在入口处归一化，
+        # 避免下游用身份比较时把 "thread" 当成未配置。
+        if isinstance(self.executor_type, str):
+            self.executor_type = ExecutorType(self.executor_type.lower())
         if not self.node_id:
             import os
             import socket

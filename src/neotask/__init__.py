@@ -16,6 +16,7 @@ __author__ = "neopen"
 # API 入口
 from neotask.api.task_pool import TaskPool, TaskPoolConfig
 from neotask.api.task_scheduler import TaskScheduler, SchedulerConfig
+from neotask.core.engine import TaskEngine, EngineConfig
 
 # 核心组件
 from neotask.core.lifecycle import TaskLifecycleManager
@@ -143,6 +144,8 @@ __all__ = [
     "TaskPoolConfig",
     "TaskScheduler",
     "SchedulerConfig",
+    "TaskEngine",
+    "EngineConfig",
 
     # 核心
     "TaskLifecycleManager",

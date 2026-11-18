@@ -144,7 +144,7 @@ graph TB
 
 **发展路线图**
 
-**图注**：v0.1 – v1.0 为已发布版本；v1.1.0 已发布（v1.1.1 为稳定性与升级体验补丁）；v1.2 – v1.3 为性能、监控与可靠性迭代。NeoTask 是可独立自足的本地执行 SDK —— DAG 拆解、任务下发与状态推进属于上层**控制面**（如 NeoFlow），NeoTask 仅作为**执行面**与其对接（拉取任务 → 执行 Handler → 上报事件）。v2.0（NeoFlow 执行面接入）为**后移项**；内置 DAG、动态路由、插件系统与 Web UI 不在范围内。任务与事件的线协议在 1.x 内冻结，详见 [docs/neotask-execution-contract.md](docs/neotask-execution-contract.md)。
+**图注**：v0.1 – v1.0 为已发布版本；v1.1.0 已发布（v1.1.1 为稳定性与升级体验补丁；v1.1.2 修复调度抖动、时间轮取消与执行器配置）；v1.2 – v1.3 为性能、监控与可靠性迭代。NeoTask 是可独立自足的本地执行 SDK —— DAG 拆解、任务下发与状态推进属于上层**控制面**（如 NeoFlow），NeoTask 仅作为**执行面**与其对接（拉取任务 → 执行 Handler → 上报事件）。v2.0（NeoFlow 执行面接入）为**后移项**；内置 DAG、动态路由、插件系统与 Web UI 不在范围内。任务与事件的线协议在 1.x 内冻结，详见 [docs/neotask-execution-contract.md](docs/neotask-execution-contract.md)。
 
 ```mermaid
 timeline

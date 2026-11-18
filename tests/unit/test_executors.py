@@ -12,6 +12,8 @@ See LICENSE File For Details.
 
 import pytest
 import asyncio
+import threading
+from neotask import TaskPool, TaskPoolConfig
 from neotask.executor import (
     AsyncExecutor, ThreadExecutor, ProcessExecutor,
     ClassExecutor, ExecutorFactory, ExecutorType
@@ -107,6 +109,81 @@ async def test_factory_manual_type():
     # Force create as process executor
     executor = ExecutorFactory.create(sync_func, executor_type=ExecutorType.PROCESS)
     assert isinstance(executor, ProcessExecutor)
+
+
+def test_task_pool_config_normalizes_executor_type_string():
+    """字符串 executor_type 在配置入口归一化为枚举，避免下游身份比较失效"""
+    assert TaskPoolConfig(executor_type="thread").executor_type is ExecutorType.THREAD
+    assert TaskPoolConfig(executor_type="PROCESS").executor_type is ExecutorType.PROCESS
+
+
+def test_task_pool_config_rejects_unknown_executor_type():
+    """未知字符串在配置构造期即报错，而不是延迟到创建执行器时"""
+    with pytest.raises(ValueError):
+        TaskPoolConfig(executor_type="bogus")
+
+
+@pytest.mark.parametrize(
+    "executor_type, expected_type",
+    [
+        ("thread", ThreadExecutor),
+        ("process", ProcessExecutor),
+        (ExecutorType.THREAD, ThreadExecutor),
+    ],
+)
+def test_task_pool_honors_explicit_executor_type(executor_type, expected_type):
+    """显式 thread/process 时同步函数应交给对应执行器，而不是包装成协程"""
+    def sync_func(data):
+        return data
+
+    pool = TaskPool(
+        executor=sync_func,
+        config=TaskPoolConfig(storage_type="memory", executor_type=executor_type),
+    )
+    assert isinstance(pool._executor, expected_type)
+
+
+def test_task_pool_default_async_keeps_sync_function_inline():
+    """默认 async 模式保持原行为：同步函数包装后在事件循环内执行"""
+    def sync_func(data):
+        return data
+
+    pool = TaskPool(
+        executor=sync_func,
+        config=TaskPoolConfig(storage_type="memory"),
+    )
+    assert isinstance(pool._executor, AsyncExecutor)
+
+
+def test_task_pool_honors_class_executor_for_object():
+    """显式 class 时带 execute() 的对象不应被包装成协程函数"""
+    class Worker:
+        async def execute(self, data):
+            return data
+
+    pool = TaskPool(
+        executor=Worker(),
+        config=TaskPoolConfig(storage_type="memory", executor_type="class"),
+    )
+    assert isinstance(pool._executor, ClassExecutor)
+
+
+def test_task_pool_thread_executor_runs_off_event_loop():
+    """thread 模式下任务实际运行在 worker 线程，而非 TaskPool 事件循环线程"""
+    def sync_func(data):
+        return {"thread": threading.current_thread().name}
+
+    pool = TaskPool(
+        executor=sync_func,
+        config=TaskPoolConfig(storage_type="memory", executor_type="thread"),
+    )
+    pool.start()
+    try:
+        task_id = pool.submit({})
+        result = pool.wait_for_result(task_id, timeout=10)
+        assert result["thread"].startswith("neotask-worker")
+    finally:
+        pool.shutdown()
 
 
 @pytest.mark.asyncio

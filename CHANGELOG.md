@@ -6,6 +6,13 @@
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [1.1.2](https://github.com/neopen/neotask/compare/v1.1.1...v1.1.2) (2026-11-18)
+
+
+### 🐛 Bug Fixes (问题修复)
+
+* v1.1.2 调度精度与执行器配置修复 ([#47](https://github.com/neopen/neotask/issues/47)) ([65bbfdb](https://github.com/neopen/neotask/commit/65bbfdb6bb0404b53d1178150045502b38042fc2))
+
 ## [1.1.1](https://github.com/neopen/neotask/compare/v1.1.0...v1.1.1) (2026-11-15)
 
 

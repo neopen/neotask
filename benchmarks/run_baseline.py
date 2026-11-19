@@ -17,7 +17,7 @@ import tempfile
 import time
 from typing import Any, Dict, List, Optional
 
-from neotask import save_checkpoint
+from neotask import report_progress, save_checkpoint
 from neotask.api.task_pool import TaskPool
 from neotask.models.config import TaskPoolConfig
 
@@ -26,6 +26,7 @@ DEFAULT_SINGLE = 200
 DEFAULT_ROUNDS = 3
 DEFAULT_CONCURRENCY = 8
 DEFAULT_HC_LEVELS = (1, 4, 8, 16, 32, 64)
+DEFAULT_PROGRESS_REPORTS = (0, 1, 10, 100)
 DEFAULT_CKPT_BACKENDS = ("memory", "sqlite")
 DEFAULT_CKPT_WRITES = (0, 1, 5)
 DEFAULT_CKPT_PAYLOAD = 256
@@ -264,6 +265,133 @@ async def measure_high_concurrency(
     }
 
 
+async def _measure_progress_once(
+    reports: int,
+    tasks: int,
+    concurrency: int,
+) -> Dict[str, Any]:
+    """测一轮每任务上报指定次数的进度，采集上报调用延迟与端到端耗时
+
+    任务执行本身为空，差值即进度上报（``update_progress`` + ``task.progress``
+    入队）的框架开销；订阅方处理成本不计入。
+    """
+    report_ms: List[float] = []
+    completed_perf: Dict[int, float] = {}
+    pending_sizes: List[int] = []
+
+    async def progress_executor(data: Dict[str, Any]) -> Dict[str, Any]:
+        for step in range(reports):
+            started = time.perf_counter()
+            reported = await report_progress((step + 1) / reports, f"step {step}")
+            if not reported:
+                raise RuntimeError("进度上报失败：任务不在可上报状态，基准结果无效")
+            report_ms.append((time.perf_counter() - started) * 1000.0)
+        completed_perf[data["index"]] = time.perf_counter()
+        pending_sizes.append(pool.event_bus.get_stats()["queue_size"])
+        return {"index": data["index"]}
+
+    pool = _new_pool(
+        concurrency=concurrency,
+        queue_size=tasks + 64,
+        executor=progress_executor,
+    )
+    try:
+        warmup_ids = [await pool.submit_async({"index": -1 - i}) for i in range(10)]
+        await pool.wait_all_async(warmup_ids, timeout=30)
+        report_ms.clear()
+        completed_perf.clear()
+        pending_sizes.clear()
+
+        payload = [{"index": i} for i in range(tasks)]
+        started = time.perf_counter()
+        task_ids = await pool.submit_many_async(payload)
+        await pool.wait_all_async(task_ids, timeout=120)
+        elapsed = time.perf_counter() - started
+
+        # 任务结束后事件队列可能仍在排空，单独计时才能反映消费侧是否跟上
+        pending_at_finish = pool.event_bus.get_stats()["queue_size"]
+        drain_started = time.perf_counter()
+        deadline = drain_started + 10.0
+        while time.perf_counter() < deadline:
+            if pool.event_bus.get_stats()["queue_size"] == 0:
+                break
+            await asyncio.sleep(0.01)
+        drain_s = time.perf_counter() - drain_started
+
+        return {
+            "elapsed_s": elapsed,
+            "report_latencies_ms": report_ms,
+            "task_latencies_ms": [
+                (finished - started) * 1000.0 for finished in completed_perf.values()
+            ],
+            "pending_peak": max(pending_sizes) if pending_sizes else 0,
+            "pending_at_finish": pending_at_finish,
+            "drain_s": drain_s,
+        }
+    finally:
+        pool.shutdown(graceful=True, timeout=30)
+
+
+async def measure_progress_reporting(
+    tasks: int,
+    rounds: int,
+    concurrency: int,
+    report_counts: List[int],
+) -> Dict[str, Any]:
+    """按每任务上报次数扫描，正反交替多轮取中位"""
+    samples: Dict[int, List[Dict[str, Any]]] = {count: [] for count in report_counts}
+    for index in range(rounds):
+        order = list(report_counts) if index % 2 == 0 else list(reversed(report_counts))
+        for reports in order:
+            samples[reports].append(await _measure_progress_once(reports, tasks, concurrency))
+
+    baseline_elapsed = None
+    if 0 in report_counts:
+        baseline_elapsed = statistics.median(item["elapsed_s"] for item in samples[0])
+
+    entries: List[Dict[str, Any]] = []
+    for reports in report_counts:
+        runs = samples[reports]
+        elapsed_median = statistics.median(item["elapsed_s"] for item in runs)
+        throughput = tasks / elapsed_median if elapsed_median else 0.0
+        task_latencies = [value for item in runs for value in item["task_latencies_ms"]]
+        entry: Dict[str, Any] = {
+            "reports_per_task": reports,
+            "throughput_median": throughput,
+            "task_latency_ms": _percentiles(task_latencies),
+            "pending_peak_median": statistics.median(item["pending_peak"] for item in runs),
+            "pending_at_finish_median": statistics.median(
+                item["pending_at_finish"] for item in runs
+            ),
+            "drain_s_median": statistics.median(item["drain_s"] for item in runs),
+        }
+
+        if reports:
+            report_stats = _percentiles(
+                [value for item in runs for value in item["report_latencies_ms"]]
+            )
+            entry["report_p50_us"] = report_stats["p50"] * 1000.0
+            entry["report_p95_us"] = report_stats["p95"] * 1000.0
+            if baseline_elapsed:
+                entry["throughput_ratio_vs_0"] = (
+                    baseline_elapsed / elapsed_median if elapsed_median else 0.0
+                )
+                entry["wall_overhead_per_report_ms"] = (
+                    (elapsed_median - baseline_elapsed) * 1000.0 / (tasks * reports)
+                )
+        elif baseline_elapsed:
+            entry["throughput_ratio_vs_0"] = 1.0
+
+        entries.append(entry)
+
+    return {
+        "tasks_per_round": tasks,
+        "rounds": rounds,
+        "worker_concurrency": concurrency,
+        "samples": entries,
+    }
+
+
 async def _measure_checkpoint_once(
     backend: str,
     writes: int,
@@ -439,6 +567,38 @@ def _print_report(result: Dict[str, Any]) -> None:
     print("  延迟口径：批提交起点 → 执行器返回（不经事件总线）")
     print("-" * 60)
 
+    progress = result["progress_reporting"]
+    print(
+        f"进度上报频率（每轮 {progress['tasks_per_round']} 任务，"
+        f"{progress['worker_concurrency']} 并发，{progress['rounds']} 轮交替取中位）"
+    )
+    print(
+        f"  {'上报/任务':>9} {'tasks/s':>10} {'相对0上报':>9} "
+        f"{'report p50':>10} {'report p95':>10} {'增量/次':>9}"
+    )
+    for item in progress["samples"]:
+        ratio = item.get("throughput_ratio_vs_0")
+        extra = item.get("wall_overhead_per_report_ms")
+        ratio_text = f"{ratio:.2f}x" if ratio is not None else "-"
+        extra_text = f"{extra:.3f}ms" if extra is not None else "-"
+        report_p50 = _format_us(item["report_p50_us"]) if item.get("report_p50_us") else "-"
+        report_p95 = _format_us(item["report_p95_us"]) if item.get("report_p95_us") else "-"
+        print(
+            f"  {item['reports_per_task']:>9} {item['throughput_median']:>10.0f} "
+            f"{ratio_text:>9} {report_p50:>10} {report_p95:>10} {extra_text:>9}"
+        )
+    print("  上报延迟口径：report_progress 调用返回；无订阅方，故只含框架侧开销")
+    for item in progress["samples"]:
+        if not item["reports_per_task"]:
+            continue
+        print(
+            f"  {item['reports_per_task']} 次上报：事件峰值积压中位 "
+            f"{item['pending_peak_median']:.0f} 条，任务完成后余 "
+            f"{item['pending_at_finish_median']:.0f} 条，排空中位 "
+            f"{item['drain_s_median'] * 1000.0:.0f}ms"
+        )
+    print("-" * 60)
+
     checkpoint = result["checkpoint_overhead"]
     print(
         f"Checkpoint 写入开销（每轮 {checkpoint['tasks_per_round']} 任务，"
@@ -472,6 +632,7 @@ async def run(
     rounds: int,
     concurrency: int,
     hc_levels: List[int],
+    progress_reports: List[int],
     ckpt_backends: List[str],
     ckpt_writes: List[int],
     ckpt_payload: int,
@@ -479,6 +640,9 @@ async def run(
     single_result = await measure_single_submit(single)
     bulk_result = await measure_batch_submit(tasks, rounds, concurrency)
     high_concurrency = await measure_high_concurrency(tasks, rounds, hc_levels)
+    progress_reporting = await measure_progress_reporting(
+        tasks, rounds, concurrency, progress_reports
+    )
     checkpoint_overhead = await measure_checkpoint_overhead(
         tasks, rounds, concurrency, ckpt_backends, ckpt_writes, ckpt_payload
     )
@@ -491,6 +655,7 @@ async def run(
             "single_samples": single,
             "rounds": rounds,
             "high_concurrency_levels": hc_levels,
+            "progress_reports_per_task": progress_reports,
             "checkpoint_backends": ckpt_backends,
             "checkpoint_writes": ckpt_writes,
             "checkpoint_payload_bytes": ckpt_payload,
@@ -498,6 +663,7 @@ async def run(
         "single_submit": single_result,
         "batch_submit": bulk_result,
         "high_concurrency": high_concurrency,
+        "progress_reporting": progress_reporting,
         "checkpoint_overhead": checkpoint_overhead,
     }
 
@@ -537,6 +703,16 @@ def _parse_writes(text: str) -> List[int]:
     return sorted(set(counts))
 
 
+def _parse_report_counts(text: str) -> List[int]:
+    try:
+        counts = [int(part.strip()) for part in text.split(",") if part.strip()]
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("上报次数必须是逗号分隔的整数") from exc
+    if not counts or any(count < 0 for count in counts):
+        raise argparse.ArgumentTypeError("上报次数必须包含至少一个非负整数")
+    return sorted(set(counts))
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="NeoTask v1.2 基准基线：单任务提交延迟、批量提交吞吐、高并发执行与 Checkpoint 写入开销"
@@ -552,6 +728,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         type=_parse_levels,
         default=list(DEFAULT_HC_LEVELS),
         help="高并发扫描的并发度，逗号分隔（默认 1,4,8,16,32,64）",
+    )
+    parser.add_argument(
+        "--progress-reports",
+        type=_parse_report_counts,
+        default=list(DEFAULT_PROGRESS_REPORTS),
+        help="每任务进度上报次数，逗号分隔（默认 0,1,10,100）",
     )
     parser.add_argument(
         "--ckpt-backends",
@@ -582,7 +764,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.ckpt_payload < 0:
         parser.error("--ckpt-payload 不能为负数")
 
-    logging.getLogger("NeoTask").setLevel(logging.CRITICAL if args.json else logging.WARNING)
+    # 事件积压由基准自己用 event_bus.get_stats() 量化，压掉每千条的 WARNING 刷屏
+    logging.getLogger("NeoTask").setLevel(logging.ERROR)
     result = asyncio.run(
         run(
             args.tasks,
@@ -590,6 +773,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             args.rounds,
             args.concurrency,
             args.hc_levels,
+            args.progress_reports,
             args.ckpt_backends,
             args.ckpt_writes,
             args.ckpt_payload,

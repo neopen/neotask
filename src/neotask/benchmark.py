@@ -22,6 +22,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from neotask.api.task_pool import TaskPool
+from neotask.event.bus import TaskEvent
 from neotask.executor.base import TaskExecutor
 from neotask.models.config import TaskPoolConfig
 
@@ -42,8 +43,10 @@ async def demo_executor(data: Dict[str, Any]) -> Dict[str, Any]:
 class BenchmarkResult:
     """一次轻量基准测试的结果
 
-    延迟口径为 ``created_at -> completed_at``，即从任务创建（提交）到终态的
-    端到端耗时；只统计成功任务，失败/取消的任务单独计数。
+    延迟口径为提交到终态的端到端耗时；优先使用基准内部 ``perf_counter``
+    记录的提交/终态时刻，缺失时回退到任务的 ``created_at -> completed_at``
+    时间戳（Windows 上后者的分辨率约 15.6ms，毫秒级任务可能被量成 0）。
+    只统计成功任务，失败/取消的任务单独计数。
     """
 
     executor: str
@@ -257,15 +260,35 @@ async def run_benchmark_async(
             ]
             await pool.wait_all_async(warmup_ids, timeout=timeout)
 
+        # 任务记录里的时间戳在 Windows 上的分辨率约 15.6ms，毫秒级任务会被
+        # 量成 0；这里在基准内部用 perf_counter 记录提交与终态事件时刻。
+        submit_perf: Dict[str, float] = {}
+        finished_perf: Dict[str, float] = {}
+        completed_perf: Dict[str, float] = {}
+
+        async def _record_completed(event: TaskEvent) -> None:
+            now = time.perf_counter()
+            completed_perf[event.task_id] = now
+            finished_perf[event.task_id] = now
+
+        async def _record_finished(event: TaskEvent) -> None:
+            finished_perf[event.task_id] = time.perf_counter()
+
+        pool.on_completed(_record_completed)
+        pool.on_failed(_record_finished)
+        pool.on_cancelled(_record_finished)
+
         submit_start = time.perf_counter()
-        task_ids = [
-            await pool.submit_async(_make_payload(payload, i))
-            for i in range(tasks)
-        ]
+        task_ids: List[str] = []
+        for i in range(tasks):
+            task_id = await pool.submit_async(_make_payload(payload, i))
+            submit_perf[task_id] = time.perf_counter()
+            task_ids.append(task_id)
         submit_s = time.perf_counter() - submit_start
 
         await pool.wait_all_async(task_ids, timeout=timeout)
         finished_at = time.perf_counter()
+        await _wait_for_finished_events(task_ids, finished_perf)
 
         # 等待结束后再逐条读取结果：状态与时间戳都已是终态，且不计入测量窗口
         records = [await pool.get_result_async(task_id) for task_id in task_ids]
@@ -281,6 +304,8 @@ async def run_benchmark_async(
             warmup=warmup,
             timeout_s=timeout,
             payload_template=payload,
+            submit_perf=submit_perf,
+            completed_perf=completed_perf,
         )
         unfinished = result.unfinished
         return result
@@ -470,6 +495,46 @@ def _parse_time(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
+async def _wait_for_finished_events(
+        task_ids: List[str],
+        finished_perf: Dict[str, float],
+        timeout: float = 1.0,
+) -> None:
+    """有界等待事件总线交付终态事件
+
+    事件由独立消费协程异步派发，``wait_all`` 返回时最后一条事件可能仍在
+    队列中。超时后缺失的任务回退到记录时间戳，不阻塞基准返回。
+    """
+    remaining = set(task_ids)
+    deadline = time.perf_counter() + timeout
+    while remaining and time.perf_counter() < deadline:
+        remaining.difference_update(finished_perf)
+        if not remaining:
+            return
+        await asyncio.sleep(0.001)
+
+
+def _latency_ms(
+        record: Dict[str, Any],
+        *,
+        submit_perf: Optional[Dict[str, float]],
+        completed_perf: Optional[Dict[str, float]],
+) -> Optional[float]:
+    """计算单任务端到端延迟，优先使用基准内部的高精度计时"""
+    task_id = record.get("task_id")
+    if task_id and submit_perf is not None and completed_perf is not None:
+        started = submit_perf.get(task_id)
+        ended = completed_perf.get(task_id)
+        if started is not None and ended is not None and ended >= started:
+            return (ended - started) * 1000.0
+
+    created_at = _parse_time(record.get("created_at"))
+    completed_at = _parse_time(record.get("completed_at"))
+    if created_at and completed_at:
+        return (completed_at - created_at).total_seconds() * 1000.0
+    return None
+
+
 def _percentile(sorted_values: List[float], ratio: float) -> float:
     """线性插值百分位；空列表返回 0.0"""
     if not sorted_values:
@@ -500,6 +565,8 @@ def _build_result(
         warmup: int,
         timeout_s: float,
         payload_template: Optional[Dict[str, Any]],
+        submit_perf: Optional[Dict[str, float]] = None,
+        completed_perf: Optional[Dict[str, float]] = None,
 ) -> BenchmarkResult:
     """根据终态任务记录汇总指标"""
     latencies_ms: List[float] = []
@@ -516,12 +583,11 @@ def _build_result(
         status = record.get("status")
         if status == "success":
             succeeded += 1
-            created_at = _parse_time(record.get("created_at"))
-            completed_at = _parse_time(record.get("completed_at"))
-            if created_at and completed_at:
-                latencies_ms.append(
-                    (completed_at - created_at).total_seconds() * 1000.0
-                )
+            latency_ms = _latency_ms(
+                record, submit_perf=submit_perf, completed_perf=completed_perf
+            )
+            if latency_ms is not None:
+                latencies_ms.append(latency_ms)
         elif status in ("failed", "cancelled"):
             failed += 1
         else:

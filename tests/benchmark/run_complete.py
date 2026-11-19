@@ -56,13 +56,13 @@ async def test_task_pool_throughput():
     pool.start()
     
     total = 1000
-    start = time.time()
+    start = time.perf_counter()
     
     for i in range(total):
         await pool.submit_async({"index": i})
     
     await asyncio.sleep(0.5)
-    duration = time.time() - start
+    duration = time.perf_counter() - start
     
     stats = pool.get_stats()
     pool.shutdown()
@@ -86,10 +86,10 @@ async def test_task_pool_latency():
     total = 200
     
     for i in range(total):
-        start = time.time()
+        start = time.perf_counter()
         task_id = await pool.submit_async({"index": i})
         await pool.wait_for_result_async(task_id)
-        latencies.append(time.time() - start)
+        latencies.append(time.perf_counter() - start)
     
     pool.shutdown()
     
@@ -109,15 +109,15 @@ async def test_priority_queue():
     queue = PriorityQueue()
     total = 5000
     
-    start = time.time()
+    start = time.perf_counter()
     for i in range(total):
         await queue.push(f"task_{i}", i % 5)
-    push_duration = time.time() - start
+    push_duration = time.perf_counter() - start
     
-    start = time.time()
+    start = time.perf_counter()
     for i in range(total):
         await queue.pop(1)
-    pop_duration = time.time() - start
+    pop_duration = time.perf_counter() - start
     
     log_result("优先级队列性能", {
         "入队吞吐量": f"{total/push_duration:.2f} ops/sec",
@@ -138,18 +138,18 @@ async def test_prefetcher():
     for i in range(2000):
         await queue.push(f"task_{i}", i % 5)
     
-    start = time.time()
+    start = time.perf_counter()
     for _ in range(500):
         await queue.pop(1)
-    without_prefetch = time.time() - start
+    without_prefetch = time.perf_counter() - start
     
     prefetcher = TaskPrefetcher(queue, PrefetchConfig(prefetch_size=20))
     await prefetcher.start()
     
-    start = time.time()
+    start = time.perf_counter()
     for _ in range(500):
         await prefetcher.get(timeout=0.01)
-    with_prefetch = time.time() - start
+    with_prefetch = time.perf_counter() - start
     
     await prefetcher.stop()
     await queue.stop()
@@ -174,18 +174,18 @@ async def test_batch_pop():
     for i in range(10000):
         await queue.push(f"task_{i}", i % 5)
     
-    start = time.time()
+    start = time.perf_counter()
     for i in range(1000):
         await queue.pop(1)
-    single_time = time.time() - start
+    single_time = time.perf_counter() - start
     
     for i in range(10000):
         await queue.push(f"task_{i}", i % 5)
     
-    start = time.time()
+    start = time.perf_counter()
     for i in range(100):
         await queue.pop(10)
-    batch_time = time.time() - start
+    batch_time = time.perf_counter() - start
     
     log_result("批量弹出性能对比", {
         "单条弹出": f"{1000/single_time:.2f} ops/sec",
@@ -207,13 +207,13 @@ async def test_worker_scalability():
         pool.start()
         
         total = 200
-        start = time.time()
+        start = time.perf_counter()
         
         tasks = [pool.submit_async({"index": i}) for i in range(total)]
         await asyncio.gather(*tasks)
         await asyncio.sleep(0.2)
         
-        duration = time.time() - start
+        duration = time.perf_counter() - start
         throughput = total / duration
         
         worker_results.append({
@@ -247,11 +247,11 @@ async def test_high_concurrency_submit():
             tasks.append(pool.submit_async({"batch": batch_id, "i": start_idx + i}))
         return await asyncio.gather(*tasks)
     
-    start = time.time()
+    start = time.perf_counter()
     batch_size = total // concurrency
     batches = [submit_batch(i, i * batch_size, batch_size) for i in range(concurrency)]
     all_task_ids = await asyncio.gather(*batches)
-    duration = time.time() - start
+    duration = time.perf_counter() - start
     
     await asyncio.sleep(1)
     stats = pool.get_stats()
@@ -276,13 +276,13 @@ async def test_light_task_performance():
     pool.start()
     
     total = 500
-    start = time.time()
+    start = time.perf_counter()
     
     tasks = [pool.submit_async({"index": i}) for i in range(total)]
     await asyncio.gather(*tasks)
     await asyncio.sleep(0.3)
     
-    duration = time.time() - start
+    duration = time.perf_counter() - start
     throughput = total / duration
     
     pool.shutdown()
@@ -301,12 +301,12 @@ async def test_io_task_performance():
     pool.start()
     
     total = 200
-    start = time.time()
+    start = time.perf_counter()
     
     tasks = [pool.submit_async({"sleep": 0.005}) for i in range(total)]
     await asyncio.gather(*tasks)
     
-    duration = time.time() - start
+    duration = time.perf_counter() - start
     throughput = total / duration
     
     pool.shutdown()

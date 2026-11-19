@@ -97,7 +97,7 @@ async def run_suite(reporter: BenchmarkReporter, suite_name: str, test_instance,
             continue
 
         method = getattr(test_instance, method_name)
-        start_time = time.time()
+        start_time = time.perf_counter()
         success = True
         error_msg = ""
 
@@ -113,7 +113,7 @@ async def run_suite(reporter: BenchmarkReporter, suite_name: str, test_instance,
             error_msg = str(e)
             print(f" 失败: {e}")
 
-        duration = time.time() - start_time
+        duration = time.perf_counter() - start_time
         reporter.add_result(suite_name, method_name, duration, success, error_msg)
 
 

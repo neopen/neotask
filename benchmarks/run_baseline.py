@@ -1,6 +1,6 @@
 """
 @FileName: run_baseline.py
-@Description: v1.2 基准基线 - 单任务提交延迟与批量提交吞吐
+@Description: v1.2 基准基线 - 单任务提交延迟、批量提交吞吐与高并发执行
 @Author: neopen
 @GitHub: https://github.com/neopen/neotask
 @Time: 2026/11/19
@@ -21,6 +21,7 @@ DEFAULT_TASKS = 1000
 DEFAULT_SINGLE = 200
 DEFAULT_ROUNDS = 3
 DEFAULT_CONCURRENCY = 8
+DEFAULT_HC_LEVELS = (1, 4, 8, 16, 32, 64)
 
 
 async def noop_executor(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -28,7 +29,11 @@ async def noop_executor(data: Dict[str, Any]) -> Dict[str, Any]:
     return {"index": data.get("index")}
 
 
-def _new_pool(concurrency: int, queue_size: int) -> TaskPool:
+def _new_pool(
+    concurrency: int,
+    queue_size: int,
+    executor: Any = noop_executor,
+) -> TaskPool:
     config = TaskPoolConfig(
         storage_type="memory",
         worker_concurrency=concurrency,
@@ -39,7 +44,7 @@ def _new_pool(concurrency: int, queue_size: int) -> TaskPool:
         enable_reporter=False,
         queue_max_size=queue_size,
     )
-    pool = TaskPool(executor=noop_executor, config=config)
+    pool = TaskPool(executor=executor, config=config)
     pool.start()
     return pool
 
@@ -166,6 +171,89 @@ async def measure_batch_submit(
     }
 
 
+async def _measure_concurrency_once(level: int, tasks: int) -> Dict[str, Any]:
+    """测一轮固定并发度下的 1000 任务端到端耗时与执行完成延迟
+
+    延迟在执行器返回时用 ``perf_counter`` 采样，不经事件总线，避免高并发下
+    事件积压把完成时间整体后移。
+    """
+    completed_perf: Dict[int, float] = {}
+
+    async def timed_executor(data: Dict[str, Any]) -> Dict[str, Any]:
+        completed_perf[data["index"]] = time.perf_counter()
+        return {"index": data["index"]}
+
+    pool = _new_pool(
+        concurrency=level,
+        queue_size=tasks + 64,
+        executor=timed_executor,
+    )
+    try:
+        warmup_ids = [await pool.submit_async({"index": -1 - i}) for i in range(10)]
+        await pool.wait_all_async(warmup_ids, timeout=30)
+        completed_perf.clear()
+
+        payload = [{"index": i} for i in range(tasks)]
+        started = time.perf_counter()
+        task_ids = await pool.submit_many_async(payload)
+        await pool.wait_all_async(task_ids, timeout=60)
+        elapsed = time.perf_counter() - started
+
+        latencies_ms = [(finished - started) * 1000.0 for finished in completed_perf.values()]
+        return {
+            "elapsed_s": elapsed,
+            "latency_samples": len(latencies_ms),
+            "latencies_ms": latencies_ms,
+        }
+    finally:
+        pool.shutdown(graceful=True, timeout=10)
+
+
+async def measure_high_concurrency(
+    tasks: int,
+    rounds: int,
+    levels: List[int],
+) -> Dict[str, Any]:
+    """按并发度扫描吞吐与延迟；每轮正反交替，取多轮中位数"""
+    samples: Dict[int, List[Dict[str, Any]]] = {level: [] for level in levels}
+    for index in range(rounds):
+        order = list(levels) if index % 2 == 0 else list(reversed(levels))
+        for level in order:
+            samples[level].append(await _measure_concurrency_once(level, tasks))
+
+    summaries: List[Dict[str, Any]] = []
+    for level in levels:
+        level_samples = samples[level]
+        latency_runs = [_percentiles(item["latencies_ms"]) for item in level_samples]
+        summaries.append(
+            {
+                "concurrency": level,
+                "throughput_median": statistics.median(
+                    tasks / item["elapsed_s"] for item in level_samples
+                ),
+                "p50_ms_median": statistics.median(item["p50"] for item in latency_runs),
+                "p95_ms_median": statistics.median(item["p95"] for item in latency_runs),
+                "latency_samples": min(item["latency_samples"] for item in level_samples),
+            }
+        )
+
+    baseline = next((item for item in summaries if item["concurrency"] == 1), summaries[0])
+    for item in summaries:
+        throughput = item["throughput_median"]
+        item["speedup_vs_1"] = (
+            throughput / baseline["throughput_median"] if baseline["throughput_median"] else 0.0
+        )
+
+    best = max(summaries, key=lambda item: item["throughput_median"])
+    return {
+        "tasks_per_round": tasks,
+        "rounds": rounds,
+        "levels": summaries,
+        "best_concurrency": best["concurrency"],
+        "peak_throughput": best["throughput_median"],
+    }
+
+
 def _format_latency(values: Dict[str, float]) -> str:
     return (
         f"p50 {values['p50']:.3f} ms / p95 {values['p95']:.3f} ms / "
@@ -176,6 +264,7 @@ def _format_latency(values: Dict[str, float]) -> str:
 def _print_report(result: Dict[str, Any]) -> None:
     single_submit = result["single_submit"]
     bulk = result["batch_submit"]
+    high_concurrency = result["high_concurrency"]
     print("NeoTask v1.2 基准基线")
     print("-" * 60)
     print(f"单任务提交延迟（{single_submit['count']} 次）")
@@ -190,7 +279,24 @@ def _print_report(result: Dict[str, Any]) -> None:
         f"（{bulk['speedup_min']:.2f}x ~ {bulk['speedup_max']:.2f}x）"
     )
     print("-" * 60)
-    print("提示：保持参数与机器一致再做横向对比；memory 存储，仅测提交路径")
+    print(
+        f"高并发执行（每轮 {high_concurrency['tasks_per_round']} 任务，"
+        f"{high_concurrency['rounds']} 轮正反交替取中位）"
+    )
+    print(f"  {'并发':>4}  {'吞吐(tasks/s)':>14}  {'p50(ms)':>9}  {'p95(ms)':>9}  {'相对1并发':>9}")
+    for item in high_concurrency["levels"]:
+        print(
+            f"  {item['concurrency']:>4}  {item['throughput_median']:>14.0f}  "
+            f"{item['p50_ms_median']:>9.2f}  {item['p95_ms_median']:>9.2f}  "
+            f"{item['speedup_vs_1']:>8.2f}x"
+        )
+    print(
+        f"  峰值：{high_concurrency['best_concurrency']} 并发 "
+        f"{high_concurrency['peak_throughput']:.0f} tasks/s"
+    )
+    print("  延迟口径：批提交起点 → 执行器返回（不经事件总线）")
+    print("-" * 60)
+    print("提示：保持参数与机器一致再做横向对比；memory 存储，仅测提交与调度路径")
 
 
 async def run(
@@ -198,9 +304,11 @@ async def run(
     single: int,
     rounds: int,
     concurrency: int,
+    hc_levels: List[int],
 ) -> Dict[str, Any]:
     single_result = await measure_single_submit(single)
     bulk_result = await measure_batch_submit(tasks, rounds, concurrency)
+    high_concurrency = await measure_high_concurrency(tasks, rounds, hc_levels)
     return {
         "environment": {
             "storage": "memory",
@@ -209,21 +317,39 @@ async def run(
             "tasks_per_round": tasks,
             "single_samples": single,
             "rounds": rounds,
+            "high_concurrency_levels": hc_levels,
         },
         "single_submit": single_result,
         "batch_submit": bulk_result,
+        "high_concurrency": high_concurrency,
     }
+
+
+def _parse_levels(text: str) -> List[int]:
+    try:
+        levels = [int(part.strip()) for part in text.split(",") if part.strip()]
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("并发度必须是逗号分隔的整数") from exc
+    if not levels or any(level <= 0 for level in levels):
+        raise argparse.ArgumentTypeError("并发度必须包含至少一个正整数")
+    return levels
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        description="NeoTask v1.2 基准基线：单任务提交延迟与批量提交吞吐"
+        description="NeoTask v1.2 基准基线：单任务提交延迟、批量提交吞吐与高并发执行"
     )
     parser.add_argument("--tasks", type=int, default=DEFAULT_TASKS, help="每轮批量提交任务数")
     parser.add_argument("--single", type=int, default=DEFAULT_SINGLE, help="单任务延迟采样数")
     parser.add_argument("--rounds", type=int, default=DEFAULT_ROUNDS, help="批量基准轮数")
     parser.add_argument(
-        "--concurrency", type=int, default=DEFAULT_CONCURRENCY, help="Worker 并发数"
+        "--concurrency", type=int, default=DEFAULT_CONCURRENCY, help="批量提交基准的 Worker 并发数"
+    )
+    parser.add_argument(
+        "--hc-levels",
+        type=_parse_levels,
+        default=list(DEFAULT_HC_LEVELS),
+        help="高并发扫描的并发度，逗号分隔（默认 1,4,8,16,32,64）",
     )
     parser.add_argument("--json", action="store_true", help="以 JSON 输出")
     args = parser.parse_args(argv)
@@ -234,8 +360,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.concurrency <= 0:
         parser.error("--concurrency 必须大于 0")
 
-    logging.getLogger("NeoTask").setLevel(logging.WARNING)
-    result = asyncio.run(run(args.tasks, args.single, args.rounds, args.concurrency))
+    logging.getLogger("NeoTask").setLevel(logging.CRITICAL if args.json else logging.WARNING)
+    result = asyncio.run(
+        run(args.tasks, args.single, args.rounds, args.concurrency, args.hc_levels)
+    )
 
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))

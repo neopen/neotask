@@ -27,6 +27,7 @@ DEFAULT_ROUNDS = 3
 DEFAULT_CONCURRENCY = 8
 DEFAULT_HC_LEVELS = (1, 4, 8, 16, 32, 64)
 DEFAULT_PROGRESS_REPORTS = (0, 1, 10, 100)
+DEFAULT_PROGRESS_SUBSCRIBERS = (0, 1)
 DEFAULT_CKPT_BACKENDS = ("memory", "sqlite")
 DEFAULT_CKPT_WRITES = (0, 1, 5)
 DEFAULT_CKPT_PAYLOAD = 256
@@ -265,19 +266,33 @@ async def measure_high_concurrency(
     }
 
 
+async def _drain_event_bus(pool: TaskPool, timeout: float) -> float:
+    """等待事件队列排空，返回耗时（秒）；用于区分“任务完成”与“事件消费完成”"""
+    started = time.perf_counter()
+    deadline = started + timeout
+    while time.perf_counter() < deadline:
+        if pool.event_bus.get_stats()["queue_size"] == 0:
+            break
+        await asyncio.sleep(0.01)
+    return time.perf_counter() - started
+
+
 async def _measure_progress_once(
     reports: int,
     tasks: int,
     concurrency: int,
+    subscribers: int = 0,
 ) -> Dict[str, Any]:
     """测一轮每任务上报指定次数的进度，采集上报调用延迟与端到端耗时
 
-    任务执行本身为空，差值即进度上报（``update_progress`` + ``task.progress``
-    入队）的框架开销；订阅方处理成本不计入。
+    任务执行本身为空，差值即进度上报（``update_progress`` 与事件派发）的框架
+    开销。``subscribers > 0`` 时注册一个只计数的空回调，模拟最轻量的订阅方；
+    订阅方自身的业务处理成本不计入。
     """
     report_ms: List[float] = []
     completed_perf: Dict[int, float] = {}
     pending_sizes: List[int] = []
+    delivered = {"count": 0}
 
     async def progress_executor(data: Dict[str, Any]) -> Dict[str, Any]:
         for step in range(reports):
@@ -296,11 +311,20 @@ async def _measure_progress_once(
         executor=progress_executor,
     )
     try:
+        if subscribers:
+
+            async def count_progress(event: Any) -> None:
+                delivered["count"] += 1
+
+            pool.on_progress(count_progress)
+
         warmup_ids = [await pool.submit_async({"index": -1 - i}) for i in range(10)]
         await pool.wait_all_async(warmup_ids, timeout=30)
+        await _drain_event_bus(pool, timeout=5.0)
         report_ms.clear()
         completed_perf.clear()
         pending_sizes.clear()
+        delivered["count"] = 0
 
         payload = [{"index": i} for i in range(tasks)]
         started = time.perf_counter()
@@ -310,13 +334,7 @@ async def _measure_progress_once(
 
         # 任务结束后事件队列可能仍在排空，单独计时才能反映消费侧是否跟上
         pending_at_finish = pool.event_bus.get_stats()["queue_size"]
-        drain_started = time.perf_counter()
-        deadline = drain_started + 10.0
-        while time.perf_counter() < deadline:
-            if pool.event_bus.get_stats()["queue_size"] == 0:
-                break
-            await asyncio.sleep(0.01)
-        drain_s = time.perf_counter() - drain_started
+        drain_s = await _drain_event_bus(pool, timeout=10.0)
 
         return {
             "elapsed_s": elapsed,
@@ -327,6 +345,7 @@ async def _measure_progress_once(
             "pending_peak": max(pending_sizes) if pending_sizes else 0,
             "pending_at_finish": pending_at_finish,
             "drain_s": drain_s,
+            "events_delivered": delivered["count"],
         }
     finally:
         pool.shutdown(graceful=True, timeout=30)
@@ -337,57 +356,69 @@ async def measure_progress_reporting(
     rounds: int,
     concurrency: int,
     report_counts: List[int],
+    subscriber_counts: List[int],
 ) -> Dict[str, Any]:
-    """按每任务上报次数扫描，正反交替多轮取中位"""
-    samples: Dict[int, List[Dict[str, Any]]] = {count: [] for count in report_counts}
+    """按「订阅方 × 每任务上报次数」扫描，正反交替多轮取中位"""
+    keys = [(subs, count) for subs in subscriber_counts for count in report_counts]
+    samples: Dict[Any, List[Dict[str, Any]]] = {key: [] for key in keys}
     for index in range(rounds):
-        order = list(report_counts) if index % 2 == 0 else list(reversed(report_counts))
-        for reports in order:
-            samples[reports].append(await _measure_progress_once(reports, tasks, concurrency))
-
-    baseline_elapsed = None
-    if 0 in report_counts:
-        baseline_elapsed = statistics.median(item["elapsed_s"] for item in samples[0])
+        order = list(keys) if index % 2 == 0 else list(reversed(keys))
+        for subscribers, reports in order:
+            samples[(subscribers, reports)].append(
+                await _measure_progress_once(reports, tasks, concurrency, subscribers)
+            )
 
     entries: List[Dict[str, Any]] = []
-    for reports in report_counts:
-        runs = samples[reports]
-        elapsed_median = statistics.median(item["elapsed_s"] for item in runs)
-        throughput = tasks / elapsed_median if elapsed_median else 0.0
-        task_latencies = [value for item in runs for value in item["task_latencies_ms"]]
-        entry: Dict[str, Any] = {
-            "reports_per_task": reports,
-            "throughput_median": throughput,
-            "task_latency_ms": _percentiles(task_latencies),
-            "pending_peak_median": statistics.median(item["pending_peak"] for item in runs),
-            "pending_at_finish_median": statistics.median(
-                item["pending_at_finish"] for item in runs
-            ),
-            "drain_s_median": statistics.median(item["drain_s"] for item in runs),
-        }
-
-        if reports:
-            report_stats = _percentiles(
-                [value for item in runs for value in item["report_latencies_ms"]]
+    for subscribers in subscriber_counts:
+        baseline_elapsed = None
+        if 0 in report_counts:
+            baseline_elapsed = statistics.median(
+                item["elapsed_s"] for item in samples[(subscribers, 0)]
             )
-            entry["report_p50_us"] = report_stats["p50"] * 1000.0
-            entry["report_p95_us"] = report_stats["p95"] * 1000.0
-            if baseline_elapsed:
-                entry["throughput_ratio_vs_0"] = (
-                    baseline_elapsed / elapsed_median if elapsed_median else 0.0
-                )
-                entry["wall_overhead_per_report_ms"] = (
-                    (elapsed_median - baseline_elapsed) * 1000.0 / (tasks * reports)
-                )
-        elif baseline_elapsed:
-            entry["throughput_ratio_vs_0"] = 1.0
 
-        entries.append(entry)
+        for reports in report_counts:
+            runs = samples[(subscribers, reports)]
+            elapsed_median = statistics.median(item["elapsed_s"] for item in runs)
+            throughput = tasks / elapsed_median if elapsed_median else 0.0
+            task_latencies = [value for item in runs for value in item["task_latencies_ms"]]
+            entry: Dict[str, Any] = {
+                "subscribers": subscribers,
+                "reports_per_task": reports,
+                "throughput_median": throughput,
+                "task_latency_ms": _percentiles(task_latencies),
+                "pending_peak_median": statistics.median(item["pending_peak"] for item in runs),
+                "pending_at_finish_median": statistics.median(
+                    item["pending_at_finish"] for item in runs
+                ),
+                "drain_s_median": statistics.median(item["drain_s"] for item in runs),
+                "events_delivered_median": statistics.median(
+                    item["events_delivered"] for item in runs
+                ),
+            }
+
+            if reports:
+                report_stats = _percentiles(
+                    [value for item in runs for value in item["report_latencies_ms"]]
+                )
+                entry["report_p50_us"] = report_stats["p50"] * 1000.0
+                entry["report_p95_us"] = report_stats["p95"] * 1000.0
+                if baseline_elapsed:
+                    entry["throughput_ratio_vs_0"] = (
+                        baseline_elapsed / elapsed_median if elapsed_median else 0.0
+                    )
+                    entry["wall_overhead_per_report_ms"] = (
+                        (elapsed_median - baseline_elapsed) * 1000.0 / (tasks * reports)
+                    )
+            elif baseline_elapsed:
+                entry["throughput_ratio_vs_0"] = 1.0
+
+            entries.append(entry)
 
     return {
         "tasks_per_round": tasks,
         "rounds": rounds,
         "worker_concurrency": concurrency,
+        "subscriber_levels": subscriber_counts,
         "samples": entries,
     }
 
@@ -573,7 +604,7 @@ def _print_report(result: Dict[str, Any]) -> None:
         f"{progress['worker_concurrency']} 并发，{progress['rounds']} 轮交替取中位）"
     )
     print(
-        f"  {'上报/任务':>9} {'tasks/s':>10} {'相对0上报':>9} "
+        f"  {'订阅':>4} {'上报/任务':>9} {'tasks/s':>10} {'相对同组0上报':>13} "
         f"{'report p50':>10} {'report p95':>10} {'增量/次':>9}"
     )
     for item in progress["samples"]:
@@ -584,18 +615,21 @@ def _print_report(result: Dict[str, Any]) -> None:
         report_p50 = _format_us(item["report_p50_us"]) if item.get("report_p50_us") else "-"
         report_p95 = _format_us(item["report_p95_us"]) if item.get("report_p95_us") else "-"
         print(
-            f"  {item['reports_per_task']:>9} {item['throughput_median']:>10.0f} "
-            f"{ratio_text:>9} {report_p50:>10} {report_p95:>10} {extra_text:>9}"
+            f"  {item['subscribers']:>4} {item['reports_per_task']:>9} "
+            f"{item['throughput_median']:>10.0f} {ratio_text:>13} "
+            f"{report_p50:>10} {report_p95:>10} {extra_text:>9}"
         )
-    print("  上报延迟口径：report_progress 调用返回；无订阅方，故只含框架侧开销")
+    print("  上报延迟口径：report_progress 调用返回；订阅方为空回调，不含业务处理成本")
     for item in progress["samples"]:
         if not item["reports_per_task"]:
             continue
+        scope = "有订阅" if item["subscribers"] else "无订阅"
         print(
-            f"  {item['reports_per_task']} 次上报：事件峰值积压中位 "
+            f"  {scope} {item['reports_per_task']} 次上报：事件峰值积压中位 "
             f"{item['pending_peak_median']:.0f} 条，任务完成后余 "
             f"{item['pending_at_finish_median']:.0f} 条，排空中位 "
-            f"{item['drain_s_median'] * 1000.0:.0f}ms"
+            f"{item['drain_s_median'] * 1000.0:.0f}ms，投递 "
+            f"{item['events_delivered_median']:.0f} 条"
         )
     print("-" * 60)
 
@@ -633,6 +667,7 @@ async def run(
     concurrency: int,
     hc_levels: List[int],
     progress_reports: List[int],
+    progress_subscribers: List[int],
     ckpt_backends: List[str],
     ckpt_writes: List[int],
     ckpt_payload: int,
@@ -641,7 +676,7 @@ async def run(
     bulk_result = await measure_batch_submit(tasks, rounds, concurrency)
     high_concurrency = await measure_high_concurrency(tasks, rounds, hc_levels)
     progress_reporting = await measure_progress_reporting(
-        tasks, rounds, concurrency, progress_reports
+        tasks, rounds, concurrency, progress_reports, progress_subscribers
     )
     checkpoint_overhead = await measure_checkpoint_overhead(
         tasks, rounds, concurrency, ckpt_backends, ckpt_writes, ckpt_payload
@@ -656,6 +691,7 @@ async def run(
             "rounds": rounds,
             "high_concurrency_levels": hc_levels,
             "progress_reports_per_task": progress_reports,
+            "progress_subscribers": progress_subscribers,
             "checkpoint_backends": ckpt_backends,
             "checkpoint_writes": ckpt_writes,
             "checkpoint_payload_bytes": ckpt_payload,
@@ -713,6 +749,16 @@ def _parse_report_counts(text: str) -> List[int]:
     return sorted(set(counts))
 
 
+def _parse_subscriber_counts(text: str) -> List[int]:
+    try:
+        counts = [int(part.strip()) for part in text.split(",") if part.strip()]
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("订阅方数量必须是逗号分隔的整数") from exc
+    if not counts or any(count < 0 or count > 1 for count in counts):
+        raise argparse.ArgumentTypeError("订阅方数量只支持 0 或 1")
+    return sorted(set(counts))
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="NeoTask v1.2 基准基线：单任务提交延迟、批量提交吞吐、高并发执行与 Checkpoint 写入开销"
@@ -734,6 +780,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         type=_parse_report_counts,
         default=list(DEFAULT_PROGRESS_REPORTS),
         help="每任务进度上报次数，逗号分隔（默认 0,1,10,100）",
+    )
+    parser.add_argument(
+        "--progress-subscribers",
+        type=_parse_subscriber_counts,
+        default=list(DEFAULT_PROGRESS_SUBSCRIBERS),
+        help="进度订阅方数量（0=无、1=空回调订阅），逗号分隔（默认 0,1）",
     )
     parser.add_argument(
         "--ckpt-backends",
@@ -774,6 +826,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             args.concurrency,
             args.hc_levels,
             args.progress_reports,
+            args.progress_subscribers,
             args.ckpt_backends,
             args.ckpt_writes,
             args.ckpt_payload,

@@ -128,6 +128,40 @@ class TestTask:
         task.update_progress(-0.5, "under")
         assert task.progress == 0.0
 
+    def test_clone_isolates_mutable_fields(self):
+        """clone 后修改容器字段不应影响原任务"""
+        task = Task(
+            task_id="test-011",
+            data={"nested": {"n": 1}},
+            result={"value": 1},
+            cost_tracking={"tokens_in": 10},
+        )
+
+        clone = task.clone()
+        clone.data["nested"]["n"] = 2
+        clone.data["extra"] = True
+        clone.result["value"] = 2
+        clone.cost_tracking["tokens_in"] = 99
+        clone.status = TaskStatus.SUCCESS
+        clone.progress = 1.0
+
+        assert task.data == {"nested": {"n": 1}}
+        assert task.result == {"value": 1}
+        assert task.cost_tracking == {"tokens_in": 10}
+        assert task.status == TaskStatus.PENDING
+        assert task.progress == 0.0
+        assert clone.task_id == task.task_id
+
+    def test_clone_shares_immutable_timestamps(self):
+        """不可变字段直接共享，内容保持一致"""
+        task = Task(task_id="test-012", data={})
+
+        clone = task.clone()
+
+        assert clone.created_at is task.created_at
+        assert clone.status is task.status
+        assert clone.to_dict() == task.to_dict()
+
 
 class TestTaskStatus:
     """Test TaskStatus enum."""

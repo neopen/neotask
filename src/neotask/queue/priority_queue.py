@@ -140,6 +140,19 @@ class PriorityQueue(BaseQueue):
         with self._lock:
             return len(self._heap)
 
+    async def count_by_priority(self) -> Dict[int, int]:
+        """统计各优先级的排队任务数（持久化模式委托给队列仓储）"""
+        if self._use_repository:
+            repository = self._repository
+            assert repository is not None
+            return await repository.count_by_priority()
+
+        with self._lock:
+            counts: Dict[int, int] = {}
+            for priority, _, _ in self._heap:
+                counts[priority] = counts.get(priority, 0) + 1
+            return counts
+
     async def peek(self, count: int = 1) -> List[str]:
         """查看队首任务"""
         if self._use_repository:

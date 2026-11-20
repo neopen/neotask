@@ -87,6 +87,34 @@ class TestEventBus:
             assert received_events[1].event_type == "event.2"
 
     @pytest.mark.asyncio
+    async def test_emit_without_subscribers_is_skipped(self, event_bus):
+        """无订阅方的事件不入队：高频事件不再空跑消费循环"""
+        async with event_bus as bus:
+            await bus.emit(TaskEvent(EventType.PROGRESS, "task_001"))
+            await bus.emit(TaskEvent("custom.event", "task_002"))
+            await asyncio.sleep(0.05)
+
+            stats = bus.get_stats()
+            assert stats["queue_size"] == 0
+            assert stats["processed_events"] == 0
+
+    @pytest.mark.asyncio
+    async def test_emit_with_global_subscriber_not_skipped(self, event_bus):
+        """全局订阅方仍能收到没有具体订阅的事件"""
+        async with event_bus as bus:
+            received = []
+
+            async def global_handler(event: TaskEvent):
+                received.append(event)
+
+            bus.subscribe_global(global_handler)
+
+            await bus.emit(TaskEvent(EventType.PROGRESS, "task_001"))
+            await asyncio.sleep(0.05)
+
+            assert [event.event_type for event in received] == [EventType.PROGRESS]
+
+    @pytest.mark.asyncio
     async def test_unsubscribe(self, event_bus):
         """测试取消订阅"""
         async with event_bus as bus:

@@ -10,11 +10,15 @@ See LICENSE File For Details.
 @Time: 2026/4/21
 """
 
+import time
+
 import pytest
 import asyncio
 import random
 import threading
 
+from neotask import TaskPool, TaskPoolConfig
+from neotask.models.task import TaskPriority
 from neotask.monitor.metrics import MetricsCollector, TaskMetrics
 
 
@@ -462,6 +466,176 @@ class TestTaskMetrics:
 
         # 平均执行时间 0.1，吞吐量 = 1/0.1 = 10.0
         assert metrics.throughput == 10.0
+
+class TestTaskPoolMetrics:
+    """TaskPool 轻量监控快照与周期推送"""
+
+    def test_get_metrics_before_start_raises(self):
+        pool = TaskPool(lambda x: x)
+        with pytest.raises(RuntimeError):
+            pool.get_metrics()
+
+    def test_get_metrics_snapshot_reflects_queue_and_counters(self):
+        pool = TaskPool(lambda x: x, config=TaskPoolConfig(worker_concurrency=3))
+        pool.start()
+        try:
+            # 先暂停出队，让任务稳定停在队列中再断言深度
+            pool.pause()
+            normal_id = pool.submit(1, priority=TaskPriority.NORMAL.value)
+            critical_id = pool.submit(2, priority=TaskPriority.CRITICAL.value)
+
+            snapshot = pool.get_metrics()
+            assert snapshot["worker_concurrency"] == 3
+            assert snapshot["storage_backend"] == "memory"
+            assert snapshot["queue_depth_by_priority"] == {0: 1, 1: 0, 2: 1, 3: 0}
+            assert snapshot["retry_queue_size"] == 0
+            assert snapshot["checkpoint_count"] == 0
+            assert snapshot["context_key_count"] == 0
+            assert snapshot["active_workers"] == 0
+            assert snapshot["oldest_pending_age_seconds"] >= 0
+
+            # 计数器由事件驱动，异步消费后才是 2
+            deadline = time.time() + 3
+            while time.time() < deadline and pool.get_metrics()["pending"] < 2:
+                time.sleep(0.01)
+            assert pool.get_metrics()["pending"] == 2
+
+            pool.resume()
+            pool.wait_for_result(normal_id, timeout=5)
+            pool.wait_for_result(critical_id, timeout=5)
+
+            deadline = time.time() + 3
+            while time.time() < deadline and pool.get_metrics()["completed"] < 2:
+                time.sleep(0.01)
+            final = pool.get_metrics()
+            assert final["completed"] == 2
+            assert final["running"] == 0
+            assert final["active_workers"] == 0
+            assert sum(final["queue_depth_by_priority"].values()) == 0
+        finally:
+            pool.shutdown()
+
+    def test_on_metrics_pushes_and_cancels(self):
+        pool = TaskPool(lambda x: x)
+        pool.start()
+        received = []
+        event = threading.Event()
+        try:
+            def handler(snapshot):
+                received.append(snapshot)
+                if len(received) >= 2:
+                    event.set()
+
+            subscription = pool.on_metrics(handler, interval=0.02)
+            try:
+                assert event.wait(5)
+                assert received[0]["storage_backend"] == "memory"
+            finally:
+                subscription.cancel()
+
+            deadline = time.time() + 3
+            while time.time() < deadline and subscription.active:
+                time.sleep(0.01)
+            assert subscription.active is False
+        finally:
+            pool.shutdown()
+
+    def test_on_metrics_supports_async_handler(self):
+        pool = TaskPool(lambda x: x)
+        pool.start()
+        received = []
+        event = threading.Event()
+        try:
+            async def handler(snapshot):
+                received.append(snapshot)
+                event.set()
+
+            subscription = pool.on_metrics(handler, interval=0.02)
+            try:
+                assert event.wait(5)
+                assert "queue_depth_by_priority" in received[0]
+            finally:
+                subscription.cancel()
+        finally:
+            pool.shutdown()
+
+    def test_metrics_handler_error_does_not_stop_subscription(self):
+        pool = TaskPool(lambda x: x)
+        pool.start()
+        calls = []
+        event = threading.Event()
+        try:
+            def handler(snapshot):
+                calls.append(snapshot)
+                if len(calls) == 1:
+                    raise RuntimeError("boom")
+                if len(calls) >= 3:
+                    event.set()
+
+            subscription = pool.on_metrics(handler, interval=0.02)
+            try:
+                assert event.wait(5), "推送在 handler 抛错后应继续"
+                assert len(calls) >= 3
+            finally:
+                subscription.cancel()
+        finally:
+            pool.shutdown()
+
+    def test_on_metrics_rejects_invalid_arguments(self):
+        pool = TaskPool(lambda x: x)
+        pool.start()
+        try:
+            with pytest.raises(ValueError):
+                pool.on_metrics(lambda snapshot: None, interval=0)
+            with pytest.raises(TypeError):
+                pool.on_metrics("not-callable")  # type: ignore[arg-type]
+        finally:
+            pool.shutdown()
+
+    def test_retry_queue_size_tracks_delayed_retries(self):
+        calls = {"count": 0}
+
+        def flaky(value):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise RuntimeError("transient")
+            return value
+
+        pool = TaskPool(
+            flaky,
+            config=TaskPoolConfig(
+                worker_concurrency=1,
+                max_retries=2,
+                retry_delay=0.3,
+            ),
+        )
+        pool.start()
+        try:
+            task_id = pool.submit("ok")
+
+            deadline = time.time() + 5
+            seen = 0
+            while time.time() < deadline:
+                seen = max(seen, pool.get_metrics()["retry_queue_size"])
+                if seen == 1:
+                    break
+                time.sleep(0.01)
+            assert seen == 1, "重试任务在延迟窗口内应计入 retry_queue_size"
+
+            pool.wait_for_result(task_id, timeout=5)
+
+            deadline = time.time() + 3
+            while (
+                time.time() < deadline
+                and pool.get_metrics()["retry_queue_size"] != 0
+            ):
+                time.sleep(0.01)
+            final = pool.get_metrics()
+            assert final["retry_queue_size"] == 0
+            assert final["completed"] == 1
+        finally:
+            pool.shutdown()
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--asyncio-mode=auto"])

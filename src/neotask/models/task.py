@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
+import copy
 import json
 
 
@@ -124,6 +125,19 @@ class Task:
         if message:
             self.progress_message = message
 
+    def clone(self) -> "Task":
+        """返回状态一致的独立副本，供仓储隔离调用方与内部数据。
+
+        只深拷贝容器字段；时间戳、枚举、字符串等不可变字段直接共享。
+        ``copy.deepcopy`` 对 ``datetime`` 走 reduce 协议，单次约 9us，
+        而内存后端每个任务要拷贝 3 次，这是高并发下的主要单任务开销。
+        """
+        clone = copy.copy(self)
+        clone.data = copy.deepcopy(self.data)
+        if self.result is not None:
+            clone.result = copy.deepcopy(self.result)
+        clone.cost_tracking = copy.deepcopy(self.cost_tracking)
+        return clone
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Task":

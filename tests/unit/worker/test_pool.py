@@ -95,3 +95,44 @@ class TestPrefetcherDrain:
             assert await prefetcher.wait_until_empty(timeout=0.3) is True
         finally:
             await queue.stop()
+
+
+class TestPrefetcherGetFastPath:
+    """本地队列非空时不走 ``wait_for``，避免每任务一次 Task 创建 + 定时器"""
+
+    @pytest.mark.asyncio
+    async def test_get_uses_nowait_when_local_queue_has_task(self, monkeypatch):
+        prefetcher = TaskPrefetcher(QueueScheduler(), PrefetchConfig())
+        prefetcher._local_queue = asyncio.Queue()
+        prefetcher._demand_event = asyncio.Event()
+        prefetcher._local_queue.put_nowait("task_1")
+
+        calls = []
+        real_wait_for = asyncio.wait_for
+
+        async def spy(coro, timeout):
+            calls.append(timeout)
+            return await real_wait_for(coro, timeout)
+
+        monkeypatch.setattr(asyncio, "wait_for", spy)
+
+        assert await prefetcher.get(timeout=0.05) == "task_1"
+        assert calls == []
+
+    @pytest.mark.asyncio
+    async def test_get_waits_when_local_queue_empty(self, monkeypatch):
+        prefetcher = TaskPrefetcher(QueueScheduler(), PrefetchConfig())
+        prefetcher._local_queue = asyncio.Queue()
+        prefetcher._demand_event = asyncio.Event()
+
+        calls = []
+        real_wait_for = asyncio.wait_for
+
+        async def spy(coro, timeout):
+            calls.append(timeout)
+            return await real_wait_for(coro, timeout)
+
+        monkeypatch.setattr(asyncio, "wait_for", spy)
+
+        assert await prefetcher.get(timeout=0.01) is None
+        assert len(calls) == 1

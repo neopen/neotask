@@ -14,6 +14,7 @@ import asyncio
 import time
 
 from neotask import TaskPool, TaskPoolConfig, report_progress, report_progress_sync
+from neotask.common.constants import EventType
 from neotask.executor import ThreadExecutor
 
 
@@ -96,3 +97,20 @@ async def test_report_progress_outside_task_is_noop():
     """不在 Worker 执行上下文中时应安全返回 False"""
     assert await report_progress(0.5, "outside") is False
     assert report_progress_sync(0.5, "outside") is False
+
+
+async def _noop_executor(data):
+    return {"ok": True}
+
+
+def test_progress_is_not_subscribed_without_user_handler():
+    """内部处理器只订阅生命周期事件，无人订阅时 progress 事件不入队"""
+    pool = TaskPool(_noop_executor, TaskPoolConfig(storage_type="memory"))
+    try:
+        bus = pool.event_bus
+        assert bus.has_subscribers(EventType.PROGRESS) is False
+        assert bus.has_subscribers(EventType.COMPLETED) is True
+        # 默认不再有任何全局订阅，progress 事件才能被 EventBus 直接丢弃
+        assert bus.has_subscribers() is False
+    finally:
+        pool.shutdown()

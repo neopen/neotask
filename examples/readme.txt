@@ -27,6 +27,7 @@ NeoTask 示例索引（examples/）
 19_parent_child.py       父子任务        parent_task_id 关联、get_children/get_parent 查询与汇总
 20_checkpoint.py         断点续跑        save_checkpoint/load_checkpoint、重试恢复与 task.checkpointed
 21_blackboard.py         本地上下文      Memory 后端 context_set/get/delete、TTL 与非 Memory 显式报错
+22_metrics.py            轻量监控        get_metrics 快照（队列深度/最早等待/重试）、on_metrics 周期推送
 99_all_features.py       完整演示        即时+优先级+批量+事件+进度+统计+定时（约 7 秒）
 
 说明：

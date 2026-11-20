@@ -143,6 +143,18 @@ class TestPriorityQueue:
         assert tasks == []
 
     @pytest.mark.asyncio
+    async def test_count_by_priority(self, priority_queue):
+        """测试按优先级分组计数"""
+        await priority_queue.push("task_1", 0)
+        await priority_queue.push("task_2", 2)
+        await priority_queue.push("task_3", 2)
+
+        assert await priority_queue.count_by_priority() == {0: 1, 2: 2}
+
+        await priority_queue.clear()
+        assert await priority_queue.count_by_priority() == {}
+
+    @pytest.mark.asyncio
     async def test_contains(self, priority_queue):
         """测试包含检查"""
         await priority_queue.push("task_1", 1)

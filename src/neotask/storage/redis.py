@@ -426,6 +426,41 @@ class RedisTaskRepository(TaskRepository):
         client = await self._get_client()
         return int(await client.scard(self._status_key(status.value)))
 
+    async def oldest_pending_created_at(self) -> Optional[datetime]:
+        """最早 PENDING 任务的创建时间（SMEMBERS + 分批 MGET）
+
+        Redis 没有按时间排序的状态索引，只能取状态集合再读任务 JSON。分批
+        MGET 把往返压到 ``O(n / 500)``，且只解析 ``created_at`` 字段，比逐条
+        ``get`` 重建任务对象便宜得多。监控默认采样间隔下这是可接受的成本。
+        """
+        client = await self._get_client()
+        task_ids = list(await client.smembers(
+            self._status_key(TaskStatus.PENDING.value)
+        ))
+        if not task_ids:
+            return None
+
+        oldest_ts: Optional[float] = None
+        batch = 500
+        for start in range(0, len(task_ids), batch):
+            chunk = task_ids[start:start + batch]
+            raws = await client.mget(
+                [self._task_key(task_id) for task_id in chunk]
+            )
+            for raw in raws:
+                if not raw:
+                    continue
+                try:
+                    created_at = _parse_timestamp(json.loads(raw).get("created_at"))
+                except (ValueError, TypeError):
+                    continue
+                if created_at is not None and (
+                        oldest_ts is None or created_at < oldest_ts
+                ):
+                    oldest_ts = created_at
+
+        return datetime.fromtimestamp(oldest_ts) if oldest_ts is not None else None
+
     async def list_by_parent(
             self, parent_task_id: str, limit: int = 100, offset: int = 0
     ) -> List[Task]:
@@ -746,6 +781,20 @@ class RedisQueueRepository(QueueRepository):
         priority_size, delayed_size = await pipe.execute()
         return int(priority_size) + int(delayed_size)
 
+    async def count_by_priority(self) -> Dict[int, int]:
+        """按优先级统计排队任务数（每个档位一次 ZCOUNT，合并为一个 pipeline）"""
+        client = await self._get_client()
+        levels = [level.value for level in TaskPriority]
+        pipe = client.pipeline(transaction=False)
+        for level in levels:
+            pipe.zcount(self._queue_key, level, level)
+        results = await pipe.execute()
+        return {
+            level: int(count)
+            for level, count in zip(levels, results)
+            if int(count) > 0
+        }
+
     async def peek(self, count: int = 1) -> List[str]:
         """查看队首任务"""
         client = await self._get_client()
@@ -943,6 +992,36 @@ class RedisCheckpointRepository(CheckpointRepository):
     async def delete(self, task_id: str) -> None:
         client = await self._get_client()
         await client.delete(self._ckpt_key(task_id))
+
+    async def count(self) -> Optional[int]:
+        """统计全部 checkpoint 版本数（SCAN 键 + pipeline HLEN）
+
+        checkpoint 是 ``hash``，每个任务一个键，Redis 没有全局计数；用 SCAN
+        分批枚举 ``ckpt:*`` 键并把 HLEN 合并到一个 pipeline，避免逐键往返。
+        """
+        client = await self._get_client()
+        pattern = redis_key("ckpt:*")
+        keys: List[str] = []
+        cursor = 0
+        while True:
+            cursor, batch = await client.scan(
+                cursor=cursor, match=pattern, count=500
+            )
+            keys.extend(batch)
+            if int(cursor) == 0:
+                break
+
+        if not keys:
+            return 0
+
+        total = 0
+        batch_size = 500
+        for start in range(0, len(keys), batch_size):
+            pipe = client.pipeline(transaction=False)
+            for key in keys[start:start + batch_size]:
+                pipe.hlen(key)
+            total += sum(int(size) for size in await pipe.execute())
+        return total
 
     async def close(self) -> None:
         if self._client:

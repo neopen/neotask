@@ -19,6 +19,7 @@
 3. 控制面接入（任务拉取、事件上报）整体放在 2.0，做成可选能力，不改变 1.x 公开结构。
 4. 线协议只做增量扩展；破坏性变更提升 `schema_version` 并保留旧版本可读一个 minor。
 5. 轻量监控属于本地能力的一部分，不做独立 Web UI。
+6. 人工介入属于本地能力：等待状态落库、不依赖控制面，任何节点都可 signal 唤醒。
 
 ---
 
@@ -29,9 +30,10 @@
 | v1.0.x | 基础任务池、定时调度、分布式基础、可观测性基础 | 已发布          |
 | v1.1.0 | 本地任务能力补全                 | 已发布                     |
 | v1.1.1 | 稳定性与升级体验修复             | 已发布                     |
-| v1.1.2 | 调度精度与执行器配置修复         | 开发中                     |
-| v1.2.0 | 性能优化与基准测试、轻量监控     | 规划中                     |
-| v1.3.0 | 监控导出器与可靠性补强           | 规划中                     |
+| v1.1.2 | 调度精度与执行器配置修复         | 已发布                     |
+| v1.2.0 | 性能优化与基准测试、轻量监控     | 进行中（待发布）           |
+| v1.3.0 | 人工介入（等待状态与信号唤醒）   | 规划中                     |
+| v1.4.0 | 监控导出器与可靠性补强           | 规划中                     |
 | v2.0.0 | NeoFlow 执行面接入               | 后移                       |
 
 ---
@@ -112,8 +114,9 @@
 - [x] `TaskEngine` 的 `checkpoint_repo` 注入路径补测试
 - [x] README / README_zh 状态同步（v1.1 已交付、架构图去掉“规划”标注、链接契约页）
 - [x] release-please 依据 conventional commits 生成 1.1.0 与 CHANGELOG（不手改）
-- [ ] 发布说明提示 1.0.x 升级：checkpoint 表启动时自动创建，历史任务耗时回填运行
-      `scripts/migrate_task_metadata.py`；官网 API 文档同步
+- [x] 发布说明提示 1.0.x 升级：checkpoint 表启动时自动创建，历史任务耗时回填运行
+      `scripts/migrate_task_metadata.py`（v1.1.2 发布说明已覆盖）
+- [ ] 官网 API 文档同步（外部站点，独立跟踪）
 
 ---
 
@@ -189,50 +192,226 @@
 - 进度上报节流：`progress_flush_interval` / `progress_flush_delta`（事件仍实时推送）。
 - SQLite：WAL + `synchronous=NORMAL` + `busy_timeout`，连接经专用 loop 复用并支持跨仓储共享。
 
+### 基准基线（2026-11-20 复测）
+
+`benchmarks/run_baseline.py` 全量运行（Windows / Python 3.11 / 8 workers /
+每轮 1000 任务、3 轮交替取中位）：
+
+- 单任务提交调用：p50 0.14ms / p95 0.38ms / p99 0.46ms（200 次采样）
+- 批量提交：逐条 2189 tasks/s，`submit_many` 7310 tasks/s，配对加速比中位 3.09x（2.49x ~ 3.34x）
+- 高并发执行（1000 任务，1/4/8/16/32/64 并发，3 轮正反交替取中位）：
+  吞吐 1912 → 3271 tasks/s（峰值 16 并发，1.71x）；p50 延迟 379ms → 215ms。
+  本次整机比上一轮快（memory 零写基线 1311 → 2583 tasks/s），并发扩展比在历次
+  运行间波动 1.1x ~ 1.7x、峰值档位也不固定，只能看量级；EventBus 在并发 >1 时
+  仍会积压生命周期事件，任务完成与事件派发的串行路径仍是待查项。
+- 高并发调度开销优化后（8/64 并发，1000 任务，5 次交错配对取中位）：
+  c=8 吞吐 2587 → 3730 tasks/s、p50 277ms → 202ms；c=64 吞吐 2639 → 3506 tasks/s、
+  p50 272ms → 209ms。配对加速比中位 c=8 1.64x（1.52/1.64/1.69）、c=64 1.45x
+  （1.32/1.45/1.71）。归因：`Task.clone` 单独 1.45x / 1.71x；预取快路径在吞吐
+  噪声内，但确定性省掉每任务一次 `wait_for` 调度（单次 12.7us → 0.16us）。
+- 进度上报频率（1000 任务、8 并发、每任务 0/1/10/100 次；订阅方为只计数的空回调）：
+  - 优化后 无订阅：3073 / 2419（0.79x）/ 1941（0.63x）/ 1035 tasks/s（0.34x），
+    事件积压恒约 1.7k 条（仅生命周期事件），排空约 60ms，progress 投递 0 条。
+  - 优化后 有订阅：3101 / 2538（0.82x）/ 1961（0.63x）/ 858 tasks/s（0.28x），
+    积压 2.7k / 11.7k / 101.7k 条，排空 0.09s / 0.30s / 2.26s，投递 1k / 10k / 100k 条。
+  - 优化前（无订阅，内部处理器全局订阅）：0.92x / 0.74x / 0.29x，
+    积压 2.7k / 11.7k / 101.7k 条，排空 0.2s / 0.75s / 5.2s。
+  - 结论：无订阅时 progress 事件不再入队，积压与排空开销消失；有订阅时事件仍逐条
+    派发，但内部处理器不再空跑，排空从 5.2s 降到 2.3s。单次上报约 6us 的调用成本
+    与订阅无关，100 次/任务仍只有 0.28x ~ 0.34x。后续候选：进度事件合并/节流、
+    批量落库与队列有界化。
+- Checkpoint 写入开销（1000 任务、8 并发、256B 状态、每任务 0/1/5 次写入）：
+  - memory：0 写 2235 tasks/s；1 写 2010（0.90x），单次 `save_checkpoint` p50 49us，
+    每写增量约 0.05ms；5 写 1290 tasks/s（0.58x），p50 50us，每写增量约 0.07ms。
+  - sqlite（写入成本优化后）：0 写 623 tasks/s；1 写 399（0.64x），单次写入
+    p50 6.64ms / p95 16.31ms，每写增量约 0.90ms；5 写 148 tasks/s（0.24x），
+    p50 7.60ms / p95 14.61ms，增量约 1.03ms。
+  - 优化前同参数：0 写 503 tasks/s；1 写 242（0.48x），p50 13.1ms；5 写 84（0.17x），
+    p50 13.8ms。
+  - 结论：sqlite 单次提交成本已降到约一半，高频 Checkpoint 的主要剩余成本是
+    aiosqlite 逐语句往返（每次写约 0.2–0.4ms）与任务存储本身的串行写锁。
+- 监控快照成本（1000 任务排队 + 队列暂停、100 次 `get_metrics_async`，memory 后端）：
+  p50 295us / p95 542us / p99 801us；每次快照的 `queue_depth_by_priority` 总和与
+  队列大小一致。memory 后端的按优先级计数与最早 PENDING 时间均为 O(队列长度) 扫描，
+  按 1s 采样间隔可接受；SQLite 走 `GROUP BY` / `MIN(created_at)`，Redis 走 pipeline
+  `ZCOUNT` / SMEMBERS + 分批 MGET（每 500 条一次往返）。
+
+> 单轮吞吐波动可达 2–3 倍，横向对比请保持机器与参数一致，并比较配对中位数。
+
 ### P0 性能优化（剩余工作）
 
 #### 1. 基准测试套件
 - 新增 `benchmarks/` 目录，覆盖：
-  - 单任务提交延迟
-  - 批量提交吞吐（1000 条，验证相对逐条提交量级提升）
-  - 高并发执行（1000 任务）
-  - 进度上报频率对吞吐的影响
-  - Checkpoint 写入开销
+  - [x] 单任务提交延迟
+  - [x] 批量提交吞吐（1000 条，验证相对逐条提交量级提升）
+  - [x] 高并发执行（1000 任务）
+  - [x] 进度上报频率对吞吐的影响（每任务 0/1/10/100 次，含事件积压与排空）
+  - [x] Checkpoint 写入开销（memory / sqlite × 每任务 0/1/5 次写入）
+  - [x] 监控快照成本（1000 排队任务 × 100 次 `get_metrics`，校验队列深度总和）
 - 每次版本发布跑基准，数据记入 CHANGELOG，防止性能回退。
 
-#### 2. 高并发调度开销
-- 同优先级任务批量出队。
-- 压测验收：`worker_concurrency` 50+ 时降低每任务调度切换次数。
+#### 2. 高并发调度开销（已交付）
+- 批量出队现状：默认预取路径（`enable_prefetch` + `enable_batch_pop`）本来就按批出队，
+  2000 任务只触发 105 次 `pop`、平均批 19 条；直接模式（关闭预取）仍逐条取，避免
+  整批落到单个 worker。真正拖慢 50+ 并发的是每任务的拷贝与取任务调度，而不是出队次数。
+- `Task.clone()`：只深拷贝 `data` / `result` / `cost_tracking`，时间戳、枚举、字符串
+  直接共享。`copy.deepcopy` 对 `datetime` 走 reduce 协议（单次约 9us），而内存后端
+  每个任务要整对象拷贝 3 次（提交、状态迁移、完成），单次 23us → 4us。
+- `MemoryTaskRepository` 全部读写改用 `clone()`；`TaskPrefetcher.get` 在本地队列非空时
+  走 `get_nowait`，只有为空才进 `wait_for`，省掉每任务一次 Task 创建 + 定时器。
+- 定位依据：cProfile 下 `copy.deepcopy` 占 64 并发总耗时的约 40%（根调用 3 次/任务，
+  递归调用 22 万次）；把 `deepcopy` 变恒等时 c=64 吞吐 2509 → 4471 tasks/s。
+- 验证：同机 5 次交错配对，c=8 1.64x、c=64 1.45x；全量测试通过。
+- 剩余候选：EventBus 生命周期事件逐条派发（并发 >1 时仍积压），任务完成路径串行化。
 
-### P0 轻量监控
+#### 3. 事件派发优化（已交付）
+- EventBus 在事件类型无订阅方且无全局订阅时直接丢弃，不再入队空跑消费循环。
+- 内部计数器与指标处理器改为按生命周期事件类型订阅（不再全局订阅），
+  `task.progress` 等高频事件在无人订阅时完全不进入事件总线。
+- 验证：全量测试 866 passed / 12 skipped；基准复测见上，无订阅进度上报的事件
+  积压与排空开销消失，有订阅时排空 5.2s → 2.3s。
 
-#### 1. `pool.get_metrics()` 快照接口
-返回字段：
-- 各状态任务数：`pending_count` / `running_count` / `completed_count` / `failed_count`
+#### 4. SQLite 写入成本优化（已交付）
+- 自动提交模式（`isolation_level=None`）下 `commit()` 直接返回：每条语句自成事务，
+  commit 没有可提交内容，原先每次单语句写入还要多付一次跨 loop 派发（约 0.2ms）。
+  显式隔离级别与手动 `BEGIN`（`in_transaction` 为真）仍照常提交。
+- `save_checkpoint` 仅在累计版本超过 `checkpoint_keep_versions` 时执行 prune，
+  窗口内跳过每写一次的 DELETE 事务（SQLite 下约 0.65ms）。
+- 定位依据：同线程 `sqlite3` 单事务仅约 0.04ms，成本几乎全在 aiosqlite 逐语句往返
+  与跨 loop 派发；单任务 sqlite 路径有 12 次跨 loop 操作，其中约 5.4 次是空转 commit。
+- 验证（同机交错 A/B，400 任务 × 3 轮中位，两次配对取比值）：0 写吞吐 1.36x / 1.41x；
+  1 次 checkpoint 1.51x / 1.56x，单次写入 p50 13.2–13.5ms → 5.5–5.6ms；
+  5 次 checkpoint 1.65x / 1.75x。全量套件 866 passed / 12 skipped。
+- 剩余候选：任务创建 + 入队合并为单事务、直接模式批量出队（需兼顾 worker 间公平）、
+  消除每次提交的 `SELECT COUNT(*) FROM queue` 容量查询。
+
+### P0 轻量监控（已交付）
+
+#### 1. `pool.get_metrics()` / `get_metrics_async()` 快照接口
+返回字段（同步调用无副作用；单项查询失败退化为 `None`/空值，不影响任务执行）：
+- 各状态任务数：`pending` / `running` / `completed` / `failed`（事件驱动计数器）
 - `worker_concurrency` / `active_workers`
-- 按优先级队列深度 `queue_depth_by_priority`
-- `retry_queue_size`
-- `oldest_pending_age_seconds`
-- `storage_backend` / `storage_healthy`
-- `checkpoint_count`（需新增仓储层计数接口）
-- `context_key_count`（仅 Memory 后端；其他后端返回 `null`）
-- 同步、无副作用。
+- 按优先级队列深度 `queue_depth_by_priority`（四个档位恒存在，缺失补 0）
+- `retry_queue_size`：自动重试已重新入队、仍在延迟窗口内等待执行的任务数
+- `oldest_pending_age_seconds`：最早 PENDING 任务的等待秒数
+- `storage_backend` / `storage_healthy`（健康检查未启用时为 `None`）
+- `checkpoint_count`：全部 checkpoint 版本数；后端不支持时为 `None`
+- `context_key_count`：仅 Memory 后端；其他后端为 `None`
+- `timestamp` / `node_id`
 
-#### 2. `pool.on_metrics(handler, interval=...)`
-- 定时推送快照，避免调用方轮询。
+#### 2. `pool.on_metrics(handler, interval=1.0)`
+- 返回 `MetricsSubscription`；`cancel()` 线程安全、幂等。
+- 首次推送立即执行，handler 支持普通函数与协程函数。
+- 单次推送异常只记录告警，不中断订阅；停机时统一取消。
+- `on_metrics_async()` 供已在事件循环内的调用方使用。
 
-#### 3. 监控指标纳入性能观测
-- 基准测试的吞吐、延迟、队列深度通过 `get_metrics()` 暴露，形成“性能可观测”闭环。
+#### 3. 底层计数接口补齐
+- `TaskRepository.oldest_pending_created_at()`：默认分页扫描；memory 遍历取最小，
+  SQLite `MIN(created_at)`，Redis SMEMBERS + 分批 MGET（每 500 条往返一次）。
+- `QueueRepository.count_by_priority()`：默认空字典；memory 堆扫描，SQLite `GROUP BY`
+  （走 `idx_queue_order`），Redis pipeline `ZCOUNT`。
+- `CheckpointRepository.count()`：默认 `None`；memory 聚合版本数、SQLite `COUNT(*)`、
+  Redis SCAN `ckpt:*` + pipeline `HLEN`。
+- `MemoryContextStore.count()`；`WorkerPool` 维护延迟重试任务集合，开始执行/取消/删除时清除。
+
+#### 4. 监控指标纳入性能观测
+- 基准测试新增快照成本场景，队列深度与真实队列大小交叉校验；
+  用法见 `examples/22_metrics.py`。
 
 ### 验收标准
 - 基准测试显示批量提交吞吐提升、查询延迟下降，无性能回退（优化前后数据记入 CHANGELOG）。
-- `get_metrics()` 字段完整，示例可运行。
+- `get_metrics()` 字段完整、示例可运行；`on_metrics` 推送可取消且异常隔离。
+- memory / SQLite / Redis 三种后端的新增计数接口均有测试覆盖。
 
 ---
 
-## 四、v1.3.0 — 监控导出器与可靠性补强
+## 四、v1.3.0 — 人工介入（Human-in-the-loop）
 
-**目标**：提供 Prometheus 导出器（可选 extra），补强崩溃恢复边界与停机语义。
+**目标**：任务可以持久停在“等待外部信号”的状态（人工审批、人工校验、外部事件），信号到达后自动恢复执行；不依赖控制面，Memory / SQLite / Redis 语义一致。
+
+**为什么单独一个 minor**：v1.3 改的是公开状态机与事件契约，v1.4 改的是导出与恢复边界；两套语义分开验证，避免状态机变更与恢复/停机语义同时落地。
+
+**原则**：
+
+- 等待是执行面能力：进入等待立即释放 worker 槽位，不占并发、不参与执行超时。
+- 状态必须落库：进程重启、节点崩溃、换节点后仍可查询、可唤醒。
+- 恢复复用 checkpoint 语义，不引入第二套持久化。
+- 线协议只做增量扩展：新增一个状态值与两个事件，事件信封 `schema_version` 保持 `1`。
+
+### 1. 状态与事件契约
+
+- 新增 `TaskStatus.WAITING = "waiting"`，非终态。
+- 状态定义规范：`TaskStatus` 统一定义为标准 `str, Enum`，成员名大写、值保持小写
+  （`PENDING = "pending"`、`WAITING = "waiting"`）；显式 `__str__ = str.__str__`，
+  保证 Python 3.8–3.12 下 `str(status)`、`status.value` 与 JSON 序列化一致输出小写值。
+- 事件定义规范：`EventType` 保持大写常量类 + 小写线上名（`WAITING = "task.waiting"`），
+  不改成 Enum——避免 3.11 `str`-Enum 格式化差异，订阅方式与裸字符串逐字节等价。
+- 兼容约束：SQLite 落库值、Redis `status:*` 键名、事件 payload 的
+  `old_status` / `new_status` 均保持小写；新增 `TaskStatus.from_value()` 供反序列化。
+- 允许的转换：
+
+  ```
+  running → waiting      （Handler 主动挂起）
+  waiting → pending      （signal 唤醒，重新入队）
+  waiting → cancelled    （人工取消）
+  waiting → failed       （等待超时）
+  ```
+
+- 新增事件（注册进 `EventType`，同步契约文档 8.2）：
+  - `task.waiting`：`{old_status, signal, timeout_at?}`，每次进入等待发布一次。
+  - `task.signal_received`：`{signal, payload}`，唤醒时发布；随后走常规 `pending → running` 与 `task.started`。
+- `signal` 是业务等待键（如 `"approval"`），同一任务多次等待靠它区分。
+
+### 2. 挂起与唤醒 API
+
+- Handler 内：`payload = await neotask.wait_for_signal("approval", timeout=None)`
+  - 首次执行：保存等待键与可选超时，状态转 `waiting`；Worker 捕获内部挂起信号后出队、释放槽位、不完成 future。
+  - 唤醒后：任务以 `pending` 重新入队并重新执行 Handler；`wait_for_signal` 命中已到达的等待键时直接返回 `payload`。
+  - 语义是“可重入重放”：与自动重试同一约定，Handler 从最近 checkpoint 恢复，避免重复副作用。
+- Handler 外：`pool.signal(task_id, payload=None)` / `signal_async`
+  - 只接受 `waiting`，先到先得；重复 signal 返回 `False`，不产生二次副作用。
+  - 成功：写入 payload → 状态置 `pending` → 重新入队 → 发布 `task.signal_received`。
+  - 任务已取消/已结束返回 `False`。
+- 查询与取消：`list_by_status(WAITING)` 三后端通用；`cancel()` / `delete()` 接受 `waiting`，删除后迟到的 signal 返回 `False`。
+
+### 3. 等待语义
+
+- 进入等待自动保存一次 checkpoint（执行器未保存时以空状态占位）；signal payload 通过保留键 `task.data["__signal__"]` 注入，业务不得占用该键。
+- payload 被 `wait_for_signal` 消费后清除，并记录等待序号，避免同一任务用同一等待键二次挂起时误命中旧信号。
+- 默认不超时（等人没有系统超时）；显式传 `timeout` 或配置 `waiting_timeout` 时，到期转 `failed` 且 `failure_reason="waiting_timeout"`，由调度线程扫描触发。
+- 等待任务不参与 RUNNING 超时回收、心跳续期与故障回收；节点下线不影响等待任务，任何节点都可 signal。
+- 等待期间不触发自动重试；自动/手动重试与等待互斥。
+
+### 4. 执行与可观测
+
+- WorkerPool 进入等待时释放并发槽位：`running - 1`、`waiting + 1`，唤醒后反向。
+- `get_stats()` / `get_metrics()` 增加 `waiting`；Web UI 展示等待状态与计数。
+- 并发回归：单 worker 下等待任务不阻塞其他任务。
+
+### 5. 兼容与迁移
+
+- 无 schema 迁移：SQLite `status` 是文本列，Redis `status:*` 集合按状态名自动索引。
+- `TaskStatus` 改为 `str, Enum` 后，`str(status)` 从 `TaskStatus.PENDING` 变为 `pending`；
+  这是日志/展示口径变化，`.value`、JSON 与存储值均不变，需在 CHANGELOG 注明。
+- 旧版本读到 `waiting` 必须视为非终态，不得重新入队或回收；契约文档补充该约束。
+- 2.0 上报自动携带新事件，控制面按 `task_id` 幂等推进。
+
+### 验收标准
+
+- 三后端：进入等待 → 重启进程 → signal → 任务完成；SQLite / Redis 验证跨实例唤醒。
+- 状态机拒绝非法转换（signal 非 waiting、waiting 直接 success、重复 signal）。
+- 等待期间不占 worker 槽位；取消/删除等待任务后 signal 无效。
+- 事件顺序：`task.waiting` → `task.signal_received` → `task.started` → `task.completed`。
+- 等待超时转 `failed` 且 `failure_reason="waiting_timeout"`。
+- 枚举规范：成员名全部大写、值全部小写；`str()` / `.value` / JSON 三种输出一致，
+  `from_value()` 能还原全部成员；旧库中的小写状态值反序列化结果不变，3.8–3.12 CI 通过。
+- 契约文档（状态表、转换图、事件表、保留键）先于实现更新，ARCHITECTURE 的 `TaskStatus` 枚举表同步 `WAITING` 与 `str, Enum` 规范；新增示例 `examples/23_human_in_the_loop.py`；全量套件通过。
+
+---
+
+## 五、v1.4.0 — 监控导出器与可靠性补强
+
+**目标**：把 v1.3 的等待语义纳入恢复/停机矩阵，提供 Prometheus 导出器（可选 extra），补强崩溃恢复边界与停机语义。
 
 ### P1 监控导出器
 
@@ -250,23 +429,26 @@
   “未入队 pending”计数。
 - Checkpoint 恢复与重启交互已有用例：
   `tests/unit/test_checkpoint.py::TestCheckpointResume::test_resume_across_restart_sqlite`。
+- v1.3 的 `waiting` 任务重启后保持 `waiting`，不自动执行、不回收；signal 后按 `pending` 恢复。
 
 #### 2. 优雅停机（配置已存在，补文档与边界用例）
 - `drain_delayed_on_shutdown`（默认 `False`）已提供：停机时是否立即执行未到期延时任务。
-- 剩余工作：补齐周期任务/Cron 在停机期间的行为矩阵与回归用例。
+- 剩余工作：补齐周期任务/Cron 与 `waiting` 任务在停机期间的行为矩阵与回归用例
+  （等待任务不会被 drain、也不会被取消）。
 
 #### 3. 重试语义（已定稿）
 - 自动重试、手动重试、Checkpoint 续跑三者交互见契约文档第 9 节：
   两种重试都保留并注入最近 checkpoint；`resume_from_checkpoint=True` 仅作用于新提交，
   与 `max_retries` 相互独立。
+- 等待中的任务不进入自动重试；取消后迟到 signal 无效。
 
 ### 验收标准
 - Prometheus 导出器可挂载到 FastAPI 示例。
-- 停机行为矩阵与崩溃恢复边界在文档中有明确说明。
+- 停机行为矩阵覆盖 `pending` / `running` / `waiting` / 周期任务，崩溃恢复边界在文档中有明确说明。
 
 ---
 
-## 五、v2.0.0 — NeoFlow 执行面接入（后移）
+## 六、v2.0.0 — NeoFlow 执行面接入（后移）
 
 **状态**：后移。1.x 本地能力稳定、NeoFlow 控制面就绪后启动。
 
@@ -292,27 +474,37 @@
 
 ---
 
-## 六、文档同步要求
+## 七、文档同步要求
 
 - 线协议变更先改 [neotask-execution-contract.md](./neotask-execution-contract.md)，再改实现。
-- 版本状态变化时同步 README / README_zh 的路线图区块（当前 v1.1 已交付、v2.0 为 NeoFlow 执行面接入）。
+- 版本状态变化时同步 README / README_zh 的路线图区块（当前 v1.2 待发布、v1.3 为人工介入、v1.4 为导出与可靠性、v2.0 为 NeoFlow 执行面接入）。
 - 每个发布版本同步 `examples/readme.txt` 索引与 CHANGELOG（由 release-please 生成）。
 
 ---
 
-## 七、下一步行动
+## 八、下一步行动
 
-**v1.1 发布收尾**：
+**v1.1 发布收尾（已完成）**：
 
-- 补齐 `TaskEngine` 注入测试。
-- 合并后由 release-please 出具 1.1.0 版本与 CHANGELOG。
+- `TaskEngine` 注入测试已补齐；1.1.0 / 1.1.1 / 1.1.2 已由 release-please 发布。
+- 基准与性能用例的低精度计时已改为 `perf_counter`，Windows 毫秒级任务不再被量成 0。
 
-**v1.2 启动**：
+**v1.2 收尾（已交付，待发布）**：
 
-- 建立 `benchmarks/` 目录，先落“批量提交吞吐”与“单任务提交延迟”两个基准作为基线。
-- 以基准数据驱动高并发调度优化，再交付 `get_metrics()` 与 `on_metrics()`。
+- 基准套件、高并发调度/事件派发/SQLite 写入优化、`get_metrics()` 与 `on_metrics()` 已全部落地。
+- 发布流程：推送 dev → CI 通过 → 合并 main → release-please 自动升版 1.2.0 并发布 PyPI。
+
+**v1.3 人工介入**：
+
+- 先更新执行契约（状态表、转换图、事件表、保留键），再实现 `waiting` 状态与 `task.waiting` / `task.signal_received` 事件。
+- 同时把 `TaskStatus` 统一为标准 `str, Enum`（成员名大写、值小写），事件保持 `EventType` 大写常量 + `task.*` 线上名。
+- 挂起/唤醒语义以 checkpoint 重放为基础，三后端一致；等待任务不占 worker、不参与超时回收。
+
+**v1.4 导出与可靠性**：
+
+- Prometheus 导出器挂到 `get_metrics()` 快照。
+- 停机/崩溃恢复矩阵纳入 `waiting`，补齐周期任务与等待任务的边界用例。
 
 **中期**：
 
-- v1.3 监控导出器与停机/恢复边界补强。
 - NeoFlow 控制面就绪后再评估 2.0 执行面接入的启动时机。

@@ -58,10 +58,10 @@ class BenchmarkResult:
         self.latencies.append(latency)
 
     def start(self):
-        self.start_time = time.time()
+        self.start_time = time.perf_counter()
 
     def finalize(self, total_requests: int = None):
-        self.end_time = time.time()
+        self.end_time = time.perf_counter()
         self.total_requests = total_requests if total_requests is not None else len(self.latencies)
 
     @property
@@ -134,12 +134,12 @@ class TestBasicThroughput:
         total = 50  # 减少样本以保证测试高效且稳定
 
         for i in range(total):
-            start = time.time()
+            start = time.perf_counter()
             try:
                 task_id = await pool.submit_async({"index": i})
                 result = await pool.wait_for_result_async(task_id, timeout=1.0)
                 if result is not None:
-                    latencies.append(time.time() - start)
+                    latencies.append(time.perf_counter() - start)
             except Exception:
                 pass
 
@@ -168,15 +168,15 @@ class TestQueuePerformance:
         queue = PriorityQueue()
         total = 5000
 
-        start = time.time()
+        start = time.perf_counter()
         for i in range(total):
             await queue.push("task_{}".format(i), i % 5)
-        duration_push = time.time() - start
+        duration_push = time.perf_counter() - start
 
-        start = time.time()
+        start = time.perf_counter()
         for i in range(total):
             await queue.pop(1)
-        duration_pop = time.time() - start
+        duration_pop = time.perf_counter() - start
 
         print("\n优先级队列性能:")
         print("   入队: {:.2f} ops/sec".format(total / duration_push))
@@ -195,18 +195,18 @@ class TestQueuePerformance:
         for i in range(2000):
             await queue.push("task_{}".format(i), i % 5)
 
-        start = time.time()
+        start = time.perf_counter()
         for _ in range(500):
             await queue.pop(1)
-        without_prefetch = time.time() - start
+        without_prefetch = time.perf_counter() - start
 
         prefetcher = TaskPrefetcher(queue, PrefetchConfig(prefetch_size=20))
         await prefetcher.start()
 
-        start = time.time()
+        start = time.perf_counter()
         for _ in range(500):
             await prefetcher.get(timeout=0.01)
-        with_prefetch = time.time() - start
+        with_prefetch = time.perf_counter() - start
 
         await prefetcher.stop()
         await queue.stop()
@@ -226,18 +226,18 @@ class TestQueuePerformance:
         for i in range(10000):
             await queue.push("task_{}".format(i), i % 5)
 
-        start = time.time()
+        start = time.perf_counter()
         for i in range(1000):
             await queue.pop(1)
-        single_time = time.time() - start
+        single_time = time.perf_counter() - start
 
         for i in range(10000):
             await queue.push("task_{}".format(i), i % 5)
 
-        start = time.time()
+        start = time.perf_counter()
         for i in range(100):
             await queue.pop(10)
-        batch_time = time.time() - start
+        batch_time = time.perf_counter() - start
 
         print("\n批量弹出性能对比:")
         print("   单条弹出: {:.2f} ops/sec".format(1000 / single_time))
@@ -315,11 +315,11 @@ class TestConcurrencyPerformance:
             tasks = [pool.submit_async({"batch": batch_id, "i": start_idx + i}) for i in range(count)]
             return await asyncio.gather(*tasks)
 
-        start = time.time()
+        start = time.perf_counter()
         batch_size = total // concurrency
         batches = [submit_batch(i, i * batch_size, batch_size) for i in range(concurrency)]
         all_task_ids = await asyncio.gather(*batches)
-        duration = time.time() - start
+        duration = time.perf_counter() - start
 
         await asyncio.sleep(0.5)
         stats = pool.get_stats()
@@ -389,8 +389,8 @@ class TestStressTest:
         total_submitted = 0
         errors = 0
 
-        start = time.time()
-        while time.time() - start < duration:
+        start = time.perf_counter()
+        while time.perf_counter() - start < duration:
             try:
                 await pool.submit_async({"index": total_submitted})
                 total_submitted += 1
@@ -412,11 +412,11 @@ class TestStressTest:
         pool.start()
 
         burst_size = 300
-        start = time.time()
+        start = time.perf_counter()
 
         tasks = [pool.submit_async({"index": i}) for i in range(burst_size)]
         await asyncio.gather(*tasks)
-        duration = time.time() - start
+        duration = time.perf_counter() - start
 
         await asyncio.sleep(0.2)
         stats = pool.get_stats()

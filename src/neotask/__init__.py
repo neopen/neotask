@@ -14,7 +14,7 @@ __version__ = "1.1.2"
 __author__ = "neopen"
 
 # API 入口
-from neotask.api.task_pool import TaskPool, TaskPoolConfig
+from neotask.api.task_pool import MetricsSubscription, TaskPool, TaskPoolConfig
 from neotask.api.task_scheduler import TaskScheduler, SchedulerConfig
 from neotask.core.engine import TaskEngine, EngineConfig
 
@@ -140,6 +140,7 @@ __all__ = [
     "__author__",
 
     # API
+    "MetricsSubscription",
     "TaskPool",
     "TaskPoolConfig",
     "TaskScheduler",

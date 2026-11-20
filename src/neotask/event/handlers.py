@@ -87,10 +87,18 @@ def setup_default_handlers(
 ) -> None:
     """设置默认事件处理器"""
 
-    # 指标处理器
+    # 指标处理器：只关心生命周期事件，按类型订阅，避免高频事件的全局空跑
     if metrics_collector:
         metrics_handler = MetricsHandler(metrics_collector)
-        event_bus.subscribe_global(metrics_handler.handle)
+        for event_type in (
+            EventType.CREATED,
+            EventType.STARTED,
+            EventType.COMPLETED,
+            EventType.FAILED,
+            EventType.CANCELLED,
+            EventType.RETRY,
+        ):
+            event_bus.subscribe(event_type, metrics_handler.handle)
 
     # 持久化处理器
     if storage:

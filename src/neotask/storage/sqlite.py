@@ -461,6 +461,25 @@ class SQLiteTaskRepository(TaskRepository):
             await cursor.close()
         return int(row[0]) if row else 0
 
+    async def oldest_pending_created_at(self) -> Optional[datetime]:
+        """最早 PENDING 任务的创建时间（走 status 过滤的最小值查询）"""
+        await self._ensure_init()
+        conn: Any = self._conn
+        cursor = await conn.execute(
+            "SELECT MIN(created_at) FROM tasks WHERE status = ?",
+            (TaskStatus.PENDING.value,)
+        )
+        try:
+            row = await cursor.fetchone()
+        finally:
+            await cursor.close()
+        if not row or not row[0]:
+            return None
+        try:
+            return datetime.fromisoformat(row[0])
+        except (ValueError, TypeError):
+            return None
+
     async def list_by_parent(
             self, parent_task_id: str, limit: int = 100, offset: int = 0
     ) -> List[Task]:
@@ -749,6 +768,19 @@ class SQLiteQueueRepository(QueueRepository):
             await cursor.close()
         return row[0] if row else 0
 
+    async def count_by_priority(self) -> Dict[int, int]:
+        """按优先级分组计数（走 idx_queue_order 索引）"""
+        await self._ensure_init()
+        conn: Any = self._conn
+        cursor = await conn.execute(
+            "SELECT priority, COUNT(*) FROM queue GROUP BY priority"
+        )
+        try:
+            rows = await cursor.fetchall()
+        finally:
+            await cursor.close()
+        return {int(priority): int(count) for priority, count in rows}
+
     async def peek(self, count: int = 1) -> List[str]:
         await self._ensure_init()
         cursor = await self._conn.execute(
@@ -926,6 +958,17 @@ class SQLiteCheckpointRepository(CheckpointRepository):
             "DELETE FROM task_checkpoints WHERE task_id = ?", (task_id,)
         )
         await conn.commit()
+
+    async def count(self) -> Optional[int]:
+        """统计全部 checkpoint 版本数"""
+        await self._ensure_init()
+        conn: Any = self._conn
+        cursor = await conn.execute("SELECT COUNT(*) FROM task_checkpoints")
+        try:
+            row = await cursor.fetchone()
+        finally:
+            await cursor.close()
+        return int(row[0]) if row else 0
 
     async def close(self) -> None:
         conn = self._conn

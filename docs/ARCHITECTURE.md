@@ -430,6 +430,9 @@ result = pool.wait_for_result(task_id)
 | `delete(task_id)`                                           | 删除任务                   |
 | `retry(task_id, delay=0)`                                   | 重试失败的任务             |
 | `get_stats()`                                               | 获取实时统计               |
+| `get_metrics()`                                             | 获取轻量监控快照           |
+| `get_metrics_async()`                                       | 异步获取监控快照           |
+| `on_metrics(handler, interval=1.0)`                         | 周期性推送监控快照         |
 | `pause()`                                                   | 暂停处理新任务             |
 | `resume()`                                                  | 恢复处理新任务             |
 | `clear_queue()`                                             | 清空队列                   |
@@ -458,6 +461,9 @@ result = pool.wait_for_result(task_id)
 | `get_result(task_id)`                                        | 获取任务结果        |
 | `cancel(task_id)`                                            | 取消任务            |
 | `get_stats()`                                                | 获取实时统计        |
+| `get_metrics()`                                              | 获取轻量监控快照    |
+| `get_metrics_async()`                                        | 异步获取监控快照    |
+| `on_metrics(handler, interval=1.0)`                          | 周期性推送监控快照  |
 | `shutdown(graceful=True)`                                    | 关闭调度器          |
 
 ### TaskStatus 状态枚举

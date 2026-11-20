@@ -760,11 +760,13 @@ class TaskLifecycleManager:
         if self._cache_enabled:
             self._cache_put(task_id, task)
 
-        pruned = await self._checkpoint_repo.prune(
-            task_id, self._checkpoint_keep_versions
-        )
-        if pruned:
-            debug(f"Pruned {pruned} old checkpoint(s) for task {task_id}")
+        # 只有累计版本数超过保留上限时才可能淘汰旧版本；窗口内跳过 prune，
+        # 避免每次写入都多跑一次 DELETE 事务（SQLite 下约 0.65ms）
+        keep = self._checkpoint_keep_versions
+        if keep == 0 or version > keep:
+            pruned = await self._checkpoint_repo.prune(task_id, keep)
+            if pruned:
+                debug(f"Pruned {pruned} old checkpoint(s) for task {task_id}")
 
         await self._emit_event(
             EventType.CHECKPOINTED,

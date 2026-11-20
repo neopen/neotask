@@ -115,3 +115,73 @@ async def test_periodic_store_across_event_loops(tmp_path):
         assert await store.load_task("periodic-1") is None
     finally:
         await store.close()
+
+
+async def _count_commits(conn, calls) -> None:
+    """把底层写连接的 commit 替换为计数版本"""
+    write_conn = conn._write_conn
+    assert write_conn is not None
+    original = write_conn.commit
+
+    async def counting_commit() -> None:
+        calls.append(1)
+        await original()
+
+    write_conn.commit = counting_commit
+
+
+@pytest.mark.asyncio
+async def test_commit_skipped_in_autocommit_mode(tmp_path):
+    """自动提交模式下 commit() 不再派发到底层连接（每条语句已自成事务）"""
+    conn = create_connection(str(tmp_path / "autocommit.db"))
+    try:
+        await conn.execute("CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT)")
+        await conn.execute("INSERT INTO kv VALUES (?, ?)", ("k", "v"))
+
+        calls = []
+        await _count_commits(conn, calls)
+        await conn.commit()
+        assert calls == []
+
+        # 数据已落盘：commit 被跳过不影响可见性
+        cursor = await conn.execute("SELECT v FROM kv WHERE k = ?", ("k",))
+        assert (await cursor.fetchone())[0] == "v"
+        await cursor.close()
+    finally:
+        await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_commit_dispatched_when_not_autocommit(tmp_path):
+    """显式隔离级别下 commit() 仍然生效，不能被短路掉"""
+    conn = create_connection(str(tmp_path / "deferred.db"), isolation_level="DEFERRED")
+    try:
+        await conn.execute("CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT)")
+
+        calls = []
+        await _count_commits(conn, calls)
+        await conn.commit()
+        assert calls == [1]
+    finally:
+        await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_commit_dispatched_after_manual_begin(tmp_path):
+    """自动提交模式下手动 BEGIN 开启的事务仍需 commit 落地"""
+    conn = create_connection(str(tmp_path / "manual-txn.db"))
+    try:
+        await conn.execute("CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT)")
+        await conn.execute("BEGIN")
+        await conn.execute("INSERT INTO kv VALUES (?, ?)", ("k", "v"))
+
+        calls = []
+        await _count_commits(conn, calls)
+        await conn.commit()
+        assert calls == [1]
+
+        cursor = await conn.execute("SELECT v FROM kv WHERE k = ?", ("k",))
+        assert (await cursor.fetchone())[0] == "v"
+        await cursor.close()
+    finally:
+        await conn.close()

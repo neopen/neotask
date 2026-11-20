@@ -19,6 +19,7 @@
 3. 控制面接入（任务拉取、事件上报）整体放在 2.0，做成可选能力，不改变 1.x 公开结构。
 4. 线协议只做增量扩展；破坏性变更提升 `schema_version` 并保留旧版本可读一个 minor。
 5. 轻量监控属于本地能力的一部分，不做独立 Web UI。
+6. 人工介入属于本地能力：等待状态落库、不依赖控制面，任何节点都可 signal 唤醒。
 
 ---
 
@@ -30,8 +31,9 @@
 | v1.1.0 | 本地任务能力补全                 | 已发布                     |
 | v1.1.1 | 稳定性与升级体验修复             | 已发布                     |
 | v1.1.2 | 调度精度与执行器配置修复         | 已发布                     |
-| v1.2.0 | 性能优化与基准测试、轻量监控     | 进行中                     |
-| v1.3.0 | 监控导出器与可靠性补强           | 规划中                     |
+| v1.2.0 | 性能优化与基准测试、轻量监控     | 进行中（待发布）           |
+| v1.3.0 | 人工介入（等待状态与信号唤醒）   | 规划中                     |
+| v1.4.0 | 监控导出器与可靠性补强           | 规划中                     |
 | v2.0.0 | NeoFlow 执行面接入               | 后移                       |
 
 ---
@@ -323,9 +325,93 @@
 
 ---
 
-## 四、v1.3.0 — 监控导出器与可靠性补强
+## 四、v1.3.0 — 人工介入（Human-in-the-loop）
 
-**目标**：提供 Prometheus 导出器（可选 extra），补强崩溃恢复边界与停机语义。
+**目标**：任务可以持久停在“等待外部信号”的状态（人工审批、人工校验、外部事件），信号到达后自动恢复执行；不依赖控制面，Memory / SQLite / Redis 语义一致。
+
+**为什么单独一个 minor**：v1.3 改的是公开状态机与事件契约，v1.4 改的是导出与恢复边界；两套语义分开验证，避免状态机变更与恢复/停机语义同时落地。
+
+**原则**：
+
+- 等待是执行面能力：进入等待立即释放 worker 槽位，不占并发、不参与执行超时。
+- 状态必须落库：进程重启、节点崩溃、换节点后仍可查询、可唤醒。
+- 恢复复用 checkpoint 语义，不引入第二套持久化。
+- 线协议只做增量扩展：新增一个状态值与两个事件，事件信封 `schema_version` 保持 `1`。
+
+### 1. 状态与事件契约
+
+- 新增 `TaskStatus.WAITING = "waiting"`，非终态。
+- 状态定义规范：`TaskStatus` 统一定义为标准 `str, Enum`，成员名大写、值保持小写
+  （`PENDING = "pending"`、`WAITING = "waiting"`）；显式 `__str__ = str.__str__`，
+  保证 Python 3.8–3.12 下 `str(status)`、`status.value` 与 JSON 序列化一致输出小写值。
+- 事件定义规范：`EventType` 保持大写常量类 + 小写线上名（`WAITING = "task.waiting"`），
+  不改成 Enum——避免 3.11 `str`-Enum 格式化差异，订阅方式与裸字符串逐字节等价。
+- 兼容约束：SQLite 落库值、Redis `status:*` 键名、事件 payload 的
+  `old_status` / `new_status` 均保持小写；新增 `TaskStatus.from_value()` 供反序列化。
+- 允许的转换：
+
+  ```
+  running → waiting      （Handler 主动挂起）
+  waiting → pending      （signal 唤醒，重新入队）
+  waiting → cancelled    （人工取消）
+  waiting → failed       （等待超时）
+  ```
+
+- 新增事件（注册进 `EventType`，同步契约文档 8.2）：
+  - `task.waiting`：`{old_status, signal, timeout_at?}`，每次进入等待发布一次。
+  - `task.signal_received`：`{signal, payload}`，唤醒时发布；随后走常规 `pending → running` 与 `task.started`。
+- `signal` 是业务等待键（如 `"approval"`），同一任务多次等待靠它区分。
+
+### 2. 挂起与唤醒 API
+
+- Handler 内：`payload = await neotask.wait_for_signal("approval", timeout=None)`
+  - 首次执行：保存等待键与可选超时，状态转 `waiting`；Worker 捕获内部挂起信号后出队、释放槽位、不完成 future。
+  - 唤醒后：任务以 `pending` 重新入队并重新执行 Handler；`wait_for_signal` 命中已到达的等待键时直接返回 `payload`。
+  - 语义是“可重入重放”：与自动重试同一约定，Handler 从最近 checkpoint 恢复，避免重复副作用。
+- Handler 外：`pool.signal(task_id, payload=None)` / `signal_async`
+  - 只接受 `waiting`，先到先得；重复 signal 返回 `False`，不产生二次副作用。
+  - 成功：写入 payload → 状态置 `pending` → 重新入队 → 发布 `task.signal_received`。
+  - 任务已取消/已结束返回 `False`。
+- 查询与取消：`list_by_status(WAITING)` 三后端通用；`cancel()` / `delete()` 接受 `waiting`，删除后迟到的 signal 返回 `False`。
+
+### 3. 等待语义
+
+- 进入等待自动保存一次 checkpoint（执行器未保存时以空状态占位）；signal payload 通过保留键 `task.data["__signal__"]` 注入，业务不得占用该键。
+- payload 被 `wait_for_signal` 消费后清除，并记录等待序号，避免同一任务用同一等待键二次挂起时误命中旧信号。
+- 默认不超时（等人没有系统超时）；显式传 `timeout` 或配置 `waiting_timeout` 时，到期转 `failed` 且 `failure_reason="waiting_timeout"`，由调度线程扫描触发。
+- 等待任务不参与 RUNNING 超时回收、心跳续期与故障回收；节点下线不影响等待任务，任何节点都可 signal。
+- 等待期间不触发自动重试；自动/手动重试与等待互斥。
+
+### 4. 执行与可观测
+
+- WorkerPool 进入等待时释放并发槽位：`running - 1`、`waiting + 1`，唤醒后反向。
+- `get_stats()` / `get_metrics()` 增加 `waiting`；Web UI 展示等待状态与计数。
+- 并发回归：单 worker 下等待任务不阻塞其他任务。
+
+### 5. 兼容与迁移
+
+- 无 schema 迁移：SQLite `status` 是文本列，Redis `status:*` 集合按状态名自动索引。
+- `TaskStatus` 改为 `str, Enum` 后，`str(status)` 从 `TaskStatus.PENDING` 变为 `pending`；
+  这是日志/展示口径变化，`.value`、JSON 与存储值均不变，需在 CHANGELOG 注明。
+- 旧版本读到 `waiting` 必须视为非终态，不得重新入队或回收；契约文档补充该约束。
+- 2.0 上报自动携带新事件，控制面按 `task_id` 幂等推进。
+
+### 验收标准
+
+- 三后端：进入等待 → 重启进程 → signal → 任务完成；SQLite / Redis 验证跨实例唤醒。
+- 状态机拒绝非法转换（signal 非 waiting、waiting 直接 success、重复 signal）。
+- 等待期间不占 worker 槽位；取消/删除等待任务后 signal 无效。
+- 事件顺序：`task.waiting` → `task.signal_received` → `task.started` → `task.completed`。
+- 等待超时转 `failed` 且 `failure_reason="waiting_timeout"`。
+- 枚举规范：成员名全部大写、值全部小写；`str()` / `.value` / JSON 三种输出一致，
+  `from_value()` 能还原全部成员；旧库中的小写状态值反序列化结果不变，3.8–3.12 CI 通过。
+- 契约文档（状态表、转换图、事件表、保留键）先于实现更新，ARCHITECTURE 的 `TaskStatus` 枚举表同步 `WAITING` 与 `str, Enum` 规范；新增示例 `examples/23_human_in_the_loop.py`；全量套件通过。
+
+---
+
+## 五、v1.4.0 — 监控导出器与可靠性补强
+
+**目标**：把 v1.3 的等待语义纳入恢复/停机矩阵，提供 Prometheus 导出器（可选 extra），补强崩溃恢复边界与停机语义。
 
 ### P1 监控导出器
 
@@ -343,23 +429,26 @@
   “未入队 pending”计数。
 - Checkpoint 恢复与重启交互已有用例：
   `tests/unit/test_checkpoint.py::TestCheckpointResume::test_resume_across_restart_sqlite`。
+- v1.3 的 `waiting` 任务重启后保持 `waiting`，不自动执行、不回收；signal 后按 `pending` 恢复。
 
 #### 2. 优雅停机（配置已存在，补文档与边界用例）
 - `drain_delayed_on_shutdown`（默认 `False`）已提供：停机时是否立即执行未到期延时任务。
-- 剩余工作：补齐周期任务/Cron 在停机期间的行为矩阵与回归用例。
+- 剩余工作：补齐周期任务/Cron 与 `waiting` 任务在停机期间的行为矩阵与回归用例
+  （等待任务不会被 drain、也不会被取消）。
 
 #### 3. 重试语义（已定稿）
 - 自动重试、手动重试、Checkpoint 续跑三者交互见契约文档第 9 节：
   两种重试都保留并注入最近 checkpoint；`resume_from_checkpoint=True` 仅作用于新提交，
   与 `max_retries` 相互独立。
+- 等待中的任务不进入自动重试；取消后迟到 signal 无效。
 
 ### 验收标准
 - Prometheus 导出器可挂载到 FastAPI 示例。
-- 停机行为矩阵与崩溃恢复边界在文档中有明确说明。
+- 停机行为矩阵覆盖 `pending` / `running` / `waiting` / 周期任务，崩溃恢复边界在文档中有明确说明。
 
 ---
 
-## 五、v2.0.0 — NeoFlow 执行面接入（后移）
+## 六、v2.0.0 — NeoFlow 执行面接入（后移）
 
 **状态**：后移。1.x 本地能力稳定、NeoFlow 控制面就绪后启动。
 
@@ -385,27 +474,37 @@
 
 ---
 
-## 六、文档同步要求
+## 七、文档同步要求
 
 - 线协议变更先改 [neotask-execution-contract.md](./neotask-execution-contract.md)，再改实现。
-- 版本状态变化时同步 README / README_zh 的路线图区块（当前 v1.1 已交付、v2.0 为 NeoFlow 执行面接入）。
+- 版本状态变化时同步 README / README_zh 的路线图区块（当前 v1.2 待发布、v1.3 为人工介入、v1.4 为导出与可靠性、v2.0 为 NeoFlow 执行面接入）。
 - 每个发布版本同步 `examples/readme.txt` 索引与 CHANGELOG（由 release-please 生成）。
 
 ---
 
-## 七、下一步行动
+## 八、下一步行动
 
 **v1.1 发布收尾（已完成）**：
 
 - `TaskEngine` 注入测试已补齐；1.1.0 / 1.1.1 / 1.1.2 已由 release-please 发布。
 - 基准与性能用例的低精度计时已改为 `perf_counter`，Windows 毫秒级任务不再被量成 0。
 
-**v1.2 进行中**：
+**v1.2 收尾（已交付，待发布）**：
 
-- 已建立 `benchmarks/` 目录，先落“单任务提交延迟”与“批量提交吞吐”两个基线。
-- 后续以基准数据驱动高并发调度优化，再交付 `get_metrics()` 与 `on_metrics()`。
+- 基准套件、高并发调度/事件派发/SQLite 写入优化、`get_metrics()` 与 `on_metrics()` 已全部落地。
+- 发布流程：推送 dev → CI 通过 → 合并 main → release-please 自动升版 1.2.0 并发布 PyPI。
+
+**v1.3 人工介入**：
+
+- 先更新执行契约（状态表、转换图、事件表、保留键），再实现 `waiting` 状态与 `task.waiting` / `task.signal_received` 事件。
+- 同时把 `TaskStatus` 统一为标准 `str, Enum`（成员名大写、值小写），事件保持 `EventType` 大写常量 + `task.*` 线上名。
+- 挂起/唤醒语义以 checkpoint 重放为基础，三后端一致；等待任务不占 worker、不参与超时回收。
+
+**v1.4 导出与可靠性**：
+
+- Prometheus 导出器挂到 `get_metrics()` 快照。
+- 停机/崩溃恢复矩阵纳入 `waiting`，补齐周期任务与等待任务的边界用例。
 
 **中期**：
 
-- v1.3 监控导出器与停机/恢复边界补强。
 - NeoFlow 控制面就绪后再评估 2.0 执行面接入的启动时机。

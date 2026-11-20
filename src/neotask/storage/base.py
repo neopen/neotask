@@ -206,6 +206,31 @@ class TaskRepository(ABC):
                 return total
             offset += batch
 
+    async def oldest_pending_created_at(self) -> Optional[datetime]:
+        """最早 PENDING 任务的创建时间；没有 PENDING 任务时返回 None。
+
+        监控快照用这个值算出「最早任务等待时长」。默认实现分页扫描 PENDING
+        任务，任何后端都能工作；内置后端覆盖为最小时间查询，避免为一次快照
+        加载全部任务实体。
+        """
+        oldest: Optional[datetime] = None
+        oldest_ts: Optional[float] = None
+        offset = 0
+        batch = 1000
+        while True:
+            tasks = await self.list_by_status(
+                TaskStatus.PENDING, limit=batch, offset=offset
+            )
+            for task in tasks:
+                if task.created_at is None:
+                    continue
+                ts = task.created_at.timestamp()
+                if oldest_ts is None or ts < oldest_ts:
+                    oldest, oldest_ts = task.created_at, ts
+            if len(tasks) < batch:
+                return oldest
+            offset += batch
+
     @abstractmethod
     async def update_status(self, task_id: str, status: TaskStatus) -> None:
         """Update task status."""
@@ -437,6 +462,14 @@ class CheckpointRepository(ABC):
         """删除某任务的全部 checkpoint"""
         pass
 
+    async def count(self) -> Optional[int]:
+        """统计全部 checkpoint 版本数；后端不支持时返回 None。
+
+        监控快照只把它当作可选的存储规模指标，第三方后端保持默认 None 即可，
+        不会因为缺少该能力而报错。
+        """
+        return None
+
     async def close(self) -> None:
         """Release underlying resources; no-op by default."""
         return None
@@ -487,6 +520,14 @@ class QueueRepository(ABC):
     async def clear(self) -> None:
         """Clear all tasks from queue."""
         pass
+
+    async def count_by_priority(self) -> Dict[int, int]:
+        """统计各优先级的排队任务数；不支持的后端返回空字典。
+
+        监控快照用它展示队列深度分布。只统计优先级队列，延迟队列有独立的
+        ``size``，避免把「还没到执行时间」的任务混进深度指标。
+        """
+        return {}
 
     async def close(self) -> None:
         """Release underlying resources; no-op for memory implementations."""

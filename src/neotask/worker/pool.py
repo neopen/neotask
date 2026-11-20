@@ -111,6 +111,8 @@ class WorkerPool:
         # 重试配置
         self._max_retries = 3
         self._retry_delay = 1.0
+        # 已重新入队、仍在延迟窗口内等待执行的重试任务（监控用）
+        self._pending_retries: set = set()
 
         # 预取器（仅在启用时创建）
         self._prefetcher: Optional[TaskPrefetcher] = None
@@ -236,6 +238,20 @@ class WorkerPool:
     def active_count(self) -> int:
         """获取活跃worker数量"""
         return len(self._running_tasks)
+
+    def pending_retry_count(self) -> int:
+        """获取等待延迟重试的任务数量"""
+        with self._lock:
+            return len(self._pending_retries)
+
+    def forget_pending_retry(self, task_id: str) -> None:
+        """把任务从等待重试集合移除（取消/删除/开始执行时调用）"""
+        with self._lock:
+            self._pending_retries.discard(task_id)
+
+    def _mark_pending_retry(self, task_id: str) -> None:
+        with self._lock:
+            self._pending_retries.add(task_id)
 
     def get_stats(self) -> Dict[int, WorkerStats]:
         """获取worker统计信息"""
@@ -396,6 +412,8 @@ class WorkerPool:
         """
         async with self._semaphore:
             debug(f"Worker {worker_id} executing task {task_id}")
+            # 任务已开始执行，不再属于「等待重试」
+            self.forget_pending_retry(task_id)
 
             # 获取任务
             task = await self._lifecycle.get_task(task_id)
@@ -700,6 +718,9 @@ class WorkerPool:
                     metadata={"node_id": self._node_id, "worker_id": worker_id}
                 )
                 return
+
+            if delay > 0:
+                self._mark_pending_retry(task_id)
 
             # 发送重试事件
             await self._event_bus.emit(TaskEvent(

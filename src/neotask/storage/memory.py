@@ -156,6 +156,15 @@ class MemoryTaskRepository(TaskRepository):
         with self._lock:
             return sum(1 for task in self._tasks.values() if task.status == status)
 
+    async def oldest_pending_created_at(self) -> Optional[datetime]:
+        """最早 PENDING 任务的创建时间（直接遍历字典取最小值）"""
+        with self._lock:
+            created_at = (
+                task.created_at for task in self._tasks.values()
+                if task.status == TaskStatus.PENDING and task.created_at is not None
+            )
+            return min(created_at, default=None)
+
     async def list_by_parent(
             self, parent_task_id: str, limit: int = 100, offset: int = 0
     ) -> List[Task]:
@@ -306,6 +315,11 @@ class MemoryCheckpointRepository(CheckpointRepository):
         with self._lock:
             self._records.pop(task_id, None)
 
+    async def count(self) -> Optional[int]:
+        """统计全部任务保留的 checkpoint 版本数"""
+        with self._lock:
+            return sum(len(records) for records in self._records.values())
+
 
 class MemoryQueueRepository(QueueRepository):
     """内存队列存储
@@ -436,6 +450,14 @@ class MemoryQueueRepository(QueueRepository):
             debug(f"Queue peek: {result}")
             return result
 
+    async def count_by_priority(self) -> Dict[int, int]:
+        """统计各优先级排队任务数"""
+        with self._lock:
+            counts: Dict[int, int] = {}
+            for priority, _, _ in self._heap:
+                counts[priority] = counts.get(priority, 0) + 1
+            return counts
+
     async def clear(self) -> None:
         """清空队列"""
         with self._lock:
@@ -525,3 +547,14 @@ class MemoryContextStore:
         """删除一个键，返回是否命中"""
         with self._lock:
             return self._data.pop(key, None) is not None
+
+    def count(self) -> int:
+        """统计未过期键的数量（统计时顺带清理过期条目）"""
+        with self._lock:
+            expired = [
+                name for name, (_, deadline) in self._data.items()
+                if self._is_expired(deadline)
+            ]
+            for name in expired:
+                self._data.pop(name, None)
+            return len(self._data)

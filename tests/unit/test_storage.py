@@ -21,8 +21,16 @@ from neotask.models.config import StorageConfig
 from neotask.models.task import Task, TaskStatus, TaskPriority
 from neotask.storage.factory import StorageFactory
 from neotask.storage.memory import MemoryTaskRepository, MemoryQueueRepository
-from neotask.storage.redis import RedisTaskRepository, RedisQueueRepository
-from neotask.storage.sqlite import SQLiteTaskRepository, SQLiteQueueRepository
+from neotask.storage.redis import (
+    RedisCheckpointRepository,
+    RedisQueueRepository,
+    RedisTaskRepository,
+)
+from neotask.storage.sqlite import (
+    SQLiteCheckpointRepository,
+    SQLiteQueueRepository,
+    SQLiteTaskRepository,
+)
 
 
 # ========== 内存存储测试 ==========
@@ -104,6 +112,62 @@ class TestMemoryStorage:
         assert await repo.count_by_status(TaskStatus.PENDING) == 3
         assert await repo.count_by_status(TaskStatus.RUNNING) == 1
         assert await repo.count_by_status(TaskStatus.SUCCESS) == 0
+
+    @pytest.mark.asyncio
+    async def test_oldest_pending_created_at(self):
+        """最早 PENDING 任务时间只统计 PENDING 状态"""
+        repo = MemoryTaskRepository()
+        now = datetime.now(timezone.utc)
+
+        assert await repo.oldest_pending_created_at() is None
+
+        await repo.save(Task(
+            task_id="old-pending", data={}, status=TaskStatus.PENDING,
+            created_at=now - timedelta(seconds=30),
+        ))
+        await repo.save(Task(
+            task_id="new-running", data={}, status=TaskStatus.RUNNING,
+            created_at=now - timedelta(seconds=60),
+        ))
+
+        oldest = await repo.oldest_pending_created_at()
+        assert oldest.timestamp() == pytest.approx(
+            (now - timedelta(seconds=30)).timestamp()
+        )
+
+        await repo.update_status("old-pending", TaskStatus.SUCCESS)
+        assert await repo.oldest_pending_created_at() is None
+
+    @pytest.mark.asyncio
+    async def test_queue_count_by_priority(self):
+        """队列按优先级分组计数"""
+        repo = MemoryQueueRepository()
+
+        await repo.push("q-1", 0)
+        await repo.push("q-2", 2)
+        await repo.push("q-3", 2)
+
+        assert await repo.count_by_priority() == {0: 1, 2: 2}
+
+        await repo.clear()
+        assert await repo.count_by_priority() == {}
+
+    @pytest.mark.asyncio
+    async def test_checkpoint_count(self):
+        """checkpoint 版本总数"""
+        from neotask.storage.memory import MemoryCheckpointRepository
+
+        repo = MemoryCheckpointRepository()
+        assert await repo.count() == 0
+
+        await repo.save("ckpt-task", 1, {"step": 1})
+        await repo.save("ckpt-task", 2, {"step": 2})
+        await repo.save("other-task", 1, {"step": 1})
+
+        assert await repo.count() == 3
+
+        await repo.delete("ckpt-task")
+        assert await repo.count() == 1
 
     @pytest.mark.asyncio
     async def test_delete_expired_terminal(self):
@@ -291,6 +355,28 @@ class TestSQLiteStorage:
         assert await repo.count_by_status(TaskStatus.PENDING) == 0
 
     @pytest.mark.asyncio
+    async def test_oldest_pending_created_at(self, sqlite_task_repo):
+        """最早 PENDING 任务时间走 MIN(created_at) 查询"""
+        repo = sqlite_task_repo
+        now = datetime.now(timezone.utc)
+
+        assert await repo.oldest_pending_created_at() is None
+
+        await repo.save(Task(
+            task_id="s-old-pending", data={}, status=TaskStatus.PENDING,
+            created_at=now - timedelta(seconds=30),
+        ))
+        await repo.save(Task(
+            task_id="s-new-running", data={}, status=TaskStatus.RUNNING,
+            created_at=now - timedelta(seconds=60),
+        ))
+
+        oldest = await repo.oldest_pending_created_at()
+        assert oldest.timestamp() == pytest.approx(
+            (now - timedelta(seconds=30)).timestamp()
+        )
+
+    @pytest.mark.asyncio
     async def test_delete_expired_terminal(self, sqlite_task_repo):
         """测试 SQLite 终态任务清理"""
         repo = sqlite_task_repo
@@ -342,6 +428,51 @@ class TestSQLiteStorage:
         assert removed is True
 
         assert await repo.size() == 1
+
+    @pytest.mark.asyncio
+    async def test_queue_count_by_priority(self, sqlite_queue_repo):
+        """队列按优先级分组计数"""
+        repo = sqlite_queue_repo
+
+        await repo.push("s-q-1", 0)
+        await repo.push("s-q-2", 2)
+        await repo.push("s-q-3", 2)
+
+        assert await repo.count_by_priority() == {0: 1, 2: 2}
+
+    @pytest.mark.asyncio
+    async def test_checkpoint_count(self):
+        """checkpoint 版本总数"""
+        db_path = None
+        repo = None
+        task_repo = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+                db_path = f.name
+            # save() 会同步更新 tasks.checkpoint_version，需要先建任务表
+            task_repo = SQLiteTaskRepository(db_path)
+            await task_repo.ensure_ready()
+            repo = SQLiteCheckpointRepository(db_path)
+            assert await repo.count() == 0
+
+            await repo.save("s-ckpt-task", 1, {"step": 1})
+            await repo.save("s-ckpt-task", 2, {"step": 2})
+            await repo.save("s-other-task", 1, {"step": 1})
+
+            assert await repo.count() == 3
+
+            await repo.delete("s-ckpt-task")
+            assert await repo.count() == 1
+        finally:
+            if repo is not None:
+                await repo.close()
+            if task_repo is not None:
+                await task_repo.close()
+            if db_path and os.path.exists(db_path):
+                try:
+                    os.unlink(db_path)
+                except PermissionError:
+                    pass
 
 
 # ========== Redis 存储测试（需要 Redis 服务） ==========
@@ -415,6 +546,33 @@ class TestRedisStorage:
             await repo.delete(task_id)
 
     @pytest.mark.asyncio
+    async def test_oldest_pending_created_at(self, redis_task_repo):
+        """最早 PENDING 任务时间（状态集合 + MGET）"""
+        repo = redis_task_repo
+        now = datetime.now(timezone.utc)
+        old_id = "redis-old-pending"
+        running_id = "redis-old-running"
+
+        await repo.save(Task(
+            task_id=old_id, data={}, status=TaskStatus.PENDING,
+            created_at=now - timedelta(seconds=30),
+        ))
+        await repo.save(Task(
+            task_id=running_id, data={}, status=TaskStatus.RUNNING,
+            created_at=now - timedelta(seconds=60),
+        ))
+
+        try:
+            oldest = await repo.oldest_pending_created_at()
+            assert oldest is not None
+            assert oldest.timestamp() <= (
+                now - timedelta(seconds=29)
+            ).timestamp()
+        finally:
+            await repo.delete(old_id)
+            await repo.delete(running_id)
+
+    @pytest.mark.asyncio
     async def test_delete_expired_terminal(self, redis_task_repo):
         """测试 Redis 终态过期索引清理"""
         repo = redis_task_repo
@@ -453,6 +611,45 @@ class TestRedisStorage:
         assert set(popped) == {"redis-q-1", "redis-q-2"}
 
         assert await repo.size() == 0
+
+    @pytest.mark.asyncio
+    async def test_queue_count_by_priority(self, redis_queue_repo):
+        """队列按优先级分组计数（pipeline ZCOUNT）"""
+        repo = redis_queue_repo
+        task_ids = ["redis-pq-a", "redis-pq-b", "redis-pq-c"]
+        before = await repo.count_by_priority()
+
+        await repo.push(task_ids[0], TaskPriority.CRITICAL.value)
+        await repo.push(task_ids[1], TaskPriority.NORMAL.value)
+        await repo.push(task_ids[2], TaskPriority.NORMAL.value)
+
+        try:
+            after = await repo.count_by_priority()
+            critical = TaskPriority.CRITICAL.value
+            normal = TaskPriority.NORMAL.value
+            assert after.get(critical, 0) == before.get(critical, 0) + 1
+            assert after.get(normal, 0) == before.get(normal, 0) + 2
+        finally:
+            for task_id in task_ids:
+                await repo.remove(task_id)
+
+    @pytest.mark.asyncio
+    async def test_checkpoint_count(self):
+        """checkpoint 版本总数（SCAN + HLEN）"""
+        repo = RedisCheckpointRepository(os.environ["REDIS_TEST_URL"])
+        task_id = "redis-ckpt-count"
+        try:
+            before = await repo.count()
+            await repo.save(task_id, 1, {"step": 1})
+            await repo.save(task_id, 2, {"step": 2})
+
+            assert await repo.count() == before + 2
+
+            await repo.delete(task_id)
+            assert await repo.count() == before
+        finally:
+            await repo.delete(task_id)
+            await repo.close()
 
 
 # ========== 存储工厂测试 ==========

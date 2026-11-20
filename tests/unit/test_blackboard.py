@@ -40,6 +40,15 @@ class TestBlackboard:
         await asyncio.sleep(0.1)
         assert store.get("short") is None
 
+    async def test_memory_count_ignores_expired(self):
+        store = MemoryContextStore()
+        store.set("fresh", 1)
+        store.set("stale", 2, ttl=0.05)
+        assert store.count() == 2
+
+        await asyncio.sleep(0.1)
+        assert store.count() == 1
+
     async def test_write_sweeps_expired_entries(self):
         """写入时顺带清扫已过期条目，避免只写不读时无限增长"""
         store = MemoryContextStore()

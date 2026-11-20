@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
 
 from neotask.common.logger import debug, error
+from neotask.models.task import TaskPriority
 from neotask.queue.delayed_queue import DelayedQueue
 from neotask.queue.priority_queue import PriorityQueue
 from neotask.storage.base import QueueRepository
@@ -247,6 +248,18 @@ class QueueScheduler:
     async def priority_size(self) -> int:
         """获取优先级队列大小"""
         return await self._priority_queue.size()
+
+    async def count_by_priority(self) -> Dict[int, int]:
+        """按优先级统计排队任务数（缺失的档位补 0，按键升序返回）
+
+        任务池的监控快照需要稳定的结构：即使某个优先级当前没有任务，也返回
+        0 而不是缺少键，调用方不必自己判断键是否存在。
+        """
+        counts = await self._priority_queue.count_by_priority()
+        return {
+            level.value: int(counts.get(level.value, 0))
+            for level in TaskPriority
+        }
 
     async def delayed_size(self) -> int:
         """获取延迟队列大小"""

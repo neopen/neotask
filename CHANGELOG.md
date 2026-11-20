@@ -6,6 +6,47 @@
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [1.2.0](https://github.com/neopen/neotask/compare/v1.1.2...v1.2.0) (2026-11-20)
+
+
+### ✨ Features (新功能)
+
+* **benchmarks:** 新增 1000 任务高并发执行基线 ([54ce414](https://github.com/neopen/neotask/commit/54ce414040652983836126d603d91a869aa6ba51))
+* **benchmarks:** 新增 Checkpoint 写入开销基准 ([1ecc3a6](https://github.com/neopen/neotask/commit/1ecc3a628bc008a5b6d623cb36ce26869dbda994))
+* **benchmarks:** 新增 v1.2 提交延迟与批量吞吐基线 ([51bde3c](https://github.com/neopen/neotask/commit/51bde3cca3f9edc705dba37615d4b23ae950f235))
+* **benchmarks:** 新增监控快照成本基准并统一 µs 延迟格式 ([45bfc19](https://github.com/neopen/neotask/commit/45bfc19e437e295e55e4bcafd787254c615c48ef))
+* **benchmarks:** 新增进度上报频率对吞吐的影响基准 ([d7b3d7d](https://github.com/neopen/neotask/commit/d7b3d7d98a6c235e092e8d30a8a5cf9956a42e1f))
+* **benchmarks:** 进度上报基准增加订阅维度并记录优化收益 ([c3109cd](https://github.com/neopen/neotask/commit/c3109cd27f36c5d3b3d27ae780d83e54dc063a6d))
+* **examples:** 新增监控示例并同步 API 文档与路线图 ([bf7d745](https://github.com/neopen/neotask/commit/bf7d7452b079227de103df550e2fa4cd51d7c876))
+* **metrics:** TaskPool 轻量监控快照与周期推送 ([bf5c598](https://github.com/neopen/neotask/commit/bf5c5987238c861be77f1f7ebefccf8cb93b6177))
+* **storage:** 补齐监控快照所需的仓储计数与重试计数接口 ([2729909](https://github.com/neopen/neotask/commit/2729909feb55e840262ad47bb984025b345d4186))
+
+
+### 🐛 Bug Fixes (问题修复)
+
+* **benchmark:** 基准延迟改用 perf_counter 事件计时 ([ff75a7e](https://github.com/neopen/neotask/commit/ff75a7e0c50a7693797dba2a974d161f12e876a0))
+
+
+### ⚡ Performance Improvements (性能优化)
+
+* **event:** 无订阅事件不再入队，内部处理器按类型订阅 ([97ad7ce](https://github.com/neopen/neotask/commit/97ad7ce8c6f51d53c6939897fb4eb41ff054b630))
+* **sqlite:** 跳过自动提交模式下的空转 commit，checkpoint 超限才 prune ([8e02899](https://github.com/neopen/neotask/commit/8e02899b589265b7b0b20920d858b7b5fc8fbdfc))
+* **worker:** 内存仓储定向拷贝任务，预取取任务免 wait_for ([ddb6442](https://github.com/neopen/neotask/commit/ddb64429df141135464fe1463ef872fc5e2f1567))
+
+
+### 📝 Documentation (文档更新)
+
+* **readme:** 修复 Mermaid 标签解析错误并同步架构规划 ([c50223c](https://github.com/neopen/neotask/commit/c50223c1264289c26f47c2c79dd3163c7744436b))
+* **readme:** 补充 HelpenX 与星阵万象站点外链 ([4a569bb](https://github.com/neopen/neotask/commit/4a569bb41b101c6cea75aae847353b213c123245))
+* **roadmap:** 重排 1.3/1.4 规划并规范状态枚举定义 ([af1fefd](https://github.com/neopen/neotask/commit/af1fefdf89bacc5e90436a29da20821835f5e539))
+* 修复 README Mermaid 解析错误并同步架构规划 ([3cb9e48](https://github.com/neopen/neotask/commit/3cb9e483f7b4bebbccc4c23b24b81fdf71fe0e03))
+
+
+### 🔧 Other Changes (其他变更)
+
+* **merge:** 合并 main（v1.1.2）到 dev，保留发布基线 ([066417f](https://github.com/neopen/neotask/commit/066417fbe401c8ef6a2191db2b048fa91e06d68b))
+* **merge:** 合并 v1.2 性能优化与轻量监控到 main ([9dc076a](https://github.com/neopen/neotask/commit/9dc076aebe1484291a6306f51efd7157e0f69155))
+
 ## [1.1.2](https://github.com/neopen/neotask/compare/v1.1.1...v1.1.2) (2026-11-18)
 
 

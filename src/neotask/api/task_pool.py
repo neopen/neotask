@@ -13,6 +13,7 @@ See LICENSE File For Details.
 import asyncio
 import inspect
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Callable, Union
@@ -48,6 +49,33 @@ from neotask.distributed.coordinator import Coordinator, CoordinatorConfig
 # 检查（storage ping + psutil 采样，后者还会同步阻塞事件循环约 0.1s）代价过高；
 # 窗口内直接返回上次结果，过期才重新检查。
 HEALTH_CHECK_TTL = 5.0
+
+
+class MetricsSubscription:
+    """``TaskPool.on_metrics()`` 返回的订阅句柄
+
+    推送循环运行在任务池的事件循环线程里，``cancel()`` 是线程安全的，可从
+    任意线程调用；重复取消或无循环时静默返回。
+    """
+
+    def __init__(self, task: asyncio.Task, loop: asyncio.AbstractEventLoop):
+        self._task = task
+        self._loop = loop
+
+    @property
+    def active(self) -> bool:
+        """订阅是否仍在推送"""
+        return not self._task.done()
+
+    def cancel(self) -> None:
+        """停止推送（幂等、线程安全）"""
+        if self._task.done():
+            return
+        try:
+            self._loop.call_soon_threadsafe(self._task.cancel)
+        except RuntimeError:
+            # 事件循环已关闭，任务随循环一起结束
+            pass
 
 
 class TaskPool:
@@ -184,7 +212,11 @@ class TaskPool:
         self._counter_lock = threading.Lock()
         self._pending_count = 0
         self._running_count = 0
+        self._completed_count = 0
         self._failed_count = 0
+
+        # on_metrics 订阅句柄（推送任务可能运行在调用方循环）
+        self._metrics_subscriptions: set = set()
 
         # 已创建但尚未入队的 PENDING 任务，停机时用于提示“重启后不会自动执行”
         self._unenqueued_pending: set = set()
@@ -388,6 +420,7 @@ class TaskPool:
                     self._running_count += 1
                 elif event.event_type == EventType.COMPLETED:
                     self._running_count = max(0, self._running_count - 1)
+                    self._completed_count += 1
                 elif event.event_type == EventType.FAILED:
                     self._decrement_counter_locked(old_status or "running")
                     self._failed_count += 1
@@ -605,6 +638,8 @@ class TaskPool:
 
             if self._metrics:
                 await self._metrics.stop()
+
+            await self._stop_metrics_subscriptions()
 
             await self._event_bus.stop()
 
@@ -1034,6 +1069,7 @@ class TaskPool:
         """取消任务（同步）"""
         self._ensure_running()
         self._forget_unenqueued(task_id)
+        self._worker_pool.forget_pending_retry(task_id)
         if self._run_coroutine(self._queue_scheduler.remove(task_id)):
             return self._run_coroutine(self._lifecycle.cancel_task(task_id))
         # 队列中不存在说明任务可能已在执行：先真正中断执行，再标记状态
@@ -1044,6 +1080,7 @@ class TaskPool:
     async def cancel_async(self, task_id: str) -> bool:
         """取消任务（异步）"""
         self._forget_unenqueued(task_id)
+        self._worker_pool.forget_pending_retry(task_id)
         if await self._queue_scheduler.remove(task_id):
             return await self._lifecycle.cancel_task(task_id)
         # 队列中不存在说明任务可能已在执行：先真正中断执行，再标记状态
@@ -1053,11 +1090,13 @@ class TaskPool:
 
     def delete(self, task_id: str) -> bool:
         """删除任务（同步）"""
+        self._worker_pool.forget_pending_retry(task_id)
         return self._run_coroutine(self._lifecycle.delete_task(task_id))
 
     async def delete_async(self, task_id: str) -> bool:
         """删除任务（异步）"""
         self._forget_unenqueued(task_id)
+        self._worker_pool.forget_pending_retry(task_id)
         return await self._lifecycle.delete_task(task_id)
 
     def retry(self, task_id: str, delay: float = 0) -> bool:
@@ -1316,6 +1355,7 @@ class TaskPool:
             return {
                 "pending_count": self._pending_count,
                 "running_count": self._running_count,
+                "completed_count": self._completed_count,
                 "failed_count": self._failed_count,
             }
 
@@ -1380,6 +1420,176 @@ class TaskPool:
             result["prefetcher"] = await self._worker_pool.get_prefetcher_stats()
 
         return result
+
+    # ========== 轻量监控 API ==========
+
+    def get_metrics(self) -> Dict[str, Any]:
+        """获取轻量监控快照（同步）
+
+        与 ``get_stats`` 的区别：只读取计数与聚合查询，不加载任务实体，适合
+        探针/上报循环高频调用。任何一项底层查询失败都退化为 ``None``/空值，
+        不会让监控拖垮任务执行。
+        """
+        result: Dict[str, Any] = self._run_coroutine(self.get_metrics_async())
+        return result
+
+    async def get_metrics_async(self) -> Dict[str, Any]:
+        """获取轻量监控快照（异步）"""
+        counters = self._counter_snapshot()
+
+        queue_depth: Dict[int, int] = {}
+        try:
+            queue_depth = await self._queue_scheduler.count_by_priority()
+        except Exception as e:
+            debug(f"Metrics: queue depth unavailable: {e}")
+
+        oldest_age: Optional[float] = None
+        try:
+            oldest = await self._task_repo.oldest_pending_created_at()
+            if oldest is not None:
+                oldest_age = round(max(0.0, time.time() - oldest.timestamp()), 3)
+        except Exception as e:
+            debug(f"Metrics: oldest pending task unavailable: {e}")
+
+        checkpoint_count: Optional[int] = 0
+        if self._checkpoint_repo is not None:
+            try:
+                checkpoint_count = await self._checkpoint_repo.count()
+            except Exception as e:
+                checkpoint_count = None
+                debug(f"Metrics: checkpoint count unavailable: {e}")
+
+        storage_healthy: Optional[bool] = None
+        if self._health_checker is not None:
+            checks = self._health_checker.get_summary().get("checks", {})
+            storage_check = checks.get("storage")
+            if storage_check is not None:
+                storage_healthy = storage_check.get("status") == "healthy"
+
+        storage_type = self._config.storage_type
+        context_key_count: Optional[int] = None
+        if self._context_store is not None:
+            try:
+                context_key_count = self._context_store.count()
+            except Exception as e:
+                debug(f"Metrics: context store count unavailable: {e}")
+
+        return {
+            "timestamp": datetime.now().isoformat(),
+            "node_id": self._config.node_id,
+            "pending": counters["pending_count"],
+            "running": counters["running_count"],
+            "completed": counters["completed_count"],
+            "failed": counters["failed_count"],
+            "worker_concurrency": self._config.worker_concurrency,
+            "active_workers": self._worker_pool.active_count(),
+            "queue_depth_by_priority": queue_depth,
+            "retry_queue_size": self._worker_pool.pending_retry_count(),
+            "oldest_pending_age_seconds": oldest_age,
+            "storage_backend": (
+                storage_type.value
+                if hasattr(storage_type, "value") else str(storage_type)
+            ),
+            "storage_healthy": storage_healthy,
+            "checkpoint_count": checkpoint_count,
+            "context_key_count": context_key_count,
+        }
+
+    def on_metrics(
+            self,
+            handler: Callable[[Dict[str, Any]], Any],
+            interval: float = 1.0,
+    ) -> MetricsSubscription:
+        """订阅周期监控快照（同步）
+
+        Args:
+            handler: 接收快照字典的回调，支持普通函数或协程函数
+            interval: 推送间隔（秒），必须大于 0
+
+        Returns:
+            ``MetricsSubscription``，调用 ``cancel()`` 停止推送
+
+        推送循环运行在任务池的循环线程：首次推送立即执行，之后按 ``interval``
+        周期执行。handler 抛出的异常只记录告警，不会中断订阅或影响任务执行。
+        """
+        self._ensure_running()
+        subscription: MetricsSubscription = self._run_coroutine(
+            self._start_metrics_subscription(handler, interval)
+        )
+        return subscription
+
+    async def on_metrics_async(
+            self,
+            handler: Callable[[Dict[str, Any]], Any],
+            interval: float = 1.0,
+    ) -> MetricsSubscription:
+        """订阅周期监控快照（异步；需在任务池运行时调用）"""
+        if not self._running:
+            raise RuntimeError("TaskPool not started. Call start() first.")
+        return await self._start_metrics_subscription(handler, interval)
+
+    async def _start_metrics_subscription(
+            self,
+            handler: Callable[[Dict[str, Any]], Any],
+            interval: float,
+    ) -> MetricsSubscription:
+        if not callable(handler):
+            raise TypeError("handler must be callable")
+        if interval <= 0:
+            raise ValueError("interval must be greater than 0")
+
+        loop = asyncio.get_running_loop()
+        task = asyncio.create_task(self._metrics_push_loop(handler, interval))
+        subscription = MetricsSubscription(task, loop)
+        self._metrics_subscriptions.add(subscription)
+        task.add_done_callback(
+            lambda _task: self._metrics_subscriptions.discard(subscription)
+        )
+        return subscription
+
+    async def _metrics_push_loop(
+            self,
+            handler: Callable[[Dict[str, Any]], Any],
+            interval: float,
+    ) -> None:
+        while True:
+            try:
+                snapshot = await self.get_metrics_async()
+                result = handler(snapshot)
+                if inspect.isawaitable(result):
+                    await result
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                warning(f"Metrics handler failed: {e}")
+            await asyncio.sleep(interval)
+
+    async def _stop_metrics_subscriptions(self) -> None:
+        """取消全部监控订阅（停机时调用，运行在循环线程）
+
+        订阅可能绑定在其他线程的循环上（``on_metrics_async`` 在外部循环创建），
+        对它们只能通过线程安全的 ``MetricsSubscription.cancel()``；绑定在当前
+        循环上的任务则直接取消并等待结束，避免停机后残留 pending 任务告警。
+        """
+        current_loop = asyncio.get_running_loop()
+        local_tasks: List[asyncio.Task] = []
+        for subscription in list(self._metrics_subscriptions):
+            if subscription._loop is current_loop:
+                local_tasks.append(subscription._task)
+            else:
+                subscription.cancel()
+
+        for task in local_tasks:
+            if not task.done():
+                task.cancel()
+        for task in local_tasks:
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                debug(f"Metrics subscription ended with error: {e}")
+        self._metrics_subscriptions.clear()
 
     def get_worker_stats(self) -> Dict[int, Any]:
         """获取Worker统计信息"""

@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Optional, Any, Dict, List, Callable, Union
 
-from neotask.api.task_pool import TaskPool, TaskPoolConfig
+from neotask.api.task_pool import MetricsSubscription, TaskPool, TaskPoolConfig
 from neotask.common.logger import debug, warning
 from neotask.event.bus import EventBus
 from neotask.models.config import SchedulerConfig, StorageType
@@ -1218,6 +1218,33 @@ class TaskScheduler:
             stats["time_wheel"] = self._time_wheel.get_stats()
 
         return stats
+
+    def get_metrics(self) -> Dict[str, Any]:
+        """获取轻量监控快照（同步）
+
+        透传任务池快照；周期任务/时间轮计数仍通过 ``get_stats()`` 获取。
+        """
+        return self._pool.get_metrics()
+
+    async def get_metrics_async(self) -> Dict[str, Any]:
+        """获取轻量监控快照（异步）"""
+        return await self._pool.get_metrics_async()
+
+    def on_metrics(
+            self,
+            handler: Callable[[Dict[str, Any]], Any],
+            interval: float = 1.0,
+    ) -> MetricsSubscription:
+        """订阅周期监控快照（同步）"""
+        return self._pool.on_metrics(handler, interval)
+
+    async def on_metrics_async(
+            self,
+            handler: Callable[[Dict[str, Any]], Any],
+            interval: float = 1.0,
+    ) -> MetricsSubscription:
+        """订阅周期监控快照（异步）"""
+        return await self._pool.on_metrics_async(handler, interval)
 
     def get_queue_size(self) -> int:
         """获取队列大小

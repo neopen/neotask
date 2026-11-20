@@ -118,6 +118,11 @@ class LoopBoundSQLiteConnection:
         self._row_factory = row_factory
         self._pragmas = tuple(DEFAULT_PRAGMAS if pragmas is None else pragmas)
         self._connect_kwargs = connect_kwargs
+        # 自动提交模式（isolation_level=None）下 commit() 在 SQLite 层是空操作。
+        # 记在连接上，commit() 直接返回，省掉一次跨 loop 派发（约 0.2ms/次）。
+        # 未显式给出 isolation_level 时按 aiosqlite 默认（隐式事务）处理，
+        # 保证直接构造代理的调用方仍能正常提交。
+        self._autocommit = connect_kwargs.get("isolation_level", "") is None
         # 读写分离：同一进程内用两条连接。
         # - 写连接只执行 INSERT/UPDATE/DELETE，永远不会持有读事务，写操作直接
         #   申请写锁，遇到其它进程持锁时由 busy_timeout 正常排队等待；
@@ -327,16 +332,21 @@ class LoopBoundSQLiteConnection:
     async def commit(self) -> None:
         """提交事务（自动提交模式下为安全 no-op，仅作用于写连接）。
 
-        持写串行锁：即便调用方把 execute 与 commit 拆成两次调用，COMMIT 也不会
-        落在其它协程的批量事务窗口内（自动提交模式下本调用通常为 no-op）。
+        自动提交模式下每条语句自成事务，没有显式 BEGIN 时 commit 无内容可提交；
+        直接返回，避免为一次空操作多付一次跨 loop 派发。若调用方手动执行了
+        ``BEGIN``（``in_transaction`` 为真），仍按原路径提交。
         """
 
         async def _factory(conn: aiosqlite.Connection) -> None:
             async with self._write_lock_on_loop():
                 await conn.commit()
 
-        if self._write_conn is not None:
-            await self._run(_factory)
+        if self._write_conn is None:
+            return
+        if self._autocommit and not self._write_conn.in_transaction:
+            return
+
+        await self._run(_factory)
 
     async def rollback(self) -> None:
         """回滚事务（仅作用于写连接，持写串行锁）。"""

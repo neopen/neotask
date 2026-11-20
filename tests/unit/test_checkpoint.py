@@ -384,6 +384,39 @@ class TestCheckpointContextvar:
         finally:
             pool.shutdown()
 
+    async def test_prune_only_after_exceeding_keep_versions(self):
+        """版本未超过保留上限时不调用 prune，避免每次写入都跑一次 DELETE 事务"""
+        async def work(data):
+            return "done"
+
+        config = TaskPoolConfig.memory()
+        config.checkpoint_keep_versions = 2
+        pool = TaskPool(executor=work, config=config)
+        try:
+            pool.start()
+            task_id = pool.submit({})
+            pool.wait_for_result(task_id, timeout=10)
+
+            repo = pool._checkpoint_repo
+            calls = []
+            original = repo.prune
+
+            async def counting_prune(target_id, keep):
+                calls.append(keep)
+                return await original(target_id, keep)
+
+            repo.prune = counting_prune
+
+            assert pool.save_checkpoint(task_id, {"step": 1}) == 1
+            assert pool.save_checkpoint(task_id, {"step": 2}) == 2
+            assert calls == []
+
+            assert pool.save_checkpoint(task_id, {"step": 3}) == 3
+            assert pool.save_checkpoint(task_id, {"step": 4}) == 4
+            assert calls == [2, 2]
+        finally:
+            pool.shutdown()
+
 
 # ========== CheckpointContext 同步形态分支 ==========
 

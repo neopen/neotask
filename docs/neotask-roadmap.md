@@ -214,13 +214,15 @@
     与订阅无关，100 次/任务仍只有 0.28x ~ 0.34x。后续候选：进度事件合并/节流、
     批量落库与队列有界化。
 - Checkpoint 写入开销（1000 任务、8 并发、256B 状态、每任务 0/1/5 次写入）：
-  - memory：0 写 2583 tasks/s；1 写 2495（0.97x），单次 `save_checkpoint` p50 51us，
-    每写增量约 0.014ms；5 写 1514 tasks/s（0.59x），p50 49us，每写增量约 0.055ms。
-  - sqlite：0 写 503 tasks/s；1 写 242（0.48x），单次写入 p50 13.1ms / p95 23.1ms，
-    每写增量约 2.15ms；5 写 84 tasks/s（0.17x），p50 13.8ms / p95 22.4ms，增量约 1.99ms。
-  - 结论：memory 的写入成本近似线性叠加；sqlite 单次写入是 memory 的 200+ 倍，
-    且任务存储本身也慢（零写 503 vs 2583 tasks/s）。高频 Checkpoint 在 sqlite 下
-    需要先解决单次提交成本与连接串行化，再谈写入频率。
+  - memory：0 写 2235 tasks/s；1 写 2010（0.90x），单次 `save_checkpoint` p50 49us，
+    每写增量约 0.05ms；5 写 1290 tasks/s（0.58x），p50 50us，每写增量约 0.07ms。
+  - sqlite（写入成本优化后）：0 写 623 tasks/s；1 写 399（0.64x），单次写入
+    p50 6.64ms / p95 16.31ms，每写增量约 0.90ms；5 写 148 tasks/s（0.24x），
+    p50 7.60ms / p95 14.61ms，增量约 1.03ms。
+  - 优化前同参数：0 写 503 tasks/s；1 写 242（0.48x），p50 13.1ms；5 写 84（0.17x），
+    p50 13.8ms。
+  - 结论：sqlite 单次提交成本已降到约一半，高频 Checkpoint 的主要剩余成本是
+    aiosqlite 逐语句往返（每次写约 0.2–0.4ms）与任务存储本身的串行写锁。
 
 > 单轮吞吐波动可达 2–3 倍，横向对比请保持机器与参数一致，并比较配对中位数。
 
@@ -245,6 +247,20 @@
   `task.progress` 等高频事件在无人订阅时完全不进入事件总线。
 - 验证：全量测试 866 passed / 12 skipped；基准复测见上，无订阅进度上报的事件
   积压与排空开销消失，有订阅时排空 5.2s → 2.3s。
+
+#### 4. SQLite 写入成本优化（已交付）
+- 自动提交模式（`isolation_level=None`）下 `commit()` 直接返回：每条语句自成事务，
+  commit 没有可提交内容，原先每次单语句写入还要多付一次跨 loop 派发（约 0.2ms）。
+  显式隔离级别与手动 `BEGIN`（`in_transaction` 为真）仍照常提交。
+- `save_checkpoint` 仅在累计版本超过 `checkpoint_keep_versions` 时执行 prune，
+  窗口内跳过每写一次的 DELETE 事务（SQLite 下约 0.65ms）。
+- 定位依据：同线程 `sqlite3` 单事务仅约 0.04ms，成本几乎全在 aiosqlite 逐语句往返
+  与跨 loop 派发；单任务 sqlite 路径有 12 次跨 loop 操作，其中约 5.4 次是空转 commit。
+- 验证（同机交错 A/B，400 任务 × 3 轮中位，两次配对取比值）：0 写吞吐 1.36x / 1.41x；
+  1 次 checkpoint 1.51x / 1.56x，单次写入 p50 13.2–13.5ms → 5.5–5.6ms；
+  5 次 checkpoint 1.65x / 1.75x。全量套件 866 passed / 12 skipped。
+- 剩余候选：任务创建 + 入队合并为单事务、批量出队、消除每次提交的
+  `SELECT COUNT(*) FROM queue` 容量查询。
 
 ### P0 轻量监控
 

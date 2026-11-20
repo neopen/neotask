@@ -228,6 +228,11 @@
     p50 13.8ms。
   - 结论：sqlite 单次提交成本已降到约一半，高频 Checkpoint 的主要剩余成本是
     aiosqlite 逐语句往返（每次写约 0.2–0.4ms）与任务存储本身的串行写锁。
+- 监控快照成本（1000 任务排队 + 队列暂停、100 次 `get_metrics_async`，memory 后端）：
+  p50 295us / p95 542us / p99 801us；每次快照的 `queue_depth_by_priority` 总和与
+  队列大小一致。memory 后端的按优先级计数与最早 PENDING 时间均为 O(队列长度) 扫描，
+  按 1s 采样间隔可接受；SQLite 走 `GROUP BY` / `MIN(created_at)`，Redis 走 pipeline
+  `ZCOUNT` / SMEMBERS + 分批 MGET（每 500 条一次往返）。
 
 > 单轮吞吐波动可达 2–3 倍，横向对比请保持机器与参数一致，并比较配对中位数。
 
@@ -240,6 +245,7 @@
   - [x] 高并发执行（1000 任务）
   - [x] 进度上报频率对吞吐的影响（每任务 0/1/10/100 次，含事件积压与排空）
   - [x] Checkpoint 写入开销（memory / sqlite × 每任务 0/1/5 次写入）
+  - [x] 监控快照成本（1000 排队任务 × 100 次 `get_metrics`，校验队列深度总和）
 - 每次版本发布跑基准，数据记入 CHANGELOG，防止性能回退。
 
 #### 2. 高并发调度开销（已交付）
@@ -277,29 +283,43 @@
 - 剩余候选：任务创建 + 入队合并为单事务、直接模式批量出队（需兼顾 worker 间公平）、
   消除每次提交的 `SELECT COUNT(*) FROM queue` 容量查询。
 
-### P0 轻量监控
+### P0 轻量监控（已交付）
 
-#### 1. `pool.get_metrics()` 快照接口
-返回字段：
-- 各状态任务数：`pending_count` / `running_count` / `completed_count` / `failed_count`
+#### 1. `pool.get_metrics()` / `get_metrics_async()` 快照接口
+返回字段（同步调用无副作用；单项查询失败退化为 `None`/空值，不影响任务执行）：
+- 各状态任务数：`pending` / `running` / `completed` / `failed`（事件驱动计数器）
 - `worker_concurrency` / `active_workers`
-- 按优先级队列深度 `queue_depth_by_priority`
-- `retry_queue_size`
-- `oldest_pending_age_seconds`
-- `storage_backend` / `storage_healthy`
-- `checkpoint_count`（需新增仓储层计数接口）
-- `context_key_count`（仅 Memory 后端；其他后端返回 `null`）
-- 同步、无副作用。
+- 按优先级队列深度 `queue_depth_by_priority`（四个档位恒存在，缺失补 0）
+- `retry_queue_size`：自动重试已重新入队、仍在延迟窗口内等待执行的任务数
+- `oldest_pending_age_seconds`：最早 PENDING 任务的等待秒数
+- `storage_backend` / `storage_healthy`（健康检查未启用时为 `None`）
+- `checkpoint_count`：全部 checkpoint 版本数；后端不支持时为 `None`
+- `context_key_count`：仅 Memory 后端；其他后端为 `None`
+- `timestamp` / `node_id`
 
-#### 2. `pool.on_metrics(handler, interval=...)`
-- 定时推送快照，避免调用方轮询。
+#### 2. `pool.on_metrics(handler, interval=1.0)`
+- 返回 `MetricsSubscription`；`cancel()` 线程安全、幂等。
+- 首次推送立即执行，handler 支持普通函数与协程函数。
+- 单次推送异常只记录告警，不中断订阅；停机时统一取消。
+- `on_metrics_async()` 供已在事件循环内的调用方使用。
 
-#### 3. 监控指标纳入性能观测
-- 基准测试的吞吐、延迟、队列深度通过 `get_metrics()` 暴露，形成“性能可观测”闭环。
+#### 3. 底层计数接口补齐
+- `TaskRepository.oldest_pending_created_at()`：默认分页扫描；memory 遍历取最小，
+  SQLite `MIN(created_at)`，Redis SMEMBERS + 分批 MGET（每 500 条往返一次）。
+- `QueueRepository.count_by_priority()`：默认空字典；memory 堆扫描，SQLite `GROUP BY`
+  （走 `idx_queue_order`），Redis pipeline `ZCOUNT`。
+- `CheckpointRepository.count()`：默认 `None`；memory 聚合版本数、SQLite `COUNT(*)`、
+  Redis SCAN `ckpt:*` + pipeline `HLEN`。
+- `MemoryContextStore.count()`；`WorkerPool` 维护延迟重试任务集合，开始执行/取消/删除时清除。
+
+#### 4. 监控指标纳入性能观测
+- 基准测试新增快照成本场景，队列深度与真实队列大小交叉校验；
+  用法见 `examples/22_metrics.py`。
 
 ### 验收标准
 - 基准测试显示批量提交吞吐提升、查询延迟下降，无性能回退（优化前后数据记入 CHANGELOG）。
-- `get_metrics()` 字段完整，示例可运行。
+- `get_metrics()` 字段完整、示例可运行；`on_metrics` 推送可取消且异常隔离。
+- memory / SQLite / Redis 三种后端的新增计数接口均有测试覆盖。
 
 ---
 

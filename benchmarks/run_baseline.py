@@ -31,6 +31,7 @@ DEFAULT_PROGRESS_SUBSCRIBERS = (0, 1)
 DEFAULT_CKPT_BACKENDS = ("memory", "sqlite")
 DEFAULT_CKPT_WRITES = (0, 1, 5)
 DEFAULT_CKPT_PAYLOAD = 256
+DEFAULT_METRICS_SAMPLES = 100
 
 
 async def noop_executor(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -549,6 +550,53 @@ async def measure_checkpoint_overhead(
     }
 
 
+async def measure_metrics_snapshot(
+    tasks: int,
+    samples: int = DEFAULT_METRICS_SAMPLES,
+) -> Dict[str, Any]:
+    """监控快照成本：暂停出队后对 1000 个排队任务连续取快照
+
+    队列暂停后任务稳定停在优先队列中，快照的 ``queue_depth_by_priority``
+    总和必须等于队列大小，否则说明统计口径与真实队列脱节。
+    """
+    pool = _new_pool(concurrency=4, queue_size=tasks + 64)
+    try:
+        pool.pause()
+        for i in range(tasks):
+            await pool.submit_async({"index": i}, priority=i % 4)
+
+        queue_size = await pool.get_queue_size_async()
+        if queue_size != tasks:
+            raise RuntimeError(
+                f"queue size {queue_size} != submitted tasks {tasks}"
+            )
+
+        # 预热：首次快照包含惰性查询路径
+        for _ in range(10):
+            await pool.get_metrics_async()
+
+        latencies_us: List[float] = []
+        depth_matched = True
+        for _ in range(samples):
+            started = time.perf_counter()
+            snapshot = await pool.get_metrics_async()
+            latencies_us.append((time.perf_counter() - started) * 1_000_000.0)
+            depth_matched = depth_matched and (
+                sum(snapshot["queue_depth_by_priority"].values()) == tasks
+            )
+
+        pool.resume()
+        return {
+            "tasks": tasks,
+            "samples": samples,
+            "queue_size": queue_size,
+            "depth_matched": depth_matched,
+            "latency_us": _percentiles(latencies_us),
+        }
+    finally:
+        pool.shutdown(graceful=True, timeout=30)
+
+
 def _format_latency(values: Dict[str, float]) -> str:
     return (
         f"p50 {values['p50']:.3f} ms / p95 {values['p95']:.3f} ms / "
@@ -560,6 +608,13 @@ def _format_us(value: float) -> str:
     if value >= 1000.0:
         return f"{value / 1000.0:.2f}ms"
     return f"{value:.0f}us"
+
+
+def _format_us_latency(values: Dict[str, float]) -> str:
+    return (
+        f"p50 {_format_us(values['p50'])} / p95 {_format_us(values['p95'])} / "
+        f"p99 {_format_us(values['p99'])} / max {_format_us(values['max'])}"
+    )
 
 
 def _print_report(result: Dict[str, Any]) -> None:
@@ -659,6 +714,19 @@ def _print_report(result: Dict[str, Any]) -> None:
     print("写入延迟口径：save_checkpoint 调用返回；增量/写 = 端到端耗时差 / (任务数 × 写入次数)")
     print("提示：保持参数与机器一致再做横向对比；Checkpoint 场景会同时测任务存储开销")
 
+    metrics = result["metrics_snapshot"]
+    print("-" * 60)
+    print(
+        f"监控快照（{metrics['tasks']} 任务排队，"
+        f"{metrics['samples']} 次 get_metrics）"
+    )
+    print(f"  延迟     : {_format_us_latency(metrics['latency_us'])}")
+    print(
+        f"  队列深度 : {metrics['queue_size']} 任务，"
+        f"优先级总和一致={metrics['depth_matched']}"
+    )
+    print("  延迟口径：get_metrics_async 返回；含仓储计数与最早任务时间查询")
+
 
 async def run(
     tasks: int,
@@ -671,6 +739,7 @@ async def run(
     ckpt_backends: List[str],
     ckpt_writes: List[int],
     ckpt_payload: int,
+    metrics_samples: int = DEFAULT_METRICS_SAMPLES,
 ) -> Dict[str, Any]:
     single_result = await measure_single_submit(single)
     bulk_result = await measure_batch_submit(tasks, rounds, concurrency)
@@ -681,6 +750,7 @@ async def run(
     checkpoint_overhead = await measure_checkpoint_overhead(
         tasks, rounds, concurrency, ckpt_backends, ckpt_writes, ckpt_payload
     )
+    metrics_snapshot = await measure_metrics_snapshot(tasks, metrics_samples)
     return {
         "environment": {
             "storage": "memory",
@@ -695,12 +765,14 @@ async def run(
             "checkpoint_backends": ckpt_backends,
             "checkpoint_writes": ckpt_writes,
             "checkpoint_payload_bytes": ckpt_payload,
+            "metrics_samples": metrics_samples,
         },
         "single_submit": single_result,
         "batch_submit": bulk_result,
         "high_concurrency": high_concurrency,
         "progress_reporting": progress_reporting,
         "checkpoint_overhead": checkpoint_overhead,
+        "metrics_snapshot": metrics_snapshot,
     }
 
 
@@ -805,6 +877,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         default=DEFAULT_CKPT_PAYLOAD,
         help="每次 Checkpoint 状态的负载字节数（默认 256）",
     )
+    parser.add_argument(
+        "--metrics-samples",
+        type=int,
+        default=DEFAULT_METRICS_SAMPLES,
+        help="监控快照采样次数（默认 100）",
+    )
     parser.add_argument("--json", action="store_true", help="以 JSON 输出")
     args = parser.parse_args(argv)
 
@@ -815,6 +893,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         parser.error("--concurrency 必须大于 0")
     if args.ckpt_payload < 0:
         parser.error("--ckpt-payload 不能为负数")
+    if args.metrics_samples <= 0:
+        parser.error("--metrics-samples 必须大于 0")
 
     # 事件积压由基准自己用 event_bus.get_stats() 量化，压掉每千条的 WARNING 刷屏
     logging.getLogger("NeoTask").setLevel(logging.ERROR)
@@ -830,6 +910,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             args.ckpt_backends,
             args.ckpt_writes,
             args.ckpt_payload,
+            args.metrics_samples,
         )
     )
 

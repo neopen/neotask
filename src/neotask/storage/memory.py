@@ -32,7 +32,7 @@ from neotask.storage.base import (
 class MemoryTaskRepository(TaskRepository):
     """内存任务存储
 
-    使用字典存储任务，支持深拷贝避免外部修改。
+    使用字典存储任务，保存与读取都返回独立副本，避免外部修改。
     设计模式：Repository Pattern - 任务数据访问
     """
 
@@ -42,26 +42,26 @@ class MemoryTaskRepository(TaskRepository):
         self._lock = threading.Lock()
 
     async def save(self, task: Task) -> None:
-        """保存任务（深拷贝避免外部修改）
+        """保存任务（保存独立副本，避免外部修改）
 
         Args:
             task: 要保存的任务对象
         """
         with self._lock:
-            self._tasks[task.task_id] = copy.deepcopy(task)
+            self._tasks[task.task_id] = task.clone()
             debug(f"Task {task.task_id} saved to memory repository")
 
     async def save_batch(self, tasks: List[Task]) -> List[str]:
         """批量保存任务（跳过已存在的 task_id）
 
-        先完成整批深拷贝，再一次性写入字典；任一任务拷贝失败都不会留下
+        先完成整批拷贝，再一次性写入字典；任一任务拷贝失败都不会留下
         半批数据。
         """
         if not tasks:
             return []
 
-        # 深拷贝可能因不可拷贝字段失败，放在加锁与写入之前完成
-        snapshots = [(task.task_id, copy.deepcopy(task)) for task in tasks]
+        # 拷贝可能因不可拷贝字段失败，放在加锁与写入之前完成
+        snapshots = [(task.task_id, task.clone()) for task in tasks]
 
         saved: List[str] = []
         with self._lock:
@@ -77,23 +77,23 @@ class MemoryTaskRepository(TaskRepository):
         with self._lock:
             if task.task_id in self._tasks:
                 return False
-            self._tasks[task.task_id] = copy.deepcopy(task)
+            self._tasks[task.task_id] = task.clone()
         return True
 
     async def get(self, task_id: str) -> Optional[Task]:
-        """获取任务（返回深拷贝）
+        """获取任务（返回独立副本）
 
         Args:
             task_id: 任务ID
 
         Returns:
-            任务对象的深拷贝，不存在则返回 None
+            任务对象的独立副本，不存在则返回 None
         """
         with self._lock:
             task = self._tasks.get(task_id)
             if task:
                 debug(f"Task {task_id} retrieved from memory repository")
-                return copy.deepcopy(task)
+                return task.clone()
             debug(f"Task {task_id} not found in memory repository")
             return None
 
@@ -144,7 +144,7 @@ class MemoryTaskRepository(TaskRepository):
         """
         with self._lock:
             tasks = [
-                copy.deepcopy(task) for task in self._tasks.values()
+                task.clone() for task in self._tasks.values()
                 if task.status == status
             ]
             result = tasks[offset:offset + limit]
@@ -159,11 +159,11 @@ class MemoryTaskRepository(TaskRepository):
     async def list_by_parent(
             self, parent_task_id: str, limit: int = 100, offset: int = 0
     ) -> List[Task]:
-        """按父任务 ID 列出子任务（深拷贝，按创建时间升序）"""
+        """按父任务 ID 列出子任务（独立副本，按创建时间升序）"""
         with self._lock:
             children = sorted(
                 (
-                    copy.deepcopy(task)
+                    task.clone()
                     for task in self._tasks.values()
                     if task.parent_task_id == parent_task_id
                 ),

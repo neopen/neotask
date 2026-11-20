@@ -166,13 +166,18 @@ class TaskPrefetcher:
         """
         self._last_activity = time.time()
 
+        # 本地队列通常非空：直接取，避免每个任务都付一次
+        # ``wait_for`` 的 Task 创建 + 定时器（约 12us，是纯调度开销）。
         try:
-            task_id = await asyncio.wait_for(
-                self._local_queue.get(),
-                timeout=timeout
-            )
-        except asyncio.TimeoutError:
-            return None
+            task_id = self._local_queue.get_nowait()
+        except asyncio.QueueEmpty:
+            try:
+                task_id = await asyncio.wait_for(
+                    self._local_queue.get(),
+                    timeout=timeout
+                )
+            except asyncio.TimeoutError:
+                return None
 
         if self._local_queue.qsize() < self._config.min_threshold:
             self._demand_event.set()

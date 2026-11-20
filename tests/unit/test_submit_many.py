@@ -15,7 +15,6 @@ from neotask.api.task_pool import TaskPool, TaskPoolConfig
 from neotask.common.exceptions import BatchSubmitError, QueueFullError
 from neotask.models.task import BatchSubmitResult, Task, TaskPriority, TaskStatus
 from neotask.queue.queue_scheduler import QueueScheduler
-from neotask.storage import memory as memory_storage
 from neotask.storage.memory import MemoryQueueRepository, MemoryTaskRepository
 from neotask.storage.sqlite import SQLiteQueueRepository, SQLiteTaskRepository
 
@@ -354,23 +353,20 @@ class TestMemoryBatchAtomic:
     """Memory 仓储批量写入失败不留下半批数据"""
 
     @pytest.mark.asyncio
-    async def test_save_batch_deepcopy_failure_leaves_nothing(self, monkeypatch):
+    async def test_save_batch_clone_failure_leaves_nothing(self, monkeypatch):
         repo = MemoryTaskRepository()
         tasks = [Task(task_id=f"m-a-{i}", data={"i": i}) for i in range(3)]
 
-        original = memory_storage.copy.deepcopy
+        original = Task.clone
         calls = {"count": 0}
 
-        def flaky_deepcopy(obj):
+        def flaky_clone(task):
             calls["count"] += 1
             if calls["count"] == 2:
-                raise RuntimeError("deepcopy failed")
-            return original(obj)
+                raise RuntimeError("clone failed")
+            return original(task)
 
-        class CopyShim:
-            deepcopy = staticmethod(flaky_deepcopy)
-
-        monkeypatch.setattr(memory_storage, "copy", CopyShim)
+        monkeypatch.setattr(Task, "clone", flaky_clone)
         with pytest.raises(RuntimeError):
             await repo.save_batch(tasks)
 

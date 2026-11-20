@@ -338,9 +338,19 @@ class TaskPool:
 
     def _setup_event_handlers(self):
         """设置事件处理器"""
+        # 只订阅生命周期事件：内部计数器与指标不需要 progress / status_changed
+        # 等高频事件；按类型订阅后，无人订阅的事件会被 EventBus 直接丢弃
+        lifecycle_events = (
+            EventType.CREATED,
+            EventType.STARTED,
+            EventType.COMPLETED,
+            EventType.FAILED,
+            EventType.CANCELLED,
+            EventType.RETRY,
+        )
+
         # 指标收集：全部由生命周期事件推导，覆盖 created→started→completed/failed/retry
         if self._metrics:
-            @self._event_bus.subscribe_global
             async def metrics_handler(event: TaskEvent):
                 data = event.data if isinstance(event.data, dict) else {}
 
@@ -362,8 +372,10 @@ class TaskPool:
                         event.task_id, data.get("retry_count", 1)
                     )
 
+            for event_type in lifecycle_events:
+                self._event_bus.subscribe(event_type, metrics_handler)
+
         # 内部计数器：pending / running / failed
-        @self._event_bus.subscribe_global
         async def counter_handler(event: TaskEvent):
             data = event.data if isinstance(event.data, dict) else {}
             old_status = str(data.get("old_status", "")).lower()
@@ -384,6 +396,9 @@ class TaskPool:
                 elif event.event_type == EventType.RETRY:
                     self._decrement_counter_locked(old_status or "running")
                     self._pending_count += 1
+
+        for event_type in lifecycle_events:
+            self._event_bus.subscribe(event_type, counter_handler)
 
         # 未来管理器完成
         @self._event_bus.subscribe(EventType.COMPLETED)

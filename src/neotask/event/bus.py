@@ -223,7 +223,14 @@ class EventBus:
         self._queue.put(...)`` 会跨循环唤醒 getter，目标循环不会被唤醒
         （最多拖延到一个轮询超时）。因此跨循环时必须用
         ``call_soon_threadsafe`` 在目标循环中投递。
+
+        没有任何订阅方（含全局订阅）的事件直接丢弃：入队后也只会被消费
+        协程空跑一遍，高频事件（如无人订阅的 ``task.progress``）会白白占用
+        队列与消费循环。
         """
+        if not self._handlers.get(event.event_type) and not self._global_handlers:
+            return
+
         if self._node_id and not event.node_id:
             event.node_id = self._node_id
 

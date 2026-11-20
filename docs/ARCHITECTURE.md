@@ -574,7 +574,7 @@ config = SchedulerConfig(
 ## 版本与展望
 
 
-### 当前版本：v1.0.5
+### 当前能力（v1.2 已合入 main，待发布）
 
 - ✅ 即时任务队列（优先级、并发控制、批量提交）
 - ✅ 内存/SQLite/Redis 存储；周期任务持久化与跨重启恢复
@@ -582,6 +582,8 @@ config = SchedulerConfig(
 - ✅ 同步/异步双 API，跨节点结果等待
 - ✅ 事件总线、指标收集、健康检查、进度上报
 - ✅ 分布式锁、节点心跳、故障任务回收、死信队列
+- ✅ 断点续跑、成本上报、父子任务关联、本地上下文存储、自定义失败原因（v1.1）
+- ✅ 轻量监控快照 `get_metrics()` 与周期推送 `on_metrics()`（v1.2）
 - ✅ 可选 Web UI（`pip install neotask[ui]`）
 
 ### 发展路线图
@@ -620,15 +622,34 @@ timeline
                : 超时检测
                : 故障任务回收/死信队列
 
-    section v1.5 任务编排
-        计划中 : DAG工作流
-               : 条件分支
-               : 并行执行
+    section v1.1 本地能力
+        执行增强 : 断点续跑
+               : 成本上报
+               : 父子关联/本地上下文存储
+               : 自定义失败原因
 
-    section v2.0 企业级
-        计划中 : 多租户隔离
-               : Prometheus集成
-               : 独立Web UI集群
+    section v1.2 性能与监控
+        性能优化 : 批量写优化
+               : 查询索引
+               : 进度节流
+               : get_metrics 快照与周期推送
+
+    section v1.3 人工介入
+        计划中 : WAITING 等待状态
+               : task.waiting / task.signal_received
+               : 信号唤醒与 checkpoint 续跑
+
+    section v1.4 导出与可靠性
+        计划中 : Prometheus 导出器（可选）
+               : 崩溃恢复边界
+               : 优雅停机配置
+               : 重试语义统一
+
+    section v2.0 NeoFlow 执行面
+        计划中 : 任务消费者（拉取）
+               : 远端事件上报
+               : 控制消息处理
+               : 复用节点与心跳注册
 ```
 
 ### 能力矩阵
@@ -644,8 +665,12 @@ timeline
 | 分布式锁 / 看门狗续期 | ✅ 已交付 | `lock/` |
 | 节点心跳 / 任务回收 / 死信队列 | ✅ 已交付 | `core/heartbeat.py`、`worker/reclaimer.py`、`queue/dead_letter.py` |
 | 分片路由（一致性哈希 / 取模 / 范围） | ✅ 已交付 | `distributed/sharding.py` |
+| 断点续跑 / 成本上报 / 本地上下文 | ✅ 已交付（v1.1） | `core/checkpoint.py`、`core/cost.py`、`storage/` |
+| 监控快照 `get_metrics` / 周期推送 `on_metrics` | ✅ 已交付（v1.2） | `api/task_pool.py`、`monitor/` |
 | Web UI 监控面板（可选 extra） | ✅ 已交付 | `web/` |
-| DAG 工作流 / 多租户 / Prometheus | 🚧 计划中（v1.5 / v2.0） | - |
+| 人工介入（WAITING 状态 / 信号唤醒） | 🚧 计划中（v1.3） | - |
+| Prometheus 导出器 / 可靠性补强 | 🚧 计划中（v1.4） | - |
+| NeoFlow 执行面接入 | 🚧 计划中（v2.0） | - |
 
 ------
 

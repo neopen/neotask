@@ -105,7 +105,7 @@ graph TB
         subgraph Delivered["v1.1 Local Capability Components (Delivered)"]
             CK[CheckpointRepository<br/>Checkpoint & Resume]
             CT[CostRecorder<br/>Cost & Duration Reporting]
-            CS[MemoryContextStore<br/>Local Context (Memory only)]
+            CS["MemoryContextStore<br/>Local Context (Memory only)"]
         end
 
         subgraph Internal["Internal Components"]
@@ -160,7 +160,7 @@ graph TB
 
 **Development Roadmap**
 
-> **Note**: v0.1 – v1.0 are released versions; v1.1.0 is released (v1.1.1 is a stability and upgrade-experience patch; v1.1.2 fixes scheduling jitter, time-wheel cancellation and executor configuration); v1.2 covers performance and monitoring; v1.3 adds human-in-the-loop waiting (`waiting` status + signal wake-up); v1.4 covers the exporter and reliability hardening. NeoTask is a self-sufficient local execution SDK — DAG decomposition, task dispatch and state progression belong to an upper-layer **control plane** (e.g. NeoFlow), which NeoTask only integrates with as an **execution plane** (pull task → run handler → report event). v2.0 (NeoFlow execution-plane integration) is **deferred**; built-in DAG, dynamic routing, plugin system and Web UI remain out of scope. The task/event wire contract is frozen across 1.x — see [docs/neotask-execution-contract.md](docs/neotask-execution-contract.md).
+> **Note**: NeoTask is a self-sufficient local execution SDK — DAG decomposition, task dispatch and state progression belong to an upper-layer **control plane** (e.g. NeoFlow), which NeoTask only integrates with as an **execution plane** (pull task → run handler → report event). v2.0 (NeoFlow execution-plane integration) is **deferred**; built-in DAG, dynamic routing, plugin system and Web UI remain out of scope. The task/event wire contract is frozen across 1.x — see [docs/neotask-execution-contract.md](docs/neotask-execution-contract.md).
 
 ```mermaid
 timeline
@@ -221,7 +221,7 @@ timeline
                             : Retry Semantics Unification
 
     section v2.0
-        NeoFlow Execution Plane (Deferred) : Task Consumer (pull)
+        NeoFlow Execution Plane: Task Consumer (pull)
                                           : Remote Event Reporting
                                           : Control Message Handling
                                           : Reuse Node & Heartbeat Registry

@@ -1,6 +1,6 @@
 """
 @FileName: run_baseline.py
-@Description: v1.2 基准基线 - 单任务提交延迟、批量提交吞吐、高并发执行与 Checkpoint 写入开销
+@Description: v1.2 基准基线 - 单任务提交延迟、批量提交、高并发执行、事件派发与 Checkpoint 写入开销
 @Author: neopen
 @GitHub: https://github.com/neopen/neotask
 @Time: 2026/11/19
@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from neotask import report_progress, save_checkpoint
 from neotask.api.task_pool import TaskPool
+from neotask.event.bus import EventBus, TaskEvent
 from neotask.models.config import TaskPoolConfig
 
 DEFAULT_TASKS = 1000
@@ -32,6 +33,7 @@ DEFAULT_CKPT_BACKENDS = ("memory", "sqlite")
 DEFAULT_CKPT_WRITES = (0, 1, 5)
 DEFAULT_CKPT_PAYLOAD = 256
 DEFAULT_METRICS_SAMPLES = 100
+DEFAULT_EVENT_DISPATCH_EVENTS = 100_000
 
 
 async def noop_executor(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -597,6 +599,73 @@ async def measure_metrics_snapshot(
         pool.shutdown(graceful=True, timeout=30)
 
 
+async def _measure_event_dispatch_once(kind: str, total: int) -> Dict[str, float]:
+    """测一轮事件派发：同一事件订阅一个空回调，统计投递到处理完成的吞吐"""
+    bus = EventBus()
+    await bus.start()
+    count = {"n": 0}
+
+    if kind == "async":
+        async def handler(event: TaskEvent) -> None:
+            count["n"] += 1
+    else:
+        def handler(event: TaskEvent) -> None:
+            count["n"] += 1
+
+    bus.subscribe("task.completed", handler)
+    try:
+        warm_total = min(2000, total // 10)
+        for index in range(warm_total):
+            await bus.emit(TaskEvent("task.completed", f"warm-{index}"))
+        base = bus.get_stats()["processed_events"]
+        while bus.get_stats()["processed_events"] - base < warm_total:
+            await asyncio.sleep(0)
+        count["n"] = 0
+
+        events = [TaskEvent("task.completed", f"t{index}") for index in range(total)]
+        processed_before = bus.get_stats()["processed_events"]
+
+        started = time.perf_counter()
+        for event in events:
+            await bus.emit(event)
+        published = time.perf_counter()
+
+        deadline = time.perf_counter() + 60
+        while bus.get_stats()["processed_events"] - processed_before < total:
+            if time.perf_counter() > deadline:
+                break
+            await asyncio.sleep(0)
+        finished = time.perf_counter()
+
+        assert count["n"] == total, "部分事件未被订阅方消费"
+        return {
+            "publish_ms": (published - started) * 1000.0,
+            "drain_ms": (finished - published) * 1000.0,
+            "events_per_sec": total / max(finished - started, 1e-9),
+        }
+    finally:
+        await bus.stop()
+
+
+async def measure_event_dispatch(
+    total: int = DEFAULT_EVENT_DISPATCH_EVENTS,
+) -> Dict[str, Any]:
+    """事件派发吞吐：异步/同步回调各 3 轮取中位
+
+    该场景直接测 EventBus 消费循环，不经过任务调度；用于观察批量取事件、
+    同步回调内联与单订阅方直接 await 的效果。
+    """
+    result: Dict[str, Any] = {"total_events": total, "rounds": 3}
+    for kind in ("async", "sync"):
+        runs = [await _measure_event_dispatch_once(kind, total) for _ in range(3)]
+        result[kind] = {
+            "events_per_sec": statistics.median(r["events_per_sec"] for r in runs),
+            "publish_ms": statistics.median(r["publish_ms"] for r in runs),
+            "drain_ms": statistics.median(r["drain_ms"] for r in runs),
+        }
+    return result
+
+
 def _format_latency(values: Dict[str, float]) -> str:
     return (
         f"p50 {values['p50']:.3f} ms / p95 {values['p95']:.3f} ms / "
@@ -727,6 +796,20 @@ def _print_report(result: Dict[str, Any]) -> None:
     )
     print("  延迟口径：get_metrics_async 返回；含仓储计数与最早任务时间查询")
 
+    dispatch = result["event_dispatch"]
+    print("-" * 60)
+    print(
+        f"事件派发（{dispatch['total_events']} 事件，"
+        f"{dispatch['rounds']} 轮取中位）"
+    )
+    for kind, label in (("async", "异步订阅"), ("sync", "同步订阅")):
+        item = dispatch[kind]
+        print(
+            f"  {label} : {item['events_per_sec']:>10.0f} events/s  "
+            f"发布 {item['publish_ms']:.0f}ms / 排空 {item['drain_ms']:.0f}ms"
+        )
+    print("  口径：单订阅方空回调，发布与消费同 loop；吞吐含事件对象预构造后的投递成本")
+
 
 async def run(
     tasks: int,
@@ -751,6 +834,7 @@ async def run(
         tasks, rounds, concurrency, ckpt_backends, ckpt_writes, ckpt_payload
     )
     metrics_snapshot = await measure_metrics_snapshot(tasks, metrics_samples)
+    event_dispatch = await measure_event_dispatch()
     return {
         "environment": {
             "storage": "memory",
@@ -773,6 +857,7 @@ async def run(
         "progress_reporting": progress_reporting,
         "checkpoint_overhead": checkpoint_overhead,
         "metrics_snapshot": metrics_snapshot,
+        "event_dispatch": event_dispatch,
     }
 
 
@@ -833,7 +918,7 @@ def _parse_subscriber_counts(text: str) -> List[int]:
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        description="NeoTask v1.2 基准基线：单任务提交延迟、批量提交吞吐、高并发执行与 Checkpoint 写入开销"
+        description="NeoTask v1.2 基准基线：单任务提交延迟、批量提交吞吐、高并发执行、事件派发与 Checkpoint 写入开销"
     )
     parser.add_argument("--tasks", type=int, default=DEFAULT_TASKS, help="每轮批量提交任务数")
     parser.add_argument("--single", type=int, default=DEFAULT_SINGLE, help="单任务延迟采样数")

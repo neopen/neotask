@@ -22,7 +22,6 @@ from neotask.common.constants import EventType
 from neotask.common.exceptions import UnsupportedFeatureError
 from neotask.common.logger import error, debug, info, warning
 from neotask.core.dispatcher import TaskDispatcher
-from neotask.core.future import FutureManager
 from neotask.core.lifecycle import TaskLifecycleManager
 from neotask.core.heartbeat import HeartbeatManager, HeartbeatConfig
 from neotask.event.bus import EventBus, TaskEvent
@@ -134,9 +133,6 @@ class TaskPool:
             slow_handler_threshold=self._config.event_slow_handler_threshold,
             node_id=self._config.node_id,
         )
-
-        # 初始化未来管理器
-        self._future_manager = FutureManager()
 
         # 初始化队列调度器
         self._queue_scheduler = QueueScheduler(
@@ -381,77 +377,72 @@ class TaskPool:
             EventType.RETRY,
         )
 
-        # 指标收集：全部由生命周期事件推导，覆盖 created→started→completed/failed/retry
+        # 计数器与指标合并为一个订阅方：同一事件不再为两者各起一个协程。
+        # 未启用指标时注册同步回调，EventBus 在消费循环内直接调用，逐事件
+        # 开销从「创建协程 + gather」降为一次函数调用。
         if self._metrics:
-            async def metrics_handler(event: TaskEvent):
-                data = event.data if isinstance(event.data, dict) else {}
-
-                if event.event_type == EventType.CREATED:
-                    # task.created 的 payload 是 Task.to_dict()，带 priority
-                    await self._metrics.record_task_submit(
-                        event.task_id, data.get("priority", TaskPriority.NORMAL.value)
-                    )
-                elif event.event_type == EventType.STARTED:
-                    await self._metrics.record_task_start(event.task_id)
-                elif event.event_type == EventType.COMPLETED:
-                    await self._metrics.record_task_complete(event.task_id)
-                elif event.event_type == EventType.FAILED:
-                    await self._metrics.record_task_failed(event.task_id)
-                elif event.event_type == EventType.CANCELLED:
-                    await self._metrics.record_task_cancelled(event.task_id)
-                elif event.event_type == EventType.RETRY:
-                    await self._metrics.record_task_retry(
-                        event.task_id, data.get("retry_count", 1)
-                    )
-
-            for event_type in lifecycle_events:
-                self._event_bus.subscribe(event_type, metrics_handler)
-
-        # 内部计数器：pending / running / failed
-        async def counter_handler(event: TaskEvent):
-            data = event.data if isinstance(event.data, dict) else {}
-            old_status = str(data.get("old_status", "")).lower()
-
-            with self._counter_lock:
-                if event.event_type == EventType.CREATED:
-                    self._pending_count += 1
-                elif event.event_type == EventType.STARTED:
-                    self._pending_count = max(0, self._pending_count - 1)
-                    self._running_count += 1
-                elif event.event_type == EventType.COMPLETED:
-                    self._running_count = max(0, self._running_count - 1)
-                    self._completed_count += 1
-                elif event.event_type == EventType.FAILED:
-                    self._decrement_counter_locked(old_status or "running")
-                    self._failed_count += 1
-                elif event.event_type == EventType.CANCELLED:
-                    self._decrement_counter_locked(old_status or "pending")
-                elif event.event_type == EventType.RETRY:
-                    self._decrement_counter_locked(old_status or "running")
-                    self._pending_count += 1
+            async def internal_handler(event: TaskEvent):
+                self._apply_counter(event)
+                await self._record_metrics(event)
+        else:
+            def internal_handler(event: TaskEvent):
+                self._apply_counter(event)
 
         for event_type in lifecycle_events:
-            self._event_bus.subscribe(event_type, counter_handler)
-
-        # 未来管理器完成
-        @self._event_bus.subscribe(EventType.COMPLETED)
-        async def complete_future_handler(event: TaskEvent):
-            result = event.data.get("result") if isinstance(event.data, dict) else event.data
-            await self._future_manager.complete(event.task_id, result=result)
-
-        @self._event_bus.subscribe(EventType.FAILED)
-        async def fail_future_handler(event: TaskEvent):
-            err = event.data.get("error") if isinstance(event.data, dict) else str(event.data)
-            await self._future_manager.complete(event.task_id, error=err)
-
-        @self._event_bus.subscribe(EventType.CANCELLED)
-        async def cancel_future_handler(event: TaskEvent):
-            await self._future_manager.complete(event.task_id, error="Task cancelled")
+            self._event_bus.subscribe(event_type, internal_handler)
 
         # 任务回收事件（用于监控）
         @self._event_bus.subscribe(EventType.RECLAIMED)
         async def reclaim_handler(event: TaskEvent):
             debug(f"Task reclaimed: {event.task_id}, reason: {event.data}")
+
+    def _apply_counter(self, event: TaskEvent) -> None:
+        """按生命周期事件维护 pending / running / completed / failed 计数器"""
+        data = event.data if isinstance(event.data, dict) else {}
+        old_status = str(data.get("old_status", "")).lower()
+
+        with self._counter_lock:
+            if event.event_type == EventType.CREATED:
+                self._pending_count += 1
+            elif event.event_type == EventType.STARTED:
+                self._pending_count = max(0, self._pending_count - 1)
+                self._running_count += 1
+            elif event.event_type == EventType.COMPLETED:
+                self._running_count = max(0, self._running_count - 1)
+                self._completed_count += 1
+            elif event.event_type == EventType.FAILED:
+                self._decrement_counter_locked(old_status or "running")
+                self._failed_count += 1
+            elif event.event_type == EventType.CANCELLED:
+                self._decrement_counter_locked(old_status or "pending")
+            elif event.event_type == EventType.RETRY:
+                self._decrement_counter_locked(old_status or "running")
+                self._pending_count += 1
+
+    async def _record_metrics(self, event: TaskEvent) -> None:
+        """按生命周期事件更新指标收集器"""
+        metrics = self._metrics
+        if metrics is None:
+            return
+        data = event.data if isinstance(event.data, dict) else {}
+
+        if event.event_type == EventType.CREATED:
+            # task.created 的 payload 是 Task.to_dict()，带 priority
+            await metrics.record_task_submit(
+                event.task_id, data.get("priority", TaskPriority.NORMAL.value)
+            )
+        elif event.event_type == EventType.STARTED:
+            await metrics.record_task_start(event.task_id)
+        elif event.event_type == EventType.COMPLETED:
+            await metrics.record_task_complete(event.task_id)
+        elif event.event_type == EventType.FAILED:
+            await metrics.record_task_failed(event.task_id)
+        elif event.event_type == EventType.CANCELLED:
+            await metrics.record_task_cancelled(event.task_id)
+        elif event.event_type == EventType.RETRY:
+            await metrics.record_task_retry(
+                event.task_id, data.get("retry_count", 1)
+            )
 
     def _decrement_counter_locked(self, status: str) -> None:
         """按任务原状态递减计数器（调用方需持有 ``_counter_lock``）"""

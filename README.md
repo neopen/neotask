@@ -203,9 +203,10 @@ timeline
                                      : Custom Failure Reason
 
     section v1.2
-        Performance & Monitoring : Batch Write Optimization
+        Performance & Monitoring (Delivered) : Batch Write Optimization
                                 : Query Indexing
                                 : Progress Throttling
+                                : Event Dispatch Batching
                                 : get_metrics Snapshot
                                 : Benchmark Suite
 

@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
 
-from neotask.common.logger import debug, error
+from neotask.common.logger import debug, error, is_debug_enabled
 from neotask.models.task import TaskPriority
 from neotask.queue.delayed_queue import DelayedQueue
 from neotask.queue.priority_queue import PriorityQueue
@@ -100,7 +100,11 @@ class QueueScheduler:
         Returns:
             是否成功入队
         """
-        debug(f"[QUEUE_SCHEDULER] push: task_id={task_id}, priority={priority}, delay={delay}")
+        if is_debug_enabled():
+            debug(
+                f"[QUEUE_SCHEDULER] push: task_id={task_id}, "
+                f"priority={priority}, delay={delay}"
+            )
         if self._disabled:
             return False
 
@@ -217,7 +221,11 @@ class QueueScheduler:
         把已排队的 pending 任务出队执行完，因此出队只受 ``pause`` 约束，不受
         ``disable`` 约束。
         """
-        debug(f"[QUEUE_SCHEDULER] pop called, paused={self._paused}, disabled={self._disabled}")  # 调试
+        if is_debug_enabled():
+            debug(
+                f"[QUEUE_SCHEDULER] pop called, paused={self._paused}, "
+                f"disabled={self._disabled}"
+            )
         if self._paused:
             return []
 

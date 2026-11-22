@@ -302,6 +302,70 @@ class TestEventBus:
             await bus.stop()
 
 
+    @pytest.mark.asyncio
+    async def test_sync_handler_runs_without_coroutine(self, event_bus):
+        """同步回调在消费循环内直接调用，不被包装成协程"""
+        async with event_bus as bus:
+            received = []
+
+            def sync_handler(event: TaskEvent):
+                received.append(event.task_id)
+
+            async def async_handler(event: TaskEvent):
+                received.append(f"async:{event.task_id}")
+
+            bus.subscribe("test.event", sync_handler)
+            bus.subscribe("test.event", async_handler)
+
+            await bus.emit(TaskEvent("test.event", "task_001"))
+            deadline = time.monotonic() + 2
+            while len(received) < 2 and time.monotonic() < deadline:
+                await asyncio.sleep(0.01)
+
+            assert "task_001" in received
+            assert "async:task_001" in received
+
+    @pytest.mark.asyncio
+    async def test_async_callable_object_handler(self, event_bus):
+        """带异步 __call__ 的可调用对象按异步订阅方处理"""
+        async with event_bus as bus:
+            received = []
+
+            class Collector:
+                async def __call__(self, event: TaskEvent):
+                    received.append(event.task_id)
+
+            bus.subscribe("test.event", Collector())
+
+            await bus.emit(TaskEvent("test.event", "task_obj"))
+            deadline = time.monotonic() + 2
+            while not received and time.monotonic() < deadline:
+                await asyncio.sleep(0.01)
+
+            assert received == ["task_obj"]
+
+    @pytest.mark.asyncio
+    async def test_batch_processing_preserves_order(self, event_bus):
+        """批量取出事件仍按到达顺序逐条处理"""
+        async with event_bus as bus:
+            received = []
+
+            async def handler(event: TaskEvent):
+                received.append(int(event.task_id))
+
+            bus.subscribe("test.event", handler)
+
+            total = EventBus.BATCH_SIZE * 2 + 17
+            for index in range(total):
+                await bus.emit(TaskEvent("test.event", str(index)))
+
+            deadline = time.monotonic() + 5
+            while len(received) < total and time.monotonic() < deadline:
+                await asyncio.sleep(0.01)
+
+            assert received == list(range(total))
+
+
 class TestEventBusConfigPassthrough:
     """背压配置透传测试：三个入口 Config 的背压字段须到达池内 EventBus"""
 

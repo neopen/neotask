@@ -19,6 +19,14 @@ from typing import Dict, List, Callable, Any, Optional, cast
 from neotask.common.logger import error, warning
 
 
+def _is_async_callable(func: Callable) -> bool:
+    """判断订阅方是否需要 ``await``（含带异步 ``__call__`` 的可调用对象）"""
+    if asyncio.iscoroutinefunction(func):
+        return True
+    call = getattr(func, "__call__", None)
+    return call is not None and asyncio.iscoroutinefunction(call)
+
+
 @dataclass
 class TaskEvent:
     """任务事件
@@ -66,6 +74,10 @@ class EventBus:
 
     # 无界队列的堆积告警步长：每多堆积这么多事件就告警一次
     QUEUE_WARN_STEP = 1000
+
+    # 单次循环从队列批量取出的事件上限。逐条 get/唤醒在高并发下占掉可观的
+    # 调度开销；一次尽量多取、仍按到达顺序逐条处理，事件顺序契约不变。
+    BATCH_SIZE = 256
 
     def __init__(
             self,
@@ -126,12 +138,16 @@ class EventBus:
         """
 
         def decorator(func: Callable) -> Callable:
-            # 包装为异步函数
-            async def wrapper(event: TaskEvent):
-                if asyncio.iscoroutinefunction(func):
+            # 同步回调在消费循环内直接调用，异步回调才创建协程；这样内部
+            # 记账类订阅方不会为每个事件多付一次协程调度开销。
+            if _is_async_callable(func):
+                async def wrapper(event: TaskEvent):
                     await func(event)
-                else:
+                wrapper._neotask_async = True
+            else:
+                def wrapper(event: TaskEvent):
                     func(event)
+                wrapper._neotask_async = False
 
             # 保存原始函数引用，用于 unsubscribe
             wrapper.__wrapped__ = func
@@ -163,12 +179,15 @@ class EventBus:
         """
 
         def decorator(func: Callable) -> Callable:
-            # 包装为异步函数
-            async def wrapper(event: TaskEvent):
-                if asyncio.iscoroutinefunction(func):
+            # 与 subscribe 相同：同步回调在消费循环内直接调用
+            if _is_async_callable(func):
+                async def wrapper(event: TaskEvent):
                     await func(event)
-                else:
+                wrapper._neotask_async = True
+            else:
+                def wrapper(event: TaskEvent):
                     func(event)
+                wrapper._neotask_async = False
 
             with self._lock:
                 self._global_handlers.append(wrapper)
@@ -294,38 +313,68 @@ class EventBus:
             self._unbounded_warn_at = self.QUEUE_WARN_STEP
 
     async def _invoke_handler(self, handler: Callable, event: TaskEvent) -> None:
-        """调用单个处理器，隔离异常并统计慢回调"""
+        """调用单个异步处理器，隔离异常并统计慢回调"""
         start = time.perf_counter()
         try:
             await handler(event)
         except Exception:
             pass
         finally:
-            elapsed = time.perf_counter() - start
-            if elapsed >= self._slow_handler_threshold:
-                self._slow_handler_calls += 1
-                name = getattr(
-                    getattr(handler, "__wrapped__", handler), "__name__", repr(handler)
-                )
-                warning(
-                    f"EventBus slow handler '{name}' took {elapsed:.3f}s "
-                    f"for event '{event.event_type}'"
-                )
+            self._record_handler_timing(handler, event, time.perf_counter() - start)
+
+    def _invoke_sync_handler(self, handler: Callable, event: TaskEvent) -> None:
+        """直接调用同步处理器（在消费循环内），隔离异常并统计慢回调"""
+        start = time.perf_counter()
+        try:
+            handler(event)
+        except Exception:
+            pass
+        finally:
+            self._record_handler_timing(handler, event, time.perf_counter() - start)
+
+    def _record_handler_timing(
+            self, handler: Callable, event: TaskEvent, elapsed: float
+    ) -> None:
+        """慢回调告警与计数（同步/异步路径共用）"""
+        if elapsed >= self._slow_handler_threshold:
+            self._slow_handler_calls += 1
+            name = getattr(
+                getattr(handler, "__wrapped__", handler), "__name__", repr(handler)
+            )
+            warning(
+                f"EventBus slow handler '{name}' took {elapsed:.3f}s "
+                f"for event '{event.event_type}'"
+            )
 
     async def _process_event(self, event: TaskEvent) -> None:
         """处理事件
 
         同一事件的各订阅者并发执行：一个慢回调不会拖慢其余订阅者。订阅者之间
-        本就无顺序约定，事件之间的顺序仍由单消费协程保证。
+        本就无顺序约定，事件之间的顺序仍由单消费协程保证。同步回调没有可穿插
+        的 await 点，直接在消费循环内调用，省掉每个订阅方一个协程。
         """
         with self._lock:
             global_handlers = list(self._global_handlers)
             handlers = list(self._handlers.get(event.event_type, []))
 
         handlers_to_run = global_handlers + handlers
-        if handlers_to_run:
+        if not handlers_to_run:
+            return
+
+        async_handlers: List[Callable] = []
+        for handler in handlers_to_run:
+            if getattr(handler, "_neotask_async", True):
+                async_handlers.append(handler)
+            else:
+                self._invoke_sync_handler(handler, event)
+
+        if len(async_handlers) == 1:
+            # 单订阅方是常态（进度事件、池内部计数器）：直接 await，
+            # 省掉 gather 为单个协程创建 Task 与调度回调的开销。
+            await self._invoke_handler(async_handlers[0], event)
+        elif async_handlers:
             await asyncio.gather(
-                *(self._invoke_handler(handler, event) for handler in handlers_to_run)
+                *(self._invoke_handler(handler, event) for handler in async_handlers)
             )
 
     async def start(self) -> None:
@@ -364,9 +413,19 @@ class EventBus:
         while self._running:
             try:
                 event = await self._queue.get()
-                await self._process_event(event)
-                self._processed_events += 1
-                self._queue.task_done()
+                # 批量取出已到达的事件，按到达顺序逐条处理：顺序契约不变，
+                # 但把「每条事件一次唤醒」摊薄成「一批一次唤醒」。
+                batch = [event]
+                for _ in range(self.BATCH_SIZE - 1):
+                    try:
+                        batch.append(self._queue.get_nowait())
+                    except asyncio.QueueEmpty:
+                        break
+
+                for pending in batch:
+                    await self._process_event(pending)
+                    self._processed_events += 1
+                    self._queue.task_done()
                 self._update_queue_watermark()
             except asyncio.CancelledError:
                 break

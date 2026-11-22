@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from neotask.models.task import Task, TaskPriority, TaskStatus
+from neotask.common.exceptions import TaskAlreadyExistsError
 from neotask.storage.base import (
     CheckpointRecord,
     CheckpointRepository,
@@ -54,6 +55,29 @@ _NEW_TASK_COLUMNS = (
     ("queue_wait_ms", "REAL"),
     ("duration_ms", "REAL"),
 )
+
+#: 队列表结构与索引：任务仓储的「创建 + 入队」单事务快路径也要用到，
+#: 由两个仓储共用同一份 DDL，避免各自维护容易出现漂移。
+_QUEUE_SCHEMA_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS queue (
+        task_id TEXT PRIMARY KEY,
+        priority INTEGER NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_queue_order
+    ON queue (priority ASC, created_at ASC)
+    """,
+)
+
+
+async def _ensure_queue_schema(conn: Any) -> None:
+    """确保队列表与出队索引存在（幂等，共享连接上只需成功一次）"""
+    for statement in _QUEUE_SCHEMA_STATEMENTS:
+        cursor = await conn.execute(statement)
+        await cursor.close()
 
 
 def _serialize_field(name: str, value: Any) -> Any:
@@ -193,6 +217,8 @@ class SQLiteTaskRepository(TaskRepository):
             CREATE INDEX IF NOT EXISTS idx_tasks_parent
             ON tasks(parent_task_id)
         """)
+        # 「创建 + 入队」单事务快路径会写 queue 表，这里顺带保证其结构存在
+        await _ensure_queue_schema(conn)
         await conn.commit()
 
     async def _add_missing_columns(self, conn) -> None:
@@ -274,6 +300,65 @@ class SQLiteTaskRepository(TaskRepository):
         await cursor.close()
         await self._conn.commit()
         return inserted
+
+    async def save_if_absent_and_enqueue(
+            self, task: Task, max_size: int
+    ) -> Optional[bool]:
+        """单事务完成「查重 → 写任务 → 容量校验 → 入队」
+
+        提交快路径把原先的「INSERT 任务 → SELECT COUNT(*) → INSERT 队列」三次
+        跨 loop 往返合并为一次事务：容量计数与两次写入在同一事务内完成，队列
+        满时任务仍已落库（与 Redis 原子脚本语义一致），由调用方标记失败。
+
+        Returns:
+            True: 创建并入队成功
+            False: 队列已满（任务已写入存储）
+            None: 不会返回（该后端支持合并）
+
+        Raises:
+            TaskAlreadyExistsError: ``task_id`` 已存在
+        """
+        await self._ensure_init()
+        queued_at = datetime.now().isoformat()
+        conn = self._conn
+        assert conn is not None
+
+        async def _transaction(db) -> Optional[bool]:
+            cursor = await db.execute(
+                """
+                INSERT OR IGNORE INTO tasks
+                (task_id, data, status, priority, node_id, retry_count, ttl,
+                 created_at, started_at, completed_at, result, error, progress, progress_message,
+                 failure_reason, checkpoint_version, parent_task_id, estimated_cost,
+                 cost_tracking, queue_wait_ms, duration_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                self._task_values(task),
+            )
+            inserted = cursor.rowcount > 0
+            await cursor.close()
+            if not inserted:
+                return None
+
+            cursor = await db.execute("SELECT COUNT(*) FROM queue")
+            try:
+                row = await cursor.fetchone()
+            finally:
+                await cursor.close()
+            if row is not None and int(row[0]) >= max_size:
+                return False
+
+            cursor = await db.execute(
+                "INSERT OR REPLACE INTO queue (task_id, priority, created_at) VALUES (?, ?, ?)",
+                (task.task_id, task.priority.value, queued_at),
+            )
+            await cursor.close()
+            return True
+
+        outcome = await conn.run_transaction(_transaction)
+        if outcome is None:
+            raise TaskAlreadyExistsError(task.task_id)
+        return outcome
 
     async def save_batch(self, tasks: List[Task]) -> List[str]:
         """批量保存任务：一次查重 + 一次 ``executemany``，整批单事务提交。
@@ -669,19 +754,9 @@ class SQLiteQueueRepository(QueueRepository):
 
     async def _init_db(self, conn) -> None:
         """Initialize database tables."""
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS queue (
-                task_id TEXT PRIMARY KEY,
-                priority INTEGER NOT NULL,
-                created_at TEXT NOT NULL
-            )
-        """)
         # 出队查询为 ORDER BY priority ASC, created_at ASC LIMIT ?，
         # 复合索引让取队首走索引有序扫描，避免每次出队全表扫描 + 排序
-        await conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_queue_order
-            ON queue (priority ASC, created_at ASC)
-        """)
+        await _ensure_queue_schema(conn)
         await conn.commit()
 
     async def push(self, task_id: str, priority: int) -> None:

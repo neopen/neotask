@@ -17,7 +17,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Optional, Dict, List, Tuple
 
-from neotask.common.logger import debug, warning
+from neotask.common.logger import debug, is_debug_enabled, warning
 from neotask.models.task import Task, TaskStatus
 from neotask.storage.base import (
     CheckpointRecord,
@@ -92,9 +92,11 @@ class MemoryTaskRepository(TaskRepository):
         with self._lock:
             task = self._tasks.get(task_id)
             if task:
-                debug(f"Task {task_id} retrieved from memory repository")
+                if is_debug_enabled():
+                    debug(f"Task {task_id} retrieved from memory repository")
                 return task.clone()
-            debug(f"Task {task_id} not found in memory repository")
+            if is_debug_enabled():
+                debug(f"Task {task_id} not found in memory repository")
             return None
 
     async def delete(self, task_id: str) -> bool:
@@ -143,12 +145,21 @@ class MemoryTaskRepository(TaskRepository):
             任务列表
         """
         with self._lock:
-            tasks = [
-                task.clone() for task in self._tasks.values()
-                if task.status == status
-            ]
-            result = tasks[offset:offset + limit]
-            debug(f"Listed {len(result)} tasks with status {status.value}")
+            # 先按 offset/limit 截断再克隆：旧实现会克隆全部匹配任务后切片，
+            # 任务量大时一次列表查询就可能深拷贝上万个任务。
+            result: List[Task] = []
+            skipped = 0
+            for task in self._tasks.values():
+                if task.status != status:
+                    continue
+                if skipped < offset:
+                    skipped += 1
+                    continue
+                if len(result) >= limit:
+                    break
+                result.append(task.clone())
+            if is_debug_enabled():
+                debug(f"Listed {len(result)} tasks with status {status.value}")
             return result
 
     async def count_by_status(self, status: TaskStatus) -> int:
@@ -338,6 +349,31 @@ class MemoryQueueRepository(QueueRepository):
         self._sequence = 0
         self._paused = False
         self._disabled = False
+        # 逻辑在场集合：删除采用惰性删除（堆里留墓碑），size/pop/peek 都以此
+        # 为准。避免每次 remove 都重建整个堆（O(n)），批量取消时不再退化为 O(n²)。
+        self._present: set = set()
+        self._removed: set = set()
+        self._tombstones = 0
+
+    def _enqueue_locked(self, task_id: str, priority: int) -> None:
+        """在已持锁状态下入队一个任务（内部辅助）"""
+        # 重新入队一个曾被移除的 id：先压缩掉旧墓碑，避免「墓碑 + 新条目」
+        # 同时命中，导致同一个任务被弹出两次。
+        if task_id in self._removed:
+            self._compact_locked()
+        self._sequence += 1
+        heapq.heappush(self._heap, (priority, self._sequence, task_id))
+        self._present.add(task_id)
+
+    def _compact_locked(self) -> None:
+        """在已持锁状态下重建堆，丢弃所有墓碑（O(n)，仅在必要时调用）"""
+        if not self._removed:
+            return
+        removed = self._removed
+        self._heap = [item for item in self._heap if item[2] not in removed]
+        heapq.heapify(self._heap)
+        removed.clear()
+        self._tombstones = 0
 
     async def push(self, task_id: str, priority: int) -> None:
         """入队
@@ -349,28 +385,27 @@ class MemoryQueueRepository(QueueRepository):
             priority: 优先级（数字越小优先级越高）
         """
         with self._lock:
-            self._sequence += 1
-            heapq.heappush(self._heap, (priority, self._sequence, task_id))
-            debug(f"Queue push: task_id={task_id}, priority={priority}, seq={self._sequence}")
+            self._enqueue_locked(task_id, priority)
+            if is_debug_enabled():
+                debug(f"Queue push: task_id={task_id}, priority={priority}, seq={self._sequence}")
 
     async def push_batch(self, items: List[Tuple[str, int]]) -> int:
         """批量入队
 
-        先在临时堆上完成全部插入，成功后再整体替换；中途异常不会影响
-        已存在的队列内容。
+        直接在同一把锁内逐条入堆：消费者同样持锁取任务，不会观察到半批
+        入队的中间状态。旧实现为“整堆复制 + heapify”，单次写入成本与当前
+        队列总量成正比，批量提交到大队列时会明显放大。
         """
         if not items:
             return 0
 
         with self._lock:
-            sequence = self._sequence
-            new_heap = list(self._heap)
+            if any(task_id in self._removed for task_id, _ in items):
+                self._compact_locked()
             for task_id, priority in items:
-                sequence += 1
-                new_heap.append((priority, sequence, task_id))
-            heapq.heapify(new_heap)
-            self._heap = new_heap
-            self._sequence = sequence
+                self._sequence += 1
+                heapq.heappush(self._heap, (priority, self._sequence, task_id))
+                self._present.add(task_id)
         return len(items)
 
     async def pop(self, count: int = 1) -> List[str]:
@@ -386,24 +421,33 @@ class MemoryQueueRepository(QueueRepository):
         """
         with self._lock:
             if self._paused:
-                debug("Queue pop skipped: queue is paused")
+                if is_debug_enabled():
+                    debug("Queue pop skipped: queue is paused")
                 return []
 
             if not self._heap:
                 return []
 
             result = []
-            for _ in range(min(count, len(self._heap))):
+            while self._heap and len(result) < count:
                 priority, seq, task_id = heapq.heappop(self._heap)
+                if task_id in self._removed:
+                    # 墓碑：清掉记账后继续取下一个
+                    self._removed.discard(task_id)
+                    self._tombstones -= 1
+                    continue
+                if task_id not in self._present:
+                    # 同一 id 的重复条目（重复入队）：只认第一次
+                    continue
+                self._present.discard(task_id)
                 result.append(task_id)
-                debug(f"Queue pop: task_id={task_id}, priority={priority}, seq={seq}")
+                if is_debug_enabled():
+                    debug(f"Queue pop: task_id={task_id}, priority={priority}, seq={seq}")
 
-            if result:
-                debug(f"Queue pop result: {result}")
             return result
 
     async def remove(self, task_id: str) -> bool:
-        """移除任务
+        """移除任务（惰性删除：仅打墓碑，不重建堆）
 
         Args:
             task_id: 任务ID
@@ -412,26 +456,31 @@ class MemoryQueueRepository(QueueRepository):
             是否成功移除
         """
         with self._lock:
-            original_len = len(self._heap)
-            self._heap = [item for item in self._heap if item[2] != task_id]
-            heapq.heapify(self._heap)
-            removed = len(self._heap) < original_len
-            if removed:
-                debug(f"Queue remove: task_id={task_id} removed")
-            else:
+            if task_id not in self._present:
                 # QueueScheduler.remove 会先试优先级队列、再试延迟队列，
                 # 因此这里“未命中”属于正常流程，不应作为告警输出。
-                debug(f"Queue remove: task_id={task_id} not found")
-            return removed
+                if is_debug_enabled():
+                    debug(f"Queue remove: task_id={task_id} not found")
+                return False
+
+            self._present.discard(task_id)
+            self._removed.add(task_id)
+            self._tombstones += 1
+            # 墓碑过多时压缩一次，避免堆无限膨胀
+            if self._tombstones > 1024 and self._tombstones * 2 > len(self._heap):
+                self._compact_locked()
+            if is_debug_enabled():
+                debug(f"Queue remove: task_id={task_id} removed")
+            return True
 
     async def size(self) -> int:
-        """获取队列大小
+        """获取队列大小（逻辑在场数量，不含墓碑）
 
         Returns:
             队列中的任务数量
         """
         with self._lock:
-            return len(self._heap)
+            return len(self._present)
 
     async def peek(self, count: int = 1) -> List[str]:
         """查看队首任务
@@ -443,18 +492,31 @@ class MemoryQueueRepository(QueueRepository):
             任务ID列表
         """
         with self._lock:
-            if not self._heap:
+            if not self._present:
                 return []
-            sorted_heap = sorted(self._heap)
-            result = [item[2] for item in sorted_heap[:count]]
-            debug(f"Queue peek: {result}")
+            overscan = min(len(self._heap), count + self._tombstones)
+            result: List[str] = []
+            seen: set = set()
+            for _, _, task_id in heapq.nsmallest(overscan, self._heap):
+                if task_id in self._removed or task_id not in self._present:
+                    continue
+                if task_id in seen:
+                    continue
+                seen.add(task_id)
+                result.append(task_id)
+                if len(result) >= count:
+                    break
+            if is_debug_enabled():
+                debug(f"Queue peek: {result}")
             return result
 
     async def count_by_priority(self) -> Dict[int, int]:
-        """统计各优先级排队任务数"""
+        """统计各优先级排队任务数（跳过墓碑）"""
         with self._lock:
             counts: Dict[int, int] = {}
-            for priority, _, _ in self._heap:
+            for priority, _, task_id in self._heap:
+                if task_id in self._removed:
+                    continue
                 counts[priority] = counts.get(priority, 0) + 1
             return counts
 
@@ -462,8 +524,12 @@ class MemoryQueueRepository(QueueRepository):
         """清空队列"""
         with self._lock:
             self._heap.clear()
+            self._present.clear()
+            self._removed.clear()
+            self._tombstones = 0
             self._sequence = 0
-            debug("Queue cleared")
+            if is_debug_enabled():
+                debug("Queue cleared")
 
     async def pause(self) -> None:
         """暂停队列（暂停出队）"""
@@ -511,24 +577,36 @@ class MemoryContextStore:
 
     def __init__(self):
         self._data: Dict[str, Tuple[Any, Optional[float]]] = {}
+        # 过期时间最小堆：(expires_at, key)。写入 TTL 键时入堆，惰性清理时
+        # 只弹出已到期项，避免每次写入都全量扫描所有键（旧实现为 O(n)）。
+        self._expiry: List[Tuple[float, str]] = []
         self._lock = threading.Lock()
 
     @staticmethod
     def _is_expired(expires_at: Optional[float]) -> bool:
         return expires_at is not None and expires_at <= time.time()
 
+    def _purge_expired_locked(self) -> None:
+        """在已持锁状态下弹出已到期的堆顶条目（惰性清理）"""
+        now = time.time()
+        expiry = self._expiry
+        data = self._data
+        while expiry and expiry[0][0] <= now:
+            deadline, name = heapq.heappop(expiry)
+            item = data.get(name)
+            # 只删除仍处于该过期时刻的条目：键可能已被覆盖为更长 TTL 或无 TTL，
+            # 此时旧堆条目属于陈旧记录，直接丢弃即可。
+            if item is not None and item[1] is not None and item[1] <= now:
+                data.pop(name, None)
+
     def set(self, key: str, value: Any, ttl: Optional[float] = None) -> bool:
         """写入或覆盖一个键；``ttl`` 为秒，None 表示不过期"""
         expires_at = time.time() + float(ttl) if ttl is not None else None
         with self._lock:
-            # 顺带清理已过期条目，避免只写不读的场景无限增长
-            expired = [
-                name for name, (_, deadline) in self._data.items()
-                if self._is_expired(deadline)
-            ]
-            for name in expired:
-                self._data.pop(name, None)
             self._data[key] = (copy.deepcopy(value), expires_at)
+            if expires_at is not None:
+                heapq.heappush(self._expiry, (expires_at, key))
+            self._purge_expired_locked()
         return True
 
     def get(self, key: str) -> Any:
@@ -551,10 +629,5 @@ class MemoryContextStore:
     def count(self) -> int:
         """统计未过期键的数量（统计时顺带清理过期条目）"""
         with self._lock:
-            expired = [
-                name for name, (_, deadline) in self._data.items()
-                if self._is_expired(deadline)
-            ]
-            for name in expired:
-                self._data.pop(name, None)
+            self._purge_expired_locked()
             return len(self._data)

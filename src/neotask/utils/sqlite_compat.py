@@ -320,6 +320,35 @@ class LoopBoundSQLiteConnection:
 
         await self._run(_factory)
 
+    async def run_transaction(
+            self,
+            factory: Callable[[aiosqlite.Connection], Awaitable[Any]],
+    ) -> Any:
+        """在单事务内执行 ``factory(conn)`` 并返回其结果。
+
+        与 :meth:`statements_transaction` 相同：``BEGIN IMMEDIATE → factory →
+        COMMIT``，整个事务一次投递并持有写串行锁，失败整体回滚。区别是事务
+        体可以读取查询结果（如容量校验），用于把「查一次 + 写一次」合并成一次
+        跨 loop 往返。
+
+        事务体内直接使用底层 ``conn``，不得回调本代理的 execute/commit 等
+        加锁方法，否则会二次加锁而死锁。
+        """
+
+        async def _factory(conn: aiosqlite.Connection) -> Any:
+            async with self._write_lock_on_loop():
+                begin_cursor = await conn.execute("BEGIN IMMEDIATE")
+                await begin_cursor.close()
+                try:
+                    result = await factory(conn)
+                    await conn.commit()
+                    return result
+                except Exception:
+                    await conn.rollback()
+                    raise
+
+        return await self._run(_factory)
+
     async def executescript(self, sql_script: str) -> LoopBoundCursor:
         """执行 SQL 脚本。"""
 

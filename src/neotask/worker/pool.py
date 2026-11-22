@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional, cast
 
 from neotask.common.constants import EventType
-from neotask.common.logger import debug, warning, error
+from neotask.common.logger import debug, is_debug_enabled, warning, error
 from neotask.core.checkpoint import (
     CheckpointContext,
     reset_checkpoint_context,
@@ -354,10 +354,12 @@ class WorkerPool:
                             if not self._running:
                                 raise
                     else:
-                        # 没有任务时，指数退避
-                        consecutive_empty += 1
-                        sleep_time = min(0.01 * (1 << min(consecutive_empty, 6)), 0.5)
-                        await asyncio.sleep(sleep_time)
+                        # 本地队列为空：直接回到 get() 继续等待。get() 内部已
+                        # 用 wait_for 阻塞到 timeout（默认 0.1s），空队列不会
+                        # 忙旋；旧实现的额外指数退避（最长 0.5s）会让新任务在
+                        # 预取器放入本地队列后仍要睡满退避才被取走，稀疏负载
+                        # 延迟被放大数十倍（实测短任务关闭预取快 13 倍的主因之一）。
+                        consecutive_empty = 0
                         continue
 
                 else:
@@ -411,7 +413,8 @@ class WorkerPool:
         - 执行完成后释放锁
         """
         async with self._semaphore:
-            debug(f"Worker {worker_id} executing task {task_id}")
+            if is_debug_enabled():
+                debug(f"Worker {worker_id} executing task {task_id}")
             # 任务已开始执行，不再属于「等待重试」
             self.forget_pending_retry(task_id)
 
@@ -502,10 +505,12 @@ class WorkerPool:
 
                 # 更新统计
                 self._worker_stats[worker_id].completed_tasks += 1
-                debug(f"Worker {worker_id} completed task {task_id}")
+                if is_debug_enabled():
+                    debug(f"Worker {worker_id} completed task {task_id}")
 
             except asyncio.CancelledError:
-                debug(f"Task {task_id} was cancelled")
+                if is_debug_enabled():
+                    debug(f"Task {task_id} was cancelled")
                 if cost_recorder.reported:
                     try:
                         await self._lifecycle.apply_cost(
@@ -654,10 +659,11 @@ class WorkerPool:
         """
         try:
             updated = await self._lifecycle.update_progress(task_id, progress, message)
-            if updated:
+            if updated and is_debug_enabled():
                 debug(f"Task {task_id} progress: {progress * 100:.1f}% - {message}")
         except Exception as e:
-            debug(f"Failed to update progress for task {task_id}: {e}")
+            if is_debug_enabled():
+                debug(f"Failed to update progress for task {task_id}: {e}")
 
     async def _handle_task_failure(
             self,

@@ -14,7 +14,7 @@ import heapq
 import threading
 from typing import List, Tuple, Optional, Dict, Any
 
-from neotask.common.logger import debug
+from neotask.common.logger import debug, is_debug_enabled
 from neotask.queue.base import BaseQueue
 from neotask.storage.base import QueueRepository
 
@@ -50,7 +50,11 @@ class PriorityQueue(BaseQueue):
             check_capacity: 是否在此处校验容量。调用方（``QueueScheduler.push``）
                 已查过一次时可传 False，避免重复的 ``size()`` 往返。
         """
-        debug(f"[PRIORITY_QUEUE] push: task_id={task_id}, priority={priority}, use_repo={self._use_repository}")
+        if is_debug_enabled():
+            debug(
+                f"[PRIORITY_QUEUE] push: task_id={task_id}, priority={priority}, "
+                f"use_repo={self._use_repository}"
+            )
         if delay > 0:
             # 延迟任务不应直接入优先级队列
             return False
@@ -90,7 +94,8 @@ class PriorityQueue(BaseQueue):
 
     async def pop(self, count: int = 1) -> List[str]:
         """出队，返回任务ID列表"""
-        debug(f"[PRIORITY_QUEUE] pop: use_repo={self._use_repository}")
+        if is_debug_enabled():
+            debug(f"[PRIORITY_QUEUE] pop: use_repo={self._use_repository}")
         if self._use_repository:
             return await self._repository.pop(count)
 
@@ -159,8 +164,8 @@ class PriorityQueue(BaseQueue):
             return await self._repository.peek(count)
 
         with self._lock:
-            sorted_heap = sorted(self._heap)
-            return [item[2] for item in sorted_heap[:count]]
+            # 只需前 count 个最小项，nsmallest 为 O(n log count)，避免整堆排序
+            return [item[2] for item in heapq.nsmallest(count, self._heap)]
 
     async def peek_with_priority(self, count: int = 1) -> List[Tuple[str, int]]:
         """查看队首任务及优先级"""
@@ -169,8 +174,10 @@ class PriorityQueue(BaseQueue):
             return [(tid, 5) for tid in task_ids]
 
         with self._lock:
-            sorted_heap = sorted(self._heap)
-            return [(item[2], item[0]) for item in sorted_heap[:count]]
+            return [
+                (item[2], item[0])
+                for item in heapq.nsmallest(count, self._heap)
+            ]
 
     async def clear(self) -> None:
         """清空队列"""

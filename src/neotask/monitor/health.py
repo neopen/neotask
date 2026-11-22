@@ -213,10 +213,48 @@ class SystemHealthChecker:
                 message=f"Queue error: {e}"
             )
 
+    def _probe_system_blocking(self) -> CheckResult:
+        """同步执行 psutil 采样。
+
+        ``cpu_percent(interval=0.1)`` 会阻塞线程约 0.1s；健康检查常被探针
+        高频轮询，在事件循环里直接调用会周期性卡住任务执行。
+        """
+        import psutil
+
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        memory_percent = psutil.virtual_memory().percent
+        disk_percent = psutil.disk_usage('/').percent
+
+        status = HealthStatus.HEALTHY
+        messages = []
+
+        if cpu_percent > 90:
+            status = HealthStatus.DEGRADED
+            messages.append(f"High CPU usage: {cpu_percent}%")
+
+        if memory_percent > 90:
+            status = HealthStatus.DEGRADED
+            messages.append(f"High memory usage: {memory_percent}%")
+
+        if disk_percent > 90:
+            status = HealthStatus.DEGRADED
+            messages.append(f"High disk usage: {disk_percent}%")
+
+        return CheckResult(
+            name="system",
+            status=status,
+            message="; ".join(messages) if messages else "System is healthy",
+            details={
+                "cpu_percent": cpu_percent,
+                "memory_percent": memory_percent,
+                "disk_percent": disk_percent
+            }
+        )
+
     async def _check_system(self) -> CheckResult:
-        """检查系统健康状态"""
+        """检查系统健康状态（采样在线程池执行）"""
         try:
-            import psutil
+            import psutil  # noqa: F401
         except ImportError:
             # psutil 是可选依赖：缺它只说明这项检查做不了，不代表系统不健康。
             # 若记为 DEGRADED，默认安装（不带 [monitor] extra）会永远上报 degraded。
@@ -229,42 +267,8 @@ class SystemHealthChecker:
             )
 
         try:
-            # CPU使用率
-            cpu_percent = psutil.cpu_percent(interval=0.1)
-
-            # 内存使用率
-            memory = psutil.virtual_memory()
-            memory_percent = memory.percent
-
-            # 磁盘使用率
-            disk = psutil.disk_usage('/')
-            disk_percent = disk.percent
-
-            status = HealthStatus.HEALTHY
-            messages = []
-
-            if cpu_percent > 90:
-                status = HealthStatus.DEGRADED
-                messages.append(f"High CPU usage: {cpu_percent}%")
-
-            if memory_percent > 90:
-                status = HealthStatus.DEGRADED
-                messages.append(f"High memory usage: {memory_percent}%")
-
-            if disk_percent > 90:
-                status = HealthStatus.DEGRADED
-                messages.append(f"High disk usage: {disk_percent}%")
-
-            return CheckResult(
-                name="system",
-                status=status,
-                message="; ".join(messages) if messages else "System is healthy",
-                details={
-                    "cpu_percent": cpu_percent,
-                    "memory_percent": memory_percent,
-                    "disk_percent": disk_percent
-                }
-            )
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, self._probe_system_blocking)
         except Exception as e:
             return CheckResult(
                 name="system",

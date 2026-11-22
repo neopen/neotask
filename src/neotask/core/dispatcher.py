@@ -15,7 +15,7 @@ from neotask.core.lifecycle import TaskLifecycleManager
 from neotask.queue.queue_scheduler import QueueScheduler
 from neotask.models.task import TaskPriority, TaskStatus, BatchSubmitResult
 from neotask.common.exceptions import QueueFullError, BatchSubmitError
-from neotask.common.logger import debug, warning
+from neotask.common.logger import debug, is_debug_enabled, warning
 
 
 class TaskDispatcher:
@@ -71,7 +71,11 @@ class TaskDispatcher:
         else:
             priority_enum = priority
 
-        debug(f"Dispatching task: task_id={task_id}, priority={priority_enum.value}, delay={delay}")
+        if is_debug_enabled():
+            debug(
+                f"Dispatching task: task_id={task_id}, "
+                f"priority={priority_enum.value}, delay={delay}"
+            )
 
         # 断点续跑：先创建任务、注入 checkpoint 落库，再入队，避免 Worker
         # 在 data 写回前抢先执行。该路径牺牲「创建+入队」原子快路径。
@@ -131,7 +135,7 @@ class TaskDispatcher:
                     parent_task_id=parent_task_id,
                 )
                 if queued is None:
-                    # 后端不支持合并（memory / SQLite）：按原两步流程入队
+                    # 后端不支持合并（memory）：按原两步流程入队
                     queued = await self._queue.push(task.task_id, task.priority.value)
 
         if not queued:
@@ -143,7 +147,8 @@ class TaskDispatcher:
             )
             raise QueueFullError(self._queue.max_size)
 
-        debug(f"Task {task.task_id} dispatched successfully")
+        if is_debug_enabled():
+            debug(f"Task {task.task_id} dispatched successfully")
         return task.task_id
 
     async def dispatch_batch(

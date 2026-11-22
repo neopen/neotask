@@ -407,18 +407,23 @@ class RedisTaskRepository(TaskRepository):
         return expired
 
     async def list_by_status(self, status: TaskStatus, limit: int = 100, offset: int = 0) -> List[Task]:
-        """按状态列出任务"""
+        """按状态列出任务：一次 SMEMBERS + 一次 MGET，避免逐条 GET 的 N 次往返"""
         client = await self._get_client()
-        task_ids = await client.smembers(self._status_key(status.value))
+        task_ids = list(await client.smembers(self._status_key(status.value)))
 
-        tasks = []
-        task_id_list = list(task_ids)
+        selected = task_ids[offset:offset + limit]
+        if not selected:
+            return []
 
-        for task_id in task_id_list[offset:offset + limit]:
-            task = await self.get(task_id)
-            if task:
-                tasks.append(task)
-
+        raws = await client.mget([self._task_key(task_id) for task_id in selected])
+        tasks: List[Task] = []
+        for raw in raws:
+            if not raw:
+                continue
+            try:
+                tasks.append(Task.from_dict(json.loads(raw)))
+            except (ValueError, TypeError):
+                continue
         return tasks
 
     async def count_by_status(self, status: TaskStatus) -> int:

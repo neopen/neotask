@@ -6,6 +6,13 @@
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [1.2.1](https://github.com/neopen/neotask/compare/v1.2.0...v1.2.1) (2026-11-22)
+
+
+### ⚡ Performance Improvements (性能优化)
+
+* 全面性能分析修复（预取 / 内存队列 / 监控 / 热点日志） ([#52](https://github.com/neopen/neotask/issues/52)) ([33ae65c](https://github.com/neopen/neotask/commit/33ae65c8be43e32808df7d02ea91e016a7dab3c6))
+
 ## [1.2.0](https://github.com/neopen/neotask/compare/v1.1.2...v1.2.0) (2026-11-20)
 
 

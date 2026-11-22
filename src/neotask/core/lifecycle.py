@@ -28,7 +28,7 @@ from neotask.common.constants import (
     EventType,
 )
 from neotask.common.exceptions import TaskAlreadyExistsError, TaskNotFoundError
-from neotask.common.logger import debug, info, warning
+from neotask.common.logger import debug, info, is_debug_enabled, warning
 from neotask.core.checkpoint import CHECKPOINT_DATA_KEY
 from neotask.core.future import FutureManager
 from neotask.event.bus import EventBus, TaskEvent
@@ -680,7 +680,8 @@ class TaskLifecycleManager:
 
         await self._emit_event(EventType.STARTED, task_id, {"node_id": node_id})
 
-        debug(f"Task {task_id} started on node {node_id}")
+        if is_debug_enabled():
+            debug(f"Task {task_id} started on node {node_id}")
         return True
 
     @staticmethod
@@ -883,7 +884,8 @@ class TaskLifecycleManager:
             event_data = {"result": result, "cost": cost}
         await self._emit_event(EventType.COMPLETED, task_id, event_data)
 
-        debug(f"Task {task_id} completed successfully")
+        if is_debug_enabled():
+            debug(f"Task {task_id} completed successfully")
         return True
 
     async def fail_task(
@@ -926,7 +928,8 @@ class TaskLifecycleManager:
             )
             return False
 
-        debug(f"[DEBUG] Failing task {task_id}: {error}")
+        if is_debug_enabled():
+            debug(f"[DEBUG] Failing task {task_id}: {error}")
 
         await self._resolve_deferred_running(task_id)
 

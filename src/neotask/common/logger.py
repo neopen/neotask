@@ -525,6 +525,15 @@ logger = Logger(name="NeoTask")
 
 # 方便使用的函数
 
+def is_debug_enabled() -> bool:
+    """DEBUG 级别是否开启。
+
+    高频路径（队列出/入队、任务状态流转等）在拼接日志字符串前先判断，
+    避免 DEBUG 关闭时仍为每条操作构造 f-string 与日志参数。
+    """
+    return logger.logger.isEnabledFor(logging.DEBUG)
+
+
 def debug(message: str, *args, **kwargs):
     logger.debug(message, *args, **kwargs)
 

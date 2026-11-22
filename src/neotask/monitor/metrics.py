@@ -427,8 +427,12 @@ class MetricsCollector:
             except Exception:
                 await asyncio.sleep(5)
 
-    async def _collect_system_metrics(self) -> None:
-        """收集系统指标"""
+    def _collect_system_metrics_blocking(self) -> SystemMetrics:
+        """同步采集系统指标。
+
+        ``psutil.Process.cpu_percent(interval=0.1)`` 会阻塞调用线程约 0.1s，
+        必须在工作线程执行，否则会把任务池事件循环整体卡住 100ms。
+        """
         import threading
 
         try:
@@ -436,7 +440,7 @@ class MetricsCollector:
 
             process = psutil.Process()
 
-            self._system_metrics = SystemMetrics(
+            return SystemMetrics(
                 cpu_percent=process.cpu_percent(interval=0.1),
                 memory_percent=process.memory_percent(),
                 memory_used_mb=process.memory_info().rss / 1024 / 1024,
@@ -446,7 +450,14 @@ class MetricsCollector:
             )
         except Exception:
             # psutil 可能不可用
-            self._system_metrics = SystemMetrics()
+            return SystemMetrics()
+
+    async def _collect_system_metrics(self) -> None:
+        """收集系统指标（阻塞采样放到线程池，避免卡住事件循环）"""
+        loop = asyncio.get_running_loop()
+        self._system_metrics = await loop.run_in_executor(
+            None, self._collect_system_metrics_blocking
+        )
 
     # ========== 指标查询 ==========
 

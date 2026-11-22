@@ -131,7 +131,7 @@ class TaskDispatcher:
                     parent_task_id=parent_task_id,
                 )
                 if queued is None:
-                    # 后端不支持合并（memory / SQLite）：按原两步流程入队
+                    # 后端不支持合并（memory）：按原两步流程入队
                     queued = await self._queue.push(task.task_id, task.priority.value)
 
         if not queued:

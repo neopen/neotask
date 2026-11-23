@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Benchmarks · NeoTask v1.0 docs</title>
+  <meta name="description" content="v1.2.1 measurements for submission, completion, prefetch, batching, and SQLite boundaries.">
+  <meta name="keywords" content="Benchmarks, Benchmarks guide, Benchmarks docs, Reference, NeoTask v1.0 docs, NeoTask 1.x, Python task queue">
+  <meta name="author" content="NeoPen">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+  <link rel="canonical" href="https://task.helpenx.com/en/docs/v1.0/benchmarks.html">
+  <meta property="og:site_name" content="NeoTask Docs">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Benchmarks · NeoTask v1.0 docs">
+  <meta property="og:description" content="v1.2.1 measurements for submission, completion, prefetch, batching, and SQLite boundaries.">
+  <meta property="og:url" content="https://task.helpenx.com/en/docs/v1.0/benchmarks.html">
+  <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Benchmarks · NeoTask docs">
+  <meta property="article:published_time" content="2026-10-29">
+  <meta property="article:modified_time" content="2026-11-22">
+  <meta property="article:section" content="Reference">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Benchmarks · NeoTask v1.0 docs">
+  <meta name="twitter:description" content="v1.2.1 measurements for submission, completion, prefetch, batching, and SQLite boundaries.">
+  <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta name="twitter:image:alt" content="Benchmarks · NeoTask docs">
+  <meta name="theme-color" content="#0b1713">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/css/site.css">
+  <link rel="stylesheet" href="/assets/css/docs.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "@id": "https://task.helpenx.com/en/docs/v1.0/benchmarks.html#article",
+        "headline": "Benchmarks",
+        "name": "Benchmarks · NeoTask v1.0 docs",
+        "description": "v1.2.1 measurements for submission, completion, prefetch, batching, and SQLite boundaries.",
+        "image": "https://task.helpenx.com/assets/img/og.png",
+        "url": "https://task.helpenx.com/en/docs/v1.0/benchmarks.html",
+        "mainEntityOfPage": "https://task.helpenx.com/en/docs/v1.0/benchmarks.html",
+        "inLanguage": "en",
+        "datePublished": "2026-10-29",
+        "dateModified": "2026-11-22",
+        "articleSection": "Reference",
+        "keywords": "Benchmarks, Benchmarks guide, Benchmarks docs, Reference, NeoTask v1.0 docs, NeoTask 1.x, Python task queue",
+        "author": {
+          "@type": "Organization",
+          "name": "NeoPen",
+          "url": "https://task.helpenx.com",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://task.helpenx.com/assets/img/favicon.svg"
+          }
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "NeoPen",
+          "url": "https://task.helpenx.com",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://task.helpenx.com/assets/img/favicon.svg"
+          }
+        },
+        "isPartOf": {
+          "@type": "WebSite",
+          "name": "NeoTask",
+          "url": "https://task.helpenx.com/"
+        },
+        "about": {
+          "@type": "SoftwareApplication",
+          "name": "NeoTask",
+          "applicationCategory": "DeveloperApplication",
+          "operatingSystem": "OS Independent",
+          "url": "https://task.helpenx.com/"
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "@id": "https://task.helpenx.com/en/docs/v1.0/benchmarks.html#breadcrumb",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": "https://task.helpenx.com/en/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Docs",
+            "item": "https://task.helpenx.com/en/docs/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": "v1.0",
+            "item": "https://task.helpenx.com/en/docs/v1.0/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 4,
+            "name": "Benchmarks",
+            "item": "https://task.helpenx.com/en/docs/v1.0/benchmarks.html"
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/benchmarks.html">
+  <link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/benchmarks.html">
+  <link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/benchmarks.html">
+</head>
+<body class="docs-page" id="top">
+  <a class="skip-link" href="#main">Skip to main content</a>
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="/en/" aria-label="NeoTask home">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="9" fill="#0b1713"/>
+        <path d="M9.5 22.5v-13l13 13v-13" fill="none" stroke="#2dd4bf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
+      </svg>
+      <span class="brand-name">NeoTask</span>
+      <span class="brand-version">v1.2.1</span>
+    </a>
+
+    <nav class="site-nav" id="siteNav" aria-label="Main navigation">
+      <a class="site-nav-link " href="/en/features.html">Features</a>
+      <a class="site-nav-link is-active" href="/en/docs/v1.0/benchmarks.html">Benchmarks</a>
+      <a class="site-nav-link " href="/en/docs/">Docs</a>
+      <a class="site-nav-link " href="/en/changelog.html">Changelog</a>
+      <a class="site-nav-link " href="/en/community.html">Community</a>
+      <a class="site-nav-link site-nav-external" href="https://helpenx.com/" target="_blank" rel="noopener">
+        HelpEnx Hub
+        <svg class="icon icon-xs nav-external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
+      </a>
+    </nav>
+
+    <div class="header-actions">
+      <a class="lang-switch" href="/docs/v1.0/benchmarks.html" hreflang="zh-CN" lang="zh-CN" aria-label="切换到中文">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>
+        <span>中文</span>
+      </a>
+      <a class="gh-star" href="https://github.com/neopen/neotask" target="_blank" rel="noopener" aria-label="Star NeoTask on GitHub">
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.9 5.33.9 11.6c0 4.9 3.17 9.05 7.57 10.52.55.1.75-.24.75-.53v-1.85c-3.08.67-3.73-1.48-3.73-1.48-.5-1.28-1.23-1.62-1.23-1.62-1-.69.08-.68.08-.68 1.11.08 1.7 1.14 1.7 1.14.98 1.69 2.58 1.2 3.2.92.1-.71.39-1.2.7-1.48-2.46-.28-5.05-1.23-5.05-5.48 0-1.21.43-2.2 1.14-2.98-.11-.28-.49-1.4.11-2.92 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.6 1.52.22 2.64.11 2.92.71.78 1.14 1.77 1.14 2.98 0 4.26-2.6 5.2-5.06 5.47.4.35.76 1.03.76 2.07v3.07c0 .29.2.64.76.53a11.1 11.1 0 0 0 7.56-10.52C23.1 5.33 18.27.5 12 .5z"/></svg>
+        <span>Star</span>
+        <span class="gh-star-count">8</span>
+      </a>
+      <a class="btn btn-primary btn-sm header-cta" href="/en/docs/v1.0/quickstart.html">Get started</a>
+      <button class="nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="siteNav">
+        <span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+  <div class="docs-shell">
+    <aside class="docs-sidebar" id="docsSidebar">
+      <a class="docs-sidebar-home" href="/en/docs/"><span class="docs-sidebar-badge">DOCS</span> Docs center</a>
+      <div class="docs-version-picker">
+        <span class="docs-version-caption">Docs version</span>
+        <div class="docs-version-row">
+          <select class="docs-version-select" data-docs-version aria-label="Switch docs version">
+            <option value="v1.0" selected>v1.0 (latest)</option>
+          </select>
+          <a class="docs-version-all" href="/en/docs/">All versions</a>
+        </div>
+        <p class="docs-version-note">For NeoTask 1.x</p>
+      </div>
+      <div class="docs-search-wrap">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="docsSearch" type="search" placeholder="Search docs" autocomplete="off" aria-label="Search docs">
+      </div>
+      <nav class="docs-nav" id="docsNav" aria-label="Docs navigation">
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Get started</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/quickstart.html" data-search="Quickstart Install NeoTask 1.2.1, submit your first task, and choose sync, async, or context manager usage.">Quickstart</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/configuration.html" data-search="Configuration reference TaskPoolConfig and SchedulerConfig fields, defaults, scope, and common presets.">Configuration reference</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/best-practices.html" data-search="Best practices Executor choice, concurrency, retries, timeouts, storage selection, and production guidance.">Best practices</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/deployment.html" data-search="Deployment guide Local, Docker, and production deployment with storage, networking, security, and upgrades.">Deployment guide</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/integration.html" data-search="Integration guide Integrate with web services, HTTP APIs, Python code, third-party components, agents, and workflows.">Integration guide</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Core concepts</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/architecture.html" data-search="Architecture overview How TaskPool, TaskScheduler, queues, workers, and storage layers fit together.">Architecture overview</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/task-lifecycle.html" data-search="Task lifecycle State transitions from submission to terminal states, event callbacks, and result access.">Task lifecycle</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/task-context.html" data-search="Task links and shared context Parent/child links, external task_id uniqueness, and the memory-only Blackboard.">Task links and shared context</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/priority-queue.html" data-search="Priority queue Four priority levels, FIFO behavior within a level, and batch submission.">Priority queue</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/delayed-tasks.html" data-search="Delayed and periodic tasks Delay, submit-at, fixed interval, and Cron tasks with management and missed-run policies.">Delayed and periodic tasks</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/persistence.html" data-search="Persistence Memory, SQLite, and Redis backends: use cases, data semantics, and switching.">Persistence</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/distributed.html" data-search="Distributed deployment Shared queues, node heartbeats, task reclaim, and Redis requirements.">Distributed deployment</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Reliability</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/failure-recovery.html" data-search="Failure recovery Timeouts, orphaned tasks, stale locks, dead letters, and business failure semantics.">Failure recovery</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/checkpoint.html" data-search="Checkpoints Save intermediate state and resume from the latest checkpoint on retry or explicit submission.">Checkpoints</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/cost-tracking.html" data-search="Cost and timing Report tokens, API calls, and estimated cost; read queue/execution timing and aggregate costs.">Cost and timing</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/distributed-lock.html" data-search="Distributed locks Task-level mutex locks, TTL, watchdog renewal, and manual locking APIs.">Distributed locks</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/prefetch.html" data-search="Prefetch Demand-driven prefetch triggers, batch sizing, and effects on latency and priority.">Prefetch</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/monitoring.html" data-search="Monitoring and health checks Metric snapshots and periodic push, health checks, event backpressure, UI, and Prometheus.">Monitoring and health checks</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/troubleshooting.html" data-search="Troubleshooting Common issues, log analysis, diagnosis, deployment problems, and performance questions.">Troubleshooting</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Reference</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/api-reference.html" data-search="API reference Public TaskPool and TaskScheduler methods, 1.2 additions, parameter defaults, and return semantics.">API reference</a>
+        <a class="docs-nav-link is-active" href="/en/docs/v1.0/benchmarks.html" data-search="Benchmarks v1.2.1 measurements for submission, completion, prefetch, batching, and SQLite boundaries.">Benchmarks</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/developer-guide.html" data-search="Developer guide Project layout, development setup, tests, build, release, and contribution rules.">Developer guide</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/glossary.html" data-search="Glossary Shared definitions for task, queue, worker, scheduler, retry, reclaim, dead letter, and more.">Glossary</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Roadmap</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/roadmap.html" data-search="Roadmap Delivered 1.x capabilities, remaining boundaries, and NeoFlow orchestration plans.">Roadmap<span class="nav-soon">planned</span></a>
+      </div>
+      </nav>
+      <p class="docs-nav-empty" id="docsNavEmpty" hidden>No matching docs</p>
+    </aside>
+    <main class="docs-main" id="main">
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <a href="/en/">Home</a><span>/</span><a href="/en/docs/">Docs</a><span>/</span><a href="/en/docs/v1.0/">v1.0</a><span>/</span><span>Reference</span>
+      </nav>
+      <details class="docs-mobile-nav">
+        <summary>Docs navigation · v1.0</summary>
+        <div class="docs-version-picker">
+        <span class="docs-version-caption">Docs version</span>
+        <div class="docs-version-row">
+          <select class="docs-version-select" data-docs-version aria-label="Switch docs version">
+            <option value="v1.0" selected>v1.0 (latest)</option>
+          </select>
+          <a class="docs-version-all" href="/en/docs/">All versions</a>
+        </div>
+        <p class="docs-version-note">For NeoTask 1.x</p>
+      </div>
+      
+      <nav class="docs-nav" id="docsNavMobile" aria-label="Docs navigation">
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Get started</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/quickstart.html" data-search="Quickstart Install NeoTask 1.2.1, submit your first task, and choose sync, async, or context manager usage.">Quickstart</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/configuration.html" data-search="Configuration reference TaskPoolConfig and SchedulerConfig fields, defaults, scope, and common presets.">Configuration reference</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/best-practices.html" data-search="Best practices Executor choice, concurrency, retries, timeouts, storage selection, and production guidance.">Best practices</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/deployment.html" data-search="Deployment guide Local, Docker, and production deployment with storage, networking, security, and upgrades.">Deployment guide</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/integration.html" data-search="Integration guide Integrate with web services, HTTP APIs, Python code, third-party components, agents, and workflows.">Integration guide</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Core concepts</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/architecture.html" data-search="Architecture overview How TaskPool, TaskScheduler, queues, workers, and storage layers fit together.">Architecture overview</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/task-lifecycle.html" data-search="Task lifecycle State transitions from submission to terminal states, event callbacks, and result access.">Task lifecycle</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/task-context.html" data-search="Task links and shared context Parent/child links, external task_id uniqueness, and the memory-only Blackboard.">Task links and shared context</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/priority-queue.html" data-search="Priority queue Four priority levels, FIFO behavior within a level, and batch submission.">Priority queue</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/delayed-tasks.html" data-search="Delayed and periodic tasks Delay, submit-at, fixed interval, and Cron tasks with management and missed-run policies.">Delayed and periodic tasks</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/persistence.html" data-search="Persistence Memory, SQLite, and Redis backends: use cases, data semantics, and switching.">Persistence</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/distributed.html" data-search="Distributed deployment Shared queues, node heartbeats, task reclaim, and Redis requirements.">Distributed deployment</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Reliability</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/failure-recovery.html" data-search="Failure recovery Timeouts, orphaned tasks, stale locks, dead letters, and business failure semantics.">Failure recovery</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/checkpoint.html" data-search="Checkpoints Save intermediate state and resume from the latest checkpoint on retry or explicit submission.">Checkpoints</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/cost-tracking.html" data-search="Cost and timing Report tokens, API calls, and estimated cost; read queue/execution timing and aggregate costs.">Cost and timing</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/distributed-lock.html" data-search="Distributed locks Task-level mutex locks, TTL, watchdog renewal, and manual locking APIs.">Distributed locks</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/prefetch.html" data-search="Prefetch Demand-driven prefetch triggers, batch sizing, and effects on latency and priority.">Prefetch</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/monitoring.html" data-search="Monitoring and health checks Metric snapshots and periodic push, health checks, event backpressure, UI, and Prometheus.">Monitoring and health checks</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/troubleshooting.html" data-search="Troubleshooting Common issues, log analysis, diagnosis, deployment problems, and performance questions.">Troubleshooting</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Reference</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/api-reference.html" data-search="API reference Public TaskPool and TaskScheduler methods, 1.2 additions, parameter defaults, and return semantics.">API reference</a>
+        <a class="docs-nav-link is-active" href="/en/docs/v1.0/benchmarks.html" data-search="Benchmarks v1.2.1 measurements for submission, completion, prefetch, batching, and SQLite boundaries.">Benchmarks</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/developer-guide.html" data-search="Developer guide Project layout, development setup, tests, build, release, and contribution rules.">Developer guide</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/glossary.html" data-search="Glossary Shared definitions for task, queue, worker, scheduler, retry, reclaim, dead letter, and more.">Glossary</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Roadmap</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/roadmap.html" data-search="Roadmap Delivered 1.x capabilities, remaining boundaries, and NeoFlow orchestration plans.">Roadmap<span class="nav-soon">planned</span></a>
+      </div>
+      </nav>
+      
+      </details>
+      <article class="article">
+        <header class="article-header">
+          <p class="article-eyebrow">Reference</p>
+          <h1>Benchmarks</h1>
+          <p class="article-lede">v1.2.1 measurements for submission, completion, prefetch, batching, and SQLite boundaries.</p>
+          <div class="article-meta">
+            <span class="article-version">v1.0 · NeoTask 1.x</span>
+            <span class="dot"></span>
+            <span>Updated 2026-11-22</span>
+            <span class="dot"></span>
+            <span>9 min read</span>
+            <span class="dot"></span>
+            <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg></a>
+          </div>
+        </header>
+        <div class="article-body">
+<p>The figures below were measured with the official NeoTask 1.2.1 benchmark scripts and stress suite. They are meant to show relative trends and the effect of configuration, not to serve as a performance promise. Numbers vary with CPU, Python version, storage backend and sidecar components, so re-measure with the same method on your own target environment.</p>
+
+<div class="doc-note"><strong>Version scope:</strong> the data on this page was collected on 1.2.1 (2026-11-22), running on Python 3.13. 1.2.1 fixed prefetch empty-queue backoff, in-memory queue batch write/remove, blocking metric sampling and Redis batch reads, so the throughput and latency figures are not directly comparable with 1.0.x. After upgrading, re-measure in your target environment with <code>neotask --benchmark</code> or the repository benchmark scripts.</div>
+
+<div class="bench-kpis">
+  <div class="bench-kpi is-highlight">
+    <span class="bench-kpi-label">Prefetch throughput</span>
+    <span class="bench-kpi-value">4,241<span>tasks/s</span></span>
+    <span class="bench-kpi-detail">2,000 noop tasks, concurrency 10, prefetch_size=20; after the v1.2.1 empty-queue backoff fix.</span>
+  </div>
+  <div class="bench-kpi">
+    <span class="bench-kpi-label">Sparse latency</span>
+    <span class="bench-kpi-value">1.1–2.2<span>ms</span></span>
+    <span class="bench-kpi-detail">Prefetch off, one task after 1s idle, 8 samples; with prefetch on it is 12.2–26.2 ms.</span>
+  </div>
+  <div class="bench-kpi">
+    <span class="bench-kpi-label">Queue batch push</span>
+    <span class="bench-kpi-value">0.471<span>ms</span></span>
+    <span class="bench-kpi-detail">Push 1,000 items into a 10,000-item in-memory queue; about 2.12M items/s.</span>
+  </div>
+  <div class="bench-kpi">
+    <span class="bench-kpi-label">Batch remove</span>
+    <span class="bench-kpi-value">0.668<span>ms</span></span>
+    <span class="bench-kpi-detail">Remove 1,000 items from an 11,000-item queue; lazy tombstones replace heap rebuilds.</span>
+  </div>
+</div>
+
+<h2 id="Test environment">Test environment</h2>
+<table class="bench-env">
+<thead><tr><th>Item</th><th>Configuration</th></tr></thead>
+<tbody>
+<tr><td>CPU</td><td>Intel Core i7, 4 cores / 8 threads</td></tr>
+<tr><td>Memory</td><td>16 GB</td></tr>
+<tr><td>OS</td><td>Windows 10 19045, 64-bit</td></tr>
+<tr><td>Python</td><td>3.13</td></tr>
+<tr><td>Storage</td><td>memory (micro and prefetch suites); SQLite / Redis (historical storage comparison)</td></tr>
+<tr><td>Side components</td><td>metrics, health check, reporter, reclaimer, heartbeat, dead letter disabled per suite</td></tr>
+</tbody>
+</table>
+<p>The micro-benchmarks, the prefetch suite and the cross-storage comparison are three independent measurements taken with different methods; they cannot be merged or compared directly. All numbers come from a single developer machine, with sidecar components disabled per suite.</p>
+
+<h2 id="method">Measurement method</h2>
+<table>
+<thead><tr><th>Metric</th><th>Definition</th></tr></thead>
+<tbody>
+<tr><td>Completion throughput</td><td>2,000 noop tasks at concurrency 10, from submission until all complete; one run with prefetch on and one with prefetch off</td></tr>
+<tr><td>Sparse task latency</td><td>Submit a single task after 1 idle second, 8 times in a row, recording end-to-end latency</td></tr>
+<tr><td>Queue micro-benchmark</td><td>Batch write, batch remove, peek and invariant validation on the in-memory priority queue</td></tr>
+<tr><td>Cross-storage end to end</td><td>One submission-to-completion run each on Memory / SQLite / Redis; scale and concurrency are given in the table</td></tr>
+</tbody>
+</table>
+<p>The prefetch core benchmark (throughput) and sparse latency (single-task response) measure opposite goals: prefetch trades batch dequeue for throughput, at the cost of the fixed latency introduced by the coalescing window. Confirm the method and configuration before comparing.</p>
+
+<div class="doc-warning"><strong>Two sides of prefetch:</strong> under the same parameters, completion throughput with prefetch on is 4,241 tasks/s and 3,156 tasks/s with prefetch off; but the latency of a single task after idle rises from 1.1–2.2 ms to 12.2–26.2 ms. 1.2.1 fixed exponential backoff on empty queues, so sparse tasks no longer see worst-case 500 ms latency, but the 10 ms prefetch coalescing window still applies.</div>
+
+<h2 id="Scheduling and execution overhead">Scheduling and execution overhead</h2>
+<table>
+<thead><tr><th>Operation</th><th>Scale</th><th>Config</th><th>Result</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td>Batch push</td><td>10,000 + 1,000</td><td>memory</td><td>0.471 ms</td><td>about 2.12M items/s</td></tr>
+<tr><td>Batch remove</td><td>11,000 - 1,000</td><td>memory</td><td>0.668 ms</td><td>about 1.5M ops/s</td></tr>
+<tr><td>Pop all + validate</td><td>10,000</td><td>memory</td><td>no duplicates or leaks</td><td>invariants hold</td></tr>
+<tr><td>peek(5)</td><td>10,000</td><td>memory</td><td>0.008 ms</td><td>heapq.nsmallest</td></tr>
+<tr><td>Regression</td><td>unit + integration</td><td>v1.2.1</td><td>538 / 87 passed</td><td>12 / 1 skipped</td></tr>
+</tbody>
+</table>
+<p>Batch write and removal on the in-memory queue have moved from full heap rebuilds to incremental maintenance with lazy tombstones: writing 1,000 tasks at once into a 10,000-task queue takes about 0.471 ms (about 2.12M tasks/s), and batch removal of 1,000 tasks takes about 0.668 ms. The invariant test that pops everything and validates it confirms there are no duplicates and no tombstone leaks; <code>peek(5)</code> on a 10,000-task queue takes 0.008 ms. The complete 1.2.1 regression is 538 passed / 12 skipped unit tests and 87 passed / 1 skipped integration tests.</p>
+
+<h2 id="Prefetch and completion throughput">Prefetch and completion throughput</h2>
+<p>2,000 noop tasks with 10 workers, comparing prefetch off against <code>prefetch_size=20</code>. Prefetch moves tasks from the shared queue to local queues in batches, raising throughput by about 34%, but single-task P50 rises from 1.20 ms to 11.24 ms.</p>
+<figure class="bench-chart">
+  <figcaption>Completion throughput · 2,000 noop tasks, 10 workers (linear scale)</figcaption>
+  <div class="bench-bars">
+    <div class="bench-bar-row">
+      <span class="bench-bar-label">Prefetch off</span>
+      <span class="bench-bar-track"><span class="bench-bar-fill" style="width: 74%"></span></span>
+      <span class="bench-bar-value">3,156/s</span>
+    </div>
+    <div class="bench-bar-row">
+      <span class="bench-bar-label">Prefetch 20</span>
+      <span class="bench-bar-track"><span class="bench-bar-fill" style="width: 100%"></span></span>
+      <span class="bench-bar-value">4,241/s</span>
+    </div>
+  </div>
+  <p class="bench-chart-note">Prefetch off 3,156 tasks/s; prefetch 20 gives 4,241 tasks/s on the same machine and parameters.</p>
+</figure>
+<table>
+<thead><tr><th>Config</th><th>Completion</th><th>P50</th><th>P95</th></tr></thead>
+<tbody>
+<tr><td>Prefetch off</td><td>3,156/s</td><td>1.20 ms</td><td>3.07 ms</td></tr>
+<tr><td>Prefetch 20</td><td>4,241/s</td><td>11.24 ms</td><td>15.14 ms</td></tr>
+</tbody>
+</table>
+<p>The throughput bottleneck lies in lifecycle transitions, state persistence and event dispatch, not in the executor itself; simply adding workers cannot break through this ceiling. When task bodies have IO waits or run for longer, the batch gain from prefetch is more obvious; for pure micro-tasks that demand low latency, turning prefetch off is the better fit.</p>
+
+<h2 id="Sparse task latency">Sparse task latency</h2>
+<p>Submit a single task after 1 idle second to simulate a low-frequency event trigger. With prefetch off, end-to-end latency is 1.1–2.2 ms; with prefetch on it is 12.2–26.2 ms, mostly from the prefetcher's coalescing window.</p>
+<figure class="bench-chart">
+  <figcaption>Sparse end-to-end latency · one task after 1s idle (shorter is better)</figcaption>
+  <div class="bench-bars">
+    <div class="bench-bar-row">
+      <span class="bench-bar-label">Prefetch off</span>
+      <span class="bench-bar-track"><span class="bench-bar-fill" style="width: 8%"></span></span>
+      <span class="bench-bar-value">≤ 2.2 ms</span>
+    </div>
+    <div class="bench-bar-row">
+      <span class="bench-bar-label">Prefetch on</span>
+      <span class="bench-bar-track"><span class="bench-bar-fill" style="width: 100%"></span></span>
+      <span class="bench-bar-value">≤ 26.2 ms</span>
+    </div>
+  </div>
+  <p class="bench-chart-note">Prefetch off 1.1–2.2 ms; prefetch on 12.2–26.2 ms. The 10ms coalescing window trades latency for throughput; disable prefetch for sub-10ms tasks.</p>
+</figure>
+<p>Latency-sensitive scenarios (such as a background action triggered by an interactive request) should disable prefetch or reduce <code>prefetch_size</code>; batch, collection and transcoding tasks can keep the default prefetch. See <a href="/en/docs/v1.0/prefetch.html">Prefetch mechanism</a> for the trade-off between the two.</p>
+
+<h2 id="Sustained and burst load">Sustained and burst load</h2>
+<p>Covers four boundary categories: sparse submission, prefetch empty-queue wakeup, batch cancellation and a full queue. The empty-queue backoff fix and lazy tombstones are the main changes in this 1.2.1 round.</p>
+<table>
+<thead><tr><th>Scenario</th><th>Scale</th><th>Config</th><th>Result</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td>Sparse · prefetch off</td><td>8 samples</td><td>1s idle</td><td>1.1–2.2 ms</td><td>recommended for low latency</td></tr>
+<tr><td>Sparse · prefetch on</td><td>8 samples</td><td>1s idle</td><td>12.2–26.2 ms</td><td>includes 10ms coalescing</td></tr>
+<tr><td>Empty-queue wakeup</td><td>continuous</td><td>v1.2.1</td><td>no 0.5s backoff</td><td>P0 fix</td></tr>
+<tr><td>Batch cancel</td><td>1,000</td><td>memory</td><td>0.668 ms</td><td>lazy tombstones</td></tr>
+<tr><td>Queue full</td><td>10,000</td><td>all backends</td><td>False / QueueFullError</td><td>consistent semantics</td></tr>
+</tbody>
+</table>
+<div class="doc-note">Regression: 538 unit tests passed / 12 skipped; 87 integration tests passed / 1 skipped. One timing-sensitive test is flaky under full concurrency and passes alone. Empty-queue wakeup no longer stacks a 0.5 s backoff, which is the direct cause of sparse task latency dropping from hundreds of milliseconds to the millisecond range; when the queue is full, all three backends return <code>False</code> or <code>QueueFullError</code>, with consistent semantics.</div>
+
+<h2 id="Cross-storage comparison">Cross-storage comparison</h2>
+<p>The same business path end to end on three backends: Memory 2,000 tasks, SQLite and Redis 1,000 tasks each. The scale differs, so look only at the order of magnitude and the relative P50 gap.</p>
+<div class="bench-boundaries">
+  <div class="bench-boundary is-ok">
+    <div class="bench-boundary-head">
+      <span class="bench-boundary-badge">Pass</span>
+      <strong>End-to-end · Memory</strong>
+      <span class="bench-boundary-workers">10 workers</span>
+    </div>
+    <p class="bench-boundary-outcome">4,761 tasks/s, p50 297 ms</p>
+    <dl class="bench-boundary-meta"><div><dt>Scale</dt><dd>2,000</dd></div><div><dt>Elapsed</dt><dd>0.42 s</dd></div></dl>
+  </div>
+  <div class="bench-boundary is-ok">
+    <div class="bench-boundary-head">
+      <span class="bench-boundary-badge">Pass</span>
+      <strong>End-to-end · SQLite</strong>
+      <span class="bench-boundary-workers">4 workers</span>
+    </div>
+    <p class="bench-boundary-outcome">519 tasks/s, p50 1,036 ms</p>
+    <dl class="bench-boundary-meta"><div><dt>Scale</dt><dd>1,000</dd></div><div><dt>Elapsed</dt><dd>1.93 s</dd></div></dl>
+  </div>
+  <div class="bench-boundary is-ok">
+    <div class="bench-boundary-head">
+      <span class="bench-boundary-badge">Pass</span>
+      <strong>End-to-end · Redis</strong>
+      <span class="bench-boundary-workers">4 workers</span>
+    </div>
+    <p class="bench-boundary-outcome">232 tasks/s, p50 2,547 ms</p>
+    <dl class="bench-boundary-meta"><div><dt>Scale</dt><dd>1,000</dd></div><div><dt>Elapsed</dt><dd>4.31 s</dd></div></dl>
+  </div>
+</div>
+<p>Memory uses an in-process queue at 4,761 tasks/s; SQLite is constrained by serial single-file writes at 519 tasks/s; Redis is affected by network round trips and serialization at 232 tasks/s. SQLite suits single-machine persistence and low-frequency writes; switch to Redis when you need multi-node sharing or higher concurrency. Always validate in a staging environment before migrating between backends, and note the acceptable loss window for tasks and events.</p>
+
+<h2 id="Event bus and wakeup">Event bus and wakeup</h2>
+<p>The event bus delivers lifecycle events to subscribers asynchronously. Since 1.2, events with no subscribers are no longer enqueued, reducing idle work; when a bounded queue is full, new events are dropped and counted, and callbacks slower than the threshold log a warning.</p>
+<table>
+<thead><tr><th>Capability</th><th>Config</th><th>Behavior</th></tr></thead>
+<tbody>
+<tr><td>Unsubscribed events</td><td>since v1.2</td><td>not enqueued, less idle work</td></tr>
+<tr><td>Bounded queue</td><td>event_queue_max_size</td><td>drops new events and counts when full</td></tr>
+<tr><td>Slow handler warning</td><td>event_slow_handler_threshold=1.0s</td><td>warns without blocking tasks</td></tr>
+<tr><td>Periodic snapshot</td><td>on_metrics(interval=1.0)</td><td>counts and queue depth without loading tasks</td></tr>
+<tr><td>Terminal cleanup</td><td>enabled by default</td><td>removes SUCCESS/FAILED/CANCELLED by ttl</td></tr>
+</tbody>
+</table>
+<p>When complete auditing is required, keep the event queue unbounded and move time-consuming callbacks out of the event loop; in production, set <code>event_queue_max_size</code> and monitor <code>dropped_events</code>. For periodic monitoring, prefer pushing snapshots with <code>on_metrics()</code> instead of subscribing to events for each metric separately.</p>
+
+<h2 id="Choosing a configuration">Choosing a configuration</h2>
+<table>
+<thead><tr><th>Scenario</th><th>Recommended configuration</th><th>Basis</th></tr></thead>
+<tbody>
+<tr><td>Pure compute micro-tasks of tens of microseconds</td><td>Match the worker count to CPU cores; prefetch may be on or off</td><td>Prefetch at 4,241 and prefetch off at 3,156 tasks/s are in the same order of magnitude; prefetch mainly reduces dequeue overhead</td></tr>
+<tr><td>Millisecond-scale IO tasks</td><td>Keep the default prefetch, start with 16–32 workers</td><td>Prefetch dequeues in batches, so the throughput gain is obvious during IO waits</td></tr>
+<tr><td>Low latency with sparse submission</td><td>Disable prefetch or lower <code>prefetch_size</code> below 5</td><td>Prefetch off 1.1–2.2 ms, prefetch on 12.2–26.2 ms</td></tr>
+<tr><td>CPU-intensive tasks</td><td>ProcessExecutor, workers no more than physical cores</td><td>Async workers share the GIL, so oversubscription only adds switching overhead</td></tr>
+<tr><td>Single machine, low frequency, must recover after restart</td><td>SQLite, single writer</td><td>519 tasks/s, P50 1.0 s; writes are serialized</td></tr>
+<tr><td>Multiple nodes or high-concurrency writes</td><td>Redis, a unique <code>node_id</code></td><td>Shared queues, locks, heartbeat and reclamation are only available in Redis mode</td></tr>
+<tr><td>Strict priority ordering</td><td>Disable prefetch or lower the batch size</td><td>Prefetch takes tasks ahead of time, so a high-priority task submitted later may end up behind already-taken low-priority tasks</td></tr>
+<tr><td>Event completeness first</td><td>Keep the event queue unbounded and make callbacks return quickly</td><td>A bounded queue drops events; slow callbacks delay when <code>task.completed</code> is observed</td></tr>
+</tbody>
+</table>
+<p>See <a href="/en/docs/v1.0/configuration.html">Configuration reference</a> for field defaults and scope; see <a href="/en/docs/v1.0/best-practices.html">Best practices</a> for complete guidance on executors and concurrency.</p>
+
+<h2 id="Reproducing the numbers">Reproducing the numbers</h2>
+<pre><code class="language-bash"># Quick self-test with the built-in 5 ms executor
+neotask --benchmark
+
+# Use your own executor
+neotask --benchmark --executor my_tasks:handle --tasks 2000 --json
+
+# Full benchmark suite in the repository
+git clone https://github.com/neopen/neotask.git
+cd neotask
+pip install -e ".[dev]"
+python tests/benchmark/run_benchmark.py</code></pre>
+<p><code>neotask --benchmark</code> ships with the PyPI package and defaults to 200 tasks at concurrency 10, which suits quick comparison; the full benchmark scripts live in the repository under <code>tests/benchmark/</code>, and the 1.2.1 regression and suite results come from the same environment. When re-measuring, record the CPU, Python version, storage backend and worker count, otherwise the results are not comparable.</p>
+
+<h2 id="Interpretation boundaries">Interpretation boundaries</h2>
+<ul>
+<li>The data comes from a single developer laptop (4 cores / 8 threads, 16 GB, Windows 10, Python 3.13) and does not extrapolate to servers or container environments.</li>
+<li>Throughput, sparse latency and the cross-storage comparison use different methods; the three sets of numbers must not be mixed.</li>
+<li>Sidecar components (metrics, health check, reporter, reclaimer, heartbeat, dead letter) are disabled per suite; enabling them lowers throughput.</li>
+<li>1.2.1 fixed empty-queue exponential backoff and in-memory queue batch write/remove, so sparse task latency and batch-operation numbers are not directly comparable with 1.0.x; historical figures serve only as a trend reference.</li>
+<li>Latency percentiles come from a single-run scenario and do not represent long-term stability; evaluate sustained and burst load separately.</li>
+</ul>
+
+<div class="doc-note"><strong>Do not quote absolute values directly for capacity planning.</strong> Re-measure on your own target environment with the same scripts and the same method, and factor the real duration distribution of your business tasks into the evaluation.</div>
+
+        </div>
+        <footer class="article-foot">
+          <a class="article-top" href="#top">Back to top <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></a>
+        </footer>
+      </article>
+      <nav class="docs-pager" aria-label="Previous and next">
+      <a class="pager-prev" href="/en/docs/v1.0/api-reference.html"><span>Previous</span><strong>API reference</strong></a>
+      <a class="pager-next" href="/en/docs/v1.0/developer-guide.html"><span>Next</span><strong>Developer guide</strong></a>
+    </nav>
+      <p class="docs-feedback">Found a docs issue? Report it in <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">GitHub Issues</a>.</p>
+    </main>
+    <nav class="docs-toc" aria-label="On this page"><p class="docs-toc-label">On this page</p><a href="#Test%20environment">Test environment</a><a href="#method">Measurement method</a><a href="#Scheduling%20and%20execution%20overhead">Scheduling and execution overhead</a><a href="#Prefetch%20and%20completion%20throughput">Prefetch and completion throughput</a><a href="#Sparse%20task%20latency">Sparse task latency</a><a href="#Sustained%20and%20burst%20load">Sustained and burst load</a><a href="#Cross-storage%20comparison">Cross-storage comparison</a><a href="#Event%20bus%20and%20wakeup">Event bus and wakeup</a><a href="#Choosing%20a%20configuration">Choosing a configuration</a><a href="#Reproducing%20the%20numbers">Reproducing the numbers</a><a href="#Interpretation%20boundaries">Interpretation boundaries</a></nav>
+  </div>
+  <footer class="site-footer">
+  <div class="container">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a class="brand" href="/en/" aria-label="NeoTask home">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="9" fill="#10211b"/>
+            <path d="M9.5 22.5v-13l13 13v-13" fill="none" stroke="#2dd4bf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
+          </svg>
+          <span class="brand-name">NeoTask</span>
+        </a>
+        <p>Lightweight Python async task queue.<br>Embed it in your app, with no extra middleware to run.</p>
+        <div class="footer-status"><span class="status-dot"></span> v1.2.1 · released 2026-11-22</div>
+      </div>
+
+      <div class="footer-col">
+        <h3>Product</h3>
+        <a href="/en/features.html">Features</a>
+        <a href="/en/docs/">Docs center</a>
+        <a href="/en/changelog.html">Changelog</a>
+        <a href="https://pypi.org/project/neotask/" target="_blank" rel="noopener">PyPI</a>
+      </div>
+      <div class="footer-col">
+        <h3>Docs</h3>
+        <a href="/en/docs/v1.0/quickstart.html">Quickstart</a>
+        <a href="/en/docs/v1.0/architecture.html">Core concepts</a>
+        <a href="/en/docs/v1.0/api-reference.html">API reference</a>
+        <a href="/en/docs/v1.0/benchmarks.html">Benchmarks</a>
+      </div>
+      <div class="footer-col">
+        <h3>Community</h3>
+        <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/neopen/neotask/discussions" target="_blank" rel="noopener">Discussions</a>
+        <a href="https://github.com/neopen/neotask/tree/main/examples" target="_blank" rel="noopener">Examples</a>
+      </div>
+      <div class="footer-col">
+        <h3>Resources</h3>
+        <a href="/en/community.html">Contribute</a>
+        <a href="https://pengline.cn" target="_blank" rel="noopener">Blog</a>
+        <a href="https://github.com/neopen/neotask/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+        <a href="https://github.com/neopen/neotask/releases" target="_blank" rel="noopener">Release Notes</a>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p>© 2026 NeoTask · Maintained by <a href="https://pengline.cn" target="_blank" rel="noopener">NeoPen</a> · Open source under MIT</p>
+      <p class="footer-motto">Embedded by design. Observable by default.</p>
+    </div>
+  </div>
+</footer>
+
+  <script src="/assets/js/site.js" defer></script>
+</body>
+</html>

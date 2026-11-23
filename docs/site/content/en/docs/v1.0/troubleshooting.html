@@ -1,0 +1,145 @@
+<p>NeoTask troubleshooting follows a fixed order: confirm the task's state, identify which layer owns that state, then check that layer's inputs (submit parameters, config, storage and upstream dependencies). This page is organized by symptom for direct lookup.</p>
+
+<h2 id="common-issues">Common issues</h2>
+<table>
+<thead><tr><th>Symptom</th><th>Likely cause</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td>Task stays <code>pending</code></td><td>Pool not started, concurrency is 0, queue occupied by other tasks, delayed task not yet due</td><td>Call <code>pool.start()</code> explicitly; check <code>worker_concurrency</code>; observe <code>get_queue_size()</code> and <code>get_metrics()</code></td></tr>
+<tr><td>Task stays <code>running</code></td><td>Executor blocked, waiting on external IO, no timeout set</td><td>Set <code>task_timeout</code>; look for blocking calls in the executor</td></tr>
+<tr><td><code>QueueFullError</code> on submit</td><td>Queue reached <code>queue_max_size</code></td><td>Raise consumption, lower submit rate or increase capacity</td></tr>
+<tr><td><code>database is locked</code></td><td>Multiple processes writing the same SQLite file</td><td>Keep a single writer, or switch to Redis</td></tr>
+<tr><td>Redis connection failure</td><td><code>neotask[redis]</code> not installed, wrong address, password / TLS mismatch</td><td>Install the extra; verify the URL; check security groups and certificates</td></tr>
+<tr><td>Empty result / serialization failure</td><td>Return value is not JSON-serializable, or the task is still running</td><td>Return JSON-native types only; check <code>get_status()</code> first</td></tr>
+<tr><td>Same task runs twice</td><td>Business logic not idempotent; lock expired or cross-node Redis lock not used</td><td>Deduplicate in business logic; use <code>TaskPoolConfig.redis()</code> in Redis mode</td></tr>
+<tr><td>Periodic job never fires</td><td>Memory backend does not persist, invalid Cron, scheduler instance stopped</td><td>Use SQLite / Redis; validate expressions at startup; confirm the scheduler process is alive</td></tr>
+<tr><td>Historical tasks missing</td><td>Terminal cleanup removed them, or <code>ttl</code> is too short</td><td>Increase retention; export in completion events when audit is needed</td></tr>
+</tbody>
+</table>
+
+<h2 id="log-analysis">Log analysis</h2>
+<p>NeoTask uses the standard <code>logging</code> module with the logger name <code>NeoTask</code>. Your application can take over its handlers and level:</p>
+<pre><code class="language-python">import logging
+
+logging.getLogger("NeoTask").setLevel(logging.DEBUG)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)</code></pre>
+<p>Focus on these keywords while diagnosing:</p>
+<table>
+<thead><tr><th>Keyword</th><th>Meaning</th><th>Next step</th></tr></thead>
+<tbody>
+<tr><td><code>Task execution timeout</code></td><td>A single run exceeded <code>task_timeout</code></td><td>Check executor duration and external dependencies</td></tr>
+<tr><td><code>Queue is full</code></td><td>Queue capacity exhausted</td><td>Scale out or throttle</td></tr>
+<tr><td><code>Failed to initialize distributed components</code></td><td>Redis component initialization failed</td><td>Check Redis connectivity and installed extras</td></tr>
+<tr><td><code>slow handler</code> / event drop counters</td><td>Event callback exceeded the threshold or a bounded queue overflowed</td><td>Make callbacks asynchronous and set a sane bound</td></tr>
+<tr><td><code>reclaim</code></td><td>The reclaimer took over an unreachable or timed-out task</td><td>Check node liveness and <code>ttl</code></td></tr>
+<tr><td><code>database is locked</code></td><td>SQLite write lock contention</td><td>Move to a single writer or migrate to Redis</td></tr>
+</tbody>
+</table>
+<p>When logs include task IDs, correlate submit, execute, retry and completion by <code>task_id</code>. For structured logs, add a JSON formatter on the application side instead of changing the library's log format.</p>
+
+<h2 id="diagnosis">Diagnosis</h2>
+<h3>State first, then fields</h3>
+<pre><code class="language-python">result = pool.get_result(task_id)
+print(pool.get_status(task_id))
+print(result)
+print(pool.get_task(task_id))</code></pre>
+<table>
+<thead><tr><th>Field</th><th>Diagnostic value</th></tr></thead>
+<tbody>
+<tr><td><code>status</code></td><td>Which phase the task is in</td></tr>
+<tr><td><code>error</code></td><td>System exception summary; empty does not mean success, read it with status</td></tr>
+<tr><td><code>failure_reason</code></td><td>Business failure reason, distinct from system exceptions</td></tr>
+<tr><td><code>retry_count</code></td><td>Whether it keeps failing; hitting the cap means fixing business logic or upstream</td></tr>
+<tr><td><code>queue_wait_ms</code></td><td>Queue time; far above execution time means insufficient capacity</td></tr>
+<tr><td><code>duration_ms</code></td><td>Execution time; near the timeout threshold means tuning or optimization</td></tr>
+<tr><td><code>node_id</code></td><td>Which node executed or lost the task</td></tr>
+</tbody>
+</table>
+
+<h3>Then the global snapshot</h3>
+<pre><code class="language-python">import json
+
+print(json.dumps(pool.get_metrics(), ensure_ascii=False, indent=2))
+print(json.dumps(pool.get_health_status(), ensure_ascii=False, indent=2))</code></pre>
+<p>A rising <code>queue_depth_by_priority</code> means under-consumption; a rising <code>oldest_pending_age_seconds</code> means worsening queues; a rising <code>retry_queue_size</code> points at an unstable upstream; <code>storage_healthy=False</code> points straight at the storage layer.</p>
+
+<h3>Exception reference</h3>
+<table>
+<thead><tr><th>Exception</th><th>Meaning</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td><code>TaskNotFoundError</code></td><td>ID does not exist or was cleaned up</td><td>Verify the ID; increase retention</td></tr>
+<tr><td><code>TaskAlreadyExistsError</code></td><td>Explicit <code>task_id</code> duplicated</td><td>Use automatic IDs or query first</td></tr>
+<tr><td><code>BatchSubmitError</code></td><td>Some batch entries failed and the batch was rolled back</td><td>Read <code>index</code> / <code>cause</code> and fix that entry</td></tr>
+<tr><td><code>TimeoutError</code></td><td>Waiting for a result timed out; the task did not fail</td><td>Query status; the task may still be running</td></tr>
+<tr><td><code>UnsupportedFeatureError</code></td><td>The backend does not support the feature (for example, Blackboard outside Memory)</td><td>Switch backends or use another approach</td></tr>
+</tbody>
+</table>
+
+<h2 id="deployment-issues">Deployment issues</h2>
+<table>
+<thead><tr><th>Scenario</th><th>Cause</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td>All tasks lost after a container restart</td><td>Memory backend, or SQLite without a persistent volume</td><td>Switch to SQLite and mount <code>/data</code>, or use Redis</td></tr>
+<tr><td>Duplicate execution after a rolling update</td><td>Old container exited without graceful shutdown; tasks were reclaimed</td><td>Extend <code>stop_grace_period</code>; make business logic idempotent</td></tr>
+<tr><td>Periodic jobs fire on every replica</td><td>Every replica registered the same periodic job</td><td>Keep one scheduler instance, or use Redis persistence and mutual exclusion</td></tr>
+<tr><td>SQLite writes slow down or lock</td><td>Multiple processes writing one file, or the file sits on a network share</td><td>Single writer, local disk; migrate to Redis when needed</td></tr>
+<tr><td>Redis memory keeps growing</td><td>Terminal records or dead letters are not cleaned up</td><td>Check <code>ttl</code>, cleanup flags and dead-letter capacity</td></tr>
+<tr><td>High CPU from K8s probes</td><td>High-frequency probing with <code>get_stats()</code></td><td>Use <code>get_health_status()</code> and lower the frequency</td></tr>
+<tr><td>Process exit hangs</td><td>In-flight tasks did not finish within the shutdown timeout</td><td>Shorten tasks or raise <code>shutdown(timeout)</code>, and extend the orchestrator grace period</td></tr>
+</tbody>
+</table>
+
+<h2 id="performance-issues">Performance issues</h2>
+<h3>Throughput will not rise</h3>
+<ol>
+<li>Check <code>worker_concurrency</code> and node count; total concurrency is the sum across nodes.</li>
+<li>Check whether the executor blocks the event loop; move CPU-heavy work to a process executor.</li>
+<li>Check event callback duration; slow callbacks stall event consumption and may trigger drops.</li>
+<li>Check storage: SQLite serial writes cap throughput, and Redis is bound by network round trips.</li>
+<li>For batches, use <code>submit_batch()</code> instead of per-item round trips across the event loop.</li>
+</ol>
+
+<h3>Latency increased</h3>
+<ul>
+<li>High <code>queue_wait_ms</code>: a queueing problem; scale out or raise priority.</li>
+<li>High <code>duration_ms</code>: an execution problem; inspect external calls and lock waits.</li>
+<li>Latency-sensitive sparse tasks: disable prefetch or reduce <code>prefetch_size</code>; prefetch raises throughput but increases single-task latency.</li>
+<li>Scheduling latency: check <code>scan_interval</code> and system load; enable the time wheel for many delayed tasks.</li>
+</ul>
+
+<h3>Memory keeps growing</h3>
+<ul>
+<li>The event bus is unbounded by default: set <code>event_queue_max_size</code> and confirm callbacks do not back up.</li>
+<li>Terminal records are not cleaned up: confirm <code>enable_terminal_cleanup=True</code> and the retention period.</li>
+<li>Progress or results are too large: shrink <code>result</code> and store large objects externally.</li>
+<li>Prefetch is too large: lower <code>prefetch_size</code>.</li>
+</ul>
+
+<h2 id="faq">FAQ</h2>
+<h3>Why is there no <code>neotask start</code> command?</h3>
+<p>NeoTask is an embedded library, not a standalone daemon. Create a <code>TaskPool</code> or <code>TaskScheduler</code> at application startup and tasks run with the process. The CLI only offers version output and a light benchmark.</p>
+
+<h3><code>wait_for_result</code> timed out — is the task still running?</h3>
+<p>It may be. The wait timeout affects only the caller and does not cancel the task. Confirm with <code>get_status()</code> and call <code>cancel()</code> if needed.</p>
+
+<h3>Do synchronous functions block the event loop?</h3>
+<p>A plain synchronous function passed directly is wrapped into an async call by the default executor, so it does not block. But calling synchronous blocking code inside a coroutine still blocks the whole loop; move that logic into <code>ThreadExecutor</code> or <code>ProcessExecutor</code>.</p>
+
+<h3>Why does automatic reclamation only exist in Redis mode?</h3>
+<p>Heartbeat and reclamation depend on a cross-node view and shared storage. Memory / SQLite are single-process semantics with no reliable node registry or task ownership, so the reclaimer is not enabled. Use Redis when production needs automatic takeover.</p>
+
+<h3>Should I set both <code>ttl</code> and <code>task_timeout</code>?</h3>
+<p>Yes. The former controls record retention and reclamation criteria; the latter forcibly interrupts overly long execution. Setting only one leaves a blind spot.</p>
+
+<h3>How do I confirm a task did not run twice?</h3>
+<p>Locks reduce probability but do not replace business idempotency. Deduplicate with a stable business key or upsert, carry an idempotency key in task data, and ensure Redis locks are used in a multi-node deployment.</p>
+
+<h3>Can I delete task records directly?</h3>
+<p>You can call <code>delete(task_id)</code>, but it does not undo side effects already applied. Cancel queued tasks with <code>cancel()</code> first; deleting a running task does not interrupt execution.</p>
+
+<h3>Do I need to migrate data after upgrading?</h3>
+<p>SQLite adds missing columns automatically at startup; for cross-backend or major-version migrations, back up first and validate the scripts in staging.</p>
+
+<div class="doc-note"><strong>Still stuck:</strong> open an issue on <a href="{{ISSUES}}" target="_blank" rel="noopener">GitHub Issues</a> with <code>neotask.__version__</code>, backend type, task state, the <code>get_metrics()</code> snapshot and relevant logs. Never paste logs containing secrets or business data publicly.</div>

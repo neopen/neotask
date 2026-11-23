@@ -1,0 +1,47 @@
+<p>This page collects the task, queue, scheduling and reliability terms used across the docs. Look here first when a concept is unfamiliar, then follow the link to its chapter.</p>
+
+<table>
+<thead><tr><th>Term</th><th>Identifier</th><th>Definition</th></tr></thead>
+<tbody>
+<tr><td>Task</td><td>Task</td><td>A unit of work with data, status, priority, result and timestamps</td></tr>
+<tr><td>Task pool</td><td>TaskPool</td><td>Public entry point for immediate tasks: submission, queue, workers and results</td></tr>
+<tr><td>Scheduler</td><td>TaskScheduler</td><td>Adds delayed, submit-at, fixed-interval and Cron scheduling on top of the pool</td></tr>
+<tr><td>Executor</td><td>TaskExecutor / Executor</td><td>The component that runs tasks: async, thread or process</td></tr>
+<tr><td>Worker</td><td>Worker</td><td>Concurrent unit that pulls tasks and invokes the executor</td></tr>
+<tr><td>Queue</td><td>Queue</td><td>Priority-ordered set of pending tasks with a capacity limit</td></tr>
+<tr><td>Prefetch</td><td>Prefetch</td><td>Workers fetch tasks in batches ahead of time to cut dequeue overhead</td></tr>
+<tr><td>Priority</td><td>Priority</td><td>Four levels 0–3, lower is more urgent, FIFO within a level</td></tr>
+<tr><td>Lifecycle</td><td>Lifecycle</td><td>State transitions and events from creation to a terminal state</td></tr>
+<tr><td>Terminal state</td><td>Terminal state</td><td><code>success</code> / <code>failed</code> / <code>cancelled</code>; no further transitions</td></tr>
+<tr><td>Retry</td><td>Retry</td><td>Re-enqueue after an execution error with a linear delay</td></tr>
+<tr><td>Timeout</td><td>Timeout</td><td><code>task_timeout</code> bounds one execution; <code>ttl</code> bounds the task lifetime</td></tr>
+<tr><td>Heartbeat</td><td>Heartbeat</td><td>Redis-mode node liveness report used for failure detection</td></tr>
+<tr><td>Reclaimer</td><td>Reclaimer</td><td>Redis-mode component that adopts tasks from lost nodes or expired runs</td></tr>
+<tr><td>Dead letter</td><td>Dead letter</td><td>Records of tasks that exhausted retries or failed reclaim; Redis mode only</td></tr>
+<tr><td>Checkpoint</td><td>Checkpoint</td><td>Persisted snapshot of in-task progress used to resume</td></tr>
+<tr><td>Parent / child task</td><td>Parent / child task</td><td>Linked through <code>parent_task_id</code>; not aggregated automatically</td></tr>
+<tr><td>Blackboard</td><td>Memory context store</td><td>In-process shared context available on the Memory backend only</td></tr>
+<tr><td>Event bus</td><td>EventBus</td><td>Delivers lifecycle events to subscribers asynchronously</td></tr>
+<tr><td>Metrics snapshot</td><td>Metrics snapshot</td><td>Counters and aggregates returned by <code>get_metrics()</code> without loading task entities</td></tr>
+</tbody>
+</table>
+
+<h2>Three easy-to-confuse pairs</h2>
+<table>
+<thead><tr><th>Pair</th><th>Difference</th></tr></thead>
+<tbody>
+<tr><td><code>ttl</code> vs <code>task_timeout</code></td><td><code>ttl</code> is the task lifetime and reclaim threshold; <code>task_timeout</code> forcibly interrupts a single execution. Setting only one leaves a blind spot.</td></tr>
+<tr><td><code>cancel()</code> vs <code>delete()</code></td><td>Cancel removes the queue entry and marks the task <code>cancelled</code> but does not undo side effects; delete only removes the record and does not interrupt a running task.</td></tr>
+<tr><td><code>report_failure()</code> vs raising</td><td>Use <code>report_failure()</code> when business logic rejects the result: the task is terminated without retry. Execution errors go through automatic retry.</td></tr>
+</tbody>
+</table>
+
+<h2>Continue reading</h2>
+<ul>
+<li>Overall structure and data flow: <a href="/docs/architecture.html">Architecture overview</a></li>
+<li>State transitions and events: <a href="/docs/task-lifecycle.html">Task lifecycle</a></li>
+<li>Metric fields: <a href="/docs/monitoring.html">Monitoring and health checks</a></li>
+<li>Benchmark methodology: <a href="/docs/benchmarks.html">Benchmarks</a></li>
+</ul>
+
+<div class="doc-note"><strong>Doc version:</strong> this page covers NeoTask 1.2.1 (2026-11-22). Terms follow the public 1.x API; planned concepts are marked as such in the <a href="/docs/roadmap.html">roadmap</a>.</div>

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NeoTask 文档版本 · v1.0 最新</title>
-  <meta name="description" content="NeoTask 按版本维护的官方文档。当前最新为 v1.0（基线 v1.1.1），选择与你的 NeoTask 版本对应的文档集。">
+  <meta name="description" content="NeoTask 按版本维护的官方文档。当前最新为 v1.0（基线 v1.2.1），选择与你的 NeoTask 版本对应的文档集。">
   <meta name="keywords" content="NeoTask 文档版本, NeoTask 文档, Python 任务队列文档, NeoTask v1.0, NeoTask 升级">
   <meta name="author" content="NeoPen">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
@@ -40,7 +40,7 @@
         "@type": "CollectionPage",
         "@id": "https://task.helpenx.com/docs/#collection",
         "name": "NeoTask 文档版本",
-        "description": "NeoTask 按版本维护的官方文档，选择与运行版本对应的文档集。",
+        "description": "按版本维护的官方文档。选择与运行版本对应的文档集。",
         "url": "https://task.helpenx.com/docs/",
         "inLanguage": "zh-CN",
         "isPartOf": {
@@ -52,7 +52,7 @@
           {
             "@type": "WebPage",
             "name": "NeoTask v1.0 文档",
-            "description": "覆盖 1.x 系列（当前基线 1.1.1）的安装、配置、核心能力、可靠性与 API；1.x 只做兼容增强，2.0 发布时另设文档线。",
+            "description": "覆盖 1.x 系列（当前基线 1.2.1）的安装、配置、核心能力、可靠性、部署集成与 API；1.x 只做兼容增强，2.0 发布时另设文档线。",
             "url": "https://task.helpenx.com/docs/v1.0/"
           }
         ]
@@ -78,6 +78,9 @@
     ]
   }
   </script>
+  <link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/">
+  <link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/">
+  <link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/">
 </head>
 <body class="docs-page docs-landing">
   <svg class="svg-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -115,7 +118,7 @@
         <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
       </svg>
       <span class="brand-name">NeoTask</span>
-      <span class="brand-version">v1.1.1</span>
+      <span class="brand-version">v1.2.1</span>
     </a>
 
     <nav class="site-nav" id="siteNav" aria-label="主导航">
@@ -125,12 +128,16 @@
       <a class="site-nav-link " href="/changelog.html">更新日志</a>
       <a class="site-nav-link " href="/community.html">社区</a>
       <a class="site-nav-link site-nav-external" href="https://helpenx.com/" target="_blank" rel="noopener">
-        HelpEnx Hub<span class="nav-brand-cn">（星阵工坊）</span>
+        HelpEnx Hub<span class="nav-brand-cn">（星阵万象）</span>
         <svg class="icon icon-xs nav-external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
       </a>
     </nav>
 
     <div class="header-actions">
+      <a class="lang-switch" href="/en/docs/" hreflang="en" lang="en" aria-label="Switch to English">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>
+        <span>EN</span>
+      </a>
       <a class="gh-star" href="https://github.com/neopen/neotask" target="_blank" rel="noopener" aria-label="在 GitHub 上为 NeoTask 加 Star">
         <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.9 5.33.9 11.6c0 4.9 3.17 9.05 7.57 10.52.55.1.75-.24.75-.53v-1.85c-3.08.67-3.73-1.48-3.73-1.48-.5-1.28-1.23-1.62-1.23-1.62-1-.69.08-.68.08-.68 1.11.08 1.7 1.14 1.7 1.14.98 1.69 2.58 1.2 3.2.92.1-.71.39-1.2.7-1.48-2.46-.28-5.05-1.23-5.05-5.48 0-1.21.43-2.2 1.14-2.98-.11-.28-.49-1.4.11-2.92 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.6 1.52.22 2.64.11 2.92.71.78 1.14 1.77 1.14 2.98 0 4.26-2.6 5.2-5.06 5.47.4.35.76 1.03.76 2.07v3.07c0 .29.2.64.76.53a11.1 11.1 0 0 0 7.56-10.52C23.1 5.33 18.27.5 12 .5z"/></svg>
         <span>Star</span>
@@ -159,7 +166,7 @@
         <div class="docs-meta-row">
           <span>1 个文档版本</span>
           <span>最新 v1.0</span>
-          <span>基线 v1.1.1</span>
+          <span>基线 v1.2.1</span>
           <span>简体中文</span>
         </div>
       </div>
@@ -181,14 +188,14 @@
           </div>
           <span class="version-badge">最新</span>
         </div>
-        <p class="version-card-desc">覆盖 1.x 系列（当前基线 1.1.1）的安装、配置、核心能力、可靠性与 API；1.x 只做兼容增强，2.0 发布时另设文档线。</p>
+        <p class="version-card-desc">覆盖 1.x 系列（当前基线 1.2.1）的安装、配置、核心能力、可靠性、部署集成与 API；1.x 只做兼容增强，2.0 发布时另设文档线。</p>
         <dl class="version-card-meta">
-          <div><dt>文档基线</dt><dd>v1.1.1</dd></div>
+          <div><dt>文档基线</dt><dd>v1.2.1</dd></div>
           <div><dt>适用版本</dt><dd>NeoTask 1.x</dd></div>
-          <div><dt>更新于</dt><dd>2026-11-17</dd></div>
-          <div><dt>文档数量</dt><dd>19 篇</dd></div>
+          <div><dt>更新于</dt><dd>2026-11-22</dd></div>
+          <div><dt>文档数量</dt><dd>24 篇</dd></div>
         </dl>
-        <a class="btn btn-primary btn-block" href="/docs/v1.0/">进入 v1.0 文档 <span aria-hidden="true">→</span></a>
+        <a class="btn btn-primary btn-block" href="/docs/v1.0/">进入文档 v1.0 <span aria-hidden="true">→</span></a>
       </article>
       </div>
 
@@ -197,27 +204,27 @@
         <div class="version-policy-grid">
 
           <div>
-            <h3><a href="/docs/v1.0/#start">开始使用 · 3 篇</a></h3>
+            <h3><a href="/docs/v1.0/#start">开始使用 · 5</a></h3>
             <p>安装、配置与生产使用建议。</p>
           </div>
           <div>
-            <h3><a href="/docs/v1.0/#concepts">核心概念 · 7 篇</a></h3>
+            <h3><a href="/docs/v1.0/#concepts">核心概念 · 7</a></h3>
             <p>架构、任务状态、任务关联、优先级、延时与存储。</p>
           </div>
           <div>
-            <h3><a href="/docs/v1.0/#reliability">可靠性 · 6 篇</a></h3>
+            <h3><a href="/docs/v1.0/#reliability">可靠性 · 7</a></h3>
             <p>故障恢复、断点续跑、成本采集、分布式锁、预取与监控。</p>
           </div>
           <div>
-            <h3><a href="/docs/v1.0/#reference">参考 · 2 篇</a></h3>
-            <p>API 签名、返回语义与性能基准。</p>
+            <h3><a href="/docs/v1.0/#reference">参考 · 4</a></h3>
+            <p>API 签名、返回语义、性能基准、开发与术语。</p>
           </div>
           <div>
-            <h3><a href="/docs/v1.0/#roadmap">路线图 · 1 篇</a></h3>
-            <p>1.0 能力边界与后续版本规划。</p>
+            <h3><a href="/docs/v1.0/#roadmap">路线图 · 1</a></h3>
+            <p>1.x 能力边界与后续版本规划。</p>
           </div>
         </div>
-        <p class="version-scope-note">从 <a href="/docs/v1.0/quickstart.html">快速开始</a> 进入，或在 <a href="/docs/v1.0/">版本首页</a> 浏览全部 19 篇文档。</p>
+        <p class="version-scope-note">从 <a href="/docs/v1.0/quickstart.html">快速开始</a> 进入，或在 <a href="/docs/v1.0/">版本首页</a> 浏览全部 24 篇文档。</p>
       </section>
 
       <section class="version-policy">
@@ -261,7 +268,7 @@
           <span class="brand-name">NeoTask</span>
         </a>
         <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
-        <div class="footer-status"><span class="status-dot"></span> v1.1.1 · 发布于 2026-11-15</div>
+        <div class="footer-status"><span class="status-dot"></span> v1.2.1 · 发布于 2026-11-22</div>
       </div>
 
       <div class="footer-col">

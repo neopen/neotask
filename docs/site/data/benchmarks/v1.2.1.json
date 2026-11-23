@@ -1,0 +1,129 @@
+{
+  "version": "1.2.1",
+  "environment": [
+    { "label": "CPU", "value": "Intel Core i7，4 核 8 线程" },
+    { "label": "内存", "value": "16 GB" },
+    { "label": "系统", "value": "Windows 10 19045，64 位" },
+    { "label": "Python", "value": "3.13" },
+    { "label": "存储", "value": "memory（微基准与预取套件）；SQLite / Redis（跨存储历史对照）" },
+    { "label": "旁路组件", "value": "metrics、health check、reporter、reclaimer、heartbeat、dead letter 按套件关闭" }
+  ],
+  "metrics": [
+    {
+      "label": "预取完成吞吐",
+      "value": "4,241",
+      "unit": "tasks/s",
+      "detail": "2,000 个 noop 任务，并发 10，prefetch_size=20；v1.2.1 修复空队列退避后的结果。",
+      "homeDetail": "2,000 个 noop 任务，并发 10，开启预取。",
+      "highlight": true
+    },
+    {
+      "label": "稀疏任务延迟",
+      "value": "1.1–2.2",
+      "unit": "ms",
+      "detail": "关闭预取，空闲 1 秒后提交单条任务，连续 8 次；开启预取为 12.2–26.2 ms。",
+      "homeDetail": "关闭预取时的端到端延迟，空闲后连续 8 次。"
+    },
+    {
+      "label": "队列批量写入",
+      "value": "0.471",
+      "unit": "ms",
+      "detail": "向已有 10,000 条任务的内存队列一次写入 1,000 条，约 212 万条/秒。",
+      "homeDetail": "向 10,000 条队列一次写入 1,000 条。"
+    },
+    {
+      "label": "批量移除",
+      "value": "0.668",
+      "unit": "ms",
+      "detail": "从 11,000 条队列批量移除 1,000 条；惰性墓碑替代整堆重建。",
+      "homeDetail": "从 11,000 条队列批量移除 1,000 条。"
+    }
+  ],
+  "scheduling": {
+    "headers": ["操作", "规模", "配置", "结果", "说明"],
+    "rows": [
+      ["批量写入", "10,000 + 1,000", "memory", "0.471 ms", "约 212 万条/s"],
+      ["批量移除", "11,000 - 1,000", "memory", "0.668 ms", "约 150 万次/s"],
+      ["全部弹出并校验", "10,000", "memory", "无重复、无墓碑泄漏", "不变量校验通过"],
+      ["peek(5)", "10,000", "memory", "0.008 ms", "heapq.nsmallest"],
+      ["回归测试", "单元 + 集成", "v1.2.1", "538 / 87 通过", "12 / 1 跳过"]
+    ]
+  },
+  "io": {
+    "max": 4241,
+    "caption": "完成吞吐 · 2,000 个 noop 任务，10 Worker（线性刻度）",
+    "note": "预取关闭 3,156 tasks/s；预取 20 为 4,241 tasks/s。对比数据来自同一台机器、同一轮参数。",
+    "headers": ["配置", "完成吞吐", "P50", "P95"],
+    "rows": [
+      ["关闭预取", "3,156/s", "1.20 ms", "3.07 ms"],
+      ["预取 20", "4,241/s", "11.24 ms", "15.14 ms"]
+    ],
+    "bars": [
+      { "label": "关闭预取", "value": 3156, "display": "3,156/s" },
+      { "label": "预取 20", "value": 4241, "display": "4,241/s" }
+    ]
+  },
+  "stress": {
+    "headers": ["场景", "规模", "配置", "结果", "备注"],
+    "rows": [
+      ["稀疏任务 · 关闭预取", "8 次", "空闲 1s", "1.1–2.2 ms", "低延迟推荐"],
+      ["稀疏任务 · 开启预取", "8 次", "空闲 1s", "12.2–26.2 ms", "含 10ms 合并窗口"],
+      ["预取空队列唤醒", "连续提交", "v1.2.1", "无 0.5s 退避", "P0 修复"],
+      ["批量取消", "1,000", "memory", "0.668 ms", "惰性墓碑"],
+      ["队列满载", "10,000", "三后端", "返回 False / QueueFullError", "语义一致"]
+    ],
+    "note": "回归验证：单元测试 538 通过 / 12 跳过；集成测试 87 通过 / 1 跳过。1 个计时敏感用例在全量并发下偶发，单独运行通过。"
+  },
+  "sqlite": {
+    "rows": [
+      {
+        "mode": "端到端 · Memory",
+        "workers": 10,
+        "ok": true,
+        "outcome": "4,761 tasks/s，p50 297 ms",
+        "meta": [
+          { "label": "规模", "value": "2,000" },
+          { "label": "耗时", "value": "0.42 s" }
+        ]
+      },
+      {
+        "mode": "端到端 · SQLite",
+        "workers": 4,
+        "ok": true,
+        "outcome": "519 tasks/s，p50 1,036 ms",
+        "meta": [
+          { "label": "规模", "value": "1,000" },
+          { "label": "耗时", "value": "1.93 s" }
+        ]
+      },
+      {
+        "mode": "端到端 · Redis",
+        "workers": 4,
+        "ok": true,
+        "outcome": "232 tasks/s，p50 2,547 ms",
+        "meta": [
+          { "label": "规模", "value": "1,000" },
+          { "label": "耗时", "value": "4.31 s" }
+        ]
+      }
+    ]
+  },
+  "prefetch": {
+    "caption": "稀疏任务端到端延迟 · 空闲 1 秒后提交单条（柱越短越好）",
+    "note": "关闭预取 1.1–2.2 ms；开启预取 12.2–26.2 ms。预取的 10 ms 合并窗口换取批量吞吐，短任务且要求低延迟时应关闭。",
+    "bars": [
+      { "label": "关闭预取", "value": 2.2, "display": "≤ 2.2 ms" },
+      { "label": "开启预取", "value": 26.2, "display": "≤ 26.2 ms" }
+    ]
+  },
+  "eventbus": {
+    "headers": ["能力", "配置", "行为"],
+    "rows": [
+      ["无订阅事件", "v1.2 起", "不再入队，降低空转"],
+      ["有界队列", "event_queue_max_size", "队列满时丢弃新事件并计数"],
+      ["慢回调告警", "event_slow_handler_threshold=1.0s", "记录告警，不阻断任务执行"],
+      ["周期监控快照", "on_metrics(interval=1.0)", "推送计数与队列深度，不加载任务实体"],
+      ["终态清理", "enabled 默认开启", "按 ttl 清理 SUCCESS/FAILED/CANCELLED"]
+    ]
+  }
+}

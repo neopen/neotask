@@ -447,11 +447,12 @@
   }
 
   // Docs version switcher
+  var docsPrefix = window.location.pathname.indexOf('/en/') === 0 ? '/en/docs/' : '/docs/';
   document.querySelectorAll('[data-docs-version]').forEach(function (select) {
     select.addEventListener('change', function () {
       var id = select.value;
       if (!/^[a-z0-9.-]+$/.test(id)) return;
-      window.location.href = '/docs/' + id + '/';
+      window.location.href = docsPrefix + id + '/';
     });
   });
 

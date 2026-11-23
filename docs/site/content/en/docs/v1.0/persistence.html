@@ -1,0 +1,102 @@
+<p>The storage backend determines whether task records, queues and periodic definitions survive a process exit. NeoTask 1.x provides three implementations — memory, SQLite and Redis — selected with <code>storage_type</code>.</p>
+
+<h2>Comparison</h2>
+<table>
+<thead><tr><th></th><th>memory</th><th>SQLite</th><th>Redis</th></tr></thead>
+<tbody>
+<tr><td>Dependencies</td><td>None</td><td><code>aiosqlite</code> (core dependency)</td><td><code>neotask[redis]</code></td></tr>
+<tr><td>Task records</td><td>In-process</td><td>Single file</td><td>Redis keys</td></tr>
+<tr><td>Queue</td><td>Heap</td><td>Table</td><td>ZSET</td></tr>
+<tr><td>Cross-process sharing</td><td>No</td><td>Limited (same file)</td><td>Yes</td></tr>
+<tr><td>Failure reclamation</td><td>None</td><td>None</td><td>Yes</td></tr>
+<tr><td>Suitable scale</td><td>Development and testing</td><td>Single host, low volume</td><td>Multiple nodes, high concurrency</td></tr>
+</tbody>
+</table>
+
+<h2>memory</h2>
+<pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
+
+pool = TaskPool(executor=handle, config=TaskPoolConfig.memory())</code></pre>
+<p>Tasks, the queue and periodic definitions exist only in the current process. Everything is lost when the process exits, and no heartbeat, reclaimer or dead letter queue is created. The Blackboard shared context is available only on this backend and is likewise not persisted.</p>
+
+<h2>SQLite</h2>
+<pre><code class="language-python">config = TaskPoolConfig.sqlite("/var/lib/neotask/neotask.db")
+pool = TaskPool(executor=handle, config=config)</code></pre>
+
+<p>The database contains four groups of tables:</p>
+<table>
+<thead><tr><th>Table</th><th>Contents</th></tr></thead>
+<tbody>
+<tr><td><code>tasks</code></td><td>Task data, status, priority, node, retry count, result, progress, failure reason, parent-child links, cost and duration</td></tr>
+<tr><td><code>queue</code></td><td>ID, priority and enqueue time of tasks waiting to execute</td></tr>
+<tr><td><code>task_checkpoints</code></td><td>Checkpoint state for resuming, stored by <code>(task_id, version)</code></td></tr>
+<tr><td><code>periodic_tasks</code> / <code>periodic_executions</code></td><td>Periodic task definitions and execution records (when persistence is enabled)</td></tr>
+</tbody>
+</table>
+
+<div class="doc-warning"><strong>Concurrent write limits:</strong> SQLite writes on a single connection are already serialized, so concurrent submissions from multiple workers in the same process do not raise <code>database is locked</code>. Writes still execute one after another, and additional workers do not produce linear scaling. In the 1.2.1 end-to-end comparison, 1,000 tasks with 4 workers reached 519 tasks/s at P50 1.0 s; the Memory backend measured 4,761 tasks/s on the same path. A single writer is still recommended in production; switch to Redis when you need high-concurrency writes.</div>
+
+<p>The path must be writable and its directory must already exist. In containers, mount a persistent volume rather than placing the file on the container's ephemeral layer.</p>
+
+<h2>Redis</h2>
+<pre><code class="language-python">config = TaskPoolConfig.redis(
+    "redis://127.0.0.1:6379/0",
+    node_id="worker-1",
+)
+pool = TaskPool(executor=handle, config=config)</code></pre>
+
+<p>Main key spaces:</p>
+<table>
+<thead><tr><th>Key</th><th>Type</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>task:{task_id}</code></td><td>String / JSON</td><td>Task record</td></tr>
+<tr><td><code>neotask:ckpt:{task_id}</code></td><td>Hash</td><td>Checkpoint versions; the field is the version number</td></tr>
+<tr><td><code>queue:priority</code></td><td>ZSET</td><td>Priority queue; the score is the priority</td></tr>
+<tr><td><code>queue:delayed</code></td><td>ZSET</td><td>Delay index in the repository layer</td></tr>
+<tr><td><code>lock:task:{task_id}</code></td><td>String</td><td>Per-task mutex lock</td></tr>
+<tr><td><code>neotask:nodes</code></td><td>Set</td><td>Set of nodes</td></tr>
+<tr><td><code>neotask:node:{node_id}</code></td><td>Hash</td><td>Node information and heartbeat</td></tr>
+<tr><td><code>neotask:dead_letter</code></td><td>List</td><td>Dead letter queue</td></tr>
+<tr><td><code>periodic_task:{id}</code></td><td>String</td><td>Periodic task definition</td></tr>
+<tr><td><code>periodic_tasks</code></td><td>Set</td><td>Set of periodic task IDs</td></tr>
+</tbody>
+</table>
+
+<p>All nodes must connect to the same Redis database and use a unique <code>node_id</code>. Redis mode enables node heartbeats, task reclamation, the dead letter queue and distributed locks. <code>TaskPoolConfig.redis()</code> sets <code>lock_type</code> to <code>"redis"</code> automatically; if you construct <code>TaskPoolConfig(storage_type="redis", ...)</code> by hand, <code>lock_type</code> still defaults to <code>"memory"</code>, so multi-node deployments must set it to <code>"redis"</code> explicitly.</p>
+
+<h2>Actual persistence scope</h2>
+<table>
+<thead><tr><th>Data</th><th>Persisted</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Task records and results</td><td>Yes (SQLite / Redis)</td><td>Preserved across restarts once written; terminal records are cleaned up per the retention period</td></tr>
+<tr><td>Priority queue</td><td>Yes (SQLite / Redis)</td><td>Tasks not yet dequeued can be recovered</td></tr>
+<tr><td>Periodic task definitions</td><td>Yes (persistence required)</td><td>Except in memory mode</td></tr>
+<tr><td>Checkpoints</td><td>Yes (SQLite / Redis)</td><td>Memory keeps them in-process only; deleted together with the task or when terminal records are cleaned up</td></tr>
+<tr><td>Blackboard context</td><td>No</td><td>Provided only by the memory backend; lost on process exit</td></tr>
+<tr><td>Delayed heap / time wheel</td><td>No</td><td>In-process only; waiting tasks are not enqueued automatically after a restart</td></tr>
+<tr><td>Metrics, events, progress callbacks</td><td>No</td><td>Runtime data</td></tr>
+</tbody>
+</table>
+
+<h2>Automatic upgrade of existing databases (1.1)</h2>
+<p>1.1.0 adds seven columns to task records — <code>failure_reason</code>, <code>checkpoint_version</code>, <code>parent_task_id</code>, <code>estimated_cost</code>, <code>cost_tracking</code>, <code>queue_wait_ms</code> and <code>duration_ms</code> — and adds the <code>task_checkpoints</code> table. Upgrading from 1.0.x requires no manual migration:</p>
+<ul>
+<li>When an existing SQLite file is opened, the startup path issues <code>ALTER TABLE ADD COLUMN</code> for each missing column, and a missing <code>task_checkpoints</code> table is created automatically;</li>
+<li>1.1.1 adds <code>TaskRepository.ensure_ready()</code>; <code>TaskPool.start()</code> returns only after the schema is ready, so queries at startup cannot hit missing columns;</li>
+<li>When several repositories or processes open the same old database at the same time, repeated column additions are treated as idempotent and no longer crash with <code>duplicate column name</code>; other errors are still raised.</li>
+</ul>
+<p>The automatic upgrade only adds columns and default values; it does not move data and does not replace migration scripts between backends. Back up the SQLite file before upgrading. New columns read as their default values on old records, so no backfill is needed.</p>
+
+<h2>Cleanup</h2>
+<p>1.0.8 enables terminal cleanup by default: every <code>terminal_cleanup_interval</code> (60 seconds by default) a scan deletes <code>success</code> / <code>failed</code> / <code>cancelled</code> records older than the retention period. The retention period comes from <code>terminal_retention_seconds</code>; 0 means reusing each task's own <code>ttl</code> (3600 seconds by default).</p>
+
+<pre><code class="language-python">config = TaskPoolConfig(
+    enable_terminal_cleanup=True,
+    terminal_cleanup_interval=60.0,
+    terminal_retention_seconds=7 * 24 * 3600,  # keep terminal records for 7 days
+)
+
+# trigger one cleanup manually; returns the number of deleted records
+pool.cleanup_terminal_tasks()</code></pre>
+
+<p>A task-level <code>ttl</code> is also what the reclaimer uses to detect a <code>running</code> timeout, so it affects both failure reclamation and the default terminal retention period. To keep audit records long term, disable automatic cleanup or set a larger <code>terminal_retention_seconds</code> and archive records yourself. Checkpoints of cleaned-up tasks are deleted as well; the dead letter queue still expires per <code>dead_letter_ttl</code> (7 days by default) and is unaffected by terminal cleanup.</p>

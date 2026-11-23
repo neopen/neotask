@@ -1,4 +1,4 @@
-<p>公开入口为 <code>TaskPool</code> 与 <code>TaskScheduler</code>。除特别标注外，每个同步方法都有一个同名的 <code>_async</code> 版本，参数与返回值一致。当前文档基线为 1.1.1，标注“1.1”的方法与事件为新增能力。</p>
+<p>公开入口为 <code>TaskPool</code> 与 <code>TaskScheduler</code>。除特别标注外，每个同步方法都有一个同名的 <code>_async</code> 版本，参数与返回值一致。当前文档基线为 1.2.1，标注“1.1”与“1.2”的方法与事件为新增能力。</p>
 
 <pre><code class="language-python">from neotask import TaskPool, TaskScheduler, TaskPoolConfig, SchedulerConfig</code></pre>
 
@@ -84,11 +84,14 @@
 <thead><tr><th>方法</th><th>说明</th></tr></thead>
 <tbody>
 <tr><td><code>get_stats()</code></td><td>队列、任务计数、指标、回收与预取摘要</td></tr>
+<tr><td><code>get_metrics()</code></td><td>1.2 轻量监控快照：计数、各优先级队列深度、最老待处理任务年龄、重试队列、存储健康与断点数量，不加载任务实体</td></tr>
+<tr><td><code>on_metrics(handler, interval=60)</code></td><td>1.2 周期推送 <code>get_metrics()</code> 快照；返回取消订阅的函数</td></tr>
 <tr><td><code>get_worker_stats()</code></td><td>各 Worker 的忙碌状态与计数</td></tr>
 <tr><td><code>get_health_status()</code></td><td>存储、队列、系统健康检查；缓存 5 秒</td></tr>
 <tr><td><code>get_queue_size()</code></td><td>优先队列与延时队列总数</td></tr>
 </tbody>
 </table>
+<p><code>get_metrics()</code> 只读取计数与聚合查询，适合探针与高频上报；需要完整任务明细时仍使用 <code>get_stats()</code> 或 <code>get_task()</code>。详见 <a href="/docs/monitoring.html">监控与健康检查</a>。</p>
 
 <h3>锁与节点</h3>
 <table>
@@ -189,6 +192,7 @@
 <tr><td><code>TaskNotFoundError</code></td><td>等待不存在的任务</td></tr>
 <tr><td><code>TaskAlreadyExistsError</code></td><td>使用已存在的 <code>task_id</code> 提交，包括任务已进入终态</td></tr>
 <tr><td><code>QueueFullError</code></td><td>队列达到 <code>queue_max_size</code></td></tr>
+<tr><td><code>BatchSubmitError</code></td><td>批量提交中存在失败项且已回滚；读取 <code>index</code> 与 <code>cause</code> 定位失败项</td></tr>
 <tr><td><code>TimeoutError</code></td><td><code>wait_for_result</code> 超时</td></tr>
 <tr><td><code>UnsupportedFeatureError</code></td><td>当前存储后端不支持该能力，例如非 memory 后端调用 Blackboard</td></tr>
 <tr><td><code>TaskError</code></td><td>已定义但当前版本未使用</td></tr>

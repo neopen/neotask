@@ -1,0 +1,89 @@
+<p>Since 1.1, task records keep execution duration and business cost. NeoTask computes duration automatically; cost requires the executor to report tokens, API call counts and estimated charges. NeoTask only accumulates and queries — it does not price, bill or reconcile.</p>
+
+<h2>Automatic duration fields</h2>
+<table>
+<thead><tr><th>Field</th><th>How it is computed</th><th>When it is written</th></tr></thead>
+<tbody>
+<tr><td><code>queue_wait_ms</code></td><td><code>started_at - created_at</code></td><td>When the task starts running</td></tr>
+<tr><td><code>duration_ms</code></td><td><code>completed_at - started_at</code></td><td>On entering a terminal state</td></tr>
+</tbody>
+</table>
+
+<p>Both fields appear in the return values of <code>get_result()</code> and <code>get_task()</code>. Timing restarts when a task is retried and the previous round's values are overwritten; cost behaves the opposite way, with consumption from every run accumulating.</p>
+
+<h2>Report cost</h2>
+<pre><code class="language-python">from neotask import report_cost
+
+async def llm_task(data):
+    response = await call_model(data["prompt"])
+    report_cost(
+        tokens_in=120,
+        tokens_out=48,
+        api_calls=1,
+        estimated_cost=0.0012,
+        currency="USD",
+    )
+    return {"text": response}</code></pre>
+
+<p><code>report_cost()</code> is a synchronous function: call it directly from async tasks and from sync tasks running in a thread, with no <code>await</code>. The process executor has no such context, so call <code>pool.report_cost(task_id, ...)</code> from the parent process instead.</p>
+
+<table>
+<thead><tr><th>Parameter</th><th>Default</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><code>tokens_in</code> / <code>tokens_out</code></td><td><code>0</code></td><td>Input and output token counts, accumulated</td></tr>
+<tr><td><code>api_calls</code></td><td><code>0</code></td><td>Number of external API calls, accumulated</td></tr>
+<tr><td><code>estimated_cost</code></td><td><code>None</code></td><td>Charge for this report; when <code>None</code> only the other fields are accumulated</td></tr>
+<tr><td><code>currency</code></td><td><code>None</code></td><td>Currency identifier, such as <code>USD</code></td></tr>
+</tbody>
+</table>
+
+<ul>
+<li>Repeated reports accumulate per field. <code>estimated_cost</code> in the task record is the total, while <code>cost_tracking</code> keeps the breakdown and the currency.</li>
+<li>The currency is fixed by the first report; if a task reports different currencies it is marked <code>MIXED</code>, so amounts in different currencies are never silently summed.</li>
+<li>Terminal tasks still accept additional cost, which suits the case where the parent process only receives usage data after a child task finishes.</li>
+<li>Reporting inside an executor returns <code>bool</code>; outside a task context (such as a process executor) it returns <code>False</code>.</li>
+</ul>
+
+<h2>Aggregate queries</h2>
+<pre><code class="language-python">summary = pool.get_cost_summary(child_ids)
+print(summary)
+# {
+#   "task_count": 20, "tasks_with_cost": 18,
+#   "tokens_in": 2400, "tokens_out": 960,
+#   "api_calls": 20, "estimated_cost": 0.024, "currency": "USD"
+# }
+
+total = pool.get_cost_summary()   # aggregates all tasks when task_ids=None</code></pre>
+
+<table>
+<thead><tr><th>Field</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><code>task_count</code></td><td>Number of tasks included in the aggregation</td></tr>
+<tr><td><code>tasks_with_cost</code></td><td>Number of tasks with at least one cost record</td></tr>
+<tr><td><code>tokens_in</code> / <code>tokens_out</code> / <code>api_calls</code></td><td>Accumulated breakdown values</td></tr>
+<tr><td><code>estimated_cost</code></td><td>Accumulated amount; a float, not suitable for financial settlement</td></tr>
+<tr><td><code>currency</code></td><td>A single currency, an empty string, or <code>MIXED</code></td></tr>
+</tbody>
+</table>
+
+<p>Aggregation happens in the storage layer; task records are not read into the process one by one. IDs in <code>task_ids</code> that do not exist are ignored rather than raising an error.</p>
+
+<h2>Cost events</h2>
+<pre><code class="language-python">async def on_cost(event):
+    print(event.task_id, event.data)
+    # {"tokens_in": 120, "tokens_out": 48, "api_calls": 1,
+    #  "estimated_cost": 0.0012, "currency": "USD"}
+
+pool.event_bus.subscribe("task.cost_reported", on_cost)</code></pre>
+
+<p>The <code>task.cost_reported</code> payload is the breakdown of <strong>this report</strong>, not a cumulative total. <code>event.data</code> contains only the fields passed in this call; if <code>currency</code> was omitted the key is absent. The event has no dedicated convenience method; subscribe with <code>event_bus.subscribe()</code>.</p>
+
+<h2>Boundaries</h2>
+<ul>
+<li>Cost is supplied entirely by the caller. NeoTask does not parse model pricing and does not validate the unit of an amount.</li>
+<li>Cost from retries and manual retries is kept and accumulated; a task that ultimately fails does not lose the consumption already recorded.</li>
+<li>Terminal cleanup deletes cost details together with the task; for long-term cost reporting, aggregate periodically and archive externally.</li>
+<li>Events may be dropped by the bounded queue, so treat the stored result of <code>get_cost_summary()</code> as authoritative for cost totals.</li>
+</ul>
+
+<div class="doc-note"><strong>Related pages:</strong> <a href="/docs/api-reference.html">API reference</a> · <a href="/docs/task-context.html">Task relationships and shared context</a> · <a href="/docs/monitoring.html">Monitoring and health checks</a> · <a href="/docs/task-lifecycle.html">Task lifecycle</a></div>

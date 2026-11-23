@@ -1,0 +1,168 @@
+<p>NeoTask has a small integration surface: create a pool inside your application process, submit tasks, and optionally subscribe to events or query metrics. The difficulty is not wiring it up but deciding which work should become asynchronous and how results flow back into the business.</p>
+
+<h2 id="business-system">Integrating with business systems</h2>
+<p>Split a business action into three layers:</p>
+<ol>
+<li><strong>Entry layer</strong>: a web request, message consumer or CLI validates and submits, then returns a <code>task_id</code>.</li>
+<li><strong>Execution layer</strong>: a worker calls domain services to perform the slow work.</li>
+<li><strong>Write-back layer</strong>: event callbacks or polling write status back to business tables or notify the frontend.</li>
+</ol>
+<pre><code class="language-python">from neotask import TaskPool
+
+pool = TaskPool(executor=handle_export)
+
+def request_export(user_id: str, query: dict) -> str:
+    return pool.submit({"user_id": user_id, "query": query}, priority=1)</code></pre>
+<div class="tips"><p>Do not depend on request context (sessions, request objects) inside a task. Serialize the needed parameters into <code>data</code> and let the worker reload its resources.</p></div>
+
+<h2 id="http-api">HTTP / API integration</h2>
+<p>Typical flow: the submit endpoint returns a task ID, a query endpoint reads status, and completion events handle callbacks or write results.</p>
+<pre><code class="language-python">from fastapi import FastAPI, HTTPException
+from neotask import TaskPool
+
+app = FastAPI()
+pool = TaskPool(executor=handle)
+
+@app.post("/exports")
+def create_export(payload: dict):
+    task_id = pool.submit({"query": payload}, priority=1)
+    return {"task_id": task_id, "status": "queued"}
+
+@app.get("/tasks/{task_id}")
+def get_task(task_id: str):
+    result = pool.get_result(task_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    return result</code></pre>
+<ul>
+<li>Keep submit endpoints idempotent: derive a request key in the business layer so double clicks do not create duplicate tasks.</li>
+<li>Query endpoints are read-only and trigger no side effects; for waiting, use short polling or SSE instead of blocking an HTTP request.</li>
+<li>Return <code>202 Accepted</code> with the task query URL so the frontend can render progress.</li>
+<li>Pair rate limiting with queue capacity: when the queue is full return 429 or a degraded message instead of retrying forever.</li>
+</ul>
+
+<h2 id="python">Python integration</h2>
+<p>When integrating in Python code, first decide whether a running event loop is already present:</p>
+<table>
+<thead><tr><th>Context</th><th>Recommended API</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>Scripts, sync functions</td><td><code>submit()</code> / <code>wait_for_result()</code></td><td>Drives the background loop safely</td></tr>
+<tr><td>Async services, coroutines</td><td><code>submit_async()</code> / <code>wait_for_result_async()</code></td><td>Avoids nested event loops</td></tr>
+<tr><td>Framework lifecycle</td><td><code>with</code> / <code>async with</code></td><td>Guarantees shutdown and resource release</td></tr>
+<tr><td>Application startup hook</td><td><code>pool.start()</code></td><td>Warms up workers and storage connections</td></tr>
+</tbody>
+</table>
+<pre><code class="language-python">from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from neotask import TaskPool, TaskPoolConfig
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.pool = TaskPool(executor=handle, config=TaskPoolConfig.sqlite("/data/app.db"))
+    yield
+    app.state.pool.shutdown(graceful=True, timeout=30)
+
+app = FastAPI(lifespan=lifespan)</code></pre>
+<p>Sync frameworks such as Django / Flask can create the pool during initialization and close it in an exit hook. With multi-process deployment (gunicorn workers), keep SQLite single-writer or switch to Redis.</p>
+
+<h2 id="third-party">Third-party components</h2>
+<table>
+<thead><tr><th>Component</th><th>Integration</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Redis</td><td><code>TaskPoolConfig.redis(url)</code></td><td>Install <code>neotask[redis]</code>; the lock switches to the Redis implementation</td></tr>
+<tr><td>SQLite</td><td><code>TaskPoolConfig.sqlite(path)</code></td><td>Local disk; single writer</td></tr>
+<tr><td>croniter</td><td>Core dependency, used by <code>submit_cron()</code></td><td>Five-field expressions, validated at registration</td></tr>
+<tr><td>psutil</td><td><code>neotask[monitor]</code></td><td>System metrics collection; related fields degrade when absent</td></tr>
+<tr><td>Prometheus / log platforms</td><td>Consume <code>get_metrics()</code> or <code>on_metrics()</code></td><td>Your application exposes the endpoint; NeoTask does not bind to a monitoring system</td></tr>
+<tr><td>HTTP clients</td><td>Call inside executors</td><td>Set timeouts and retries; reuse client connections</td></tr>
+</tbody>
+</table>
+<p>Third-party SDKs are often not thread-safe. With <code>ThreadExecutor</code> or high concurrency, create a client per execution context, or use a connection pool you have verified to be concurrency-safe.</p>
+
+<h2 id="agent">Agent integration</h2>
+<p>A single agent tool call is usually slow, costs money and may fail and retry, which is exactly what NeoTask covers:</p>
+<pre><code class="language-python">from neotask import TaskPool, report_progress, report_cost
+
+async def run_agent_step(data):
+    for i, step in enumerate(data["steps"]):
+        await report_progress((i + 1) / len(data["steps"]), step["name"])
+        result = await call_tool(step)
+        await report_cost(
+            tokens_in=result.usage.input_tokens,
+            tokens_out=result.usage.output_tokens,
+            api_calls=1,
+            estimated_cost=result.cost,
+            currency="USD",
+        )
+    return {"ok": True}
+
+pool = TaskPool(executor=run_agent_step)
+parent = pool.submit({"steps": plan}, priority=0)
+for sub in subtasks:
+    pool.submit({"steps": [sub]}, parent_task_id=parent)</code></pre>
+<ul>
+<li><strong>Priority</strong>: interactive conversations use <code>CRITICAL</code>; batch analysis uses <code>LOW</code>.</li>
+<li><strong>Cost</strong>: accumulate tokens and spend with <code>report_cost()</code>, then aggregate with <code>get_cost_summary()</code>.</li>
+<li><strong>Recovery</strong>: call <code>save_checkpoint()</code> after each step of a multi-step agent so it does not rerun everything.</li>
+<li><strong>Parent/child links</strong>: build the call tree with <code>parent_task_id</code>; aggregating status and cost is the caller's job.</li>
+</ul>
+
+<h2 id="workflow">Workflow integration</h2>
+<p>NeoTask executes single tasks and does not parse a DAG. The workflow belongs to a control plane above it:</p>
+<pre><code class="language-python"># An orchestration layer such as NeoFlow decides dependencies and branches
+for node in ready_nodes(dag):
+    task_id = pool.submit(
+        {"node": node.name, "inputs": node.inputs},
+        priority=node.priority,
+    )
+    dag.mark_submitted(node.name, task_id)
+
+# Completion events drive the next step
+async def on_completed(task):
+    dag.mark_done(task.task_id, task.result)
+    for nxt in dag.ready_after(task.task_id):
+        pool.submit({"node": nxt.name, "inputs": nxt.inputs})</code></pre>
+<p>The benefit: orchestration logic is tested and evolved independently, NeoTask keeps stable execution semantics, and workflow state does not depend on task-record retention.</p>
+
+<h2 id="examples">Integration examples</h2>
+<h3>Webhook delivery with retries</h3>
+<pre><code class="language-python">import httpx
+from neotask import TaskPool, TaskPoolConfig
+
+async def deliver(data):
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(data["url"], json=data["payload"])
+        resp.raise_for_status()
+        return {"status": resp.status_code}
+
+pool = TaskPool(
+    executor=deliver,
+    config=TaskPoolConfig(max_retries=5, retry_delay=2.0),
+)
+pool.submit({"url": "https://example.com/hook", "payload": {"id": 1}}, priority=1)</code></pre>
+
+<h3>Scheduled sync plus metric reporting</h3>
+<pre><code class="language-python">from neotask import SchedulerConfig, TaskScheduler
+
+scheduler = TaskScheduler(
+    executor=sync_catalog,
+    config=SchedulerConfig.redis("redis://redis:6379/0"),
+)
+scheduler.submit_interval({"source": "catalog"}, interval_seconds=300, name="catalog-sync")
+
+def push(snapshot):
+    statsd.gauge("neotask.queue.pending", snapshot["pending"])
+    statsd.gauge("neotask.oldest_pending_age", snapshot["oldest_pending_age_seconds"] or 0)
+
+scheduler.on_metrics(push, interval=10)</code></pre>
+
+<h3>Write results back to a business table</h3>
+<pre><code class="language-python">async def on_completed(task):
+    await db.execute(
+        "UPDATE exports SET status='done', file=:file WHERE task_id=:id",
+        {"id": task.task_id, "file": task.result["file"]},
+    )
+
+pool.on_completed(on_completed)</code></pre>
+
+<div class="doc-note"><strong>Related:</strong> deployment shapes in <a href="/en/docs/deployment.html">Deployment</a>; custom executors and recovery in <a href="/en/docs/best-practices.html">Advanced usage</a>.</div>

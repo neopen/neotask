@@ -54,16 +54,17 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 <thead><tr><th>需求</th><th>选择</th><th>原因</th></tr></thead>
 <tbody>
 <tr><td>开发、单元测试</td><td>memory</td><td>无外部依赖，进程退出即清空</td></tr>
-<tr><td>单机低频持久化</td><td>SQLite</td><td>单写入者 76.5 tasks/s（突发 87.4）；写入已串行化，多 Worker 吞吐反而下降（2 Worker 61.8，4 Worker 41.3）</td></tr>
+<tr><td>单机低频持久化</td><td>SQLite</td><td>端到端 519 tasks/s（1,000 任务、4 Worker、P50 1.0 s）；写入已串行化，多 Worker 不会带来线性扩展</td></tr>
 <tr><td>高并发或跨节点</td><td>Redis</td><td>共享队列、节点心跳、故障回收与死信</td></tr>
 </tbody>
 </table>
 
 <h2>预取</h2>
 <ul>
-<li>1.0.8 起预取由消费需求触发，不再按固定定时批量拉取。短任务场景仍需实测：基准中关闭预取为 1,453 tasks/s，<code>prefetch_size=20</code> 为 1,211，100 为 1,538，差异落在单轮波动范围内。</li>
+<li>预取用批量出队换吞吐：1.2.1 基准中 <code>prefetch_size=20</code> 完成吞吐 4,241 tasks/s，关闭预取 3,156 tasks/s；代价是稀疏任务延迟从 1.1–2.2 ms 升到 12.2–26.2 ms。</li>
+<li>低延迟、交互式触发或提交稀疏的场景关闭预取，或把 <code>prefetch_size</code> 降到 5 以下。</li>
 <li>预取会一次取出多个任务，跨优先级的严格顺序不再成立；对顺序敏感的场景应关闭预取。</li>
-<li>需要调整时优先修改 <code>prefetch_size</code>，本地队列容量和触发阈值都由它推导。</li>
+<li>需要调整时优先修改 <code>prefetch_size</code>，本地队列容量和触发阈值都由它推导；1.2.1 起空队列不再叠加指数退避，稀疏任务不会被预取拖到数百毫秒。</li>
 </ul>
 
 <h2>事件总线</h2>
@@ -89,8 +90,9 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 
 <h2>可观测性</h2>
 <ul>
-<li><code>get_stats()</code> 适合按需拉取；高频轮询会增加存储查询压力。</li>
-<li><code>get_health_status()</code> 结果缓存 5 秒，不会每次调用都触发检查。</li>
+<li>高频探针与周期上报用 1.2 的 <code>get_metrics()</code> 或 <code>on_metrics(callback, interval)</code>：只读计数与聚合，不加载任务实体，开销远低于 <code>get_stats()</code>。</li>
+<li><code>get_stats()</code> 适合按需人工排查；高频轮询会增加存储查询压力。</li>
+<li><code>get_health_status()</code> 结果缓存 5 秒，不会每次调用都触发检查；就绪 / 存活探针用它，不要用 <code>get_stats()</code>。</li>
 <li>进度上报是尽力而为：任务已结束或存储暂不可写时会被丢弃，不影响任务结果。</li>
 <li><code>get_result()</code> 提供 <code>queue_wait_ms</code>、<code>duration_ms</code> 与成本字段；跨任务汇总使用 <code>get_cost_summary()</code>，不要用事件计数代替存储查询。</li>
 <li>指标依赖事件投递；事件被丢弃或订阅者过慢时计数会滞后。排查时同时查看 <code>pool.event_bus.get_stats()</code>。</li>
@@ -112,7 +114,7 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 <tr><td>历史保留</td><td>需要事后查询任务结果时，已调大 <code>terminal_retention_seconds</code>，或关闭自动清理并自行归档</td></tr>
 <tr><td>周期任务</td><td>每个周期定义只有一个调度者；SQLite / Redis 模式下已开启持久化</td></tr>
 <tr><td>停机</td><td>使用 <code>shutdown(graceful=True, timeout=...)</code>；预取队列与执行中任务能被排空或回收</td></tr>
-<tr><td>监控</td><td>已接入外部指标系统；健康检查结果有告警；不依赖单个进程的本地统计做全局判断</td></tr>
+<tr><td>监控</td><td>已接入外部指标系统；探针使用 <code>get_health_status()</code>，高频指标使用 <code>get_metrics()</code> / <code>on_metrics()</code>；不依赖单个进程的本地统计做全局判断</td></tr>
 </tbody>
 </table>
 

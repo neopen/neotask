@@ -21,6 +21,45 @@ print(stats["metrics"]["p95_execution_time"])</code></pre>
 
 <p><code>TaskScheduler.get_stats()</code> 在相同字段上追加 <code>periodic</code> 与 <code>time_wheel</code>。</p>
 
+<h2>轻量监控快照（1.2）</h2>
+<p><code>get_stats()</code> 会做较重的聚合查询；如果只是给探针、看板或日志采集器提供数字，用 1.2 新增的 <code>get_metrics()</code>。它只读取计数与聚合结果，不加载任务实体，单次开销低，可以高频调用。</p>
+
+<pre><code class="language-python">snapshot = pool.get_metrics()
+# {
+#   "pending": 12, "running": 4, "completed": 1820, "failed": 3,
+#   "worker_concurrency": 10, "active_workers": 4,
+#   "queue_depth_by_priority": {0: 0, 1: 2, 2: 6, 3: 4},
+#   "retry_queue_size": 1,
+#   "oldest_pending_age_seconds": 0.8,
+#   "storage_backend": "sqlite", "storage_healthy": True,
+#   "checkpoint_count": 7, "context_key_count": 0
+# }
+
+unsubscribe = pool.on_metrics(push_snapshot, interval=30)
+# ... 退出前调用 unsubscribe() 停止推送</code></pre>
+
+<table>
+<thead><tr><th>字段</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>pending</code> / <code>running</code></td><td>当前待执行与执行中的任务数</td></tr>
+<tr><td><code>completed</code> / <code>failed</code></td><td>当前保留期内的终态计数；不是历史累计值</td></tr>
+<tr><td><code>worker_concurrency</code> / <code>active_workers</code></td><td>配置并发与实际忙碌的 Worker 数</td></tr>
+<tr><td><code>queue_depth_by_priority</code></td><td>各优先级队列深度，键为 0–3</td></tr>
+<tr><td><code>retry_queue_size</code></td><td>等待重试的任务数；持续上涨说明上游不稳定</td></tr>
+<tr><td><code>oldest_pending_age_seconds</code></td><td>最老待处理任务的等待时长，判断排队恶化最直接</td></tr>
+<tr><td><code>storage_backend</code> / <code>storage_healthy</code></td><td>后端类型与一次轻量健康探测结果</td></tr>
+<tr><td><code>checkpoint_count</code> / <code>context_key_count</code></td><td>断点数量与 Blackboard 键数量；未启用时为 0</td></tr>
+</tbody>
+</table>
+
+<ul>
+<li>任何底层查询失败时，对应字段退化为 <code>None</code>，不会抛异常；用于探针时应显式处理 <code>None</code>。</li>
+<li><code>on_metrics(handler, interval=60)</code> 按固定间隔把快照推给回调，返回取消订阅的函数；适合直接对接 StatsD、日志或自建看板，不需要自己起定时器。</li>
+<li>快照不包含耗时分位数与成本明细；这些仍从 <code>get_stats()["metrics"]</code>、<code>get_result()</code> 或 <code>get_cost_summary()</code> 读取。</li>
+</ul>
+
+<div class="doc-note"><strong>三种观测接口怎么选：</strong><code>get_stats()</code> 面向人工排查与完整摘要；<code>get_metrics()</code> 面向高频探针与周期上报；<code>get_health_status()</code> 面向就绪 / 存活探针。探针不要用 <code>get_stats()</code> 做高频轮询。</div>
+
 <h2>事件总线状态</h2>
 <pre><code class="language-python">bus = pool.event_bus.get_stats()
 # {

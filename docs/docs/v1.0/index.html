@@ -40,7 +40,7 @@
         "@type": "CollectionPage",
         "@id": "https://task.helpenx.com/docs/v1.0/#collection",
         "name": "NeoTask v1.0 文档",
-        "description": "覆盖 1.x 系列（当前基线 1.1.1）的安装、配置、核心能力、可靠性与 API；1.x 只做兼容增强，2.0 发布时另设文档线。",
+        "description": "覆盖 1.x 系列（当前基线 1.2.1）的安装、配置、核心能力、可靠性、部署集成与 API；1.x 只做兼容增强，2.0 发布时另设文档线。",
         "url": "https://task.helpenx.com/docs/v1.0/",
         "inLanguage": "zh-CN",
         "isPartOf": {
@@ -59,7 +59,7 @@
           {
             "@type": "TechArticle",
             "headline": "快速开始",
-            "description": "安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。",
+            "description": "安装 NeoTask 1.2.1，提交第一个任务，并选择同步、异步或上下文管理器用法。",
             "url": "https://task.helpenx.com/docs/v1.0/quickstart.html"
           },
           {
@@ -73,6 +73,18 @@
             "headline": "最佳实践",
             "description": "执行器、并发、重试、超时、存储选型与生产部署建议。",
             "url": "https://task.helpenx.com/docs/v1.0/best-practices.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "部署指南",
+            "description": "本地、Docker 与生产环境部署，含存储、网络、安全与升级核对。",
+            "url": "https://task.helpenx.com/docs/v1.0/deployment.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "集成指南",
+            "description": "与 Web 服务、HTTP API、Python 代码、第三方组件、Agent 与工作流集成。",
+            "url": "https://task.helpenx.com/docs/v1.0/integration.html"
           },
           {
             "@type": "TechArticle",
@@ -149,25 +161,43 @@
           {
             "@type": "TechArticle",
             "headline": "监控与健康检查",
-            "description": "指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。",
+            "description": "指标快照与周期推送、健康检查、事件总线背压、可选监控入口与 Prometheus 上报。",
             "url": "https://task.helpenx.com/docs/v1.0/monitoring.html"
           },
           {
             "@type": "TechArticle",
+            "headline": "问题排查",
+            "description": "常见问题、日志分析、错误诊断、部署与性能问题排查。",
+            "url": "https://task.helpenx.com/docs/v1.0/troubleshooting.html"
+          },
+          {
+            "@type": "TechArticle",
             "headline": "API 参考",
-            "description": "TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。",
+            "description": "TaskPool 与 TaskScheduler 的公开方法、1.2 新增 API、参数默认值与返回语义。",
             "url": "https://task.helpenx.com/docs/v1.0/api-reference.html"
           },
           {
             "@type": "TechArticle",
             "headline": "性能基准",
-            "description": "提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。",
+            "description": "v1.2.1 提交、完成、预取、批量操作与 SQLite 边界的实测数据、配置决策表与复现方法。",
             "url": "https://task.helpenx.com/docs/v1.0/benchmarks.html"
           },
           {
             "@type": "TechArticle",
+            "headline": "开发者指南",
+            "description": "项目结构、开发环境、测试、构建、发布与贡献规范。",
+            "url": "https://task.helpenx.com/docs/v1.0/developer-guide.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "术语表",
+            "description": "任务、队列、Worker、调度、重试、回收、死信等核心术语的统一解释。",
+            "url": "https://task.helpenx.com/docs/v1.0/glossary.html"
+          },
+          {
+            "@type": "TechArticle",
             "headline": "版本路线图",
-            "description": "1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。",
+            "description": "1.x 能力边界与已交付版本记录，以及性能、监控与 NeoFlow 编排集成规划。",
             "url": "https://task.helpenx.com/docs/v1.0/roadmap.html"
           }
         ]
@@ -199,6 +229,9 @@
     ]
   }
   </script>
+  <link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/">
+  <link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/">
+  <link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/">
 </head>
 <body class="docs-page docs-landing">
   <svg class="svg-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -236,7 +269,7 @@
         <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
       </svg>
       <span class="brand-name">NeoTask</span>
-      <span class="brand-version">v1.1.1</span>
+      <span class="brand-version">v1.2.1</span>
     </a>
 
     <nav class="site-nav" id="siteNav" aria-label="主导航">
@@ -246,12 +279,16 @@
       <a class="site-nav-link " href="/changelog.html">更新日志</a>
       <a class="site-nav-link " href="/community.html">社区</a>
       <a class="site-nav-link site-nav-external" href="https://helpenx.com/" target="_blank" rel="noopener">
-        HelpEnx Hub<span class="nav-brand-cn">（星阵工坊）</span>
+        HelpEnx Hub<span class="nav-brand-cn">（星阵万象）</span>
         <svg class="icon icon-xs nav-external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
       </a>
     </nav>
 
     <div class="header-actions">
+      <a class="lang-switch" href="/en/docs/v1.0/" hreflang="en" lang="en" aria-label="Switch to English">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>
+        <span>EN</span>
+      </a>
       <a class="gh-star" href="https://github.com/neopen/neotask" target="_blank" rel="noopener" aria-label="在 GitHub 上为 NeoTask 加 Star">
         <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.9 5.33.9 11.6c0 4.9 3.17 9.05 7.57 10.52.55.1.75-.24.75-.53v-1.85c-3.08.67-3.73-1.48-3.73-1.48-.5-1.28-1.23-1.62-1.23-1.62-1-.69.08-.68.08-.68 1.11.08 1.7 1.14 1.7 1.14.98 1.69 2.58 1.2 3.2.92.1-.71.39-1.2.7-1.48-2.46-.28-5.05-1.23-5.05-5.48 0-1.21.43-2.2 1.14-2.98-.11-.28-.49-1.4.11-2.92 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.6 1.52.22 2.64.11 2.92.71.78 1.14 1.77 1.14 2.98 0 4.26-2.6 5.2-5.06 5.47.4.35.76 1.03.76 2.07v3.07c0 .29.2.64.76.53a11.1 11.1 0 0 0 7.56-10.52C23.1 5.33 18.27.5 12 .5z"/></svg>
         <span>Star</span>
@@ -271,7 +308,7 @@
       <div class="docs-hero-inner">
         <span class="eyebrow">DOCUMENTATION · v1.0</span>
         <h1>NeoTask 文档</h1>
-        <p>当前为 v1.0 文档，适用于 NeoTask 1.x，文档基线 v1.1.1。内容覆盖安装、配置、核心能力、可靠性与 API 参考。</p>
+        <p>当前为 v1.0 文档，适用于 NeoTask 1.x，文档基线 v1.2.1。内容覆盖安装、配置、核心能力、可靠性与 API 参考。</p>
         <div class="docs-hero-actions">
           <a class="btn btn-primary" href="/docs/v1.0/quickstart.html">快速上手 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
           <a class="btn btn-outline" href="/docs/v1.0/api-reference.html">API 参考</a>
@@ -279,11 +316,11 @@
           <a class="btn btn-outline" href="https://github.com/neopen/neotask" target="_blank" rel="noopener"><svg class="icon icon-sm"><use href="#i-github"/></svg> 源码仓库</a>
         </div>
         <div class="docs-meta-row">
-          <span>19 篇文档</span>
+          <span>24 篇文档</span>
           <span>v1.0</span>
           <span>适用于 NeoTask 1.x</span>
-          <span>基线 v1.1.1</span>
-          <span>更新于 2026-11-17</span>
+          <span>基线 v1.2.1</span>
+          <span>更新于 2026-11-22</span>
         </div>
       </div>
     </section>
@@ -294,7 +331,7 @@
         <select id="docsVersionHub" data-docs-version>
           <option value="v1.0" selected>v1.0（最新）</option>
         </select>
-        <span>适用于 NeoTask 1.x · 基线 v1.1.1</span>
+        <span>适用于 NeoTask 1.x · 基线 v1.2.1</span>
         <a href="/docs/">所有版本</a>
       </div>
 
@@ -328,12 +365,12 @@
       </div>
       <div class="doc-feature-grid">
 
-        <a class="doc-feature" href="/docs/v1.0/quickstart.html" data-doc-card data-doc-search="快速开始 安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。 开始使用">
+        <a class="doc-feature" href="/docs/v1.0/quickstart.html" data-doc-card data-doc-search="快速开始 安装 NeoTask 1.2.1，提交第一个任务，并选择同步、异步或上下文管理器用法。 开始使用">
           <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg></span>
           <span class="doc-feature-body">
             <span class="doc-feature-cat">开始使用</span>
             <strong>快速开始</strong>
-            <span>安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。</span>
+            <span>安装 NeoTask 1.2.1，提交第一个任务，并选择同步、异步或上下文管理器用法。</span>
           </span>
           <span class="doc-feature-arrow" aria-hidden="true">→</span>
         </a>
@@ -382,21 +419,21 @@
           </span>
           <span class="doc-feature-arrow" aria-hidden="true">→</span>
         </a>
-        <a class="doc-feature" href="/docs/v1.0/api-reference.html" data-doc-card data-doc-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。 参考">
+        <a class="doc-feature" href="/docs/v1.0/api-reference.html" data-doc-card data-doc-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.2 新增 API、参数默认值与返回语义。 参考">
           <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg></span>
           <span class="doc-feature-body">
             <span class="doc-feature-cat">参考</span>
             <strong>API 参考</strong>
-            <span>TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。</span>
+            <span>TaskPool 与 TaskScheduler 的公开方法、1.2 新增 API、参数默认值与返回语义。</span>
           </span>
           <span class="doc-feature-arrow" aria-hidden="true">→</span>
         </a>
-        <a class="doc-feature" href="/docs/v1.0/benchmarks.html" data-doc-card data-doc-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。 参考">
+        <a class="doc-feature" href="/docs/v1.0/benchmarks.html" data-doc-card data-doc-search="性能基准 v1.2.1 提交、完成、预取、批量操作与 SQLite 边界的实测数据、配置决策表与复现方法。 参考">
           <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6" rx="1"/><rect x="12" y="8" width="3" height="10" rx="1"/><rect x="17" y="5" width="3" height="13" rx="1"/></svg></span>
           <span class="doc-feature-body">
             <span class="doc-feature-cat">参考</span>
             <strong>性能基准</strong>
-            <span>提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。</span>
+            <span>v1.2.1 提交、完成、预取、批量操作与 SQLite 边界的实测数据、配置决策表与复现方法。</span>
           </span>
           <span class="doc-feature-arrow" aria-hidden="true">→</span>
         </a>
@@ -407,13 +444,13 @@
       <section class="doc-group" data-doc-group id="start">
         <div class="doc-group-head">
           <h2>开始使用</h2>
-          <span>03</span>
+          <span>05</span>
         </div>
         <div class="doc-card-grid">
-          <a class="doc-card" href="/docs/v1.0/quickstart.html" data-doc-card data-doc-search="快速开始 安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。 开始使用">
+          <a class="doc-card" href="/docs/v1.0/quickstart.html" data-doc-card data-doc-search="快速开始 安装 NeoTask 1.2.1，提交第一个任务，并选择同步、异步或上下文管理器用法。 开始使用">
             <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg></span>
             <span class="doc-card-title">快速开始</span>
-            <span class="doc-card-desc">安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。</span>
+            <span class="doc-card-desc">安装 NeoTask 1.2.1，提交第一个任务，并选择同步、异步或上下文管理器用法。</span>
             <span class="doc-card-meta">7 分钟</span>
           </a>
           <a class="doc-card" href="/docs/v1.0/configuration.html" data-doc-card data-doc-search="配置参考 TaskPoolConfig 与 SchedulerConfig 的字段、默认值、生效范围和常用配置档位。 开始使用">
@@ -426,6 +463,18 @@
             <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
             <span class="doc-card-title">最佳实践</span>
             <span class="doc-card-desc">执行器、并发、重试、超时、存储选型与生产部署建议。</span>
+            <span class="doc-card-meta">8 分钟</span>
+          </a>
+          <a class="doc-card" href="/docs/v1.0/deployment.html" data-doc-card data-doc-search="部署指南 本地、Docker 与生产环境部署，含存储、网络、安全与升级核对。 开始使用">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5V8z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg></span>
+            <span class="doc-card-title">部署指南</span>
+            <span class="doc-card-desc">本地、Docker 与生产环境部署，含存储、网络、安全与升级核对。</span>
+            <span class="doc-card-meta">9 分钟</span>
+          </a>
+          <a class="doc-card" href="/docs/v1.0/integration.html" data-doc-card data-doc-search="集成指南 与 Web 服务、HTTP API、Python 代码、第三方组件、Agent 与工作流集成。 开始使用">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07l-1.41 1.41"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.41-1.41"/></svg></span>
+            <span class="doc-card-title">集成指南</span>
+            <span class="doc-card-desc">与 Web 服务、HTTP API、Python 代码、第三方组件、Agent 与工作流集成。</span>
             <span class="doc-card-meta">8 分钟</span>
           </a>
         </div>
@@ -449,7 +498,7 @@
             <span class="doc-card-meta">6 分钟</span>
           </a>
           <a class="doc-card" href="/docs/v1.0/task-context.html" data-doc-card data-doc-search="任务关联与共享上下文 父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。 核心概念">
-            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07l-1.41 1.41"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.41-1.41"/></svg></span>
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="6" rx="1.5"/><rect x="14" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 9v5a4 4 0 0 0 4 4H14"/></svg></span>
             <span class="doc-card-title">任务关联与共享上下文</span>
             <span class="doc-card-desc">父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。</span>
             <span class="doc-card-meta">6 分钟</span>
@@ -483,7 +532,7 @@
       <section class="doc-group" data-doc-group id="reliability">
         <div class="doc-group-head">
           <h2>可靠性</h2>
-          <span>06</span>
+          <span>07</span>
         </div>
         <div class="doc-card-grid">
           <a class="doc-card" href="/docs/v1.0/failure-recovery.html" data-doc-card data-doc-search="故障恢复 超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。 可靠性">
@@ -516,31 +565,49 @@
             <span class="doc-card-desc">按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。</span>
             <span class="doc-card-meta">5 分钟</span>
           </a>
-          <a class="doc-card" href="/docs/v1.0/monitoring.html" data-doc-card data-doc-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。 可靠性">
+          <a class="doc-card" href="/docs/v1.0/monitoring.html" data-doc-card data-doc-search="监控与健康检查 指标快照与周期推送、健康检查、事件总线背压、可选监控入口与 Prometheus 上报。 可靠性">
             <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>
             <span class="doc-card-title">监控与健康检查</span>
-            <span class="doc-card-desc">指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。</span>
+            <span class="doc-card-desc">指标快照与周期推送、健康检查、事件总线背压、可选监控入口与 Prometheus 上报。</span>
             <span class="doc-card-meta">7 分钟</span>
+          </a>
+          <a class="doc-card" href="/docs/v1.0/troubleshooting.html" data-doc-card data-doc-search="问题排查 常见问题、日志分析、错误诊断、部署与性能问题排查。 可靠性">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg></span>
+            <span class="doc-card-title">问题排查</span>
+            <span class="doc-card-desc">常见问题、日志分析、错误诊断、部署与性能问题排查。</span>
+            <span class="doc-card-meta">8 分钟</span>
           </a>
         </div>
       </section>
       <section class="doc-group" data-doc-group id="reference">
         <div class="doc-group-head">
           <h2>参考</h2>
-          <span>02</span>
+          <span>04</span>
         </div>
         <div class="doc-card-grid">
-          <a class="doc-card" href="/docs/v1.0/api-reference.html" data-doc-card data-doc-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。 参考">
+          <a class="doc-card" href="/docs/v1.0/api-reference.html" data-doc-card data-doc-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.2 新增 API、参数默认值与返回语义。 参考">
             <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg></span>
             <span class="doc-card-title">API 参考</span>
-            <span class="doc-card-desc">TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。</span>
+            <span class="doc-card-desc">TaskPool 与 TaskScheduler 的公开方法、1.2 新增 API、参数默认值与返回语义。</span>
             <span class="doc-card-meta">12 分钟</span>
           </a>
-          <a class="doc-card" href="/docs/v1.0/benchmarks.html" data-doc-card data-doc-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。 参考">
+          <a class="doc-card" href="/docs/v1.0/benchmarks.html" data-doc-card data-doc-search="性能基准 v1.2.1 提交、完成、预取、批量操作与 SQLite 边界的实测数据、配置决策表与复现方法。 参考">
             <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6" rx="1"/><rect x="12" y="8" width="3" height="10" rx="1"/><rect x="17" y="5" width="3" height="13" rx="1"/></svg></span>
             <span class="doc-card-title">性能基准</span>
-            <span class="doc-card-desc">提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。</span>
+            <span class="doc-card-desc">v1.2.1 提交、完成、预取、批量操作与 SQLite 边界的实测数据、配置决策表与复现方法。</span>
             <span class="doc-card-meta">9 分钟</span>
+          </a>
+          <a class="doc-card" href="/docs/v1.0/developer-guide.html" data-doc-card data-doc-search="开发者指南 项目结构、开发环境、测试、构建、发布与贡献规范。 参考">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg></span>
+            <span class="doc-card-title">开发者指南</span>
+            <span class="doc-card-desc">项目结构、开发环境、测试、构建、发布与贡献规范。</span>
+            <span class="doc-card-meta">8 分钟</span>
+          </a>
+          <a class="doc-card" href="/docs/v1.0/glossary.html" data-doc-card data-doc-search="术语表 任务、队列、Worker、调度、重试、回收、死信等核心术语的统一解释。 参考">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 9 5-9 5-9-5 9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg></span>
+            <span class="doc-card-title">术语表</span>
+            <span class="doc-card-desc">任务、队列、Worker、调度、重试、回收、死信等核心术语的统一解释。</span>
+            <span class="doc-card-meta">5 分钟</span>
           </a>
         </div>
       </section>
@@ -550,10 +617,10 @@
           <span>01</span>
         </div>
         <div class="doc-card-grid">
-          <a class="doc-card" href="/docs/v1.0/roadmap.html" data-doc-card data-doc-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。 路线图">
+          <a class="doc-card" href="/docs/v1.0/roadmap.html" data-doc-card data-doc-search="版本路线图 1.x 能力边界与已交付版本记录，以及性能、监控与 NeoFlow 编排集成规划。 路线图">
             <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="6" rx="1.5"/><rect x="14" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 9v5a4 4 0 0 0 4 4H14"/></svg></span>
             <span class="doc-card-title">版本路线图<em class="tag-soon">规划</em></span>
-            <span class="doc-card-desc">1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。</span>
+            <span class="doc-card-desc">1.x 能力边界与已交付版本记录，以及性能、监控与 NeoFlow 编排集成规划。</span>
             <span class="doc-card-meta">5 分钟</span>
           </a>
         </div>
@@ -585,7 +652,7 @@
           <span class="brand-name">NeoTask</span>
         </a>
         <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
-        <div class="footer-status"><span class="status-dot"></span> v1.1.1 · 发布于 2026-11-15</div>
+        <div class="footer-status"><span class="status-dot"></span> v1.2.1 · 发布于 2026-11-22</div>
       </div>
 
       <div class="footer-col">

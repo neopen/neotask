@@ -21,7 +21,7 @@
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="最佳实践 · NeoTask 文档">
   <meta property="article:published_time" content="2026-10-29">
-  <meta property="article:modified_time" content="2026-11-17">
+  <meta property="article:modified_time" content="2026-11-22">
   <meta property="article:section" content="开始使用">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="最佳实践 · NeoTask v1.0 文档">
@@ -50,7 +50,7 @@
         "mainEntityOfPage": "https://task.helpenx.com/docs/v1.0/best-practices.html",
         "inLanguage": "zh-CN",
         "datePublished": "2026-10-29",
-        "dateModified": "2026-11-17",
+        "dateModified": "2026-11-22",
         "articleSection": "开始使用",
         "keywords": "最佳实践, 最佳实践 教程, 最佳实践 文档, 开始使用, NeoTask v1.0 文档, NeoTask 1.x, Python 任务队列",
         "author": {
@@ -117,6 +117,9 @@
     ]
   }
   </script>
+  <link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/best-practices.html">
+  <link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/best-practices.html">
+  <link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/best-practices.html">
 </head>
 <body class="docs-page" id="top">
   <a class="skip-link" href="#main">跳到主要内容</a>
@@ -129,7 +132,7 @@
         <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
       </svg>
       <span class="brand-name">NeoTask</span>
-      <span class="brand-version">v1.1.1</span>
+      <span class="brand-version">v1.2.1</span>
     </a>
 
     <nav class="site-nav" id="siteNav" aria-label="主导航">
@@ -139,12 +142,16 @@
       <a class="site-nav-link " href="/changelog.html">更新日志</a>
       <a class="site-nav-link " href="/community.html">社区</a>
       <a class="site-nav-link site-nav-external" href="https://helpenx.com/" target="_blank" rel="noopener">
-        HelpEnx Hub<span class="nav-brand-cn">（星阵工坊）</span>
+        HelpEnx Hub<span class="nav-brand-cn">（星阵万象）</span>
         <svg class="icon icon-xs nav-external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
       </a>
     </nav>
 
     <div class="header-actions">
+      <a class="lang-switch" href="/en/docs/v1.0/best-practices.html" hreflang="en" lang="en" aria-label="Switch to English">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>
+        <span>EN</span>
+      </a>
       <a class="gh-star" href="https://github.com/neopen/neotask" target="_blank" rel="noopener" aria-label="在 GitHub 上为 NeoTask 加 Star">
         <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.9 5.33.9 11.6c0 4.9 3.17 9.05 7.57 10.52.55.1.75-.24.75-.53v-1.85c-3.08.67-3.73-1.48-3.73-1.48-.5-1.28-1.23-1.62-1.23-1.62-1-.69.08-.68.08-.68 1.11.08 1.7 1.14 1.7 1.14.98 1.69 2.58 1.2 3.2.92.1-.71.39-1.2.7-1.48-2.46-.28-5.05-1.23-5.05-5.48 0-1.21.43-2.2 1.14-2.98-.11-.28-.49-1.4.11-2.92 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.6 1.52.22 2.64.11 2.92.71.78 1.14 1.77 1.14 2.98 0 4.26-2.6 5.2-5.06 5.47.4.35.76 1.03.76 2.07v3.07c0 .29.2.64.76.53a11.1 11.1 0 0 0 7.56-10.52C23.1 5.33 18.27.5 12 .5z"/></svg>
         <span>Star</span>
@@ -178,9 +185,11 @@
       <nav class="docs-nav" id="docsNav" aria-label="文档导航">
         <div class="docs-nav-group">
         <p class="docs-nav-label">开始使用</p>
-        <a class="docs-nav-link" href="/docs/v1.0/quickstart.html" data-search="快速开始 安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。">快速开始</a>
+        <a class="docs-nav-link" href="/docs/v1.0/quickstart.html" data-search="快速开始 安装 NeoTask 1.2.1，提交第一个任务，并选择同步、异步或上下文管理器用法。">快速开始</a>
         <a class="docs-nav-link" href="/docs/v1.0/configuration.html" data-search="配置参考 TaskPoolConfig 与 SchedulerConfig 的字段、默认值、生效范围和常用配置档位。">配置参考</a>
         <a class="docs-nav-link is-active" href="/docs/v1.0/best-practices.html" data-search="最佳实践 执行器、并发、重试、超时、存储选型与生产部署建议。">最佳实践</a>
+        <a class="docs-nav-link" href="/docs/v1.0/deployment.html" data-search="部署指南 本地、Docker 与生产环境部署，含存储、网络、安全与升级核对。">部署指南</a>
+        <a class="docs-nav-link" href="/docs/v1.0/integration.html" data-search="集成指南 与 Web 服务、HTTP API、Python 代码、第三方组件、Agent 与工作流集成。">集成指南</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">核心概念</p>
@@ -199,16 +208,19 @@
         <a class="docs-nav-link" href="/docs/v1.0/cost-tracking.html" data-search="成本与耗时 上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">成本与耗时</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
         <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
-        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标快照与周期推送、健康检查、事件总线背压、可选监控入口与 Prometheus 上报。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/troubleshooting.html" data-search="问题排查 常见问题、日志分析、错误诊断、部署与性能问题排查。">问题排查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
-        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">API 参考</a>
-        <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">性能基准</a>
+        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.2 新增 API、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 v1.2.1 提交、完成、预取、批量操作与 SQLite 边界的实测数据、配置决策表与复现方法。">性能基准</a>
+        <a class="docs-nav-link" href="/docs/v1.0/developer-guide.html" data-search="开发者指南 项目结构、开发环境、测试、构建、发布与贡献规范。">开发者指南</a>
+        <a class="docs-nav-link" href="/docs/v1.0/glossary.html" data-search="术语表 任务、队列、Worker、调度、重试、回收、死信等核心术语的统一解释。">术语表</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及性能、监控与 NeoFlow 编排集成规划。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       <p class="docs-nav-empty" id="docsNavEmpty" hidden>没有匹配的文档</p>
@@ -233,9 +245,11 @@
       <nav class="docs-nav" id="docsNavMobile" aria-label="文档导航">
         <div class="docs-nav-group">
         <p class="docs-nav-label">开始使用</p>
-        <a class="docs-nav-link" href="/docs/v1.0/quickstart.html" data-search="快速开始 安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。">快速开始</a>
+        <a class="docs-nav-link" href="/docs/v1.0/quickstart.html" data-search="快速开始 安装 NeoTask 1.2.1，提交第一个任务，并选择同步、异步或上下文管理器用法。">快速开始</a>
         <a class="docs-nav-link" href="/docs/v1.0/configuration.html" data-search="配置参考 TaskPoolConfig 与 SchedulerConfig 的字段、默认值、生效范围和常用配置档位。">配置参考</a>
         <a class="docs-nav-link is-active" href="/docs/v1.0/best-practices.html" data-search="最佳实践 执行器、并发、重试、超时、存储选型与生产部署建议。">最佳实践</a>
+        <a class="docs-nav-link" href="/docs/v1.0/deployment.html" data-search="部署指南 本地、Docker 与生产环境部署，含存储、网络、安全与升级核对。">部署指南</a>
+        <a class="docs-nav-link" href="/docs/v1.0/integration.html" data-search="集成指南 与 Web 服务、HTTP API、Python 代码、第三方组件、Agent 与工作流集成。">集成指南</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">核心概念</p>
@@ -254,16 +268,19 @@
         <a class="docs-nav-link" href="/docs/v1.0/cost-tracking.html" data-search="成本与耗时 上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">成本与耗时</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
         <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
-        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标快照与周期推送、健康检查、事件总线背压、可选监控入口与 Prometheus 上报。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/troubleshooting.html" data-search="问题排查 常见问题、日志分析、错误诊断、部署与性能问题排查。">问题排查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
-        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">API 参考</a>
-        <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">性能基准</a>
+        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.2 新增 API、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link" href="/docs/v1.0/benchmarks.html" data-search="性能基准 v1.2.1 提交、完成、预取、批量操作与 SQLite 边界的实测数据、配置决策表与复现方法。">性能基准</a>
+        <a class="docs-nav-link" href="/docs/v1.0/developer-guide.html" data-search="开发者指南 项目结构、开发环境、测试、构建、发布与贡献规范。">开发者指南</a>
+        <a class="docs-nav-link" href="/docs/v1.0/glossary.html" data-search="术语表 任务、队列、Worker、调度、重试、回收、死信等核心术语的统一解释。">术语表</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及性能、监控与 NeoFlow 编排集成规划。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       
@@ -276,7 +293,7 @@
           <div class="article-meta">
             <span class="article-version">v1.0 · NeoTask 1.x</span>
             <span class="dot"></span>
-            <span>更新于 2026-11-17</span>
+            <span>更新于 2026-11-22</span>
             <span class="dot"></span>
             <span>约 8 分钟 读完</span>
             <span class="dot"></span>
@@ -340,16 +357,17 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 <thead><tr><th>需求</th><th>选择</th><th>原因</th></tr></thead>
 <tbody>
 <tr><td>开发、单元测试</td><td>memory</td><td>无外部依赖，进程退出即清空</td></tr>
-<tr><td>单机低频持久化</td><td>SQLite</td><td>单写入者 76.5 tasks/s（突发 87.4）；写入已串行化，多 Worker 吞吐反而下降（2 Worker 61.8，4 Worker 41.3）</td></tr>
+<tr><td>单机低频持久化</td><td>SQLite</td><td>端到端 519 tasks/s（1,000 任务、4 Worker、P50 1.0 s）；写入已串行化，多 Worker 不会带来线性扩展</td></tr>
 <tr><td>高并发或跨节点</td><td>Redis</td><td>共享队列、节点心跳、故障回收与死信</td></tr>
 </tbody>
 </table>
 
 <h2 id="预取">预取</h2>
 <ul>
-<li>1.0.8 起预取由消费需求触发，不再按固定定时批量拉取。短任务场景仍需实测：基准中关闭预取为 1,453 tasks/s，<code>prefetch_size=20</code> 为 1,211，100 为 1,538，差异落在单轮波动范围内。</li>
+<li>预取用批量出队换吞吐：1.2.1 基准中 <code>prefetch_size=20</code> 完成吞吐 4,241 tasks/s，关闭预取 3,156 tasks/s；代价是稀疏任务延迟从 1.1–2.2 ms 升到 12.2–26.2 ms。</li>
+<li>低延迟、交互式触发或提交稀疏的场景关闭预取，或把 <code>prefetch_size</code> 降到 5 以下。</li>
 <li>预取会一次取出多个任务，跨优先级的严格顺序不再成立；对顺序敏感的场景应关闭预取。</li>
-<li>需要调整时优先修改 <code>prefetch_size</code>，本地队列容量和触发阈值都由它推导。</li>
+<li>需要调整时优先修改 <code>prefetch_size</code>，本地队列容量和触发阈值都由它推导；1.2.1 起空队列不再叠加指数退避，稀疏任务不会被预取拖到数百毫秒。</li>
 </ul>
 
 <h2 id="事件总线">事件总线</h2>
@@ -375,8 +393,9 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 
 <h2 id="可观测性">可观测性</h2>
 <ul>
-<li><code>get_stats()</code> 适合按需拉取；高频轮询会增加存储查询压力。</li>
-<li><code>get_health_status()</code> 结果缓存 5 秒，不会每次调用都触发检查。</li>
+<li>高频探针与周期上报用 1.2 的 <code>get_metrics()</code> 或 <code>on_metrics(callback, interval)</code>：只读计数与聚合，不加载任务实体，开销远低于 <code>get_stats()</code>。</li>
+<li><code>get_stats()</code> 适合按需人工排查；高频轮询会增加存储查询压力。</li>
+<li><code>get_health_status()</code> 结果缓存 5 秒，不会每次调用都触发检查；就绪 / 存活探针用它，不要用 <code>get_stats()</code>。</li>
 <li>进度上报是尽力而为：任务已结束或存储暂不可写时会被丢弃，不影响任务结果。</li>
 <li><code>get_result()</code> 提供 <code>queue_wait_ms</code>、<code>duration_ms</code> 与成本字段；跨任务汇总使用 <code>get_cost_summary()</code>，不要用事件计数代替存储查询。</li>
 <li>指标依赖事件投递；事件被丢弃或订阅者过慢时计数会滞后。排查时同时查看 <code>pool.event_bus.get_stats()</code>。</li>
@@ -398,7 +417,7 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 <tr><td>历史保留</td><td>需要事后查询任务结果时，已调大 <code>terminal_retention_seconds</code>，或关闭自动清理并自行归档</td></tr>
 <tr><td>周期任务</td><td>每个周期定义只有一个调度者；SQLite / Redis 模式下已开启持久化</td></tr>
 <tr><td>停机</td><td>使用 <code>shutdown(graceful=True, timeout=...)</code>；预取队列与执行中任务能被排空或回收</td></tr>
-<tr><td>监控</td><td>已接入外部指标系统；健康检查结果有告警；不依赖单个进程的本地统计做全局判断</td></tr>
+<tr><td>监控</td><td>已接入外部指标系统；探针使用 <code>get_health_status()</code>，高频指标使用 <code>get_metrics()</code> / <code>on_metrics()</code>；不依赖单个进程的本地统计做全局判断</td></tr>
 </tbody>
 </table>
 
@@ -411,7 +430,7 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
       </article>
       <nav class="docs-pager" aria-label="上一篇与下一篇">
       <a class="pager-prev" href="/docs/v1.0/configuration.html"><span>上一篇</span><strong>配置参考</strong></a>
-      <a class="pager-next" href="/docs/v1.0/architecture.html"><span>下一篇</span><strong>架构概览</strong></a>
+      <a class="pager-next" href="/docs/v1.0/deployment.html"><span>下一篇</span><strong>部署指南</strong></a>
     </nav>
       <p class="docs-feedback">发现文档问题？欢迎在 <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">GitHub Issues</a> 反馈。</p>
     </main>
@@ -430,7 +449,7 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
           <span class="brand-name">NeoTask</span>
         </a>
         <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
-        <div class="footer-status"><span class="status-dot"></span> v1.1.1 · 发布于 2026-11-15</div>
+        <div class="footer-status"><span class="status-dot"></span> v1.2.1 · 发布于 2026-11-22</div>
       </div>
 
       <div class="footer-col">

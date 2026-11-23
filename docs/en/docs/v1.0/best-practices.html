@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Best practices · NeoTask v1.0 docs</title>
+  <meta name="description" content="Executor choice, concurrency, retries, timeouts, storage selection, and production guidance.">
+  <meta name="keywords" content="Best practices, Best practices guide, Best practices docs, Get started, NeoTask v1.0 docs, NeoTask 1.x, Python task queue">
+  <meta name="author" content="NeoPen">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+  <link rel="canonical" href="https://task.helpenx.com/en/docs/v1.0/best-practices.html">
+  <meta property="og:site_name" content="NeoTask Docs">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Best practices · NeoTask v1.0 docs">
+  <meta property="og:description" content="Executor choice, concurrency, retries, timeouts, storage selection, and production guidance.">
+  <meta property="og:url" content="https://task.helpenx.com/en/docs/v1.0/best-practices.html">
+  <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Best practices · NeoTask docs">
+  <meta property="article:published_time" content="2026-10-29">
+  <meta property="article:modified_time" content="2026-11-22">
+  <meta property="article:section" content="Get started">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Best practices · NeoTask v1.0 docs">
+  <meta name="twitter:description" content="Executor choice, concurrency, retries, timeouts, storage selection, and production guidance.">
+  <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta name="twitter:image:alt" content="Best practices · NeoTask docs">
+  <meta name="theme-color" content="#0b1713">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/css/site.css">
+  <link rel="stylesheet" href="/assets/css/docs.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "@id": "https://task.helpenx.com/en/docs/v1.0/best-practices.html#article",
+        "headline": "Best practices",
+        "name": "Best practices · NeoTask v1.0 docs",
+        "description": "Executor choice, concurrency, retries, timeouts, storage selection, and production guidance.",
+        "image": "https://task.helpenx.com/assets/img/og.png",
+        "url": "https://task.helpenx.com/en/docs/v1.0/best-practices.html",
+        "mainEntityOfPage": "https://task.helpenx.com/en/docs/v1.0/best-practices.html",
+        "inLanguage": "en",
+        "datePublished": "2026-10-29",
+        "dateModified": "2026-11-22",
+        "articleSection": "Get started",
+        "keywords": "Best practices, Best practices guide, Best practices docs, Get started, NeoTask v1.0 docs, NeoTask 1.x, Python task queue",
+        "author": {
+          "@type": "Organization",
+          "name": "NeoPen",
+          "url": "https://task.helpenx.com",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://task.helpenx.com/assets/img/favicon.svg"
+          }
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "NeoPen",
+          "url": "https://task.helpenx.com",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://task.helpenx.com/assets/img/favicon.svg"
+          }
+        },
+        "isPartOf": {
+          "@type": "WebSite",
+          "name": "NeoTask",
+          "url": "https://task.helpenx.com/"
+        },
+        "about": {
+          "@type": "SoftwareApplication",
+          "name": "NeoTask",
+          "applicationCategory": "DeveloperApplication",
+          "operatingSystem": "OS Independent",
+          "url": "https://task.helpenx.com/"
+        }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "@id": "https://task.helpenx.com/en/docs/v1.0/best-practices.html#breadcrumb",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": "https://task.helpenx.com/en/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Docs",
+            "item": "https://task.helpenx.com/en/docs/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": "v1.0",
+            "item": "https://task.helpenx.com/en/docs/v1.0/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 4,
+            "name": "Best practices",
+            "item": "https://task.helpenx.com/en/docs/v1.0/best-practices.html"
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/best-practices.html">
+  <link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/best-practices.html">
+  <link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/best-practices.html">
+</head>
+<body class="docs-page" id="top">
+  <a class="skip-link" href="#main">Skip to main content</a>
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="/en/" aria-label="NeoTask home">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="9" fill="#0b1713"/>
+        <path d="M9.5 22.5v-13l13 13v-13" fill="none" stroke="#2dd4bf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
+      </svg>
+      <span class="brand-name">NeoTask</span>
+      <span class="brand-version">v1.2.1</span>
+    </a>
+
+    <nav class="site-nav" id="siteNav" aria-label="Main navigation">
+      <a class="site-nav-link " href="/en/features.html">Features</a>
+      <a class="site-nav-link " href="/en/docs/v1.0/benchmarks.html">Benchmarks</a>
+      <a class="site-nav-link is-active" href="/en/docs/">Docs</a>
+      <a class="site-nav-link " href="/en/changelog.html">Changelog</a>
+      <a class="site-nav-link " href="/en/community.html">Community</a>
+      <a class="site-nav-link site-nav-external" href="https://helpenx.com/" target="_blank" rel="noopener">
+        HelpEnx Hub
+        <svg class="icon icon-xs nav-external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
+      </a>
+    </nav>
+
+    <div class="header-actions">
+      <a class="lang-switch" href="/docs/v1.0/best-practices.html" hreflang="zh-CN" lang="zh-CN" aria-label="切换到中文">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>
+        <span>中文</span>
+      </a>
+      <a class="gh-star" href="https://github.com/neopen/neotask" target="_blank" rel="noopener" aria-label="Star NeoTask on GitHub">
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.9 5.33.9 11.6c0 4.9 3.17 9.05 7.57 10.52.55.1.75-.24.75-.53v-1.85c-3.08.67-3.73-1.48-3.73-1.48-.5-1.28-1.23-1.62-1.23-1.62-1-.69.08-.68.08-.68 1.11.08 1.7 1.14 1.7 1.14.98 1.69 2.58 1.2 3.2.92.1-.71.39-1.2.7-1.48-2.46-.28-5.05-1.23-5.05-5.48 0-1.21.43-2.2 1.14-2.98-.11-.28-.49-1.4.11-2.92 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.6 1.52.22 2.64.11 2.92.71.78 1.14 1.77 1.14 2.98 0 4.26-2.6 5.2-5.06 5.47.4.35.76 1.03.76 2.07v3.07c0 .29.2.64.76.53a11.1 11.1 0 0 0 7.56-10.52C23.1 5.33 18.27.5 12 .5z"/></svg>
+        <span>Star</span>
+        <span class="gh-star-count">8</span>
+      </a>
+      <a class="btn btn-primary btn-sm header-cta" href="/en/docs/v1.0/quickstart.html">Get started</a>
+      <button class="nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="siteNav">
+        <span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+  <div class="docs-shell">
+    <aside class="docs-sidebar" id="docsSidebar">
+      <a class="docs-sidebar-home" href="/en/docs/"><span class="docs-sidebar-badge">DOCS</span> Docs center</a>
+      <div class="docs-version-picker">
+        <span class="docs-version-caption">Docs version</span>
+        <div class="docs-version-row">
+          <select class="docs-version-select" data-docs-version aria-label="Switch docs version">
+            <option value="v1.0" selected>v1.0 (latest)</option>
+          </select>
+          <a class="docs-version-all" href="/en/docs/">All versions</a>
+        </div>
+        <p class="docs-version-note">For NeoTask 1.x</p>
+      </div>
+      <div class="docs-search-wrap">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="docsSearch" type="search" placeholder="Search docs" autocomplete="off" aria-label="Search docs">
+      </div>
+      <nav class="docs-nav" id="docsNav" aria-label="Docs navigation">
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Get started</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/quickstart.html" data-search="Quickstart Install NeoTask 1.2.1, submit your first task, and choose sync, async, or context manager usage.">Quickstart</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/configuration.html" data-search="Configuration reference TaskPoolConfig and SchedulerConfig fields, defaults, scope, and common presets.">Configuration reference</a>
+        <a class="docs-nav-link is-active" href="/en/docs/v1.0/best-practices.html" data-search="Best practices Executor choice, concurrency, retries, timeouts, storage selection, and production guidance.">Best practices</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/deployment.html" data-search="Deployment guide Local, Docker, and production deployment with storage, networking, security, and upgrades.">Deployment guide</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/integration.html" data-search="Integration guide Integrate with web services, HTTP APIs, Python code, third-party components, agents, and workflows.">Integration guide</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Core concepts</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/architecture.html" data-search="Architecture overview How TaskPool, TaskScheduler, queues, workers, and storage layers fit together.">Architecture overview</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/task-lifecycle.html" data-search="Task lifecycle State transitions from submission to terminal states, event callbacks, and result access.">Task lifecycle</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/task-context.html" data-search="Task links and shared context Parent/child links, external task_id uniqueness, and the memory-only Blackboard.">Task links and shared context</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/priority-queue.html" data-search="Priority queue Four priority levels, FIFO behavior within a level, and batch submission.">Priority queue</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/delayed-tasks.html" data-search="Delayed and periodic tasks Delay, submit-at, fixed interval, and Cron tasks with management and missed-run policies.">Delayed and periodic tasks</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/persistence.html" data-search="Persistence Memory, SQLite, and Redis backends: use cases, data semantics, and switching.">Persistence</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/distributed.html" data-search="Distributed deployment Shared queues, node heartbeats, task reclaim, and Redis requirements.">Distributed deployment</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Reliability</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/failure-recovery.html" data-search="Failure recovery Timeouts, orphaned tasks, stale locks, dead letters, and business failure semantics.">Failure recovery</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/checkpoint.html" data-search="Checkpoints Save intermediate state and resume from the latest checkpoint on retry or explicit submission.">Checkpoints</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/cost-tracking.html" data-search="Cost and timing Report tokens, API calls, and estimated cost; read queue/execution timing and aggregate costs.">Cost and timing</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/distributed-lock.html" data-search="Distributed locks Task-level mutex locks, TTL, watchdog renewal, and manual locking APIs.">Distributed locks</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/prefetch.html" data-search="Prefetch Demand-driven prefetch triggers, batch sizing, and effects on latency and priority.">Prefetch</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/monitoring.html" data-search="Monitoring and health checks Metric snapshots and periodic push, health checks, event backpressure, UI, and Prometheus.">Monitoring and health checks</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/troubleshooting.html" data-search="Troubleshooting Common issues, log analysis, diagnosis, deployment problems, and performance questions.">Troubleshooting</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Reference</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/api-reference.html" data-search="API reference Public TaskPool and TaskScheduler methods, 1.2 additions, parameter defaults, and return semantics.">API reference</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/benchmarks.html" data-search="Benchmarks v1.2.1 measurements for submission, completion, prefetch, batching, and SQLite boundaries.">Benchmarks</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/developer-guide.html" data-search="Developer guide Project layout, development setup, tests, build, release, and contribution rules.">Developer guide</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/glossary.html" data-search="Glossary Shared definitions for task, queue, worker, scheduler, retry, reclaim, dead letter, and more.">Glossary</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Roadmap</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/roadmap.html" data-search="Roadmap Delivered 1.x capabilities, remaining boundaries, and NeoFlow orchestration plans.">Roadmap<span class="nav-soon">planned</span></a>
+      </div>
+      </nav>
+      <p class="docs-nav-empty" id="docsNavEmpty" hidden>No matching docs</p>
+    </aside>
+    <main class="docs-main" id="main">
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <a href="/en/">Home</a><span>/</span><a href="/en/docs/">Docs</a><span>/</span><a href="/en/docs/v1.0/">v1.0</a><span>/</span><span>Get started</span>
+      </nav>
+      <details class="docs-mobile-nav">
+        <summary>Docs navigation · v1.0</summary>
+        <div class="docs-version-picker">
+        <span class="docs-version-caption">Docs version</span>
+        <div class="docs-version-row">
+          <select class="docs-version-select" data-docs-version aria-label="Switch docs version">
+            <option value="v1.0" selected>v1.0 (latest)</option>
+          </select>
+          <a class="docs-version-all" href="/en/docs/">All versions</a>
+        </div>
+        <p class="docs-version-note">For NeoTask 1.x</p>
+      </div>
+      
+      <nav class="docs-nav" id="docsNavMobile" aria-label="Docs navigation">
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Get started</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/quickstart.html" data-search="Quickstart Install NeoTask 1.2.1, submit your first task, and choose sync, async, or context manager usage.">Quickstart</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/configuration.html" data-search="Configuration reference TaskPoolConfig and SchedulerConfig fields, defaults, scope, and common presets.">Configuration reference</a>
+        <a class="docs-nav-link is-active" href="/en/docs/v1.0/best-practices.html" data-search="Best practices Executor choice, concurrency, retries, timeouts, storage selection, and production guidance.">Best practices</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/deployment.html" data-search="Deployment guide Local, Docker, and production deployment with storage, networking, security, and upgrades.">Deployment guide</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/integration.html" data-search="Integration guide Integrate with web services, HTTP APIs, Python code, third-party components, agents, and workflows.">Integration guide</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Core concepts</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/architecture.html" data-search="Architecture overview How TaskPool, TaskScheduler, queues, workers, and storage layers fit together.">Architecture overview</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/task-lifecycle.html" data-search="Task lifecycle State transitions from submission to terminal states, event callbacks, and result access.">Task lifecycle</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/task-context.html" data-search="Task links and shared context Parent/child links, external task_id uniqueness, and the memory-only Blackboard.">Task links and shared context</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/priority-queue.html" data-search="Priority queue Four priority levels, FIFO behavior within a level, and batch submission.">Priority queue</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/delayed-tasks.html" data-search="Delayed and periodic tasks Delay, submit-at, fixed interval, and Cron tasks with management and missed-run policies.">Delayed and periodic tasks</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/persistence.html" data-search="Persistence Memory, SQLite, and Redis backends: use cases, data semantics, and switching.">Persistence</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/distributed.html" data-search="Distributed deployment Shared queues, node heartbeats, task reclaim, and Redis requirements.">Distributed deployment</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Reliability</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/failure-recovery.html" data-search="Failure recovery Timeouts, orphaned tasks, stale locks, dead letters, and business failure semantics.">Failure recovery</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/checkpoint.html" data-search="Checkpoints Save intermediate state and resume from the latest checkpoint on retry or explicit submission.">Checkpoints</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/cost-tracking.html" data-search="Cost and timing Report tokens, API calls, and estimated cost; read queue/execution timing and aggregate costs.">Cost and timing</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/distributed-lock.html" data-search="Distributed locks Task-level mutex locks, TTL, watchdog renewal, and manual locking APIs.">Distributed locks</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/prefetch.html" data-search="Prefetch Demand-driven prefetch triggers, batch sizing, and effects on latency and priority.">Prefetch</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/monitoring.html" data-search="Monitoring and health checks Metric snapshots and periodic push, health checks, event backpressure, UI, and Prometheus.">Monitoring and health checks</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/troubleshooting.html" data-search="Troubleshooting Common issues, log analysis, diagnosis, deployment problems, and performance questions.">Troubleshooting</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Reference</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/api-reference.html" data-search="API reference Public TaskPool and TaskScheduler methods, 1.2 additions, parameter defaults, and return semantics.">API reference</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/benchmarks.html" data-search="Benchmarks v1.2.1 measurements for submission, completion, prefetch, batching, and SQLite boundaries.">Benchmarks</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/developer-guide.html" data-search="Developer guide Project layout, development setup, tests, build, release, and contribution rules.">Developer guide</a>
+        <a class="docs-nav-link" href="/en/docs/v1.0/glossary.html" data-search="Glossary Shared definitions for task, queue, worker, scheduler, retry, reclaim, dead letter, and more.">Glossary</a>
+      </div>
+        <div class="docs-nav-group">
+        <p class="docs-nav-label">Roadmap</p>
+        <a class="docs-nav-link" href="/en/docs/v1.0/roadmap.html" data-search="Roadmap Delivered 1.x capabilities, remaining boundaries, and NeoFlow orchestration plans.">Roadmap<span class="nav-soon">planned</span></a>
+      </div>
+      </nav>
+      
+      </details>
+      <article class="article">
+        <header class="article-header">
+          <p class="article-eyebrow">Get started</p>
+          <h1>Best practices</h1>
+          <p class="article-lede">Executor choice, concurrency, retries, timeouts, storage selection, and production guidance.</p>
+          <div class="article-meta">
+            <span class="article-version">v1.0 · NeoTask 1.x</span>
+            <span class="dot"></span>
+            <span>Updated 2026-11-22</span>
+            <span class="dot"></span>
+            <span>8 min read</span>
+            <span class="dot"></span>
+            <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg></a>
+          </div>
+        </header>
+        <div class="article-body">
+<p>The guidance below comes from the actual behavioral constraints of the 1.x series, not from a generic best-practice checklist. Each item maps to a concrete limitation.</p>
+
+<h2 id="Production configuration template">Production configuration template</h2>
+<p>This is a starting point for a multi-node Redis deployment, not a universal answer for every scenario. Each instance must use a unique <code>node_id</code>. The <code>TaskPoolConfig.redis()</code> factory sets <code>lock_type</code> to <code>redis</code> automatically; this example constructs the config directly, so it must be set explicitly.</p>
+
+<pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
+
+config = TaskPoolConfig(
+    storage_type="redis",
+    redis_url="redis://10.0.0.10:6379/0",
+    node_id="worker-1",          # must be unique per instance
+    worker_concurrency=16,
+    task_timeout=60,             # upper bound for a single execution
+    max_retries=3,
+    retry_delay=2.0,
+    lock_type="redis",           # direct construction defaults to memory; the redis() factory sets it for you
+    enable_prefetch=True,
+    prefetch_size=20,
+    enable_metrics=True,
+)
+pool = TaskPool(executor=handle, config=config)</code></pre>
+
+<p>Long-running tasks also need a larger task-level <code>ttl</code>, otherwise the reclaimer treats them as timed out after the default 3600 seconds. For periodic tasks, also make sure only one scheduler instance is active; see <a href="/en/docs/v1.0/delayed-tasks.html">Delayed and periodic tasks</a>.</p>
+
+<h2 id="Executors">Executors</h2>
+<ul>
+<li><strong>Stay idempotent.</strong> A task may run again after a retry, a timeout reclamation or a node crash, so your business logic must tolerate repeated processing.</li>
+<li><strong>Inputs and outputs must be serializable.</strong> Task data and return values are both written to storage; the return value must be JSON-serializable, so do not return connections, file handles or custom objects.</li>
+<li><strong>Keep payloads small.</strong> Task data is stored with every record and travels with events; large objects amplify storage and network overhead.</li>
+<li><strong>Use a thread executor for blocking synchronous code.</strong> A plain sync function still runs on the event loop thread and blocks other tasks.</li>
+<li><strong>Use a process executor for CPU-bound work.</strong> The function must be picklable; progress reporting is not available in a process executor.</li>
+<li><strong>Save checkpoints for long tasks.</strong> Both automatic and manual retries inject the latest state; work between checkpoints is still repeated, so business steps must be idempotent. With a process executor, the parent process calls <code>pool.save_checkpoint()</code>.</li>
+<li><strong>Reject work with <code>report_failure()</code>.</strong> Deterministic outcomes such as failed data validation or a rejected review end the task immediately; do not use exceptions to trigger pointless retries.</li>
+</ul>
+
+<h2 id="Concurrency and timeouts">Concurrency and timeouts</h2>
+<ul>
+<li><code>worker_concurrency</code> is the number of tasks executing at once, not the number of threads. Raise it for IO-bound tasks; do not exceed the available core count by much for CPU-bound tasks.</li>
+<li><code>task_timeout</code> bounds a single execution; when it expires the task is treated as failed and enters the retry flow. If the executor cannot be cancelled (for example, a blocking thread), the timeout only stops waiting and does not guarantee that the underlying call has ended.</li>
+<li><code>ttl</code> is a task-level parameter, 3600 seconds by default. In Redis mode the reclaimer uses <code>ttl</code> to decide whether a <code>RUNNING</code> task has timed out, so long tasks need an explicitly larger <code>ttl</code>.</li>
+</ul>
+
+<h2 id="Retries">Retries</h2>
+<ul>
+<li>Automatic retries are suitable for transient failures only. Deterministic outcomes such as invalid parameters or failed validation should be ended with <code>report_failure()</code> rather than left to retries.</li>
+<li>Use <code>report_failure()</code> when a business rule rejects a task: the task goes straight to <code>failed</code>, records a <code>failure_reason</code>, consumes no retry budget and writes nothing to the dead-letter queue.</li>
+<li>Retries read the latest checkpoint; if a task must start from scratch, do not save checkpoints, or delete the task record and recreate it.</li>
+<li>The delay of the n-th retry is <code>retry_delay × n</code>, not exponential backoff.</li>
+<li>Manual <code>retry()</code> accepts terminal tasks only; <code>retry_count</code> is preserved and the automatic retry budget is not reset.</li>
+</ul>
+
+<h2 id="Storage selection">Storage selection</h2>
+<table>
+<thead><tr><th>Requirement</th><th>Choice</th><th>Reason</th></tr></thead>
+<tbody>
+<tr><td>Development, unit tests</td><td>memory</td><td>No external dependency; data is cleared when the process exits</td></tr>
+<tr><td>Single-node low-frequency persistence</td><td>SQLite</td><td>519 tasks/s end to end (1,000 tasks, 4 workers, P50 1.0 s); writes are serialized, so more workers do not scale linearly</td></tr>
+<tr><td>High concurrency or multiple nodes</td><td>Redis</td><td>Shared queue, node heartbeats, failure reclamation and dead letters</td></tr>
+</tbody>
+</table>
+
+<h2 id="Prefetch">Prefetch</h2>
+<ul>
+<li>Prefetch trades batch dequeue for throughput: in the 1.2.1 benchmark <code>prefetch_size=20</code> completes 4,241 tasks/s versus 3,156 tasks/s with prefetch disabled; the cost is that sparse-task latency rises from 1.1–2.2 ms to 12.2–26.2 ms.</li>
+<li>Disable prefetch, or lower <code>prefetch_size</code> below 5, for low-latency, interactive or sparse submission scenarios.</li>
+<li>Prefetch dequeues several tasks at once, so strict ordering across priorities no longer holds; disable prefetch when order matters.</li>
+<li>To tune prefetch, change <code>prefetch_size</code> first: both the local queue capacity and the trigger threshold are derived from it; since 1.2.1 an empty queue no longer accrues exponential backoff, so sparse tasks are not pushed into the hundreds of milliseconds by prefetch.</li>
+</ul>
+
+<h2 id="Event bus">Event bus</h2>
+<ul>
+<li>Subscribers must return quickly. The EventBus dispatches asynchronously in a dedicated task, so a slow subscriber delays later events but does not block worker execution.</li>
+<li>The default event queue is unbounded (<code>event_queue_max_size=None</code>). Processes with heavy event volume should set a limit; when the queue is full, new events are dropped and counted according to <code>event_overflow_policy="drop"</code>.</li>
+<li>Use <code>pool.event_bus.get_stats()</code> to watch <code>queue_size</code>, <code>dropped_events</code> and <code>slow_handler_calls</code>. Events are notifications only; storage is the source of truth for task state.</li>
+</ul>
+
+<h2 id="Terminal cleanup">Terminal cleanup</h2>
+<ul>
+<li>By default 1.0.8 cleans up successful, failed and cancelled tasks past their retention period every 60 seconds. The retention period comes from <code>terminal_retention_seconds</code>; when it is 0, the task <code>ttl</code> applies (3600 seconds by default).</li>
+<li>If you need to query task results afterwards or keep an audit trail, raise <code>terminal_retention_seconds</code> rather than disabling cleanup and retaining everything indefinitely.</li>
+<li>Cleanup applies to terminal records only; it does not touch <code>pending</code> / <code>running</code> tasks and is not failure reclamation.</li>
+</ul>
+
+<h2 id="Shutdown and reclamation">Shutdown and reclamation</h2>
+<ul>
+<li>Use <code>shutdown(graceful=True)</code> when a service exits so queued tasks finish; set a reasonable <code>timeout</code> to avoid waiting indefinitely.</li>
+<li>Periodic tasks survive a restart only with SQLite / Redis and <code>enable_persistence=True</code>; memory mode emits one warning.</li>
+<li>In Redis mode node IDs must be unique, otherwise heartbeats and orphan reclamation interfere with each other.</li>
+</ul>
+
+<h2 id="Observability">Observability</h2>
+<ul>
+<li>Use <code>get_metrics()</code> or <code>on_metrics(callback, interval)</code> from 1.2 for high-frequency probes and periodic reporting: they read counters and aggregates only, do not load task entities and cost far less than <code>get_stats()</code>.</li>
+<li><code>get_stats()</code> suits on-demand manual investigation; polling it at high frequency adds load to storage queries.</li>
+<li><code>get_health_status()</code> caches results for 5 seconds, so it does not run checks on every call; use it for readiness and liveness probes, not <code>get_stats()</code>.</li>
+<li>Progress reporting is best effort: a report is dropped when the task has already ended or storage is temporarily unwritable, without affecting the task result.</li>
+<li><code>get_result()</code> provides <code>queue_wait_ms</code>, <code>duration_ms</code> and the cost fields; use <code>get_cost_summary()</code> for cross-task totals rather than substituting event counts for storage queries.</li>
+<li>Metrics depend on event delivery; counters lag when events are dropped or subscribers are slow. Check <code>pool.event_bus.get_stats()</code> at the same time when investigating.</li>
+</ul>
+
+<h2 id="Go-live checklist">Go-live checklist</h2>
+<table>
+<thead><tr><th>Check</th><th>Pass criteria</th></tr></thead>
+<tbody>
+<tr><td>Storage</td><td>Redis reconnects; each instance has a unique <code>node_id</code> in multi-node mode; SQLite is used only for low-frequency single-node writes, with serialized writes accepted under multiple workers</td></tr>
+<tr><td>Idempotency</td><td>Re-running the same task produces no duplicate charges, duplicate notifications or other side effects</td></tr>
+<tr><td>Timeouts</td><td>Both <code>task_timeout</code> and the task <code>ttl</code> are set, and <code>ttl</code> exceeds the upper bound of normal execution time</td></tr>
+<tr><td>Retries</td><td>Retries are enabled for transient errors only; business rejections use <code>report_failure()</code>; the application tolerates the linear <code>retry_delay × n</code> delay</td></tr>
+<tr><td>Checkpoint resume</td><td>Long tasks save checkpoints, work between checkpoints can be repeated safely, checkpoint size is controlled, and process executors use the parent-process API</td></tr>
+<tr><td>Cost</td><td>Tokens, API call counts and estimated cost are reported; currency is consistent within a task; data is archived if long-term reports are needed</td></tr>
+<tr><td>Concurrency</td><td><code>worker_concurrency</code> matches the executor type; CPU-bound tasks do not oversubscribe cores</td></tr>
+<tr><td>Locks</td><td>Multi-node deployments use <code>TaskPoolConfig.redis()</code>, or set <code>lock_type="redis"</code> explicitly when constructing the config directly; manual lock keys do not collide with running task IDs</td></tr>
+<tr><td>Events</td><td>Subscribers return quickly; <code>event_queue_max_size</code> is set for high event volume; <code>dropped_events</code> and slow handlers are monitored</td></tr>
+<tr><td>History retention</td><td><code>terminal_retention_seconds</code> is raised for post-hoc queries, or automatic cleanup is disabled and history is archived separately</td></tr>
+<tr><td>Periodic tasks</td><td>Each periodic definition has exactly one scheduler; persistence is enabled in SQLite / Redis mode</td></tr>
+<tr><td>Shutdown</td><td><code>shutdown(graceful=True, timeout=...)</code> is used; the prefetch queue and in-flight tasks can drain or be reclaimed</td></tr>
+<tr><td>Monitoring</td><td>An external metrics system is connected; probes use <code>get_health_status()</code>, high-frequency metrics use <code>get_metrics()</code> / <code>on_metrics()</code>; global judgment does not rely on a single process's local statistics</td></tr>
+</tbody>
+</table>
+
+<div class="doc-note">Use this table to confirm each item before go-live. For parameter meanings and defaults see <a href="/en/docs/v1.0/configuration.html">Configuration reference</a>; for failure handling procedures see <a href="/en/docs/v1.0/failure-recovery.html">Failure recovery</a>.</div>
+
+        </div>
+        <footer class="article-foot">
+          <a class="article-top" href="#top">Back to top <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></a>
+        </footer>
+      </article>
+      <nav class="docs-pager" aria-label="Previous and next">
+      <a class="pager-prev" href="/en/docs/v1.0/configuration.html"><span>Previous</span><strong>Configuration reference</strong></a>
+      <a class="pager-next" href="/en/docs/v1.0/deployment.html"><span>Next</span><strong>Deployment guide</strong></a>
+    </nav>
+      <p class="docs-feedback">Found a docs issue? Report it in <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">GitHub Issues</a>.</p>
+    </main>
+    <nav class="docs-toc" aria-label="On this page"><p class="docs-toc-label">On this page</p><a href="#Production%20configuration%20template">Production configuration template</a><a href="#Executors">Executors</a><a href="#Concurrency%20and%20timeouts">Concurrency and timeouts</a><a href="#Retries">Retries</a><a href="#Storage%20selection">Storage selection</a><a href="#Prefetch">Prefetch</a><a href="#Event%20bus">Event bus</a><a href="#Terminal%20cleanup">Terminal cleanup</a><a href="#Shutdown%20and%20reclamation">Shutdown and reclamation</a><a href="#Observability">Observability</a><a href="#Go-live%20checklist">Go-live checklist</a></nav>
+  </div>
+  <footer class="site-footer">
+  <div class="container">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a class="brand" href="/en/" aria-label="NeoTask home">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="9" fill="#10211b"/>
+            <path d="M9.5 22.5v-13l13 13v-13" fill="none" stroke="#2dd4bf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
+          </svg>
+          <span class="brand-name">NeoTask</span>
+        </a>
+        <p>Lightweight Python async task queue.<br>Embed it in your app, with no extra middleware to run.</p>
+        <div class="footer-status"><span class="status-dot"></span> v1.2.1 · released 2026-11-22</div>
+      </div>
+
+      <div class="footer-col">
+        <h3>Product</h3>
+        <a href="/en/features.html">Features</a>
+        <a href="/en/docs/">Docs center</a>
+        <a href="/en/changelog.html">Changelog</a>
+        <a href="https://pypi.org/project/neotask/" target="_blank" rel="noopener">PyPI</a>
+      </div>
+      <div class="footer-col">
+        <h3>Docs</h3>
+        <a href="/en/docs/v1.0/quickstart.html">Quickstart</a>
+        <a href="/en/docs/v1.0/architecture.html">Core concepts</a>
+        <a href="/en/docs/v1.0/api-reference.html">API reference</a>
+        <a href="/en/docs/v1.0/benchmarks.html">Benchmarks</a>
+      </div>
+      <div class="footer-col">
+        <h3>Community</h3>
+        <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/neopen/neotask/discussions" target="_blank" rel="noopener">Discussions</a>
+        <a href="https://github.com/neopen/neotask/tree/main/examples" target="_blank" rel="noopener">Examples</a>
+      </div>
+      <div class="footer-col">
+        <h3>Resources</h3>
+        <a href="/en/community.html">Contribute</a>
+        <a href="https://pengline.cn" target="_blank" rel="noopener">Blog</a>
+        <a href="https://github.com/neopen/neotask/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+        <a href="https://github.com/neopen/neotask/releases" target="_blank" rel="noopener">Release Notes</a>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p>© 2026 NeoTask · Maintained by <a href="https://pengline.cn" target="_blank" rel="noopener">NeoPen</a> · Open source under MIT</p>
+      <p class="footer-motto">Embedded by design. Observable by default.</p>
+    </div>
+  </div>
+</footer>
+
+  <script src="/assets/js/site.js" defer></script>
+</body>
+</html>

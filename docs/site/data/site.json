@@ -1,9 +1,9 @@
 {
   "name": "NeoTask",
   "tagline": "轻量级 Python 异步任务队列",
-  "description": "NeoTask 是纯 Python 实现的轻量级异步任务队列与调度器：嵌入式设计、零外部服务、支持优先级、延时、周期与 Cron 任务，可通过 Redis 平滑扩展到分布式集群。",
-  "version": "1.1.1",
-  "releaseDate": "2026-11-15",
+  "description": "NeoTask 是纯 Python 实现的异步任务队列与调度器：嵌入式设计、零外部服务，支持优先级、延时、周期与 Cron 任务、断点续跑、成本采集与轻量监控，可通过 Redis 平滑扩展到分布式集群。",
+  "version": "1.2.1",
+  "releaseDate": "2026-11-22",
   "python": "3.8+",
   "license": "MIT",
   "homepage": "https://task.helpenx.com",
@@ -23,6 +23,48 @@
     "topics": 20
   },
   "releases": [
+    {
+      "version": "1.2.1",
+      "date": "2026-11-22",
+      "type": "patch",
+      "summary": "全链路性能修复：预取空队列退避、内存队列批量写删、监控采样阻塞与 Redis 批量读取。",
+      "items": [
+        "预取空队列不再叠加指数退避，稀疏任务延迟从最高 500 ms 降至 12–26 ms",
+        "内存批量写入降为 O(k log n)；向 10,000 条队列写入 1,000 条约 0.471 ms",
+        "批量移除使用惰性墓碑；移除 1,000 条约 0.668 ms，无需重建堆",
+        "psutil 采样移入线程池，消除周期性约 100 ms 的事件循环停顿",
+        "Redis list_by_status 改为单次 MGET；内存分页与 Blackboard TTL 写入优化",
+        "回归：单元测试 538 通过 / 12 跳过；集成测试 87 通过 / 1 跳过"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.2.1"
+    },
+    {
+      "version": "1.2.0",
+      "date": "2026-11-20",
+      "type": "minor",
+      "summary": "性能与轻量监控：快照、周期推送，以及 1,000 任务并发、断点与进度基准。",
+      "items": [
+        "新增 TaskPool.get_metrics() 轻量快照与 on_metrics() 周期推送",
+        "新增仓储计数与重试计数接口，快照不再加载任务实体",
+        "新增 1,000 任务并发、提交延迟与批量吞吐基准",
+        "新增断点写入成本与监控快照成本基准",
+        "新增进度上报频率对吞吐影响的基准",
+        "未订阅事件不再入队；内部处理器按事件类型订阅",
+        "SQLite 自动提交模式跳过空提交，仅在超限时清理断点"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.2.0"
+    },
+    {
+      "version": "1.1.2",
+      "date": "2026-11-18",
+      "type": "patch",
+      "summary": "调度精度与执行器配置修复。",
+      "items": [
+        "修复定时任务的调度精度",
+        "修复部分路径执行器配置未生效"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.1.2"
+    },
     {
       "version": "1.1.1",
       "date": "2026-11-15",

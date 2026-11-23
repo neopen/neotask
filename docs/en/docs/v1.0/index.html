@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoTask v1.0 Docs · Install, configure, API, and benchmarks</title>
+  <meta name="description" content="Official NeoTask v1.0 documentation: 24 pages in five sections covering installation, configuration, core concepts, reliability, deployment, integration, and the full API reference.">
+  <meta name="keywords" content="NeoTask documentation, Python task queue tutorial, NeoTask quickstart, NeoTask configuration, NeoTask API, async task queue, task scheduler">
+  <meta name="author" content="NeoPen">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+  <link rel="canonical" href="https://task.helpenx.com/en/docs/v1.0/">
+  <meta property="og:site_name" content="NeoTask Docs">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="NeoTask v1.0 docs · from first task to production">
+  <meta property="og:description" content="From the first task to production: five sections and 24 pages covering installation, concepts, reliability, deployment, and the API.">
+  <meta property="og:url" content="https://task.helpenx.com/en/docs/v1.0/">
+  <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="NeoTask Docs · v1.0">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="NeoTask v1.0 docs · from first task to production">
+  <meta name="twitter:description" content="From the first task to production: five sections and 24 pages covering installation, concepts, reliability, deployment, and the API.">
+  <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
+  <meta name="twitter:image:alt" content="NeoTask Docs · v1.0">
+  <meta name="theme-color" content="#0b1713">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/css/site.css">
+  <link rel="stylesheet" href="/assets/css/docs.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "CollectionPage",
+        "@id": "https://task.helpenx.com/en/docs/v1.0/#collection",
+        "name": "NeoTask v1.0 docs",
+        "description": "Covers the 1.x line (current baseline 1.2.1): installation, configuration, core concepts, reliability, deployment, integration, and API. 1.x ships compatible enhancements only; 2.0 will get its own docs line.",
+        "url": "https://task.helpenx.com/en/docs/v1.0/",
+        "inLanguage": "en",
+        "isPartOf": {
+          "@type": "WebSite",
+          "name": "NeoTask",
+          "url": "https://task.helpenx.com/"
+        },
+        "about": {
+          "@type": "SoftwareApplication",
+          "name": "NeoTask",
+          "applicationCategory": "DeveloperApplication",
+          "operatingSystem": "OS Independent",
+          "url": "https://task.helpenx.com/"
+        },
+        "hasPart": [
+          {
+            "@type": "TechArticle",
+            "headline": "Quickstart",
+            "description": "Install NeoTask 1.2.1, submit your first task, and choose sync, async, or context manager usage.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/quickstart.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Configuration reference",
+            "description": "TaskPoolConfig and SchedulerConfig fields, defaults, scope, and common presets.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/configuration.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Best practices",
+            "description": "Executor choice, concurrency, retries, timeouts, storage selection, and production guidance.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/best-practices.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Deployment guide",
+            "description": "Local, Docker, and production deployment with storage, networking, security, and upgrades.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/deployment.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Integration guide",
+            "description": "Integrate with web services, HTTP APIs, Python code, third-party components, agents, and workflows.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/integration.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Architecture overview",
+            "description": "How TaskPool, TaskScheduler, queues, workers, and storage layers fit together.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/architecture.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Task lifecycle",
+            "description": "State transitions from submission to terminal states, event callbacks, and result access.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/task-lifecycle.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Task links and shared context",
+            "description": "Parent/child links, external task_id uniqueness, and the memory-only Blackboard.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/task-context.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Priority queue",
+            "description": "Four priority levels, FIFO behavior within a level, and batch submission.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/priority-queue.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Delayed and periodic tasks",
+            "description": "Delay, submit-at, fixed interval, and Cron tasks with management and missed-run policies.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/delayed-tasks.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Persistence",
+            "description": "Memory, SQLite, and Redis backends: use cases, data semantics, and switching.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/persistence.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Distributed deployment",
+            "description": "Shared queues, node heartbeats, task reclaim, and Redis requirements.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/distributed.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Failure recovery",
+            "description": "Timeouts, orphaned tasks, stale locks, dead letters, and business failure semantics.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/failure-recovery.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Checkpoints",
+            "description": "Save intermediate state and resume from the latest checkpoint on retry or explicit submission.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/checkpoint.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Cost and timing",
+            "description": "Report tokens, API calls, and estimated cost; read queue/execution timing and aggregate costs.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/cost-tracking.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Distributed locks",
+            "description": "Task-level mutex locks, TTL, watchdog renewal, and manual locking APIs.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/distributed-lock.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Prefetch",
+            "description": "Demand-driven prefetch triggers, batch sizing, and effects on latency and priority.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/prefetch.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Monitoring and health checks",
+            "description": "Metric snapshots and periodic push, health checks, event backpressure, UI, and Prometheus.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/monitoring.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Troubleshooting",
+            "description": "Common issues, log analysis, diagnosis, deployment problems, and performance questions.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/troubleshooting.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "API reference",
+            "description": "Public TaskPool and TaskScheduler methods, 1.2 additions, parameter defaults, and return semantics.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/api-reference.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Benchmarks",
+            "description": "v1.2.1 measurements for submission, completion, prefetch, batching, and SQLite boundaries.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/benchmarks.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Developer guide",
+            "description": "Project layout, development setup, tests, build, release, and contribution rules.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/developer-guide.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Glossary",
+            "description": "Shared definitions for task, queue, worker, scheduler, retry, reclaim, dead letter, and more.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/glossary.html"
+          },
+          {
+            "@type": "TechArticle",
+            "headline": "Roadmap",
+            "description": "Delivered 1.x capabilities, remaining boundaries, and NeoFlow orchestration plans.",
+            "url": "https://task.helpenx.com/en/docs/v1.0/roadmap.html"
+          }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "@id": "https://task.helpenx.com/en/docs/v1.0/#breadcrumb",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": "https://task.helpenx.com/en/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Docs",
+            "item": "https://task.helpenx.com/en/docs/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": "v1.0",
+            "item": "https://task.helpenx.com/en/docs/v1.0/"
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/">
+  <link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/">
+  <link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/">
+</head>
+<body class="docs-page docs-landing">
+  <svg class="svg-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24"><path d="m4 17 6-6-6-6M12 19h8"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5 9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></symbol>
+  <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M12 14 17 9"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/><circle cx="12" cy="14" r="1"/></symbol>
+  <symbol id="i-workflow" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="6" rx="1.5"/><rect x="14" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 9v5a4 4 0 0 0 4 4H14"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
+  <symbol id="i-nodes" viewBox="0 0 24 24"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 6h9M6.5 8.2l4 7.6M17.5 8.2l-4 7.6"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8l9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></symbol>
+  <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="m12 3 2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2L12 3z"/></symbol>
+  <symbol id="i-github" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 .5C5.73.5.9 5.33.9 11.6c0 4.9 3.17 9.05 7.57 10.52.55.1.75-.24.75-.53v-1.85c-3.08.67-3.73-1.48-3.73-1.48-.5-1.28-1.23-1.62-1.23-1.62-1-.69.08-.68.08-.68 1.11.08 1.7 1.14 1.7 1.14.98 1.69 2.58 1.2 3.2.92.1-.71.39-1.2.7-1.48-2.46-.28-5.05-1.23-5.05-5.48 0-1.21.43-2.2 1.14-2.98-.11-.28-.49-1.4.11-2.92 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.6 1.52.22 2.64.11 2.92.71.78 1.14 1.77 1.14 2.98 0 4.26-2.6 5.2-5.06 5.47.4.35.76 1.03.76 2.07v3.07c0 .29.2.64.76.53a11.1 11.1 0 0 0 7.56-10.52C23.1 5.33 18.27.5 12 .5z"/></symbol>
+</svg>
+
+  <a class="skip-link" href="#main">Skip to main content</a>
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="/en/" aria-label="NeoTask home">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="9" fill="#0b1713"/>
+        <path d="M9.5 22.5v-13l13 13v-13" fill="none" stroke="#2dd4bf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
+      </svg>
+      <span class="brand-name">NeoTask</span>
+      <span class="brand-version">v1.2.1</span>
+    </a>
+
+    <nav class="site-nav" id="siteNav" aria-label="Main navigation">
+      <a class="site-nav-link " href="/en/features.html">Features</a>
+      <a class="site-nav-link " href="/en/docs/v1.0/benchmarks.html">Benchmarks</a>
+      <a class="site-nav-link is-active" href="/en/docs/">Docs</a>
+      <a class="site-nav-link " href="/en/changelog.html">Changelog</a>
+      <a class="site-nav-link " href="/en/community.html">Community</a>
+      <a class="site-nav-link site-nav-external" href="https://helpenx.com/" target="_blank" rel="noopener">
+        HelpEnx Hub
+        <svg class="icon icon-xs nav-external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
+      </a>
+    </nav>
+
+    <div class="header-actions">
+      <a class="lang-switch" href="/docs/v1.0/" hreflang="zh-CN" lang="zh-CN" aria-label="切换到中文">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>
+        <span>中文</span>
+      </a>
+      <a class="gh-star" href="https://github.com/neopen/neotask" target="_blank" rel="noopener" aria-label="Star NeoTask on GitHub">
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.9 5.33.9 11.6c0 4.9 3.17 9.05 7.57 10.52.55.1.75-.24.75-.53v-1.85c-3.08.67-3.73-1.48-3.73-1.48-.5-1.28-1.23-1.62-1.23-1.62-1-.69.08-.68.08-.68 1.11.08 1.7 1.14 1.7 1.14.98 1.69 2.58 1.2 3.2.92.1-.71.39-1.2.7-1.48-2.46-.28-5.05-1.23-5.05-5.48 0-1.21.43-2.2 1.14-2.98-.11-.28-.49-1.4.11-2.92 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.6 1.52.22 2.64.11 2.92.71.78 1.14 1.77 1.14 2.98 0 4.26-2.6 5.2-5.06 5.47.4.35.76 1.03.76 2.07v3.07c0 .29.2.64.76.53a11.1 11.1 0 0 0 7.56-10.52C23.1 5.33 18.27.5 12 .5z"/></svg>
+        <span>Star</span>
+        <span class="gh-star-count">8</span>
+      </a>
+      <a class="btn btn-primary btn-sm header-cta" href="/en/docs/v1.0/quickstart.html">Get started</a>
+      <button class="nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="siteNav">
+        <span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+
+  <main id="main">
+    <section class="docs-hero">
+      <div class="docs-hero-inner">
+        <span class="eyebrow">DOCUMENTATION · v1.0</span>
+        <h1>NeoTask Docs</h1>
+        <p>You are reading the v1.0 docs for NeoTask 1.x, baseline v1.2.1. Five sections and 24 pages take you from installation to deployment, reliability, and the complete API.</p>
+        <div class="docs-hero-actions">
+          <a class="btn btn-primary" href="/en/docs/v1.0/quickstart.html">Quickstart <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+          <a class="btn btn-outline" href="/en/docs/v1.0/api-reference.html">API reference</a>
+          <a class="btn btn-outline" href="/en/docs/">Switch version</a>
+          <a class="btn btn-outline" href="https://github.com/neopen/neotask" target="_blank" rel="noopener"><svg class="icon icon-sm"><use href="#i-github"/></svg> Source repo</a>
+        </div>
+        <div class="docs-meta-row">
+          <span>24 pages</span>
+          <span>v1.0</span>
+          <span>For NeoTask 1.x</span>
+          <span>baseline v1.2.1</span>
+          <span>Updated 2026-11-22</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="docs-hub">
+      <div class="docs-version-bar">
+        <label for="docsVersionHub">Docs version</label>
+        <select id="docsVersionHub" data-docs-version>
+          <option value="v1.0" selected>v1.0 (latest)</option>
+        </select>
+        <span>For NeoTask 1.x · baseline v1.2.1</span>
+        <a href="/en/docs/">All versions</a>
+      </div>
+
+      <div class="hub-search">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="docsHubSearch" type="search" placeholder="Search docs, e.g. Redis, Cron, retry, config" aria-label="Search docs" autocomplete="off">
+        <span class="hub-search-hint">/</span>
+      </div>
+
+      <div class="docs-quick">
+        <a class="docs-quick-item" href="/en/docs/v1.0/quickstart.html">
+          <span>5 min</span>
+          <strong>Run your first task</strong>
+          <p>Install, write an executor, submit, and wait for a result.</p>
+        </a>
+        <a class="docs-quick-item" href="/en/docs/v1.0/configuration.html">
+          <span>Config</span>
+          <strong>Choose storage and concurrency</strong>
+          <p>Three deployment profiles and the fields that actually apply.</p>
+        </a>
+        <a class="docs-quick-item" href="/en/docs/v1.0/failure-recovery.html">
+          <span>Ops</span>
+          <strong>Lost tasks?</strong>
+          <p>Heartbeats, the reclaimer, and the dead-letter queue.</p>
+        </a>
+      </div>
+
+      <div class="docs-hub-intro" style="margin-top:40px">
+        <h2>Recommended</h2>
+        <a href="/en/docs/v1.0/quickstart.html">Start with the quickstart →</a>
+      </div>
+      <div class="doc-feature-grid">
+
+        <a class="doc-feature" href="/en/docs/v1.0/quickstart.html" data-doc-card data-doc-search="Quickstart Install NeoTask 1.2.1, submit your first task, and choose sync, async, or context manager usage. Get started">
+          <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg></span>
+          <span class="doc-feature-body">
+            <span class="doc-feature-cat">Get started</span>
+            <strong>Quickstart</strong>
+            <span>Install NeoTask 1.2.1, submit your first task, and choose sync, async, or context manager usage.</span>
+          </span>
+          <span class="doc-feature-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="doc-feature" href="/en/docs/v1.0/configuration.html" data-doc-card data-doc-search="Configuration reference TaskPoolConfig and SchedulerConfig fields, defaults, scope, and common presets. Get started">
+          <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></span>
+          <span class="doc-feature-body">
+            <span class="doc-feature-cat">Get started</span>
+            <strong>Configuration reference</strong>
+            <span>TaskPoolConfig and SchedulerConfig fields, defaults, scope, and common presets.</span>
+          </span>
+          <span class="doc-feature-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="doc-feature" href="/en/docs/v1.0/architecture.html" data-doc-card data-doc-search="Architecture overview How TaskPool, TaskScheduler, queues, workers, and storage layers fit together. Core concepts">
+          <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+          <span class="doc-feature-body">
+            <span class="doc-feature-cat">Core concepts</span>
+            <strong>Architecture overview</strong>
+            <span>How TaskPool, TaskScheduler, queues, workers, and storage layers fit together.</span>
+          </span>
+          <span class="doc-feature-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="doc-feature" href="/en/docs/v1.0/task-lifecycle.html" data-doc-card data-doc-search="Task lifecycle State transitions from submission to terminal states, event callbacks, and result access. Core concepts">
+          <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 9 5-9 5-9-5 9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg></span>
+          <span class="doc-feature-body">
+            <span class="doc-feature-cat">Core concepts</span>
+            <strong>Task lifecycle</strong>
+            <span>State transitions from submission to terminal states, event callbacks, and result access.</span>
+          </span>
+          <span class="doc-feature-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="doc-feature" href="/en/docs/v1.0/distributed.html" data-doc-card data-doc-search="Distributed deployment Shared queues, node heartbeats, task reclaim, and Redis requirements. Core concepts">
+          <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 6h9M6.5 8.2l4 7.6M17.5 8.2l-4 7.6"/></svg></span>
+          <span class="doc-feature-body">
+            <span class="doc-feature-cat">Core concepts</span>
+            <strong>Distributed deployment</strong>
+            <span>Shared queues, node heartbeats, task reclaim, and Redis requirements.</span>
+          </span>
+          <span class="doc-feature-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="doc-feature" href="/en/docs/v1.0/failure-recovery.html" data-doc-card data-doc-search="Failure recovery Timeouts, orphaned tasks, stale locks, dead letters, and business failure semantics. Reliability">
+          <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
+          <span class="doc-feature-body">
+            <span class="doc-feature-cat">Reliability</span>
+            <strong>Failure recovery</strong>
+            <span>Timeouts, orphaned tasks, stale locks, dead letters, and business failure semantics.</span>
+          </span>
+          <span class="doc-feature-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="doc-feature" href="/en/docs/v1.0/api-reference.html" data-doc-card data-doc-search="API reference Public TaskPool and TaskScheduler methods, 1.2 additions, parameter defaults, and return semantics. Reference">
+          <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg></span>
+          <span class="doc-feature-body">
+            <span class="doc-feature-cat">Reference</span>
+            <strong>API reference</strong>
+            <span>Public TaskPool and TaskScheduler methods, 1.2 additions, parameter defaults, and return semantics.</span>
+          </span>
+          <span class="doc-feature-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="doc-feature" href="/en/docs/v1.0/benchmarks.html" data-doc-card data-doc-search="Benchmarks v1.2.1 measurements for submission, completion, prefetch, batching, and SQLite boundaries. Reference">
+          <span class="doc-feature-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6" rx="1"/><rect x="12" y="8" width="3" height="10" rx="1"/><rect x="17" y="5" width="3" height="13" rx="1"/></svg></span>
+          <span class="doc-feature-body">
+            <span class="doc-feature-cat">Reference</span>
+            <strong>Benchmarks</strong>
+            <span>v1.2.1 measurements for submission, completion, prefetch, batching, and SQLite boundaries.</span>
+          </span>
+          <span class="doc-feature-arrow" aria-hidden="true">→</span>
+        </a>
+      </div>
+
+      <div id="docsGroups">
+
+      <section class="doc-group" data-doc-group id="start">
+        <div class="doc-group-head">
+          <h2>Get started</h2>
+          <span>05</span>
+        </div>
+        <div class="doc-card-grid">
+          <a class="doc-card" href="/en/docs/v1.0/quickstart.html" data-doc-card data-doc-search="Quickstart Install NeoTask 1.2.1, submit your first task, and choose sync, async, or context manager usage. Get started">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg></span>
+            <span class="doc-card-title">Quickstart</span>
+            <span class="doc-card-desc">Install NeoTask 1.2.1, submit your first task, and choose sync, async, or context manager usage.</span>
+            <span class="doc-card-meta">7 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/configuration.html" data-doc-card data-doc-search="Configuration reference TaskPoolConfig and SchedulerConfig fields, defaults, scope, and common presets. Get started">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></span>
+            <span class="doc-card-title">Configuration reference</span>
+            <span class="doc-card-desc">TaskPoolConfig and SchedulerConfig fields, defaults, scope, and common presets.</span>
+            <span class="doc-card-meta">10 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/best-practices.html" data-doc-card data-doc-search="Best practices Executor choice, concurrency, retries, timeouts, storage selection, and production guidance. Get started">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <span class="doc-card-title">Best practices</span>
+            <span class="doc-card-desc">Executor choice, concurrency, retries, timeouts, storage selection, and production guidance.</span>
+            <span class="doc-card-meta">8 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/deployment.html" data-doc-card data-doc-search="Deployment guide Local, Docker, and production deployment with storage, networking, security, and upgrades. Get started">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5V8z"/><path d="m3 8 9 5 9-5"/><path d="M12 13v8"/></svg></span>
+            <span class="doc-card-title">Deployment guide</span>
+            <span class="doc-card-desc">Local, Docker, and production deployment with storage, networking, security, and upgrades.</span>
+            <span class="doc-card-meta">9 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/integration.html" data-doc-card data-doc-search="Integration guide Integrate with web services, HTTP APIs, Python code, third-party components, agents, and workflows. Get started">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07l-1.41 1.41"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.41-1.41"/></svg></span>
+            <span class="doc-card-title">Integration guide</span>
+            <span class="doc-card-desc">Integrate with web services, HTTP APIs, Python code, third-party components, agents, and workflows.</span>
+            <span class="doc-card-meta">8 min</span>
+          </a>
+        </div>
+      </section>
+      <section class="doc-group" data-doc-group id="concepts">
+        <div class="doc-group-head">
+          <h2>Core concepts</h2>
+          <span>07</span>
+        </div>
+        <div class="doc-card-grid">
+          <a class="doc-card" href="/en/docs/v1.0/architecture.html" data-doc-card data-doc-search="Architecture overview How TaskPool, TaskScheduler, queues, workers, and storage layers fit together. Core concepts">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+            <span class="doc-card-title">Architecture overview</span>
+            <span class="doc-card-desc">How TaskPool, TaskScheduler, queues, workers, and storage layers fit together.</span>
+            <span class="doc-card-meta">6 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/task-lifecycle.html" data-doc-card data-doc-search="Task lifecycle State transitions from submission to terminal states, event callbacks, and result access. Core concepts">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 9 5-9 5-9-5 9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg></span>
+            <span class="doc-card-title">Task lifecycle</span>
+            <span class="doc-card-desc">State transitions from submission to terminal states, event callbacks, and result access.</span>
+            <span class="doc-card-meta">6 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/task-context.html" data-doc-card data-doc-search="Task links and shared context Parent/child links, external task_id uniqueness, and the memory-only Blackboard. Core concepts">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="6" rx="1.5"/><rect x="14" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 9v5a4 4 0 0 0 4 4H14"/></svg></span>
+            <span class="doc-card-title">Task links and shared context</span>
+            <span class="doc-card-desc">Parent/child links, external task_id uniqueness, and the memory-only Blackboard.</span>
+            <span class="doc-card-meta">6 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/priority-queue.html" data-doc-card data-doc-search="Priority queue Four priority levels, FIFO behavior within a level, and batch submission. Core concepts">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/></svg></span>
+            <span class="doc-card-title">Priority queue</span>
+            <span class="doc-card-desc">Four priority levels, FIFO behavior within a level, and batch submission.</span>
+            <span class="doc-card-meta">5 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/delayed-tasks.html" data-doc-card data-doc-search="Delayed and periodic tasks Delay, submit-at, fixed interval, and Cron tasks with management and missed-run policies. Core concepts">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+            <span class="doc-card-title">Delayed and periodic tasks</span>
+            <span class="doc-card-desc">Delay, submit-at, fixed interval, and Cron tasks with management and missed-run policies.</span>
+            <span class="doc-card-meta">8 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/persistence.html" data-doc-card data-doc-search="Persistence Memory, SQLite, and Redis backends: use cases, data semantics, and switching. Core concepts">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/></svg></span>
+            <span class="doc-card-title">Persistence</span>
+            <span class="doc-card-desc">Memory, SQLite, and Redis backends: use cases, data semantics, and switching.</span>
+            <span class="doc-card-meta">7 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/distributed.html" data-doc-card data-doc-search="Distributed deployment Shared queues, node heartbeats, task reclaim, and Redis requirements. Core concepts">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 6h9M6.5 8.2l4 7.6M17.5 8.2l-4 7.6"/></svg></span>
+            <span class="doc-card-title">Distributed deployment</span>
+            <span class="doc-card-desc">Shared queues, node heartbeats, task reclaim, and Redis requirements.</span>
+            <span class="doc-card-meta">7 min</span>
+          </a>
+        </div>
+      </section>
+      <section class="doc-group" data-doc-group id="reliability">
+        <div class="doc-group-head">
+          <h2>Reliability</h2>
+          <span>07</span>
+        </div>
+        <div class="doc-card-grid">
+          <a class="doc-card" href="/en/docs/v1.0/failure-recovery.html" data-doc-card data-doc-search="Failure recovery Timeouts, orphaned tasks, stale locks, dead letters, and business failure semantics. Reliability">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
+            <span class="doc-card-title">Failure recovery</span>
+            <span class="doc-card-desc">Timeouts, orphaned tasks, stale locks, dead letters, and business failure semantics.</span>
+            <span class="doc-card-meta">8 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/checkpoint.html" data-doc-card data-doc-search="Checkpoints Save intermediate state and resume from the latest checkpoint on retry or explicit submission. Reliability">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg></span>
+            <span class="doc-card-title">Checkpoints</span>
+            <span class="doc-card-desc">Save intermediate state and resume from the latest checkpoint on retry or explicit submission.</span>
+            <span class="doc-card-meta">7 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/cost-tracking.html" data-doc-card data-doc-search="Cost and timing Report tokens, API calls, and estimated cost; read queue/execution timing and aggregate costs. Reliability">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg></span>
+            <span class="doc-card-title">Cost and timing</span>
+            <span class="doc-card-desc">Report tokens, API calls, and estimated cost; read queue/execution timing and aggregate costs.</span>
+            <span class="doc-card-meta">6 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/distributed-lock.html" data-doc-card data-doc-search="Distributed locks Task-level mutex locks, TTL, watchdog renewal, and manual locking APIs. Reliability">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+            <span class="doc-card-title">Distributed locks</span>
+            <span class="doc-card-desc">Task-level mutex locks, TTL, watchdog renewal, and manual locking APIs.</span>
+            <span class="doc-card-meta">5 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/prefetch.html" data-doc-card data-doc-search="Prefetch Demand-driven prefetch triggers, batch sizing, and effects on latency and priority. Reliability">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 14 17 9"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/><circle cx="12" cy="14" r="1"/></svg></span>
+            <span class="doc-card-title">Prefetch</span>
+            <span class="doc-card-desc">Demand-driven prefetch triggers, batch sizing, and effects on latency and priority.</span>
+            <span class="doc-card-meta">5 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/monitoring.html" data-doc-card data-doc-search="Monitoring and health checks Metric snapshots and periodic push, health checks, event backpressure, UI, and Prometheus. Reliability">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>
+            <span class="doc-card-title">Monitoring and health checks</span>
+            <span class="doc-card-desc">Metric snapshots and periodic push, health checks, event backpressure, UI, and Prometheus.</span>
+            <span class="doc-card-meta">7 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/troubleshooting.html" data-doc-card data-doc-search="Troubleshooting Common issues, log analysis, diagnosis, deployment problems, and performance questions. Reliability">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg></span>
+            <span class="doc-card-title">Troubleshooting</span>
+            <span class="doc-card-desc">Common issues, log analysis, diagnosis, deployment problems, and performance questions.</span>
+            <span class="doc-card-meta">8 min</span>
+          </a>
+        </div>
+      </section>
+      <section class="doc-group" data-doc-group id="reference">
+        <div class="doc-group-head">
+          <h2>Reference</h2>
+          <span>04</span>
+        </div>
+        <div class="doc-card-grid">
+          <a class="doc-card" href="/en/docs/v1.0/api-reference.html" data-doc-card data-doc-search="API reference Public TaskPool and TaskScheduler methods, 1.2 additions, parameter defaults, and return semantics. Reference">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg></span>
+            <span class="doc-card-title">API reference</span>
+            <span class="doc-card-desc">Public TaskPool and TaskScheduler methods, 1.2 additions, parameter defaults, and return semantics.</span>
+            <span class="doc-card-meta">12 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/benchmarks.html" data-doc-card data-doc-search="Benchmarks v1.2.1 measurements for submission, completion, prefetch, batching, and SQLite boundaries. Reference">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6" rx="1"/><rect x="12" y="8" width="3" height="10" rx="1"/><rect x="17" y="5" width="3" height="13" rx="1"/></svg></span>
+            <span class="doc-card-title">Benchmarks</span>
+            <span class="doc-card-desc">v1.2.1 measurements for submission, completion, prefetch, batching, and SQLite boundaries.</span>
+            <span class="doc-card-meta">9 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/developer-guide.html" data-doc-card data-doc-search="Developer guide Project layout, development setup, tests, build, release, and contribution rules. Reference">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg></span>
+            <span class="doc-card-title">Developer guide</span>
+            <span class="doc-card-desc">Project layout, development setup, tests, build, release, and contribution rules.</span>
+            <span class="doc-card-meta">8 min</span>
+          </a>
+          <a class="doc-card" href="/en/docs/v1.0/glossary.html" data-doc-card data-doc-search="Glossary Shared definitions for task, queue, worker, scheduler, retry, reclaim, dead letter, and more. Reference">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 9 5-9 5-9-5 9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg></span>
+            <span class="doc-card-title">Glossary</span>
+            <span class="doc-card-desc">Shared definitions for task, queue, worker, scheduler, retry, reclaim, dead letter, and more.</span>
+            <span class="doc-card-meta">5 min</span>
+          </a>
+        </div>
+      </section>
+      <section class="doc-group" data-doc-group id="roadmap">
+        <div class="doc-group-head">
+          <h2>Roadmap</h2>
+          <span>01</span>
+        </div>
+        <div class="doc-card-grid">
+          <a class="doc-card" href="/en/docs/v1.0/roadmap.html" data-doc-card data-doc-search="Roadmap Delivered 1.x capabilities, remaining boundaries, and NeoFlow orchestration plans. Roadmap">
+            <span class="doc-card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="6" rx="1.5"/><rect x="14" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 9v5a4 4 0 0 0 4 4H14"/></svg></span>
+            <span class="doc-card-title">Roadmap<em class="tag-soon">planned</em></span>
+            <span class="doc-card-desc">Delivered 1.x capabilities, remaining boundaries, and NeoFlow orchestration plans.</span>
+            <span class="doc-card-meta">5 min</span>
+          </a>
+        </div>
+      </section>
+      </div>
+
+      <p class="hub-count" id="docsHubCount" hidden></p>
+      <p class="hub-empty" id="docsHubEmpty" hidden>No matching docs. Try "install", "Redis", "Cron", or "retry".</p>
+
+      <div class="hub-foot">
+        <div>
+          <h2>Found a docs issue?</h2>
+          <p>These docs are written against the v1.2.1 source and release notes. If something is stale or wrong, open an issue.</p>
+        </div>
+        <a class="btn btn-outline" href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">Open an issue <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+  <div class="container">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a class="brand" href="/en/" aria-label="NeoTask home">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="9" fill="#10211b"/>
+            <path d="M9.5 22.5v-13l13 13v-13" fill="none" stroke="#2dd4bf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
+          </svg>
+          <span class="brand-name">NeoTask</span>
+        </a>
+        <p>Lightweight Python async task queue.<br>Embed it in your app, with no extra middleware to run.</p>
+        <div class="footer-status"><span class="status-dot"></span> v1.2.1 · released 2026-11-22</div>
+      </div>
+
+      <div class="footer-col">
+        <h3>Product</h3>
+        <a href="/en/features.html">Features</a>
+        <a href="/en/docs/">Docs center</a>
+        <a href="/en/changelog.html">Changelog</a>
+        <a href="https://pypi.org/project/neotask/" target="_blank" rel="noopener">PyPI</a>
+      </div>
+      <div class="footer-col">
+        <h3>Docs</h3>
+        <a href="/en/docs/v1.0/quickstart.html">Quickstart</a>
+        <a href="/en/docs/v1.0/architecture.html">Core concepts</a>
+        <a href="/en/docs/v1.0/api-reference.html">API reference</a>
+        <a href="/en/docs/v1.0/benchmarks.html">Benchmarks</a>
+      </div>
+      <div class="footer-col">
+        <h3>Community</h3>
+        <a href="https://github.com/neopen/neotask" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/neopen/neotask/discussions" target="_blank" rel="noopener">Discussions</a>
+        <a href="https://github.com/neopen/neotask/tree/main/examples" target="_blank" rel="noopener">Examples</a>
+      </div>
+      <div class="footer-col">
+        <h3>Resources</h3>
+        <a href="/en/community.html">Contribute</a>
+        <a href="https://pengline.cn" target="_blank" rel="noopener">Blog</a>
+        <a href="https://github.com/neopen/neotask/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+        <a href="https://github.com/neopen/neotask/releases" target="_blank" rel="noopener">Release Notes</a>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p>© 2026 NeoTask · Maintained by <a href="https://pengline.cn" target="_blank" rel="noopener">NeoPen</a> · Open source under MIT</p>
+      <p class="footer-motto">Embedded by design. Observable by default.</p>
+    </div>
+  </div>
+</footer>
+
+  <script src="/assets/js/site.js" defer></script>
+</body>
+</html>

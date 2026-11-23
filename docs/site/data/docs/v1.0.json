@@ -18,12 +18,12 @@
     {
       "id": "reference",
       "label": "参考",
-      "description": "API 签名、返回语义与性能基准。"
+      "description": "API 签名、返回语义、性能基准、开发与术语。"
     },
     {
       "id": "roadmap",
       "label": "路线图",
-      "description": "1.0 能力边界与后续版本规划。"
+      "description": "1.x 能力边界与后续版本规划。"
     }
   ],
   "pages": [
@@ -32,8 +32,8 @@
       "title": "快速开始",
       "category": "start",
       "featured": true,
-      "description": "安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。",
-      "updated": "2026-11-17",
+      "description": "安装 NeoTask 1.2.1，提交第一个任务，并选择同步、异步或上下文管理器用法。",
+      "updated": "2026-11-22",
       "icon": "rocket",
       "time": "7 分钟"
     },
@@ -43,7 +43,7 @@
       "category": "start",
       "featured": true,
       "description": "TaskPoolConfig 与 SchedulerConfig 的字段、默认值、生效范围和常用配置档位。",
-      "updated": "2026-11-17",
+      "updated": "2026-11-22",
       "icon": "sliders",
       "time": "10 分钟"
     },
@@ -52,8 +52,26 @@
       "title": "最佳实践",
       "category": "start",
       "description": "执行器、并发、重试、超时、存储选型与生产部署建议。",
-      "updated": "2026-11-17",
+      "updated": "2026-11-22",
       "icon": "check",
+      "time": "8 分钟"
+    },
+    {
+      "slug": "deployment",
+      "title": "部署指南",
+      "category": "start",
+      "description": "本地、Docker 与生产环境部署，含存储、网络、安全与升级核对。",
+      "updated": "2026-11-22",
+      "icon": "box",
+      "time": "9 分钟"
+    },
+    {
+      "slug": "integration",
+      "title": "集成指南",
+      "category": "start",
+      "description": "与 Web 服务、HTTP API、Python 代码、第三方组件、Agent 与工作流集成。",
+      "updated": "2026-11-22",
+      "icon": "link",
       "time": "8 分钟"
     },
     {
@@ -62,7 +80,7 @@
       "category": "concepts",
       "featured": true,
       "description": "TaskPool、TaskScheduler 与队列、Worker、存储层的组件关系。",
-      "updated": "2026-11-17",
+      "updated": "2026-11-22",
       "icon": "blocks",
       "time": "6 分钟"
     },
@@ -72,7 +90,7 @@
       "category": "concepts",
       "featured": true,
       "description": "任务从提交到终态的状态流转、事件回调与结果获取方式。",
-      "updated": "2026-11-17",
+      "updated": "2026-11-22",
       "icon": "layers",
       "time": "6 分钟"
     },
@@ -81,8 +99,8 @@
       "title": "任务关联与共享上下文",
       "category": "concepts",
       "description": "父子任务关联、外部指定 task_id 的唯一性语义，以及仅 memory 后端可用的 Blackboard。",
-      "updated": "2026-11-17",
-      "icon": "link",
+      "updated": "2026-11-22",
+      "icon": "workflow",
       "time": "6 分钟"
     },
     {
@@ -90,7 +108,7 @@
       "title": "优先级队列",
       "category": "concepts",
       "description": "四级优先级的排序规则、同级 FIFO 边界与批量提交行为。",
-      "updated": "2026-10-30",
+      "updated": "2026-11-22",
       "icon": "sort",
       "time": "5 分钟"
     },
@@ -99,7 +117,7 @@
       "title": "延时与周期任务",
       "category": "concepts",
       "description": "延时、指定时间、固定间隔与 Cron 任务的提交、管理和错过策略。",
-      "updated": "2026-11-11",
+      "updated": "2026-11-22",
       "icon": "clock",
       "time": "8 分钟"
     },
@@ -108,7 +126,7 @@
       "title": "持久化存储",
       "category": "concepts",
       "description": "Memory、SQLite、Redis 三种后端的适用场景、数据语义与切换方式。",
-      "updated": "2026-11-17",
+      "updated": "2026-11-22",
       "icon": "database",
       "time": "7 分钟"
     },
@@ -118,7 +136,7 @@
       "category": "concepts",
       "featured": true,
       "description": "多节点共享队列、节点心跳、任务回收与 Redis 部署要求。",
-      "updated": "2026-11-11",
+      "updated": "2026-11-22",
       "icon": "nodes",
       "time": "7 分钟"
     },
@@ -128,7 +146,7 @@
       "category": "reliability",
       "featured": true,
       "description": "超时、孤儿任务、僵尸锁的回收规则，死信队列与业务失败的终结语义。",
-      "updated": "2026-11-17",
+      "updated": "2026-11-22",
       "icon": "shield",
       "time": "8 分钟"
     },
@@ -137,7 +155,7 @@
       "title": "断点续跑",
       "category": "reliability",
       "description": "保存任务中间状态，并在自动重试、手动重试或显式提交时从最近 checkpoint 恢复。",
-      "updated": "2026-11-17",
+      "updated": "2026-11-22",
       "icon": "bookmark",
       "time": "7 分钟"
     },
@@ -146,7 +164,7 @@
       "title": "成本与耗时",
       "category": "reliability",
       "description": "上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。",
-      "updated": "2026-11-17",
+      "updated": "2026-11-22",
       "icon": "coins",
       "time": "6 分钟"
     },
@@ -155,7 +173,7 @@
       "title": "分布式锁",
       "category": "reliability",
       "description": "任务级互斥锁、TTL、看门狗续期与手动加锁接口。",
-      "updated": "2026-11-11",
+      "updated": "2026-11-22",
       "icon": "lock",
       "time": "5 分钟"
     },
@@ -164,7 +182,7 @@
       "title": "预取机制",
       "category": "reliability",
       "description": "按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。",
-      "updated": "2026-11-11",
+      "updated": "2026-11-22",
       "icon": "gauge",
       "time": "5 分钟"
     },
@@ -172,18 +190,27 @@
       "slug": "monitoring",
       "title": "监控与健康检查",
       "category": "reliability",
-      "description": "指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。",
-      "updated": "2026-11-17",
+      "description": "指标快照与周期推送、健康检查、事件总线背压、可选监控入口与 Prometheus 上报。",
+      "updated": "2026-11-22",
       "icon": "activity",
       "time": "7 分钟"
+    },
+    {
+      "slug": "troubleshooting",
+      "title": "问题排查",
+      "category": "reliability",
+      "description": "常见问题、日志分析、错误诊断、部署与性能问题排查。",
+      "updated": "2026-11-22",
+      "icon": "refresh",
+      "time": "8 分钟"
     },
     {
       "slug": "api-reference",
       "title": "API 参考",
       "category": "reference",
       "featured": true,
-      "description": "TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。",
-      "updated": "2026-11-17",
+      "description": "TaskPool 与 TaskScheduler 的公开方法、1.2 新增 API、参数默认值与返回语义。",
+      "updated": "2026-11-22",
       "icon": "code",
       "time": "12 分钟"
     },
@@ -192,17 +219,35 @@
       "title": "性能基准",
       "category": "reference",
       "featured": true,
-      "description": "提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。",
-      "updated": "2026-11-17",
+      "description": "v1.2.1 提交、完成、预取、批量操作与 SQLite 边界的实测数据、配置决策表与复现方法。",
+      "updated": "2026-11-22",
       "icon": "chart",
       "time": "9 分钟"
+    },
+    {
+      "slug": "developer-guide",
+      "title": "开发者指南",
+      "category": "reference",
+      "description": "项目结构、开发环境、测试、构建、发布与贡献规范。",
+      "updated": "2026-11-22",
+      "icon": "terminal",
+      "time": "8 分钟"
+    },
+    {
+      "slug": "glossary",
+      "title": "术语表",
+      "category": "reference",
+      "description": "任务、队列、Worker、调度、重试、回收、死信等核心术语的统一解释。",
+      "updated": "2026-11-22",
+      "icon": "layers",
+      "time": "5 分钟"
     },
     {
       "slug": "roadmap",
       "title": "版本路线图",
       "category": "roadmap",
-      "description": "1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。",
-      "updated": "2026-11-17",
+      "description": "1.x 能力边界与已交付版本记录，以及性能、监控与 NeoFlow 编排集成规划。",
+      "updated": "2026-11-22",
       "icon": "workflow",
       "time": "5 分钟"
     }

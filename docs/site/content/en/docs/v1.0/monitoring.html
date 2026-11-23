@@ -1,0 +1,190 @@
+<p>NeoTask offers three capabilities: task metrics, health checks and metric reporting. Core metrics are in-process data and no HTTP endpoint starts by default; when you need a UI or a JSON entry point, you can start the lightweight <code>WebUIServer</code> manually.</p>
+
+<h2>Stats snapshot</h2>
+<pre><code class="language-python">stats = pool.get_stats()
+print(stats["queue_size"], stats["completed"], stats["failed"])
+print(stats["metrics"]["p95_execution_time"])</code></pre>
+
+<table>
+<thead><tr><th>Field</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>queue_size</code></td><td>Total tasks in the priority queue and the delayed queue</td></tr>
+<tr><td><code>total</code> / <code>pending</code> / <code>running</code></td><td>Task counts by storage state</td></tr>
+<tr><td><code>completed</code> / <code>failed</code> / <code>cancelled</code></td><td>Number of tasks in terminal states</td></tr>
+<tr><td><code>success_rate</code></td><td>Success / (success + failure)</td></tr>
+<tr><td><code>node_id</code></td><td>Identifier of the current node</td></tr>
+<tr><td><code>metrics</code></td><td>Metrics summary; present only when <code>enable_metrics=True</code></td></tr>
+<tr><td><code>reclaimer</code></td><td>Reclamation statistics; Redis mode only</td></tr>
+<tr><td><code>prefetcher</code></td><td>Prefetch statistics; present only when prefetch is enabled</td></tr>
+</tbody>
+</table>
+
+<p><code>TaskScheduler.get_stats()</code> adds <code>periodic</code> and <code>time_wheel</code> on top of the same fields.</p>
+
+<h2>Lightweight monitoring snapshot (1.2)</h2>
+<p><code>get_stats()</code> runs relatively heavy aggregate queries. If you only need numbers for probes, dashboards or log collectors, use <code>get_metrics()</code>, added in 1.2. It reads counters and aggregation results only and never loads task entities, so a single call is cheap and safe at high frequency.</p>
+
+<pre><code class="language-python">snapshot = pool.get_metrics()
+# {
+#   "pending": 12, "running": 4, "completed": 1820, "failed": 3,
+#   "worker_concurrency": 10, "active_workers": 4,
+#   "queue_depth_by_priority": {0: 0, 1: 2, 2: 6, 3: 4},
+#   "retry_queue_size": 1,
+#   "oldest_pending_age_seconds": 0.8,
+#   "storage_backend": "sqlite", "storage_healthy": True,
+#   "checkpoint_count": 7, "context_key_count": 0
+# }
+
+unsubscribe = pool.on_metrics(push_snapshot, interval=30)
+# ... call unsubscribe() before exit to stop the pushes</code></pre>
+
+<table>
+<thead><tr><th>Field</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>pending</code> / <code>running</code></td><td>Number of tasks currently pending and currently executing</td></tr>
+<tr><td><code>completed</code> / <code>failed</code></td><td>Terminal counts within the current retention period; these are not historical totals</td></tr>
+<tr><td><code>worker_concurrency</code> / <code>active_workers</code></td><td>Configured concurrency and the number of workers actually busy</td></tr>
+<tr><td><code>queue_depth_by_priority</code></td><td>Queue depth per priority, with keys 0–3</td></tr>
+<tr><td><code>retry_queue_size</code></td><td>Tasks waiting to retry; a sustained rise indicates an unstable upstream</td></tr>
+<tr><td><code>oldest_pending_age_seconds</code></td><td>Wait time of the oldest pending task, the most direct signal of queue degradation</td></tr>
+<tr><td><code>storage_backend</code> / <code>storage_healthy</code></td><td>Backend type and the result of a lightweight health probe</td></tr>
+<tr><td><code>checkpoint_count</code> / <code>context_key_count</code></td><td>Number of checkpoints and Blackboard keys; 0 when the feature is disabled</td></tr>
+</tbody>
+</table>
+
+<ul>
+<li>If any underlying query fails, the corresponding field degrades to <code>None</code> instead of raising; handle <code>None</code> explicitly when the snapshot feeds a probe.</li>
+<li><code>on_metrics(handler, interval=60)</code> pushes snapshots to the callback at a fixed interval and returns an unsubscribe function; it connects directly to StatsD, logs or your own dashboard without a custom timer.</li>
+<li>The snapshot does not include duration percentiles or cost details; read those from <code>get_stats()["metrics"]</code>, <code>get_result()</code> or <code>get_cost_summary()</code>.</li>
+</ul>
+
+<div class="doc-note"><strong>Choosing among the three observation interfaces:</strong> <code>get_stats()</code> is for manual investigation and a complete summary; <code>get_metrics()</code> is for high-frequency probes and periodic reporting; <code>get_health_status()</code> is for readiness and liveness probes. Do not poll <code>get_stats()</code> at high frequency from a probe.</div>
+
+<h2>Event bus status</h2>
+<pre><code class="language-python">bus = pool.event_bus.get_stats()
+# {
+#   "queue_size": 0,
+#   "max_queue_size": None,
+#   "processed_events": 12034,
+#   "dropped_events": 0,
+#   "slow_handler_calls": 0,
+#   "slow_handler_threshold": 1.0,
+#   "is_running": True
+# }</code></pre>
+
+<table>
+<thead><tr><th>Field</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>queue_size</code></td><td>Events currently waiting; a sustained rise means consumers cannot keep up with producers</td></tr>
+<tr><td><code>max_queue_size</code></td><td>Configured limit; <code>None</code> means unbounded</td></tr>
+<tr><td><code>processed_events</code></td><td>Total events dispatched</td></tr>
+<tr><td><code>dropped_events</code></td><td>Events dropped when a bounded queue was full</td></tr>
+<tr><td><code>slow_handler_calls</code></td><td>Number of callbacks that exceeded the threshold</td></tr>
+<tr><td><code>slow_handler_threshold</code></td><td>Slow-callback warning threshold in seconds</td></tr>
+<tr><td><code>is_running</code></td><td>Whether the event consumer task is running</td></tr>
+</tbody>
+</table>
+
+<div class="doc-warning"><strong>Metrics depend on event ordering:</strong> <code>metrics.throughput</code> and the completion counters are derived from lifecycle events. Because the event bus dispatches asynchronously, a slow subscriber delays the moment <code>task.completed</code> is observed, which makes short-window throughput and latency look lower than they are. When investigating, check <code>queue_size</code> and <code>slow_handler_calls</code> at the same time; do not mistake an event backlog for slow task execution.</div>
+
+<div class="doc-note"><strong>Terminal cleanup affects counters:</strong> expired terminal tasks are cleaned up every 60 seconds by default, so <code>completed</code> / <code>failed</code> / <code>cancelled</code> are the record counts in current storage, not historical totals. For cumulative figures use counters such as <code>metrics.total_completed</code>.</div>
+
+<h2>Task metrics</h2>
+<table>
+<thead><tr><th>Metric</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>total_submitted</code></td><td>Total submissions</td></tr>
+<tr><td><code>total_completed</code> / <code>total_failed</code> / <code>total_cancelled</code></td><td>Terminal counts</td></tr>
+<tr><td><code>total_retried</code></td><td>Number of retries</td></tr>
+<tr><td><code>pending</code> / <code>running</code></td><td>Instantaneous counts</td></tr>
+<tr><td><code>avg_execution_time</code>, <code>p50/p90/p95/p99_execution_time</code></td><td>Execution duration, from the most recent 1,000 samples</td></tr>
+<tr><td><code>avg_queue_time</code>, <code>p95_queue_time</code></td><td>Queueing duration</td></tr>
+<tr><td><code>throughput</code></td><td>Throughput computed from completion events</td></tr>
+<tr><td><code>priority_counts</code></td><td>Submissions per priority</td></tr>
+<tr><td><code>system</code></td><td>CPU, memory, thread count and similar; requires <code>psutil</code></td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>Sampling window:</strong> duration percentiles are computed over a sliding window (1,000 samples by default), not over all history. Once the window is full, older samples are discarded; long-tail metrics need an external monitoring system.</div>
+
+<h2>Per-task duration and cost (1.1)</h2>
+<p>Besides aggregate metrics, every task record stores queueing and execution duration plus any cost reported by the caller:</p>
+
+<pre><code class="language-python">result = pool.get_result(task_id)
+print(result["queue_wait_ms"], result["duration_ms"])
+print(result["estimated_cost"], result["cost_tracking"])
+# cost_tracking: {"tokens_in": 120, "tokens_out": 48,
+#                 "api_calls": 1, "estimated_cost": 0.0012, "currency": "USD"}
+
+pool.get_cost_summary(task_ids)   # aggregate across tasks</code></pre>
+
+<ul>
+<li><code>queue_wait_ms</code> and <code>duration_ms</code> are computed automatically by NeoTask and are overwritten by each new attempt after a retry.</li>
+<li>Costs are accumulated by the executor through <code>report_cost()</code> or <code>pool.report_cost()</code>; tasks that never report cost produce no cost data.</li>
+<li>The <code>task.cost_reported</code> and <code>task.checkpointed</code> events can drive real-time dashboards, but events may be dropped by a bounded queue, so storage queries are the source of truth for totals.</li>
+</ul>
+
+<h2>Health checks</h2>
+<pre><code class="language-python">health = pool.get_health_status()
+# {
+#   "status": "healthy" | "degraded" | "unhealthy",
+#   "node_id": "...",
+#   "checks": {...},
+#   "active_nodes": 2,
+#   "heartbeat": {...},
+#   "reclaimer": {...}
+# }</code></pre>
+
+<table>
+<thead><tr><th>Check</th><th>What it verifies</th></tr></thead>
+<tbody>
+<tr><td>storage</td><td>Storage is readable and writable</td></tr>
+<tr><td>queue</td><td>Whether the queue is available and approaching its capacity limit</td></tr>
+<tr><td>system</td><td>CPU, memory and disk usage; above 90% is reported as degraded; skipped when <code>psutil</code> is not installed</td></tr>
+</tbody>
+</table>
+
+<ul>
+<li>Results are cached for 5 seconds, so repeated calls in a short window do not re-run the checks.</li>
+<li>Each check times out after 5 seconds by default, so an unreachable dependency does not block the caller.</li>
+<li>If any check is <code>unhealthy</code> the overall status is <code>unhealthy</code>; if any check is <code>degraded</code> the overall status is <code>degraded</code>.</li>
+</ul>
+
+<h2>Console reporting</h2>
+<pre><code class="language-python">config = TaskPoolConfig(enable_reporter=True)
+pool = TaskPool(executor=handle, config=config)</code></pre>
+<p>When enabled, a <code>get_stats()</code> summary is printed to the console every 60 seconds. It suits local observation, not production monitoring.</p>
+
+<h2>Lightweight monitoring entry point (optional)</h2>
+<p>1.0.8 does not start a web service automatically. If you need an HTTP metrics entry point, install <code>neotask[ui]</code> and start <code>WebUIServer</code> manually. It serves a root page and <code>/api/stats</code>, the latter returning the result of <code>get_stats()</code>.</p>
+
+<pre><code class="language-python">from neotask.web.server import WebUIServer
+
+server = WebUIServer(scheduler, host="127.0.0.1", port=8080)
+server.start()   # starts uvicorn in a background thread
+
+# GET http://127.0.0.1:8080/api/stats
+# call server.stop() on exit</code></pre>
+
+<ul>
+<li>This is a lightweight monitoring entry point; it provides no task orchestration, editing, authentication or history storage.</li>
+<li><code>TaskPool</code> / <code>TaskScheduler</code> do not mount it automatically; instantiate it yourself.</li>
+<li>It listens on localhost only by default. Put it behind an authenticated proxy before exposing it to other hosts.</li>
+</ul>
+
+<h2>Prometheus</h2>
+<p>The library includes <code>PrometheusReporter</code>, which pushes metrics through a Pushgateway and does not expose a <code>/metrics</code> endpoint.</p>
+
+<pre><code class="language-python">from neotask import ReporterManager, PrometheusReporter
+
+reporter = PrometheusReporter("http://pushgateway:9091", job_name="neotask")
+manager = ReporterManager(interval=60)
+manager.add_reporter(reporter)
+manager.set_metrics_callback(pool.get_stats)
+await manager.start()</code></pre>
+
+<div class="doc-warning"><strong>Extra dependency:</strong> <code>PrometheusReporter</code> uses <code>aiohttp</code>, which is not part of the NeoTask dependencies or extras and must be installed separately. Reported fields cover only submitted/completed/failed/success rate, pending/running, and average and P95 execution time.</div>
+
+<h2>Event-driven collection</h2>
+<p>Metrics are derived from lifecycle events: <code>task.created</code>, <code>task.started</code>, <code>task.completed</code>, <code>task.failed</code>, <code>task.cancelled</code> and <code>task.retry</code>. Metrics therefore cover only the events produced or consumed by the current process; cross-node aggregation requires shipping each node's data to the same monitoring system. When a bounded event queue drops events, event-based statistics lose the corresponding records as well.</p>
+<p>The <code>task.checkpointed</code> and <code>task.cost_reported</code> events added in 1.1 are not part of the built-in throughput and duration statistics; use them for application-side collection of checkpoint versions and cost details.</p>

@@ -1,0 +1,84 @@
+<p>Multi-node deployments use Redis as shared storage. All nodes consume the same queue, with no primary node, leader election or task assignment; any node can submit and execute tasks.</p>
+
+<h2>Prerequisites</h2>
+<ul>
+<li>All nodes connect to the same Redis database and set a unique <code>node_id</code>;</li>
+<li>install <code>neotask[redis]</code>;</li>
+<li>the code and task data format are identical on every node;</li>
+<li>business tasks can be safely executed more than once.</li>
+</ul>
+
+<pre><code class="language-bash">pip install "neotask[redis]"</code></pre>
+
+<h2>Node configuration</h2>
+<pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
+
+config = TaskPoolConfig(
+    storage_type="redis",
+    redis_url="redis://10.0.0.10:6379/0",
+    node_id="worker-1",          # must be unique per node
+    lock_type="redis",           # cross-node mutual exclusion must be enabled explicitly
+    worker_concurrency=20,
+    heartbeat_interval=5,
+    heartbeat_timeout=20,
+    reclaimer_interval=30,
+)
+pool = TaskPool(executor=handle, config=config)
+pool.start()</code></pre>
+
+<div class="doc-warning"><strong>Hand-built configs still default to the in-memory lock:</strong> <code>TaskPoolConfig.redis()</code> sets <code>lock_type</code> to <code>"redis"</code> automatically in 1.0.8, but when you construct <code>TaskPoolConfig(storage_type="redis", ...)</code> directly, <code>lock_type</code> still defaults to <code>"memory"</code> and the task lock is valid only inside the process, so it cannot prevent duplicate execution across nodes.</div>
+
+<h2>How it runs</h2>
+<p>Start the same process on every machine. A task submitted to any node enters the shared queue and is executed by whichever node picks it up first.</p>
+
+<pre class="diagram"><code>             ┌──────────── Redis ────────────┐
+             │ queue:priority   task:*       │
+             │ neotask:nodes    lock:*       │
+             └───────▲───────────▲───────────┘
+                     │           │
+          ┌──────────┴──┐   ┌────┴──────────┐
+          │  worker-1   │   │  worker-2     │
+          │ TaskPool    │   │ TaskPool      │
+          └─────────────┘   └───────────────┘</code></pre>
+
+<h2>Node discovery</h2>
+<table>
+<thead><tr><th>Capability</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>Registration</td><td>Writes <code>neotask:node:{node_id}</code> at startup and joins <code>neotask:nodes</code></td></tr>
+<tr><td>Heartbeat</td><td>Refreshed every 5 seconds by default; the key expires at twice the heartbeat timeout</td></tr>
+<tr><td>Liveness</td><td>No refresh for longer than <code>heartbeat_timeout</code> (20 seconds by default) marks the node as unreachable</td></tr>
+<tr><td>Query</td><td><code>pool.get_active_nodes()</code> returns node ID, hostname and process ID</td></tr>
+</tbody>
+</table>
+
+<pre><code class="language-python">pool.get_active_nodes()
+# [{"node_id": "worker-1", "hostname": "host-a", "pid": 1234}, ...]</code></pre>
+
+<h2>Leaderless architecture</h2>
+<ul>
+<li><code>pool.is_leader()</code> always returns <code>False</code>; there is no leader;</li>
+<li>tasks are not bound to the submitting node and may execute on any node;</li>
+<li>when a node goes down, its running tasks are reclaimed by surviving nodes and re-enqueued;</li>
+<li>the queue guarantees dequeue order only, not completion order across nodes.</li>
+</ul>
+
+<h2>Multi-node limits for scheduled tasks</h2>
+<p><code>TaskScheduler</code> has no leader election or distributed deduplication. When several scheduler instances register the same periodic task, each instance fires it on its own clock, producing duplicate executions.</p>
+<ul>
+<li>Register periodic tasks on a single scheduler instance;</li>
+<li>or make the periodic task itself idempotent and add distributed mutual exclusion on the application side;</li>
+<li>nodes that only need immediate tasks can use <code>TaskPool</code> alone and should not start <code>TaskScheduler</code>.</li>
+</ul>
+
+<h2>Scaling</h2>
+<table>
+<thead><tr><th>Operation</th><th>Steps</th></tr></thead>
+<tbody>
+<tr><td>Scale out</td><td>Start a new node with a new <code>node_id</code>; it begins consuming the shared queue automatically</td></tr>
+<tr><td>Scale in</td><td>Call <code>shutdown(graceful=True)</code> and exit after the queue drains</td></tr>
+<tr><td>Forced removal</td><td>Terminate the process directly; other nodes reclaim its tasks once the heartbeat times out</td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>Related pages:</strong> <a href="/docs/failure-recovery.html">Failure recovery</a> · <a href="/docs/distributed-lock.html">Distributed locks</a> · <a href="/docs/persistence.html">Persistence</a></div>

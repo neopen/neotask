@@ -1,0 +1,68 @@
+<p>Task locks keep the same task from running on several nodes at once. The default is an in-memory lock that works only within a process; cross-node mutual exclusion requires the Redis lock.</p>
+
+<h2>Enable</h2>
+<pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
+
+config = TaskPoolConfig(
+    storage_type="redis",
+    redis_url="redis://10.0.0.10:6379/0",
+    node_id="worker-1",
+    lock_type="redis",       # key: explicitly enable cross-node locks
+    lock_timeout=30,
+)
+pool = TaskPool(executor=handle, config=config)</code></pre>
+
+<div class="doc-warning"><strong>Default-value trap:</strong> <code>TaskPoolConfig.redis()</code> turns on both Redis storage and the Redis lock, but when you build <code>TaskPoolConfig(storage_type="redis", ...)</code> by hand, <code>lock_type</code> still defaults to <code>"memory"</code>. A multi-node deployment that does not use the factory method must set <code>lock_type="redis"</code> explicitly.</div>
+
+<h2>Automatic locking</h2>
+<p>The worker acquires the lock automatically before running each task, using the key <code>lock:task:{task_id}</code> (<code>RedisLock</code> prefix <code>lock:</code>), and releases it when the task ends.</p>
+
+<table>
+<thead><tr><th>Property</th><th>Behavior</th></tr></thead>
+<tbody>
+<tr><td>TTL</td><td>Automatic locks use a fixed 30 seconds</td></tr>
+<tr><td>Renewal</td><td>A watchdog renews every <code>TTL × 0.3</code> (minimum 0.5 seconds)</td></tr>
+<tr><td>Release</td><td>A Lua script checks the owner before deleting, so another holder's lock is never removed</td></tr>
+<tr><td>Acquisition failure</td><td>This run is skipped and the task stays <code>pending</code></td></tr>
+</tbody>
+</table>
+
+<p>The lock is acquired when the task starts and released when it ends; it does not cover the queueing phase. So the same task never starts on two workers at once, but duplicate execution after an execution timeout or a lost node is still possible, and business code must be idempotent.</p>
+
+<h2>Manual locking</h2>
+<pre><code class="language-python">if pool.acquire_lock("report-2026-10", ttl=60):
+    try:
+        generate_report()
+    finally:
+        pool.release_lock("report-2026-10")</code></pre>
+
+<table>
+<thead><tr><th>Method</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><code>acquire_lock(task_id, ttl=30)</code></td><td>Acquires the <code>task:{task_id}</code> lock and returns whether it succeeded</td></tr>
+<tr><td><code>release_lock(task_id)</code></td><td>Releases the lock held by this instance</td></tr>
+</tbody>
+</table>
+
+<p>Manual locks and automatic task locks share one namespace. Do not use the ID of a running task as a manual lock key, or you will contend with the worker.</p>
+
+<h2>Implementation details</h2>
+<table>
+<thead><tr><th>Step</th><th>Implementation</th></tr></thead>
+<tbody>
+<tr><td>Acquire</td><td><code>SET key owner NX EX ttl</code></td></tr>
+<tr><td>Release</td><td>Lua: <code>DEL</code> only if the value equals owner</td></tr>
+<tr><td>Renewal</td><td>Lua: <code>EXPIRE</code> only if the value equals owner</td></tr>
+<tr><td>owner</td><td>A random UUID generated per lock instance and kept in-process</td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>Not reentrant:</strong> Acquiring the same lock again from the same instance fails. If you need reentrancy, merge the critical sections in business code rather than calling <code>acquire_lock()</code> repeatedly.</div>
+
+<h2>Correctness boundaries</h2>
+<ul>
+<li>A lock guarantees "one holder at a time", not "executed exactly once". Execution timeouts, process pauses (GC, container freeze) and network partitions can all cause duplicate execution.</li>
+<li>The watchdog can renew only while its process is alive; after the process is killed the lock expires within the TTL.</li>
+<li>A Redis primary/replica failover can drop lock writes that were not yet replicated. Strong consistency needs additional mechanisms such as Redis Cluster/Redlock, which this version does not include.</li>
+<li>If the lock TTL does not match task duration, a long task can lose its lock while still running. Automatic locks use a fixed 30 seconds with continuous renewal; manual locks need a <code>ttl</code> you set high enough.</li>
+</ul>

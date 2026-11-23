@@ -1,0 +1,66 @@
+<p>1.1 filled in three cross-task capabilities: parent-child task links, a caller-supplied <code>task_id</code>, and an in-process shared context (Blackboard) in memory mode. NeoTask only records, queries and stores; it does not orchestrate dependencies, aggregate state or share data across nodes.</p>
+
+<h2>Parent-child task links</h2>
+<p>Pass <code>parent_task_id</code> at submit time to attach a child task to a parent. The link is written to the task record only: NeoTask does not check that the parent exists, and it changes neither execution order nor parent waiting.</p>
+
+<pre><code class="language-python">parent_id = pool.submit({"batch": "2026-11"}, task_id="batch-2026-11")
+child_ids = [
+    pool.submit({"doc": doc}, parent_task_id=parent_id)
+    for doc in documents
+]</code></pre>
+
+<table>
+<thead><tr><th>Method</th><th>Returns</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><code>get_children(task_id)</code></td><td><code>List[str]</code></td><td>Queries by <code>parent_task_id</code>, oldest first; returns an empty list if the parent does not exist</td></tr>
+<tr><td><code>get_parent(task_id)</code></td><td><code>str | None</code></td><td><code>None</code> if the task does not exist or has no parent</td></tr>
+<tr><td><code>get_result(task_id)</code></td><td><code>dict</code></td><td>Includes <code>parent_task_id</code></td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>No automatic aggregation:</strong> a parent finishes with its own executor return value, and child success or failure does not change the parent's state. <code>get_children()</code> returns IDs only; to aggregate, call <code>wait_all()</code> or <code>get_result()</code> from your business code or from an upper-layer orchestration service (NeoFlow).</div>
+
+<p><code>submit_batch()</code> and <code>create_pending_task()</code> currently have no <code>parent_task_id</code> parameter; when you need parent-child links, submit items one by one with <code>submit()</code>. Redis and SQLite maintain a lookup index for each parent, but with many children under a single parent you should still consume the results in pages.</p>
+
+<h2>Caller-supplied task_id</h2>
+<p><code>submit()</code>, <code>submit_async()</code> and <code>create_pending_task()</code> all accept a caller-supplied <code>task_id</code>, which makes it easy to map a business key to a task ID.</p>
+
+<pre><code class="language-python">pool.submit({"order_id": 42}, task_id="order-42")
+
+# Submit again while the same ID still exists, including terminal states
+pool.submit({"order_id": 42}, task_id="order-42")
+# TaskAlreadyExistsError</code></pre>
+
+<ul>
+<li>Uniqueness is guaranteed by an atomic create in the storage layer: when several nodes submit the same ID at once, only one succeeds and the rest raise <code>TaskAlreadyExistsError</code>.</li>
+<li>It prevents duplicate <strong>creation</strong> only; it does not mean the task executes once. Retries, reclamation and manual <code>retry()</code> still re-execute it, so business logic must remain idempotent.</li>
+<li>To re-run a task that already has an ID, call <code>retry(task_id)</code>; after deleting the record you can create it again, but that task's checkpoints are deleted as well.</li>
+</ul>
+
+<h2>Blackboard: in-process shared context</h2>
+<p>The Blackboard is a key-value space that ships with every <code>TaskPool</code> instance, letting tasks in the same process read shared state such as feature flags, temporary credentials or batch metadata. It is available only with the memory storage backend.</p>
+
+<pre><code class="language-python">pool.context_set("feature_flags", {"qa": True}, ttl=600)
+flags = pool.context_get("feature_flags") or {}
+pool.context_delete("feature_flags")</code></pre>
+
+<table>
+<thead><tr><th>Method</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><code>context_set(key, value, ttl=None)</code></td><td>Writes or overwrites; <code>ttl</code> is in seconds and <code>None</code> means no expiry</td></tr>
+<tr><td><code>context_get(key)</code></td><td>Reads; returns <code>None</code> if the key is missing or expired</td></tr>
+<tr><td><code>context_delete(key)</code></td><td>Deletes; returns whether the key was found</td></tr>
+</tbody>
+</table>
+
+<ul>
+<li>Both writes and reads deep-copy values, so mutating a returned value does not affect stored content.</li>
+<li>TTL is lazy: expiry is evaluated on read and expired keys are swept on write; no background thread is started.</li>
+<li>The context exists only in the current process: it does not cross processes or nodes and is not persisted with tasks, so it is lost when the process exits.</li>
+<li>When <code>storage_type</code> is not <code>memory</code>, these methods raise <code>UnsupportedFeatureError</code>; use external storage for state shared across nodes.</li>
+<li><code>TaskScheduler</code>'s <code>context_*</code> methods delegate to its internal <code>TaskPool</code>, so their scope is limited to that scheduler instance as well.</li>
+</ul>
+
+<div class="doc-warning"><strong>Concurrent writes:</strong> the Blackboard guarantees thread safety for single-key reads and writes only and provides no multi-key transactions. When several tasks read-modify-write the same key at once, they overwrite each other; use a database or Redis when you need atomic counters or state machines.</div>
+
+<div class="doc-note"><strong>Related pages:</strong><a href="/docs/api-reference.html">API reference</a> · <a href="/docs/checkpoint.html">Checkpoints and resume</a> · <a href="/docs/cost-tracking.html">Cost and duration</a> · <a href="/docs/persistence.html">Persistence</a></div>

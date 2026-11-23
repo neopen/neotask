@@ -1,0 +1,97 @@
+<p>Failure recovery relies on node heartbeats, the task reclaimer and the dead letter queue in Redis mode. Memory and SQLite modes have no automatic reclamation: after a process exits, running tasks remain in <code>running</code>. Terminal cleanup only deletes finished records and is not part of failure recovery.</p>
+
+<h2>Recovery sources</h2>
+<table>
+<thead><tr><th>Scenario</th><th>Detection</th><th>Handling</th></tr></thead>
+<tbody>
+<tr><td>Execution timeout</td><td>The reclaimer scans <code>running</code> tasks and compares <code>started_at</code> with the task <code>ttl</code></td><td>Re-enqueued if retries remain, otherwise marked failed</td></tr>
+<tr><td>Node down</td><td>Heartbeat not refreshed beyond <code>heartbeat_timeout</code></td><td>Surviving nodes reclaim that node's tasks</td></tr>
+<tr><td>Orphaned task</td><td>The task's node is not in the active node set</td><td>Reclaimed and re-enqueued</td></tr>
+<tr><td>Zombie lock</td><td>Lock TTL below the threshold or already expired</td><td>Cleaned up by the lock scanner</td></tr>
+<tr><td>Retries exhausted</td><td><code>retry_count ≥ max_retries</code></td><td>Marked failed and written to the dead letter queue</td></tr>
+</tbody>
+</table>
+
+<h2>Timing parameters</h2>
+<table>
+<thead><tr><th>Parameter</th><th>Default</th><th>Role</th></tr></thead>
+<tbody>
+<tr><td><code>task_timeout</code></td><td><code>None</code></td><td>Timeout for a single execution; timed by the worker and enters retry when triggered</td></tr>
+<tr><td>Task <code>ttl</code></td><td><code>3600</code></td><td>Threshold the reclaimer uses to detect a running timeout; long tasks need a larger value set explicitly</td></tr>
+<tr><td><code>reclaimer_interval</code></td><td><code>30</code></td><td>Reclaimer scan interval in seconds</td></tr>
+<tr><td><code>heartbeat_interval</code></td><td><code>5</code></td><td>Node heartbeat interval in seconds</td></tr>
+<tr><td><code>heartbeat_timeout</code></td><td><code>20</code></td><td>Node failure detection in seconds</td></tr>
+</tbody>
+</table>
+
+<div class="doc-warning"><strong>The two timeouts are not the same:</strong> <code>task_timeout</code> bounds a single execution; the task <code>ttl</code> is what the reclaimer uses to decide whether a <code>running</code> task has lost contact. Setting only <code>task_timeout</code> does not change the reclaim threshold, and vice versa.</div>
+
+<h2>Reclaim flow</h2>
+<ol>
+<li>The reclaimer detects a timed-out or orphaned task.</li>
+<li>If <code>retry_count &lt; max_retries</code>, the count is incremented, the status reset to <code>pending</code>, and the task re-enqueued with a delay of <code>retry_delay × retry_count</code>.</li>
+<li>Otherwise the status is set to <code>failed</code>, the task is written to the dead letter queue, and the task lock is released.</li>
+<li>Every handling publishes a <code>task.reclaimed</code> event whose payload contains the reason and the action (<code>requeued</code> / <code>failed</code>).</li>
+</ol>
+
+<pre><code class="language-python">async def on_reclaimed(event):
+    print(event.task_id, event.data)
+
+pool.on_reclaimed(on_reclaimed)</code></pre>
+
+<h2>Dead letter queue</h2>
+<p>In Redis mode, the dead letter queue receives tasks in the following cases:</p>
+<ul>
+<li>automatic retries are exhausted;</li>
+<li>the re-enqueue after reclamation is rejected (queue full or disabled);</li>
+<li>retries were already exhausted at reclaim time.</li>
+</ul>
+
+<p>Dead letters are stored in the <code>neotask:dead_letter</code> list and the <code>neotask:dead_letter:index</code> hash, kept for 7 days and up to 10,000 entries by default. The current version exposes no query or replay API, so you must read the <code>DeadLetterQueue</code> data structures manually through a Redis client or wrap them yourself.</p>
+
+<h2>Business failures versus system errors</h2>
+<p>Since 1.1 an executor can explicitly register a "business check failed" outcome. It is handled differently from an exception: a business failure is finalized as <code>failed</code> immediately, does not enter automatic retry, and is not written to the dead letter queue.</p>
+
+<table>
+<thead><tr><th></th><th>System error</th><th>Business failure</th></tr></thead>
+<tbody>
+<tr><td>Trigger</td><td>The executor raises an exception, times out or is reclaimed</td><td>A reason is registered through <code>report_failure()</code></td></tr>
+<tr><td>Automatic retry</td><td>Retried per <code>max_retries</code></td><td>Not retried; <code>retry_count</code> stays unchanged</td></tr>
+<tr><td><code>failure_reason</code></td><td><code>None</code></td><td>The registered reason identifier, such as <code>qa_failed</code></td></tr>
+<tr><td>Dead letter queue</td><td>Written after retries are exhausted (Redis)</td><td>Not written</td></tr>
+<tr><td>Event</td><td><code>task.failed</code></td><td><code>task.failed</code></td></tr>
+</tbody>
+</table>
+
+<pre><code class="language-python">from neotask import report_failure
+
+async def review(data):
+    score = await grade(data["answer"])
+    if score &lt; 60:
+        report_failure("qa_failed", f"score={score}")
+    return {"score": score}</code></pre>
+
+<p>Inside an executor, <code>report_failure()</code> is synchronous: it only registers the outcome and does not interrupt the business code. When the task function returns normally, the worker marks the task <code>failed</code> with the registered reason. The first registration wins, and later calls do not override the reason. Thread executors work the same way; process executors have no access to this context and return <code>False</code>.</p>
+
+<p>The parent process of a process executor, or an external orchestrator, uses the task-level API:</p>
+
+<pre><code class="language-python"># applies to running tasks only
+pool.report_failure(task_id, "qa_failed", "score=42")</code></pre>
+
+<ul>
+<li>The task-level <code>report_failure()</code> finalizes the task immediately; for tasks still in <code>pending</code>, call <code>cancel()</code> first.</li>
+<li>The task's <code>error</code> field reads <code>reason: detail</code>; when no <code>detail</code> is provided, only the reason is written.</li>
+<li>Read the verdict through <code>failure_reason</code> in <code>get_result()</code> / <code>get_task()</code>, which distinguishes it from exhausted retries.</li>
+<li>A business failure is not resumed automatically; call <code>retry(task_id)</code> explicitly to continue from a checkpoint.</li>
+</ul>
+
+<h2>Boundaries and preconditions</h2>
+<ul>
+<li>Automatic reclamation is created only when <code>storage_type="redis"</code> and <code>redis_url</code> are configured. Since 1.0.8, <code>enable_reclaimer</code> and <code>enable_heartbeat</code> genuinely control component creation; disabling heartbeats removes the node liveness view and orphan reclamation is skipped.</li>
+<li>Orphan reclamation requires the node manager; without active node information it is skipped to avoid false positives.</li>
+<li>Reclamation does not terminate the business code in the original process. If the old node recovers and is still executing, the task may run twice.</li>
+<li>Locks reduce the probability of duplicate execution but do not replace business-level idempotency.</li>
+<li>The reclaimer handles at most 100 tasks per cycle; with a large backlog, several nodes must reclaim together.</li>
+</ul>
+
+<div class="doc-note"><strong>Recommended practice:</strong> set an explicit <code>ttl</code> for every long task, keep <code>heartbeat_timeout</code> below the node restart time, and make tasks idempotent. See <a href="/docs/configuration.html">Configuration</a> for the related settings.</div>

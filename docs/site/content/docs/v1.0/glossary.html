@@ -1,0 +1,47 @@
+<p>本页统一文档中反复出现的任务、队列、调度与可靠性术语。遇到陌生概念时先查这里，再进入对应章节。</p>
+
+<table>
+<thead><tr><th>术语</th><th>英文 / 标识</th><th>定义</th></tr></thead>
+<tbody>
+<tr><td>任务</td><td>Task</td><td>一次待执行的计算，包含数据、状态、优先级、结果与时间戳</td></tr>
+<tr><td>任务池</td><td>TaskPool</td><td>即时任务的公共入口，管理提交、队列、Worker 与结果</td></tr>
+<tr><td>调度器</td><td>TaskScheduler</td><td>在任务池之上提供延时、指定时刻、固定间隔与 Cron 调度</td></tr>
+<tr><td>执行器</td><td>TaskExecutor / Executor</td><td>真正执行任务的组件，分为异步、线程与进程三类</td></tr>
+<tr><td>Worker</td><td>Worker</td><td>并发取任务并调用执行器的工作单元</td></tr>
+<tr><td>队列</td><td>Queue</td><td>按优先级组织的待执行任务集合，含容量上限</td></tr>
+<tr><td>预取</td><td>Prefetch</td><td>Worker 提前批量取任务到本地，降低取任务开销</td></tr>
+<tr><td>优先级</td><td>Priority</td><td>0–3 四级，数值越小越优先，同级 FIFO</td></tr>
+<tr><td>生命周期</td><td>Lifecycle</td><td>任务从创建到终态的状态迁移与事件序列</td></tr>
+<tr><td>终态</td><td>Terminal state</td><td><code>success</code> / <code>failed</code> / <code>cancelled</code>，不可再迁移</td></tr>
+<tr><td>重试</td><td>Retry</td><td>执行异常后按线性延迟重新入队</td></tr>
+<tr><td>超时</td><td>Timeout</td><td><code>task_timeout</code> 限制单次执行；<code>ttl</code> 限制任务生命周期</td></tr>
+<tr><td>心跳</td><td>Heartbeat</td><td>Redis 模式下节点存活上报，用于失联判定</td></tr>
+<tr><td>回收器</td><td>Reclaimer</td><td>Redis 模式下接管失联节点或超时任务的组件</td></tr>
+<tr><td>死信</td><td>Dead letter</td><td>重试耗尽或回收失败的任务记录，Redis 模式提供</td></tr>
+<tr><td>断点</td><td>Checkpoint</td><td>任务内部进度的持久化快照，用于续跑</td></tr>
+<tr><td>父子任务</td><td>Parent / child task</td><td>通过 <code>parent_task_id</code> 建立关联，不自动汇总</td></tr>
+<tr><td>Blackboard</td><td>Memory context store</td><td>仅 Memory 后端的进程内共享上下文</td></tr>
+<tr><td>事件总线</td><td>EventBus</td><td>把生命周期事件异步投递给订阅者的组件</td></tr>
+<tr><td>轻量快照</td><td>Metrics snapshot</td><td><code>get_metrics()</code> 返回的计数与聚合视图，不加载任务实体</td></tr>
+</tbody>
+</table>
+
+<h2>容易混淆的三组概念</h2>
+<table>
+<thead><tr><th>对比</th><th>区别</th></tr></thead>
+<tbody>
+<tr><td><code>ttl</code> vs <code>task_timeout</code></td><td><code>ttl</code> 是任务生命周期与回收阈值；<code>task_timeout</code> 是单次执行的强制中断时长。只设一个都会留下盲区。</td></tr>
+<tr><td><code>cancel()</code> vs <code>delete()</code></td><td>取消移除队列项并置为 <code>cancelled</code>，不撤销已发生的副作用；删除只移除记录，不中断执行。</td></tr>
+<tr><td><code>report_failure()</code> vs 抛异常</td><td>业务判定失败用 <code>report_failure()</code>，直接终结且不重试；执行异常走自动重试。</td></tr>
+</tbody>
+</table>
+
+<h2>继续阅读</h2>
+<ul>
+<li>整体结构与数据流见 <a href="/docs/architecture.html">架构概览</a>；</li>
+<li>状态迁移与事件见 <a href="/docs/task-lifecycle.html">任务生命周期</a>；</li>
+<li>监控字段见 <a href="/docs/monitoring.html">监控与健康检查</a>；</li>
+<li>性能口径见 <a href="/docs/benchmarks.html">性能基准</a>。</li>
+</ul>
+
+<div class="doc-note"><strong>文档版本：</strong>本页对应 NeoTask 1.2.1（2026-11-22）。术语以 1.x 公开 API 为准，规划中的概念会在 <a href="/docs/roadmap.html">版本路线图</a> 中明确标注。</div>

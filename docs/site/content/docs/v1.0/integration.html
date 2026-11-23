@@ -1,0 +1,168 @@
+<p>NeoTask 的集成面很小：在应用进程内创建一个池，提交任务，按需订阅事件或查询指标。难度主要不在接入，而在决定「哪些工作应该异步化」以及「任务结果如何回到业务」。本文给出常见集成形态。</p>
+
+<h2 id="business-system">与业务系统集成</h2>
+<p>推荐把业务动作拆成三层：</p>
+<ol>
+<li><strong>入口层</strong>：Web 请求、消息消费或 CLI 只做校验与提交，返回 <code>task_id</code>。</li>
+<li><strong>执行层</strong>：Worker 调用领域服务，执行耗时操作。</li>
+<li><strong>回流层</strong>：通过事件回调或轮询把状态写回业务表，或通知前端。</li>
+</ol>
+<pre><code class="language-python">from neotask import TaskPool
+
+pool = TaskPool(executor=handle_export)
+
+def request_export(user_id: str, query: dict) -> str:
+    return pool.submit({"user_id": user_id, "query": query}, priority=1)</code></pre>
+<div class="tips"><p>不要在任务里直接依赖请求上下文（session、request 对象）。把必要参数序列化进 <code>data</code>，Worker 重新加载所需资源。</p></div>
+
+<h2 id="http-api">HTTP / API 集成</h2>
+<p>典型流程：提交接口返回任务 ID，查询接口读取状态，完成事件负责回调或写入结果表。</p>
+<pre><code class="language-python">from fastapi import FastAPI, HTTPException
+from neotask import TaskPool
+
+app = FastAPI()
+pool = TaskPool(executor=handle)
+
+@app.post("/exports")
+def create_export(payload: dict):
+    task_id = pool.submit({"query": payload}, priority=1)
+    return {"task_id": task_id, "status": "queued"}
+
+@app.get("/tasks/{task_id}")
+def get_task(task_id: str):
+    result = pool.get_result(task_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    return result</code></pre>
+<ul>
+<li>提交接口保持幂等：由业务侧生成请求键，避免重复点击产生重复任务。</li>
+<li>查询接口只读，不触发副作用；需要等待时使用短轮询或 SSE，而不是让 HTTP 请求长时间阻塞。</li>
+<li>返回 <code>202 Accepted</code> 与任务查询地址，前端据此展示进度。</li>
+<li>限流与队列容量配合：队列满时返回 429 或降级提示，而不是无限重试。</li>
+</ul>
+
+<h2 id="python">Python 集成</h2>
+<p>在 Python 代码中集成时，先判断调用位置是否已有事件循环：</p>
+<table>
+<thead><tr><th>场景</th><th>推荐接口</th><th>原因</th></tr></thead>
+<tbody>
+<tr><td>脚本、同步函数</td><td><code>submit()</code> / <code>wait_for_result()</code></td><td>内部安全驱动后台循环</td></tr>
+<tr><td>异步服务、协程</td><td><code>submit_async()</code> / <code>wait_for_result_async()</code></td><td>避免嵌套事件循环</td></tr>
+<tr><td>框架生命周期</td><td><code>with</code> / <code>async with</code></td><td>确保关闭与资源释放</td></tr>
+<tr><td>应用启动钩子</td><td><code>pool.start()</code></td><td>预热 Worker 与存储连接</td></tr>
+</tbody>
+</table>
+<pre><code class="language-python">from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from neotask import TaskPool, TaskPoolConfig
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.pool = TaskPool(executor=handle, config=TaskPoolConfig.sqlite("/data/app.db"))
+    yield
+    app.state.pool.shutdown(graceful=True, timeout=30)
+
+app = FastAPI(lifespan=lifespan)</code></pre>
+<p>Django / Flask 等同步框架可在应用初始化时创建池，在进程退出钩子中关闭。多进程部署（gunicorn 多 worker）时注意：SQLite 保持单写入者，或改用 Redis。</p>
+
+<h2 id="third-party">第三方组件集成</h2>
+<table>
+<thead><tr><th>组件</th><th>集成方式</th><th>注意点</th></tr></thead>
+<tbody>
+<tr><td>Redis</td><td><code>TaskPoolConfig.redis(url)</code></td><td>安装 <code>neotask[redis]</code>；锁自动切换为 Redis 实现</td></tr>
+<tr><td>SQLite</td><td><code>TaskPoolConfig.sqlite(path)</code></td><td>本地磁盘；单写入者</td></tr>
+<tr><td>croniter</td><td>核心依赖，<code>submit_cron()</code> 使用</td><td>五段式表达式，注册时校验</td></tr>
+<tr><td>psutil</td><td><code>neotask[monitor]</code></td><td>系统指标采集；未安装时相关字段降级</td></tr>
+<tr><td>Prometheus / 日志平台</td><td>消费 <code>get_metrics()</code> 或 <code>on_metrics()</code></td><td>由应用侧暴露指标端点，NeoTask 不绑定具体监控系统</td></tr>
+<tr><td>HTTP 客户端</td><td>在执行器内调用</td><td>设置超时与重试；客户端连接应复用</td></tr>
+</tbody>
+</table>
+<p>第三方 SDK 通常不是线程安全的。使用 <code>ThreadExecutor</code> 或高并发时，为每个执行上下文创建独立客户端，或使用连接池并确认并发安全。</p>
+
+<h2 id="agent">Agent 集成</h2>
+<p>Agent 的一次工具调用往往耗时长、成本可计量、可能失败重试，正好落在 NeoTask 的能力范围内：</p>
+<pre><code class="language-python">from neotask import TaskPool, report_progress, report_cost
+
+async def run_agent_step(data):
+    for i, step in enumerate(data["steps"]):
+        await report_progress((i + 1) / len(data["steps"]), step["name"])
+        result = await call_tool(step)
+        await report_cost(
+            tokens_in=result.usage.input_tokens,
+            tokens_out=result.usage.output_tokens,
+            api_calls=1,
+            estimated_cost=result.cost,
+            currency="USD",
+        )
+    return {"ok": True}
+
+pool = TaskPool(executor=run_agent_step)
+parent = pool.submit({"steps": plan}, priority=0)
+for sub in subtasks:
+    pool.submit({"steps": [sub]}, parent_task_id=parent)</code></pre>
+<ul>
+<li><strong>优先级</strong>：交互式对话用 <code>CRITICAL</code>，批处理分析用 <code>LOW</code>。</li>
+<li><strong>成本</strong>：用 <code>report_cost()</code> 累加 token 与费用，再用 <code>get_cost_summary()</code> 聚合。</li>
+<li><strong>恢复</strong>：多步 Agent 在每步后 <code>save_checkpoint()</code>，避免重跑全部步骤。</li>
+<li><strong>父子关联</strong>：用 <code>parent_task_id</code> 建立调用树；汇总完成状态与成本由调用方负责。</li>
+</ul>
+
+<h2 id="workflow">工作流集成</h2>
+<p>NeoTask 只负责执行单个任务，不解析 DAG。工作流由上层控制面负责：</p>
+<pre><code class="language-python"># NeoFlow 之类的编排层决定依赖与分支
+for node in ready_nodes(dag):
+    task_id = pool.submit(
+        {"node": node.name, "inputs": node.inputs},
+        priority=node.priority,
+    )
+    dag.mark_submitted(node.name, task_id)
+
+# 任务完成事件驱动下一步
+async def on_completed(task):
+    dag.mark_done(task.task_id, task.result)
+    for nxt in dag.ready_after(task.task_id):
+        pool.submit({"node": nxt.name, "inputs": nxt.inputs})</code></pre>
+<p>这样做的好处是：编排逻辑可独立测试与演进，NeoTask 保持稳定的执行语义；工作流状态不依赖任务记录的保留期。</p>
+
+<h2 id="examples">集成示例</h2>
+<h3>Webhook 失败重试</h3>
+<pre><code class="language-python">import httpx
+from neotask import TaskPool, TaskPoolConfig
+
+async def deliver(data):
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(data["url"], json=data["payload"])
+        resp.raise_for_status()
+        return {"status": resp.status_code}
+
+pool = TaskPool(
+    executor=deliver,
+    config=TaskPoolConfig(max_retries=5, retry_delay=2.0),
+)
+pool.submit({"url": "https://example.com/hook", "payload": {"id": 1}}, priority=1)</code></pre>
+
+<h3>定时同步 + 指标上报</h3>
+<pre><code class="language-python">from neotask import SchedulerConfig, TaskScheduler
+
+scheduler = TaskScheduler(
+    executor=sync_catalog,
+    config=SchedulerConfig.redis("redis://redis:6379/0"),
+)
+scheduler.submit_interval({"source": "catalog"}, interval_seconds=300, name="catalog-sync")
+
+def push(snapshot):
+    statsd.gauge("neotask.queue.pending", snapshot["pending"])
+    statsd.gauge("neotask.oldest_pending_age", snapshot["oldest_pending_age_seconds"] or 0)
+
+scheduler.on_metrics(push, interval=10)</code></pre>
+
+<h3>任务完成后写回业务表</h3>
+<pre><code class="language-python">async def on_completed(task):
+    await db.execute(
+        "UPDATE exports SET status='done', file=:file WHERE task_id=:id",
+        {"id": task.task_id, "file": task.result["file"]},
+    )
+
+pool.on_completed(on_completed)</code></pre>
+
+<div class="doc-note"><strong>相关：</strong>部署形态见 <a href="/docs/deployment.html">部署指南</a>；执行器与并发选型见 <a href="/docs/best-practices.html">最佳实践</a>；失败与回收策略见 <a href="/docs/failure-recovery.html">故障恢复</a>。</div>

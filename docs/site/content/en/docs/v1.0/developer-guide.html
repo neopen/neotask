@@ -1,0 +1,151 @@
+<p>This chapter is for developers who want to read the source, submit a patch or cut a release. NeoTask uses a <code>src</code> layout with no runtime framework dependencies; testing and release all happen inside the repository.</p>
+
+<h2 id="project-structure">Project structure</h2>
+<pre><code class="text">neotask/
+├── src/neotask/
+│   ├── api/            # TaskPool, TaskScheduler (public entry points)
+│   ├── core/           # lifecycle, dispatch, progress, cost, checkpoints, context
+│   ├── queue/          # priority queue, delayed queue, queue scheduling, dead letter
+│   ├── worker/         # worker pool, prefetcher, reclaimer
+│   ├── storage/        # Memory / SQLite / Redis repository implementations
+│   ├── executor/       # async / thread / process executors
+│   ├── lock/           # in-memory lock, Redis lock, watchdog
+│   ├── distributed/    # nodes, coordinator, sharding
+│   ├── event/          # event bus and middleware
+│   ├── monitor/        # metrics, health checks, reporter
+│   ├── models/         # Task, config, periodic job models
+│   ├── cli/            # neotask command-line entry
+│   └── common/         # exceptions, constants, logging
+├── tests/              # unit / integration / distributed / chaos / benchmark
+├── benchmarks/         # stress scripts and results
+├── examples/           # runnable examples
+├── scripts/            # migration and maintenance scripts
+├── pyproject.toml
+└── CONTRIBUTING.md</code></pre>
+<p>Data flow: <code>TaskPool</code> → <code>TaskDispatcher</code> → <code>QueueScheduler</code> → <code>WorkerPool</code> → <code>TaskExecutor</code>, with lifecycle events broadcast on <code>EventBus</code> and state and results written to the repository.</p>
+
+<h2 id="dev-environment">Development environment</h2>
+<pre><code class="language-bash">git clone https://github.com/neopen/neotask.git
+cd neotask
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"</code></pre>
+<table>
+<thead><tr><th>Tool</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>pytest</code> + <code>pytest-asyncio</code></td><td>Unit and integration tests</td></tr>
+<tr><td><code>ruff</code></td><td>Lint and formatting</td></tr>
+<tr><td><code>mypy</code></td><td>Type checking</td></tr>
+<tr><td><code>pre-commit</code></td><td>Pre-commit hooks</td></tr>
+<tr><td><code>build</code> / <code>twine</code></td><td>Building and publishing</td></tr>
+</tbody>
+</table>
+<p>Minimum Python is 3.8, and CI covers 3.8 / 3.10 / 3.12. For local development prefer 3.10+ for more complete type hints.</p>
+
+<h2 id="local-development">Local development</h2>
+<ul>
+<li>Install in editable mode (<code>-e</code>) so source edits need no reinstall.</li>
+<li>Put new examples in <code>examples/</code> and keep the numeric prefix convention.</li>
+<li>Run a single example to verify behavior: <code>python examples/01_simple.py</code>.</li>
+<li>Changes touching Redis need a local Redis, or a temporary container instance.</li>
+<li>Log level can follow an application-side variable such as <code>NEOTASK_LOG_LEVEL</code> (NeoTask does not read environment variables itself).</li>
+</ul>
+<p>Before committing, run a minimal regression:</p>
+<pre><code class="language-bash">pytest tests/unit -q
+ruff check src tests</code></pre>
+
+<h2 id="testing">Testing</h2>
+<pre><code class="language-bash"># Full suite
+pytest tests/
+
+# By layer
+pytest tests/unit/ -v
+pytest tests/integration/ -v
+pytest tests/distributed/ -v
+
+# One file
+pytest tests/unit/test_task.py -v
+
+# Coverage
+pytest --cov=src/neotask tests/
+
+# Timeout guard for slow cases
+pytest tests/ -q --timeout=60</code></pre>
+<p>Test directories:</p>
+<table>
+<thead><tr><th>Directory</th><th>Contents</th></tr></thead>
+<tbody>
+<tr><td><code>tests/unit</code></td><td>Models, queues, parsers, config and other pure logic</td></tr>
+<tr><td><code>tests/integration</code></td><td>End-to-end combinations of pool, scheduler, storage and events</td></tr>
+<tr><td><code>tests/distributed</code></td><td>Redis queue, locks, nodes and reclamation</td></tr>
+<tr><td><code>tests/chaos</code></td><td>Fault injection and recovery</td></tr>
+<tr><td><code>tests/benchmark</code></td><td>Performance regressions and benchmark scripts</td></tr>
+</tbody>
+</table>
+<p>The repository currently has roughly 500+ unit tests; the full 1.2.1 regression result is in <a href="/en/docs/benchmarks.html#method">Benchmarks · Measurement method</a>. New behavior needs unit tests plus at least one integration case.</p>
+
+<h2 id="build">Build</h2>
+<pre><code class="language-bash">python -m build
+# Output: dist/neotask-X.Y.Z-py3-none-any.whl and .tar.gz
+
+# Verify a local install
+pip install dist/neotask-*.whl
+python -c "import neotask; print(neotask.__version__)"</code></pre>
+<p>Builds use <code>setuptools</code>; package data and entry points live in <code>pyproject.toml</code>. After building, verify in a clean virtual environment: import, <code>neotask --version</code> and <code>neotask --benchmark --tasks 50</code>.</p>
+
+<h2 id="release">Release</h2>
+<p>Maintainers release with release-please and GitHub Actions:</p>
+<ol>
+<li>Merge Conventional Commits into <code>main</code> (<code>fix:</code> → PATCH, <code>feat:</code> → MINOR, <code>feat!</code> / <code>BREAKING CHANGE</code> → MAJOR).</li>
+<li>The bot opens a release PR that updates <code>pyproject.toml</code>, <code>__init__.py</code>, <code>CHANGELOG.md</code> and the manifest.</li>
+<li>After merge, tag <code>vX.Y.Z</code> and create a GitHub Release.</li>
+<li>The <code>publish-pypi</code> workflow builds and uploads to PyPI.</li>
+</ol>
+<p>In an emergency you can build manually and run <code>twine upload dist/*</code>. Either way, verify afterwards that the PyPI page, install command and version number agree.</p>
+
+<h2 id="contributing">Contributing</h2>
+<ol>
+<li>Search issues first to avoid duplicates; open an issue to align design and scope before a large feature.</li>
+<li>Branch from <code>main</code>, for example <code>feat/checkpoint-resume</code>.</li>
+<li>Keep changes focused: one PR solves one problem; no drive-by refactors.</li>
+<li>Add tests and documentation; public API changes update <code>CHANGELOG.md</code> and docs.</li>
+<li>Use Conventional Commits and explain why, not just what.</li>
+<li>Open the PR with reproduction steps, verification method and compatibility impact.</li>
+</ol>
+<p>Never commit local data files, logs, virtual environments or secrets in a PR. When Redis / SQLite behavior changes, state the backend and version used for testing.</p>
+
+<h2 id="code-style">Code style</h2>
+<ul>
+<li>Follow PEP 8; <code>snake_case</code> for modules, <code>PascalCase</code> for classes, <code>snake_case</code> for functions and variables, <code>UPPER_SNAKE</code> for constants.</li>
+<li>Public APIs need type annotations and a short docstring; write Args / Returns / Raises in the existing style.</li>
+<li>Prefix private members with an underscore; do not export internals from the package entry.</li>
+<li>No blocking calls inside async executors; hand blocking libraries to thread or process executors.</li>
+<li>Log through the project logger; never use bare <code>print</code>.</li>
+<li>Raise types from <code>common/exceptions.py</code>; avoid bare <code>Exception</code>.</li>
+</ul>
+<pre><code class="language-bash">ruff check src tests
+ruff format src tests
+mypy src/neotask/
+pre-commit run --all-files</code></pre>
+<p>Passing format and lint is a merge prerequisite; type checking allows existing modules to converge gradually, but new public interfaces must not add mypy errors.</p>
+
+<div class="doc-note"><strong>Related:</strong> the full contribution process lives in the repository's <a href="{{REPO}}/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">CONTRIBUTING.md</a>; for security issues follow the <a href="#security">Security policy</a> below and never publish vulnerability details publicly.</div>
+
+<h2 id="security">Security policy</h2>
+<p>Security updates cover the latest stable 1.x release only. Report vulnerabilities privately rather than opening a public issue:</p>
+<ol>
+<li>Use <a href="{{REPO}}/security/advisories/new" target="_blank" rel="noopener">GitHub Security Advisory</a> or email {{EMAIL}}.</li>
+<li>Include the affected version, reproduction steps, impact and a PoC if possible.</li>
+<li>Maintainers acknowledge within 48 hours and complete triage within 7 days; fixes ship in 7–30 days depending on severity.</li>
+<li>After a fix is released, the changelog is updated and reporters are credited with consent.</li>
+</ol>
+<table>
+<thead><tr><th>Severity</th><th>Examples</th><th>Target fix window</th></tr></thead>
+<tbody>
+<tr><td>Critical</td><td>Remote code execution, unauthenticated access, data exposure</td><td>7 days</td></tr>
+<tr><td>High</td><td>Privilege escalation, sensitive data leak, denial of service</td><td>14 days</td></tr>
+<tr><td>Medium</td><td>Information disclosure, security feature bypass</td><td>21 days</td></tr>
+<tr><td>Low</td><td>Issues that require specific conditions to exploit</td><td>30 days</td></tr>
+</tbody>
+</table>
+<p>Deployment-side hardening is covered in <a href="/docs/deployment.html#security">Deployment · Security</a>.</p>

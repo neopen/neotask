@@ -1,0 +1,17 @@
+{
+  "default": "v1.0",
+  "versions": [
+    {
+      "id": "v1.0",
+      "label": "v1.0",
+      "status": "latest",
+      "library": "NeoTask 1.x",
+      "baseline": "1.2.1",
+      "released": "2026-10-29",
+      "updated": "2026-11-22",
+      "description": "Covers the 1.x line (current baseline 1.2.1): installation, configuration, core concepts, reliability, deployment, integration, and API. 1.x ships compatible enhancements only; 2.0 will get its own docs line.",
+      "data": "docs/v1.0.en.json",
+      "benchmarks": "benchmarks/v1.2.1.en.json"
+    }
+  ]
+}

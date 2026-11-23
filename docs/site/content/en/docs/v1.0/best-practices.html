@@ -1,0 +1,121 @@
+<p>The guidance below comes from the actual behavioral constraints of the 1.x series, not from a generic best-practice checklist. Each item maps to a concrete limitation.</p>
+
+<h2>Production configuration template</h2>
+<p>This is a starting point for a multi-node Redis deployment, not a universal answer for every scenario. Each instance must use a unique <code>node_id</code>. The <code>TaskPoolConfig.redis()</code> factory sets <code>lock_type</code> to <code>redis</code> automatically; this example constructs the config directly, so it must be set explicitly.</p>
+
+<pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
+
+config = TaskPoolConfig(
+    storage_type="redis",
+    redis_url="redis://10.0.0.10:6379/0",
+    node_id="worker-1",          # must be unique per instance
+    worker_concurrency=16,
+    task_timeout=60,             # upper bound for a single execution
+    max_retries=3,
+    retry_delay=2.0,
+    lock_type="redis",           # direct construction defaults to memory; the redis() factory sets it for you
+    enable_prefetch=True,
+    prefetch_size=20,
+    enable_metrics=True,
+)
+pool = TaskPool(executor=handle, config=config)</code></pre>
+
+<p>Long-running tasks also need a larger task-level <code>ttl</code>, otherwise the reclaimer treats them as timed out after the default 3600 seconds. For periodic tasks, also make sure only one scheduler instance is active; see <a href="/docs/delayed-tasks.html">Delayed and periodic tasks</a>.</p>
+
+<h2>Executors</h2>
+<ul>
+<li><strong>Stay idempotent.</strong> A task may run again after a retry, a timeout reclamation or a node crash, so your business logic must tolerate repeated processing.</li>
+<li><strong>Inputs and outputs must be serializable.</strong> Task data and return values are both written to storage; the return value must be JSON-serializable, so do not return connections, file handles or custom objects.</li>
+<li><strong>Keep payloads small.</strong> Task data is stored with every record and travels with events; large objects amplify storage and network overhead.</li>
+<li><strong>Use a thread executor for blocking synchronous code.</strong> A plain sync function still runs on the event loop thread and blocks other tasks.</li>
+<li><strong>Use a process executor for CPU-bound work.</strong> The function must be picklable; progress reporting is not available in a process executor.</li>
+<li><strong>Save checkpoints for long tasks.</strong> Both automatic and manual retries inject the latest state; work between checkpoints is still repeated, so business steps must be idempotent. With a process executor, the parent process calls <code>pool.save_checkpoint()</code>.</li>
+<li><strong>Reject work with <code>report_failure()</code>.</strong> Deterministic outcomes such as failed data validation or a rejected review end the task immediately; do not use exceptions to trigger pointless retries.</li>
+</ul>
+
+<h2>Concurrency and timeouts</h2>
+<ul>
+<li><code>worker_concurrency</code> is the number of tasks executing at once, not the number of threads. Raise it for IO-bound tasks; do not exceed the available core count by much for CPU-bound tasks.</li>
+<li><code>task_timeout</code> bounds a single execution; when it expires the task is treated as failed and enters the retry flow. If the executor cannot be cancelled (for example, a blocking thread), the timeout only stops waiting and does not guarantee that the underlying call has ended.</li>
+<li><code>ttl</code> is a task-level parameter, 3600 seconds by default. In Redis mode the reclaimer uses <code>ttl</code> to decide whether a <code>RUNNING</code> task has timed out, so long tasks need an explicitly larger <code>ttl</code>.</li>
+</ul>
+
+<h2>Retries</h2>
+<ul>
+<li>Automatic retries are suitable for transient failures only. Deterministic outcomes such as invalid parameters or failed validation should be ended with <code>report_failure()</code> rather than left to retries.</li>
+<li>Use <code>report_failure()</code> when a business rule rejects a task: the task goes straight to <code>failed</code>, records a <code>failure_reason</code>, consumes no retry budget and writes nothing to the dead-letter queue.</li>
+<li>Retries read the latest checkpoint; if a task must start from scratch, do not save checkpoints, or delete the task record and recreate it.</li>
+<li>The delay of the n-th retry is <code>retry_delay × n</code>, not exponential backoff.</li>
+<li>Manual <code>retry()</code> accepts terminal tasks only; <code>retry_count</code> is preserved and the automatic retry budget is not reset.</li>
+</ul>
+
+<h2>Storage selection</h2>
+<table>
+<thead><tr><th>Requirement</th><th>Choice</th><th>Reason</th></tr></thead>
+<tbody>
+<tr><td>Development, unit tests</td><td>memory</td><td>No external dependency; data is cleared when the process exits</td></tr>
+<tr><td>Single-node low-frequency persistence</td><td>SQLite</td><td>519 tasks/s end to end (1,000 tasks, 4 workers, P50 1.0 s); writes are serialized, so more workers do not scale linearly</td></tr>
+<tr><td>High concurrency or multiple nodes</td><td>Redis</td><td>Shared queue, node heartbeats, failure reclamation and dead letters</td></tr>
+</tbody>
+</table>
+
+<h2>Prefetch</h2>
+<ul>
+<li>Prefetch trades batch dequeue for throughput: in the 1.2.1 benchmark <code>prefetch_size=20</code> completes 4,241 tasks/s versus 3,156 tasks/s with prefetch disabled; the cost is that sparse-task latency rises from 1.1–2.2 ms to 12.2–26.2 ms.</li>
+<li>Disable prefetch, or lower <code>prefetch_size</code> below 5, for low-latency, interactive or sparse submission scenarios.</li>
+<li>Prefetch dequeues several tasks at once, so strict ordering across priorities no longer holds; disable prefetch when order matters.</li>
+<li>To tune prefetch, change <code>prefetch_size</code> first: both the local queue capacity and the trigger threshold are derived from it; since 1.2.1 an empty queue no longer accrues exponential backoff, so sparse tasks are not pushed into the hundreds of milliseconds by prefetch.</li>
+</ul>
+
+<h2>Event bus</h2>
+<ul>
+<li>Subscribers must return quickly. The EventBus dispatches asynchronously in a dedicated task, so a slow subscriber delays later events but does not block worker execution.</li>
+<li>The default event queue is unbounded (<code>event_queue_max_size=None</code>). Processes with heavy event volume should set a limit; when the queue is full, new events are dropped and counted according to <code>event_overflow_policy="drop"</code>.</li>
+<li>Use <code>pool.event_bus.get_stats()</code> to watch <code>queue_size</code>, <code>dropped_events</code> and <code>slow_handler_calls</code>. Events are notifications only; storage is the source of truth for task state.</li>
+</ul>
+
+<h2>Terminal cleanup</h2>
+<ul>
+<li>By default 1.0.8 cleans up successful, failed and cancelled tasks past their retention period every 60 seconds. The retention period comes from <code>terminal_retention_seconds</code>; when it is 0, the task <code>ttl</code> applies (3600 seconds by default).</li>
+<li>If you need to query task results afterwards or keep an audit trail, raise <code>terminal_retention_seconds</code> rather than disabling cleanup and retaining everything indefinitely.</li>
+<li>Cleanup applies to terminal records only; it does not touch <code>pending</code> / <code>running</code> tasks and is not failure reclamation.</li>
+</ul>
+
+<h2>Shutdown and reclamation</h2>
+<ul>
+<li>Use <code>shutdown(graceful=True)</code> when a service exits so queued tasks finish; set a reasonable <code>timeout</code> to avoid waiting indefinitely.</li>
+<li>Periodic tasks survive a restart only with SQLite / Redis and <code>enable_persistence=True</code>; memory mode emits one warning.</li>
+<li>In Redis mode node IDs must be unique, otherwise heartbeats and orphan reclamation interfere with each other.</li>
+</ul>
+
+<h2>Observability</h2>
+<ul>
+<li>Use <code>get_metrics()</code> or <code>on_metrics(callback, interval)</code> from 1.2 for high-frequency probes and periodic reporting: they read counters and aggregates only, do not load task entities and cost far less than <code>get_stats()</code>.</li>
+<li><code>get_stats()</code> suits on-demand manual investigation; polling it at high frequency adds load to storage queries.</li>
+<li><code>get_health_status()</code> caches results for 5 seconds, so it does not run checks on every call; use it for readiness and liveness probes, not <code>get_stats()</code>.</li>
+<li>Progress reporting is best effort: a report is dropped when the task has already ended or storage is temporarily unwritable, without affecting the task result.</li>
+<li><code>get_result()</code> provides <code>queue_wait_ms</code>, <code>duration_ms</code> and the cost fields; use <code>get_cost_summary()</code> for cross-task totals rather than substituting event counts for storage queries.</li>
+<li>Metrics depend on event delivery; counters lag when events are dropped or subscribers are slow. Check <code>pool.event_bus.get_stats()</code> at the same time when investigating.</li>
+</ul>
+
+<h2>Go-live checklist</h2>
+<table>
+<thead><tr><th>Check</th><th>Pass criteria</th></tr></thead>
+<tbody>
+<tr><td>Storage</td><td>Redis reconnects; each instance has a unique <code>node_id</code> in multi-node mode; SQLite is used only for low-frequency single-node writes, with serialized writes accepted under multiple workers</td></tr>
+<tr><td>Idempotency</td><td>Re-running the same task produces no duplicate charges, duplicate notifications or other side effects</td></tr>
+<tr><td>Timeouts</td><td>Both <code>task_timeout</code> and the task <code>ttl</code> are set, and <code>ttl</code> exceeds the upper bound of normal execution time</td></tr>
+<tr><td>Retries</td><td>Retries are enabled for transient errors only; business rejections use <code>report_failure()</code>; the application tolerates the linear <code>retry_delay × n</code> delay</td></tr>
+<tr><td>Checkpoint resume</td><td>Long tasks save checkpoints, work between checkpoints can be repeated safely, checkpoint size is controlled, and process executors use the parent-process API</td></tr>
+<tr><td>Cost</td><td>Tokens, API call counts and estimated cost are reported; currency is consistent within a task; data is archived if long-term reports are needed</td></tr>
+<tr><td>Concurrency</td><td><code>worker_concurrency</code> matches the executor type; CPU-bound tasks do not oversubscribe cores</td></tr>
+<tr><td>Locks</td><td>Multi-node deployments use <code>TaskPoolConfig.redis()</code>, or set <code>lock_type="redis"</code> explicitly when constructing the config directly; manual lock keys do not collide with running task IDs</td></tr>
+<tr><td>Events</td><td>Subscribers return quickly; <code>event_queue_max_size</code> is set for high event volume; <code>dropped_events</code> and slow handlers are monitored</td></tr>
+<tr><td>History retention</td><td><code>terminal_retention_seconds</code> is raised for post-hoc queries, or automatic cleanup is disabled and history is archived separately</td></tr>
+<tr><td>Periodic tasks</td><td>Each periodic definition has exactly one scheduler; persistence is enabled in SQLite / Redis mode</td></tr>
+<tr><td>Shutdown</td><td><code>shutdown(graceful=True, timeout=...)</code> is used; the prefetch queue and in-flight tasks can drain or be reclaimed</td></tr>
+<tr><td>Monitoring</td><td>An external metrics system is connected; probes use <code>get_health_status()</code>, high-frequency metrics use <code>get_metrics()</code> / <code>on_metrics()</code>; global judgment does not rely on a single process's local statistics</td></tr>
+</tbody>
+</table>
+
+<div class="doc-note">Use this table to confirm each item before go-live. For parameter meanings and defaults see <a href="/docs/configuration.html">Configuration reference</a>; for failure handling procedures see <a href="/docs/failure-recovery.html">Failure recovery</a>.</div>

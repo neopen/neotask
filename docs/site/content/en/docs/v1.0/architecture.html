@@ -1,0 +1,97 @@
+<p>NeoTask uses a facade structure: only <code>TaskPool</code> and <code>TaskScheduler</code> are public, while internally it is split by responsibility into dispatch, queue, execution, lifecycle, event and storage components. All nodes are peers and no central scheduler is involved.</p>
+
+<h2>Component relationships</h2>
+<pre class="diagram"><code>TaskPool / TaskScheduler
+        │
+        ├── TaskDispatcher ──────► QueueScheduler
+        │                              ├── PriorityQueue (4 levels)
+        │                              └── DelayedQueue (min-heap)
+        │
+        ├── WorkerPool ──────────► Executor (async / thread / process / class)
+        │      ├── Prefetcher
+        │      └── Supervisor
+        │
+        ├── TaskLifecycleManager ─► TaskRepository / QueueRepository /
+        │                            CheckpointRepository
+        ├── EventBus ─────────────► on_created / started / completed / failed /
+        │                            cancelled / progress / reclaimed /
+        │                            checkpointed / cost_reported
+        ├── MemoryContextStore ───► Blackboard (memory backend only)
+        ├── LockManager ──────────► MemoryLock / RedisLock + WatchDog
+        │
+        └── Redis-mode components
+               ├── NodeManager
+               ├── HeartbeatManager
+               ├── TaskReclaimer
+               ├── DeadLetterQueue
+               └── Coordinator</code></pre>
+
+<table>
+<thead><tr><th>Component</th><th>Responsibility</th></tr></thead>
+<tbody>
+<tr><td><code>TaskDispatcher</code></td><td>Creates the task record and writes it to the priority queue or delayed queue</td></tr>
+<tr><td><code>QueueScheduler</code></td><td>Unified enqueue, dequeue, pause and clear; promotes delayed tasks to the priority queue once they are due</td></tr>
+<tr><td><code>WorkerPool</code></td><td>Consumes tasks according to <code>worker_concurrency</code>; prefetch is driven by local queue consumption progress and woken by enqueue events when idle</td></tr>
+<tr><td><code>TaskLifecycleManager</code></td><td>Maintains the state machine, results, progress and waiter notifications; periodically cleans up expired terminal tasks</td></tr>
+<tr><td><code>TaskRepository</code></td><td>Persists task records; Memory / SQLite / Redis implementations</td></tr>
+<tr><td><code>CheckpointRepository</code></td><td>Stores intermediate task state, pruned by version; Memory / SQLite / Redis implementations, used for recovery from automatic and manual retries</td></tr>
+<tr><td><code>MemoryContextStore</code></td><td>In-process Blackboard key-value space; created only with the memory storage backend</td></tr>
+<tr><td><code>EventBus</code></td><td>Asynchronous event queue; optional bounded dropping and slow-callback warnings, and dispatch never blocks the main task path</td></tr>
+<tr><td><code>TaskReclaimer</code></td><td>Redis mode only: reclaims timed-out tasks, orphan tasks and zombie locks</td></tr>
+</tbody>
+</table>
+
+<h2>Task execution path</h2>
+<ol>
+<li>Call <code>submit()</code> or <code>submit_async()</code>; <code>TaskDispatcher</code> creates a <code>PENDING</code> task and writes it to storage.</li>
+<li><code>QueueScheduler</code> places the task in the priority queue; with <code>delay &gt; 0</code> it enters the delayed queue first and wakes waiting consumers.</li>
+<li><code>WorkerPool</code> dequeues the task and sets it to <code>RUNNING</code>, acquires the task lock, binds the checkpoint, cost and failure-reporting contexts, then invokes the executor.</li>
+<li>On completion it writes <code>SUCCESS</code> / <code>FAILED</code>, publishes the event to the EventBus and wakes <code>wait_for_result()</code>; business failures are finalized by <code>failure_reason</code>, and execution duration and cost are written to the task record.</li>
+<li>If the task failed and <code>max_retries</code> is not exceeded, it is reset to <code>PENDING</code>, the latest checkpoint is injected, and it is re-enqueued with a linear delay.</li>
+</ol>
+
+<div class="doc-note"><strong>Execution context:</strong> checkpoint, cost and business-failure reporting are all bound to a single execution through contextvars. Async and thread executors can call the module-level functions directly; the process executor runs in a separate process and cannot see these contexts, so the parent process must call <code>pool.save_checkpoint()</code>, <code>pool.report_cost()</code> or <code>pool.report_failure()</code>.</div>
+
+<h2>Event-driven dispatch and backpressure</h2>
+<p>Workers no longer poll the queue at a fixed interval: when the local queue runs dry the prefetcher refills it immediately, and when the shared queue is empty the worker waits for an enqueue notification. Since 1.2.1, prefetching an empty queue no longer adds exponential backoff, and sparse-task latency is 1.1–2.2 ms (prefetch disabled). The EventBus likewise uses a background queue: task threads only publish events and never wait for subscribers to finish.</p>
+<table>
+<thead><tr><th>Field</th><th>Behavior</th></tr></thead>
+<tbody>
+<tr><td><code>event_queue_max_size</code></td><td><code>None</code> is unbounded; with a positive integer, a full queue drops new events and increments <code>dropped_events</code></td></tr>
+<tr><td><code>event_overflow_policy</code></td><td>Only <code>"drop"</code> is supported; any other value raises <code>ValueError</code> at construction</td></tr>
+<tr><td><code>event_slow_handler_threshold</code></td><td>When a single callback exceeds the threshold, <code>slow_handler_calls</code> is incremented and a warning is logged</td></tr>
+</tbody>
+</table>
+<p>A bounded queue protects memory at the cost of event completeness; keep it unbounded when you need a full audit trail, and make sure subscribers do not perform blocking work inside callbacks. Runtime state is available through <code>pool.event_bus.get_stats()</code>.</p>
+
+<h2>Three deployment topologies</h2>
+<table>
+<thead><tr><th>Topology</th><th>Storage</th><th>Use case</th><th>Limitation</th></tr></thead>
+<tbody>
+<tr><td>Single-process embedded</td><td>memory</td><td>Scripts, tests, short-lived services</td><td>Lost when the process exits</td></tr>
+<tr><td>Single-host persistence</td><td>SQLite</td><td>Low volume, single writer, local durability required</td><td>Writes are serialized; multiple workers work, but throughput drops as concurrency grows</td></tr>
+<tr><td>Multi-node peer-to-peer</td><td>Redis</td><td>Horizontal scaling, shared queue, failure reclamation</td><td>Requires Redis, and node IDs must be unique</td></tr>
+</tbody>
+</table>
+
+<h2>Decentralization boundaries</h2>
+<p>In Redis mode every node consumes the same queue; there is no primary node, leader election or task assignment. Nodes register liveness through heartbeats, and any idle node can claim and run a task. As a result:</p>
+<ul>
+<li><code>TaskPool.is_leader()</code> always returns <code>False</code>;</li>
+<li>a task is not guaranteed to run on the node that submitted it;</li>
+<li>when a node goes down, its <code>RUNNING</code> tasks are taken over by the reclaimer on other nodes;</li>
+<li>ordering is guaranteed only for dequeue order from the queue, not for completion order across nodes.</li>
+</ul>
+
+<h2>Choosing an executor</h2>
+<table>
+<thead><tr><th>Executor</th><th>Implementation</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>AsyncExecutor</td><td>Direct <code>await</code></td><td>Default; sync functions are wrapped as async calls but still run on the event loop thread</td></tr>
+<tr><td>ThreadExecutor</td><td>Thread pool</td><td>Good for blocking IO; supports <code>report_progress_sync()</code>, <code>save_checkpoint_sync()</code> and cost/failure reporting</td></tr>
+<tr><td>ProcessExecutor</td><td>Process pool</td><td>Good for CPU-bound work; no progress reporting and no access to checkpoint, cost or business-failure contexts</td></tr>
+<tr><td>ClassExecutor</td><td>Calls the object's <code>execute()</code></td><td>Good for stateful service objects</td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>Related pages:</strong><a href="/docs/task-lifecycle.html">Task lifecycle</a> · <a href="/docs/priority-queue.html">Priority queue</a> · <a href="/docs/distributed.html">Distributed deployment</a> · <a href="/docs/persistence.html">Persistence</a></div>

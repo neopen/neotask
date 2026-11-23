@@ -1,28 +1,375 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://task.helpenx.com/</loc></url>
-  <url><loc>https://task.helpenx.com/features.html</loc></url>
-  <url><loc>https://task.helpenx.com/changelog.html</loc></url>
-  <url><loc>https://task.helpenx.com/community.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/quickstart.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/configuration.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/best-practices.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/architecture.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/task-lifecycle.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/task-context.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/priority-queue.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/delayed-tasks.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/persistence.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/distributed.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/failure-recovery.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/checkpoint.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/cost-tracking.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/distributed-lock.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/prefetch.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/monitoring.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/api-reference.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/benchmarks.html</loc></url>
-  <url><loc>https://task.helpenx.com/docs/v1.0/roadmap.html</loc></url>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://task.helpenx.com/</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/404.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/404.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/404.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/404.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/changelog.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/changelog.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/changelog.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/changelog.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/community.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/community.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/community.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/community.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/api-reference.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/api-reference.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/api-reference.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/api-reference.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/architecture.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/architecture.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/architecture.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/architecture.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/benchmarks.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/benchmarks.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/benchmarks.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/benchmarks.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/best-practices.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/best-practices.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/best-practices.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/best-practices.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/checkpoint.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/checkpoint.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/checkpoint.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/checkpoint.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/configuration.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/configuration.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/configuration.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/configuration.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/cost-tracking.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/cost-tracking.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/cost-tracking.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/cost-tracking.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/delayed-tasks.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/delayed-tasks.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/delayed-tasks.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/delayed-tasks.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/deployment.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/deployment.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/deployment.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/deployment.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/developer-guide.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/developer-guide.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/developer-guide.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/developer-guide.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/distributed-lock.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/distributed-lock.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/distributed-lock.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/distributed-lock.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/distributed.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/distributed.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/distributed.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/distributed.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/failure-recovery.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/failure-recovery.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/failure-recovery.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/failure-recovery.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/glossary.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/glossary.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/glossary.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/glossary.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/integration.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/integration.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/integration.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/integration.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/monitoring.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/monitoring.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/monitoring.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/monitoring.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/persistence.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/persistence.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/persistence.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/persistence.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/prefetch.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/prefetch.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/prefetch.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/prefetch.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/priority-queue.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/priority-queue.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/priority-queue.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/priority-queue.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/quickstart.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/quickstart.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/quickstart.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/quickstart.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/roadmap.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/roadmap.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/roadmap.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/roadmap.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/task-context.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/task-context.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/task-context.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/task-context.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/task-lifecycle.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/task-lifecycle.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/task-lifecycle.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/task-lifecycle.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/docs/v1.0/troubleshooting.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/troubleshooting.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/troubleshooting.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/troubleshooting.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/404.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/404.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/404.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/404.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/changelog.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/changelog.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/changelog.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/changelog.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/community.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/community.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/community.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/community.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/api-reference.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/api-reference.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/api-reference.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/api-reference.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/architecture.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/architecture.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/architecture.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/architecture.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/benchmarks.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/benchmarks.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/benchmarks.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/benchmarks.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/best-practices.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/best-practices.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/best-practices.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/best-practices.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/checkpoint.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/checkpoint.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/checkpoint.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/checkpoint.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/configuration.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/configuration.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/configuration.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/configuration.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/cost-tracking.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/cost-tracking.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/cost-tracking.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/cost-tracking.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/delayed-tasks.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/delayed-tasks.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/delayed-tasks.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/delayed-tasks.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/deployment.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/deployment.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/deployment.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/deployment.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/developer-guide.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/developer-guide.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/developer-guide.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/developer-guide.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/distributed-lock.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/distributed-lock.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/distributed-lock.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/distributed-lock.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/distributed.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/distributed.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/distributed.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/distributed.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/failure-recovery.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/failure-recovery.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/failure-recovery.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/failure-recovery.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/glossary.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/glossary.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/glossary.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/glossary.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/integration.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/integration.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/integration.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/integration.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/monitoring.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/monitoring.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/monitoring.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/monitoring.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/persistence.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/persistence.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/persistence.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/persistence.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/prefetch.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/prefetch.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/prefetch.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/prefetch.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/priority-queue.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/priority-queue.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/priority-queue.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/priority-queue.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/quickstart.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/quickstart.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/quickstart.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/quickstart.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/roadmap.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/roadmap.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/roadmap.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/roadmap.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/task-context.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/task-context.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/task-context.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/task-context.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/task-lifecycle.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/task-lifecycle.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/task-lifecycle.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/task-lifecycle.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/docs/v1.0/troubleshooting.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/troubleshooting.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/troubleshooting.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/troubleshooting.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/en/features.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/features.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/features.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/features.html"/>
+  </url>
+  <url>
+    <loc>https://task.helpenx.com/features.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/features.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/features.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/features.html"/>
+  </url>
 </urlset>

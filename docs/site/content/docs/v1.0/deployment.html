@@ -1,0 +1,165 @@
+<p>NeoTask 是嵌入式库，不是独立服务：部署 NeoTask 意味着部署你的应用进程，并按需选择存储后端。本文给出本地、容器与生产环境的推荐形态，以及存储、网络、安全与升级要点。</p>
+
+<h2 id="local">本地部署</h2>
+<p>单机脚本或桌面工具直接使用 Memory 或 SQLite，无需额外进程：</p>
+<pre><code class="language-bash">pip install neotask
+
+# 验证
+python -c "import neotask; print(neotask.__version__)"</code></pre>
+<pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
+
+pool = TaskPool(
+    executor=handle,
+    config=TaskPoolConfig.sqlite("/var/lib/myapp/neotask.db"),
+)</code></pre>
+<ul>
+<li>开发阶段用 <code>TaskPoolConfig.memory()</code>，重启即清空，便于复现。</li>
+<li>需要跨重启保留任务时用 SQLite，并确保目录存在且运行用户可写。</li>
+<li>定时任务使用 <code>SchedulerConfig.sqlite()</code>；Memory 下周期任务不会跨重启恢复。</li>
+</ul>
+
+<h2 id="docker">Docker 部署</h2>
+<p>NeoTask 随应用进程启动，因此镜像构建的是「你的应用 + neotask 依赖」。以下是通用 Dockerfile：</p>
+<pre><code class="language-dockerfile">FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# SQLite 默认路径 /data/neotask.db，挂载持久卷
+RUN mkdir -p /data && chown -R 10001:10001 /data
+USER 10001
+
+CMD ["python", "-m", "myapp.worker"]</code></pre>
+<p><code>requirements.txt</code> 中按需声明 <code>neotask[redis]</code> 或 <code>neotask[monitor]</code>。应用代码需处理 SIGTERM：收到信号后调用 <code>pool.shutdown(graceful=True, timeout=30)</code>，让执行中的任务完成、队列状态落库。</p>
+<pre><code class="language-bash">docker build -t myapp-worker .
+docker run --rm -v neotask-data:/data --env-file .env myapp-worker</code></pre>
+
+<h2 id="docker-compose">Docker Compose</h2>
+<p>多节点共享队列时，用 Compose 启动 Redis 与两个对等 Worker：</p>
+<pre><code class="language-yaml">services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  worker-a:
+    build: .
+    command: ["python", "-m", "myapp.worker"]
+    environment:
+      NEOTASK_REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
+      NEOTASK_CONCURRENCY: "8"
+    depends_on:
+      redis:
+        condition: service_healthy
+    stop_grace_period: 40s
+
+  worker-b:
+    build: .
+    command: ["python", "-m", "myapp.worker"]
+    environment:
+      NEOTASK_REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
+      NEOTASK_CONCURRENCY: "8"
+    depends_on:
+      redis:
+        condition: service_healthy
+    stop_grace_period: 40s
+
+volumes:
+  redis-data: {}</code></pre>
+<div class="tips"><p><code>worker-a</code> / <code>worker-b</code> 使用同一份代码、同一队列，无需主从配置。每个进程的 <code>node_id</code> 默认包含 pid，容器内也天然唯一。</p></div>
+
+<h2 id="production">生产环境部署</h2>
+<table>
+<thead><tr><th>形态</th><th>存储</th><th>适用规模</th><th>注意点</th></tr></thead>
+<tbody>
+<tr><td>单进程嵌入</td><td>SQLite</td><td>低并发、单机</td><td>保持单写入者；定期备份</td></tr>
+<tr><td>多进程单机</td><td>SQLite 只读查询 + 单写进程</td><td>中等并发</td><td>避免多进程同时写同一文件</td></tr>
+<tr><td>多节点共享队列</td><td>Redis</td><td>横向扩展</td><td>Redis 高可用、锁与心跳参数</td></tr>
+<tr><td>调度 + 执行分离</td><td>Redis / SQLite</td><td>周期任务较多</td><td>周期任务只由一个调度实例注册</td></tr>
+</tbody>
+</table>
+<p>生产建议：</p>
+<ul>
+<li>与 Web 服务分离部署：Web 进程只提交任务，Worker 进程执行，避免长任务占用请求线程。</li>
+<li>设置 <code>task_timeout</code> 与足够的 <code>ttl</code>；长任务同时调大两者。</li>
+<li>K8s 中把 <code>terminationGracePeriodSeconds</code> 设为大于 <code>shutdown(timeout)</code>，确保优雅退出。</li>
+<li>开启指标与健康检查；探针使用 <code>get_health_status()</code>，不要用 <code>get_stats()</code> 做高频探针。</li>
+<li>生产为 <code>event_queue_max_size</code> 设置上限，避免慢回调导致内存增长。</li>
+<li>周期性任务只在一个实例注册，或使用 Redis 后端的周期任务持久化与互斥。</li>
+<li>需要自动回收崩溃节点任务时使用 Redis 后端；Memory / SQLite 模式没有心跳与回收器，进程异常退出后需人工处理遗留的 <code>running</code> 记录。</li>
+</ul>
+
+<h2 id="env">环境变量</h2>
+<p>NeoTask 不直接读取环境变量，但应用侧通常按以下变量装配配置：</p>
+<table>
+<thead><tr><th>变量</th><th>示例</th><th>用途</th></tr></thead>
+<tbody>
+<tr><td><code>NEOTASK_STORAGE</code></td><td><code>redis</code></td><td>选择后端</td></tr>
+<tr><td><code>NEOTASK_REDIS_URL</code></td><td><code>redis://:pass@redis:6379/0</code></td><td>Redis 连接</td></tr>
+<tr><td><code>NEOTASK_SQLITE_PATH</code></td><td><code>/data/neotask.db</code></td><td>SQLite 路径</td></tr>
+<tr><td><code>NEOTASK_CONCURRENCY</code></td><td><code>8</code></td><td>Worker 并发</td></tr>
+<tr><td><code>NEOTASK_NODE_ID</code></td><td><code>worker-a</code></td><td>可选，覆盖自动节点 ID</td></tr>
+</tbody>
+</table>
+<p>映射代码见 <a href="/docs/configuration.html#env-vars">配置文档 · 环境变量</a>。密码与连接串应通过 Secret 注入，不要写入镜像或日志。</p>
+
+<h2 id="storage-database">存储与数据库</h2>
+<table>
+<thead><tr><th>后端</th><th>优势</th><th>限制</th><th>备份方式</th></tr></thead>
+<tbody>
+<tr><td>Memory</td><td>零配置、最低延迟</td><td>进程退出即丢失；不跨进程</td><td>无需备份</td></tr>
+<tr><td>SQLite</td><td>单文件、事务、易备份</td><td>单写入者；不适合网络文件系统</td><td><code>sqlite3 .backup</code> 或文件快照</td></tr>
+<tr><td>Redis</td><td>多节点共享、低延迟</td><td>需运维；内存容量约束</td><td>RDB / AOF 与托管快照</td></tr>
+</tbody>
+</table>
+<ul>
+<li>SQLite 文件放在本地持久盘，不要放在 NFS / SMB 等网络挂载上。</li>
+<li>Redis 建议开启 AOF 或定期 RDB；任务与事件需要可接受的丢失窗口。</li>
+<li>终态记录按 <code>ttl</code> 或 <code>terminal_retention_seconds</code> 清理；需要长期审计时在事件回调中导出。</li>
+<li>1.2.1 对 1.0.x 的 SQLite 老库会自动补齐缺失列；跨存储迁移仍使用仓库中的迁移脚本。</li>
+</ul>
+
+<h2 id="network">网络配置</h2>
+<ul>
+<li><strong>Redis</strong>：生产启用认证与 TLS（<code>rediss://</code>），限制安全组仅允许 Worker 网段访问。</li>
+<li><strong>超时</strong>：Redis 连接池上限由 <code>redis_max_connections</code>（默认 50）控制，按节点并发与副本数核算。</li>
+<li><strong>延迟</strong>：跨可用区 Redis 会增加提交与心跳延迟；对延迟敏感时与 Worker 同区域部署。</li>
+<li><strong>SQLite</strong>：仅本地文件访问，不涉及网络端口；容器内通过卷挂载。</li>
+<li><strong>健康检查</strong>：由应用暴露 HTTP 探针，内部调用 <code>get_health_status()</code>，不要把 Redis 端口直接暴露给探针系统。</li>
+</ul>
+
+<h2 id="security">安全部署</h2>
+<ul>
+<li>容器以非 root 用户运行，根文件系统只读，仅挂载数据卷可写。</li>
+<li>Redis 必须设置密码；不要把 6379 暴露到公网。</li>
+<li>任务 <code>data</code>、<code>result</code> 与断点会落库，避免存放明文凭证；必要时业务侧加密。</li>
+<li>执行器通过代码注册，禁止根据外部输入动态导入模块或执行任意代码。</li>
+<li>限制 SQLite 文件与备份的读权限；备份文件同样包含业务数据。</li>
+<li>升级前阅读发布说明，关注默认值变化与安全修复。</li>
+</ul>
+
+<h2 id="upgrade">升级指南</h2>
+<ol>
+<li><strong>阅读发布说明</strong>：确认目标版本的默认值、弃用项与行为变化。</li>
+<li><strong>备份存储</strong>：SQLite 复制数据库文件；Redis 触发一次快照。</li>
+<li><strong>先在预发验证</strong>：用相同配置跑一轮提交、重试、取消与恢复用例。</li>
+<li><strong>升级依赖</strong>：<code>pip install -U "neotask[redis,monitor]"</code>，确认 <code>neotask.__version__</code>。</li>
+<li><strong>滚动重启</strong>：多节点环境逐个重启；旧节点退出前完成优雅关闭，新节点接管队列。</li>
+<li><strong>观察指标</strong>：重点看队列深度、最老待处理任务年龄、失败率与回收次数。</li>
+</ol>
+<div class="warning"><p>SQLite 升级只支持「新增列 + 默认值」的自动补齐。跨大版本或跨后端迁移前先备份，并在预发环境验证脚本；不要直接对生产库试跑迁移。</p></div>
+
+<div class="doc-note"><strong>相关：</strong>参数含义见 <a href="/docs/configuration.html">配置文档</a>；上线后的问题定位见 <a href="/docs/troubleshooting.html">问题排查</a>；容量数字见 <a href="/docs/benchmarks.html">性能基准</a>。</div>

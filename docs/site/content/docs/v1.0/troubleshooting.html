@@ -1,0 +1,145 @@
+<p>排查 NeoTask 问题有一条固定顺序：先确认任务处于哪个状态，再看这个状态由哪一层负责，最后检查那一层的输入（提交参数、配置、存储与上游依赖）。本文按现象组织，便于直接对照。</p>
+
+<h2 id="common-issues">常见问题</h2>
+<table>
+<thead><tr><th>现象</th><th>常见原因</th><th>处理</th></tr></thead>
+<tbody>
+<tr><td>任务一直 <code>pending</code></td><td>池未启动、并发为 0、队列被其他任务占满、延时任务尚未到期</td><td>显式 <code>pool.start()</code>；检查 <code>worker_concurrency</code>；用 <code>get_queue_size()</code> 与 <code>get_metrics()</code> 观察</td></tr>
+<tr><td>任务一直 <code>running</code></td><td>执行器阻塞、等待外部 IO、未设置超时</td><td>设置 <code>task_timeout</code>；检查执行器内是否有阻塞调用</td></tr>
+<tr><td>提交时报 <code>QueueFullError</code></td><td>队列达到 <code>queue_max_size</code></td><td>提高消费能力、降低提交速率或调大容量</td></tr>
+<tr><td><code>database is locked</code></td><td>多进程同时写同一 SQLite 文件</td><td>保持单写入者，或改用 Redis 后端</td></tr>
+<tr><td>Redis 连接失败</td><td>未安装 <code>neotask[redis]</code>、地址错误、密码 / TLS 不匹配</td><td>安装扩展；核对 URL；检查安全组与证书</td></tr>
+<tr><td>任务结果为空 / 序列化失败</td><td>返回值不可 JSON 序列化，或任务仍在执行</td><td>只返回 JSON 原生类型；先查 <code>get_status()</code></td></tr>
+<tr><td>同一任务被执行两次</td><td>业务非幂等；锁失效或跨节点未使用 Redis 锁</td><td>业务去重；Redis 模式使用 <code>TaskPoolConfig.redis()</code></td></tr>
+<tr><td>周期任务不触发</td><td>Memory 后端未持久化、Cron 非法、调度实例已停止</td><td>使用 SQLite / Redis；启动时校验表达式；确认调度进程存活</td></tr>
+<tr><td>查不到历史任务</td><td>终态清理已删除，或 <code>ttl</code> 过短</td><td>调大保留期；需要审计时在完成事件中导出</td></tr>
+</tbody>
+</table>
+
+<h2 id="log-analysis">日志分析</h2>
+<p>NeoTask 使用标准库 <code>logging</code>，默认 logger 名为 <code>NeoTask</code>。应用可以接管其 handler 与级别：</p>
+<pre><code class="language-python">import logging
+
+logging.getLogger("NeoTask").setLevel(logging.DEBUG)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)</code></pre>
+<p>排查时重点关注以下关键字：</p>
+<table>
+<thead><tr><th>关键字</th><th>含义</th><th>下一步</th></tr></thead>
+<tbody>
+<tr><td><code>Task execution timeout</code></td><td>单次执行超过 <code>task_timeout</code></td><td>查执行器耗时与外部依赖</td></tr>
+<tr><td><code>Queue is full</code></td><td>队列容量耗尽</td><td>扩容或限流</td></tr>
+<tr><td><code>Failed to initialize distributed components</code></td><td>Redis 组件初始化失败</td><td>检查 Redis 连通性与依赖安装</td></tr>
+<tr><td><code>slow handler</code> / 事件丢弃计数</td><td>事件回调超过阈值或有界队列溢出</td><td>异步化回调，设置合理上限</td></tr>
+<tr><td><code>reclaim</code></td><td>回收器接管失联或超时任务</td><td>检查节点存活与 <code>ttl</code></td></tr>
+<tr><td><code>database is locked</code></td><td>SQLite 写锁竞争</td><td>改为单写入者或迁移 Redis</td></tr>
+</tbody>
+</table>
+<p>日志中同时记录任务 ID 时，优先用 <code>task_id</code> 串联提交、执行、重试与完成记录。需要结构化日志时，在应用侧添加 JSON formatter，而不是修改库内日志格式。</p>
+
+<h2 id="diagnosis">错误诊断</h2>
+<h3>先看状态，再看字段</h3>
+<pre><code class="language-python">result = pool.get_result(task_id)
+print(pool.get_status(task_id))
+print(result)
+print(pool.get_task(task_id))</code></pre>
+<table>
+<thead><tr><th>字段</th><th>诊断价值</th></tr></thead>
+<tbody>
+<tr><td><code>status</code></td><td>确定任务处于哪一阶段</td></tr>
+<tr><td><code>error</code></td><td>系统异常摘要；为空不代表成功，需结合状态</td></tr>
+<tr><td><code>failure_reason</code></td><td>业务失败原因，与系统异常区分</td></tr>
+<tr><td><code>retry_count</code></td><td>是否反复失败；达到上限说明需要修业务或上游</td></tr>
+<tr><td><code>queue_wait_ms</code></td><td>排队时间；远大于执行时间说明容量不足</td></tr>
+<tr><td><code>duration_ms</code></td><td>执行耗时；接近超时阈值说明需要调参或优化</td></tr>
+<tr><td><code>node_id</code></td><td>定位是哪个节点执行 / 失联</td></tr>
+</tbody>
+</table>
+
+<h3>再看全局快照</h3>
+<pre><code class="language-python">import json
+
+print(json.dumps(pool.get_metrics(), ensure_ascii=False, indent=2))
+print(json.dumps(pool.get_health_status(), ensure_ascii=False, indent=2))</code></pre>
+<p><code>queue_depth_by_priority</code> 持续增长说明消费不足；<code>oldest_pending_age_seconds</code> 上升说明排队恶化；<code>retry_queue_size</code> 上升说明上游不稳定；<code>storage_healthy=False</code> 直接指向存储层。</p>
+
+<h3>常见异常对照</h3>
+<table>
+<thead><tr><th>异常</th><th>含义</th><th>处理</th></tr></thead>
+<tbody>
+<tr><td><code>TaskNotFoundError</code></td><td>ID 不存在或已被清理</td><td>核对 ID；调大保留期</td></tr>
+<tr><td><code>TaskAlreadyExistsError</code></td><td>显式 <code>task_id</code> 重复</td><td>改用自动 ID 或先查询</td></tr>
+<tr><td><code>BatchSubmitError</code></td><td>批量提交存在失败项且已回滚</td><td>读取 <code>index</code> / <code>cause</code> 修复该条数据</td></tr>
+<tr><td><code>TimeoutError</code></td><td>等待结果超时，不代表任务失败</td><td>查询状态；任务可能仍在执行</td></tr>
+<tr><td><code>UnsupportedFeatureError</code></td><td>后端不支持该能力（如非 Memory 用 Blackboard）</td><td>切换后端或改用其他方案</td></tr>
+</tbody>
+</table>
+
+<h2 id="deployment-issues">常见部署问题</h2>
+<table>
+<thead><tr><th>场景</th><th>原因</th><th>修复</th></tr></thead>
+<tbody>
+<tr><td>容器重启后任务全丢</td><td>使用 Memory 后端，或 SQLite 未挂载持久卷</td><td>切换 SQLite 并挂载 <code>/data</code>，或使用 Redis</td></tr>
+<tr><td>滚动更新后出现重复执行</td><td>旧容器未优雅退出，任务被回收重排</td><td>延长 <code>stop_grace_period</code>；业务幂等</td></tr>
+<tr><td>多副本周期任务重复触发</td><td>每个副本都注册了周期任务</td><td>只保留一个调度实例，或使用 Redis 持久化与互斥</td></tr>
+<tr><td>SQLite 写入变慢 / 报锁</td><td>多进程写同一文件，或落在网络盘</td><td>单写入者；本地磁盘；必要时迁 Redis</td></tr>
+<tr><td>Redis 内存持续增长</td><td>终态记录或死信未清理</td><td>检查 <code>ttl</code>、清理开关与死信容量</td></tr>
+<tr><td>K8s 探针导致 CPU 偏高</td><td>用 <code>get_stats()</code> 高频探针</td><td>改用 <code>get_health_status()</code> 并降低频率</td></tr>
+<tr><td>进程退出卡住</td><td>执行中任务未在关闭超时内完成</td><td>缩短任务或调大 <code>shutdown(timeout)</code>，并让编排宽限期更长</td></tr>
+</tbody>
+</table>
+
+<h2 id="performance-issues">性能问题</h2>
+<h3>吞吐上不去</h3>
+<ol>
+<li>确认 <code>worker_concurrency</code> 与节点数；总并发是各节点并发之和。</li>
+<li>检查执行器是否阻塞事件循环；CPU 密集任务改用进程执行器。</li>
+<li>检查事件回调耗时；慢回调会拖慢事件消费并可能触发丢弃。</li>
+<li>检查存储：SQLite 串行写入吞吐有限，Redis 受网络往返影响。</li>
+<li>批量场景改用 <code>submit_batch()</code>，避免逐条跨事件循环往返。</li>
+</ol>
+
+<h3>延迟变高</h3>
+<ul>
+<li><code>queue_wait_ms</code> 高：排队问题，扩容或提高优先级。</li>
+<li><code>duration_ms</code> 高：执行问题，查外部调用与锁等待。</li>
+<li>稀疏任务延迟敏感：考虑关闭预取或减小 <code>prefetch_size</code>；预取提高吞吐但会拉高单任务延迟。</li>
+<li>调度延迟：检查 <code>scan_interval</code> 与系统负载；大量延时任务可启用时间轮。</li>
+</ul>
+
+<h3>内存持续增长</h3>
+<ul>
+<li>事件总线默认无界：设置 <code>event_queue_max_size</code>，并确认回调不堆积。</li>
+<li>终态记录未清理：确认 <code>enable_terminal_cleanup=True</code> 与保留期。</li>
+<li>进度或结果过大：缩小 <code>result</code>，大对象外置存储。</li>
+<li>预取过大：降低 <code>prefetch_size</code>。</li>
+</ul>
+
+<h2 id="faq">FAQ</h2>
+<h3>为什么没有 <code>neotask start</code> 命令？</h3>
+<p>NeoTask 是嵌入式库，不提供独立守护进程。应用启动时创建 <code>TaskPool</code> 或 <code>TaskScheduler</code>，任务随进程运行。CLI 只提供版本查询与轻量基准。</p>
+
+<h3><code>wait_for_result</code> 超时了，任务还在跑吗？</h3>
+<p>可能仍在执行。等待超时只影响调用方，不会取消任务。用 <code>get_status()</code> 确认，必要时调用 <code>cancel()</code>。</p>
+
+<h3>同步函数会阻塞事件循环吗？</h3>
+<p>直接传入普通同步函数时，默认执行器会包装为异步调用，避免阻塞。但协程内部如果调用同步阻塞代码，仍会阻塞整个循环；这类逻辑应放入 <code>ThreadExecutor</code> 或 <code>ProcessExecutor</code>。</p>
+
+<h3>为什么 Redis 模式才有自动回收？</h3>
+<p>心跳与回收依赖跨节点视图和共享存储。Memory / SQLite 是单进程语义，没有可靠的节点注册与任务归属信息，因此不启用回收器。生产环境需要自动接管时使用 Redis 后端。</p>
+
+<h3><code>ttl</code> 和 <code>task_timeout</code> 都要设吗？</h3>
+<p>建议都设。前者控制记录保留与回收判定，后者强制中断超长执行。只设其中一个都会留下盲区。</p>
+
+<h3>如何确认任务没有被执行两次？</h3>
+<p>锁只能降低概率，不能替代业务幂等。使用稳定的业务键做去重或 upsert，并在任务数据里携带幂等键；跨节点部署时确保使用 Redis 锁。</p>
+
+<h3>可以直接删除任务记录吗？</h3>
+<p>可以调用 <code>delete(task_id)</code>，但它不撤销已经发生的副作用。排队中的任务应先 <code>cancel()</code>；执行中的删除不会中断执行。</p>
+
+<h3>升级后需要迁移数据吗？</h3>
+<p>SQLite 会在启动时自动补齐缺失列；跨后端或跨大版本迁移请先备份并在预发验证脚本。</p>
+
+<div class="doc-note"><strong>仍未解决：</strong>带上 <code>neotask.__version__</code>、后端类型、任务状态、<code>get_metrics()</code> 快照与相关日志，在 <a href="{{ISSUES}}" target="_blank" rel="noopener">GitHub Issues</a> 提问。请勿公开粘贴包含密钥或业务数据的日志。</div>

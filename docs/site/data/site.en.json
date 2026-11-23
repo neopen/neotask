@@ -1,0 +1,270 @@
+{
+  "name": "NeoTask",
+  "tagline": "Lightweight Python async task queue",
+  "description": "NeoTask is a pure-Python async task queue and scheduler: embedded by design, zero external services, with priorities, delayed, periodic and Cron tasks, checkpoint resume, cost tracking and lightweight monitoring, scaling to a distributed cluster through Redis.",
+  "version": "1.2.1",
+  "releaseDate": "2026-11-22",
+  "python": "3.8+",
+  "license": "MIT",
+  "homepage": "https://task.helpenx.com",
+  "repo": "https://github.com/neopen/neotask",
+  "pypi": "https://pypi.org/project/neotask/",
+  "issues": "https://github.com/neopen/neotask/issues",
+  "discussions": "https://github.com/neopen/neotask/discussions",
+  "changelog": "https://github.com/neopen/neotask/releases",
+  "examples": "https://github.com/neopen/neotask/tree/main/examples",
+  "blog": "https://pengline.cn",
+  "author": "NeoPen",
+  "email": "helpenx@gmail.com",
+  "stats": {
+    "stars": 8,
+    "forks": 2,
+    "openIssues": 0,
+    "topics": 20
+  },
+  "releases": [
+    {
+      "version": "1.2.1",
+      "date": "2026-11-22",
+      "type": "patch",
+      "summary": "Full-path performance fixes: prefetch empty-queue backoff, in-memory queue batch write/remove, blocking monitoring samples, and Redis batch reads.",
+      "items": [
+        "Prefetch workers no longer add exponential backoff on an empty queue; sparse latency drops from up to 500 ms to 12–26 ms",
+        "In-memory batch push becomes O(k log n); pushing 1,000 items into a 10,000-item queue takes 0.471 ms",
+        "Batch remove uses lazy tombstones; removing 1,000 items takes 0.668 ms without rebuilding the heap",
+        "psutil sampling moves to a thread pool, removing periodic ~100 ms event-loop stalls",
+        "Redis list_by_status uses one MGET; memory pagination and Blackboard TTL writes optimized",
+        "Regression: 538 unit tests passed / 12 skipped; 87 integration tests passed / 1 skipped"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.2.1"
+    },
+    {
+      "version": "1.2.0",
+      "date": "2026-11-20",
+      "type": "minor",
+      "summary": "Performance and lightweight monitoring: snapshots, periodic push, plus 1,000-task concurrency, checkpoint and progress benchmarks.",
+      "items": [
+        "Added TaskPool.get_metrics() lightweight snapshot and on_metrics() periodic push",
+        "Added repository count and retry-count APIs so snapshots avoid loading task entities",
+        "Added 1,000-task concurrency, submit latency, and batch throughput benchmarks",
+        "Added checkpoint write cost and monitoring snapshot cost benchmarks",
+        "Added a benchmark for progress-report frequency impact on throughput",
+        "Unsubscribed events are no longer enqueued; internal handlers subscribe by event type",
+        "SQLite skips no-op commits in autocommit mode and prunes checkpoints only when over limit"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.2.0"
+    },
+    {
+      "version": "1.1.2",
+      "date": "2026-11-18",
+      "type": "patch",
+      "summary": "Scheduling precision and executor configuration fixes.",
+      "items": [
+        "Fixed scheduling precision for timed tasks",
+        "Fixed executor configuration not taking effect on some paths"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.1.2"
+    },
+    {
+      "version": "1.1.1",
+      "date": "2026-11-15",
+      "type": "patch",
+      "summary": "Upgrade experience and stability: concurrent upgrades of existing databases, startup schema readiness, and metrics read races.",
+      "items": [
+        "Idempotent column additions for old databases, fixing startup crashes from duplicate columns",
+        "Added TaskRepository.ensure_ready(), returning only after startup completes",
+        "Fixed deque iteration crashes during concurrent metrics reads",
+        "Relaxed the redis extra upper bound to <8 for redis-py 7.x"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.1.1"
+    },
+    {
+      "version": "1.1.0",
+      "date": "2026-11-13",
+      "type": "minor",
+      "summary": "Local capability completion: checkpoint resume, business failures, cost and duration, parent/child tasks, and Blackboard.",
+      "items": [
+        "Added CheckpointRepository for all three backends and resume paths",
+        "Added business failure reporting via report_failure() and the failure_reason field",
+        "Added cost tracking, queue_wait_ms / duration_ms and parent/child APIs",
+        "Added the memory-only Blackboard local context",
+        "Added task.checkpointed / task.cost_reported events and external task_id idempotency",
+        "Automatic column migration for old SQLite databases and a task_checkpoints table"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.1.0"
+    },
+    {
+      "version": "1.0.8",
+      "date": "2026-11-11",
+      "type": "patch",
+      "summary": "Event-driven scheduling, EventBus backpressure and terminal cleanup; fixed pause deadlocks and SQLite commit races.",
+      "items": [
+        "Prefetch and workers become event-driven; idle wakeup latency drops to about 1.3 ms",
+        "EventBus supports bounded queues, drop counts, and slow-handler warnings",
+        "Automatic terminal task cleanup and cleanup_terminal_tasks()",
+        "Added the neotask --benchmark lightweight benchmark entry point",
+        "Fixed submit deadlocks after pause and SQLite concurrent commit races",
+        "Redis heartbeat / reclaimer switches take effect; TaskPoolConfig.redis() enables Redis locks"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.0.8"
+    },
+    {
+      "version": "1.0.7",
+      "date": "2026-11-10",
+      "type": "patch",
+      "summary": "Local capabilities and stability: shutdown and batch semantics, unified logging, storage migration, and stress tests.",
+      "items": [
+        "Unified log output and error messages",
+        "Corrected shutdown and batch submit semantics",
+        "Added storage migration and stress test cases"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.0.7"
+    },
+    {
+      "version": "1.0.6",
+      "date": "2026-11-08",
+      "type": "patch",
+      "summary": "Performance work on storage concurrency, batch submission, and the submit path.",
+      "items": [
+        "Optimized concurrent storage access",
+        "Optimized batch submission and the task submit path"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.0.6"
+    },
+    {
+      "version": "1.0.5",
+      "date": "2026-10-29",
+      "type": "patch",
+      "summary": "Stability fixes: cross-event-loop waits, manual retry, Cron aliases, and graceful shutdown.",
+      "items": [
+        "Fixed cross-event-loop waits and manual retry",
+        "Fixed Cron alias parsing",
+        "Fixed the graceful shutdown flow"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.0.5"
+    },
+    {
+      "version": "1.0.4",
+      "date": "2026-10-04",
+      "type": "patch",
+      "summary": "Code style and routine maintenance.",
+      "items": ["Unified code style and formatting"],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.0.4"
+    },
+    {
+      "version": "1.0.3",
+      "date": "2026-10-03",
+      "type": "patch",
+      "summary": "Bug fixes and documentation updates.",
+      "items": ["Merged development-branch bug fixes", "Fixed documentation errors"],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.0.3"
+    },
+    {
+      "version": "1.0.2",
+      "date": "2026-09-13",
+      "type": "minor",
+      "summary": "Distributed-path fixes; dead-letter queue, timing wheel, and metrics wired in; dependencies reduced to aiosqlite + croniter.",
+      "items": [
+        "Redis distributed locks renew per key, fixing cross-lock interference",
+        "Orphan reclaim filters by node, avoiding damage to other nodes",
+        "Explicit QueueFullError when the queue is full",
+        "Periodic missed policy: IGNORE / SKIP / RUN_ONCE / CATCH_UP",
+        "Dead-letter queue, timing wheel, and metrics connected to the main path",
+        "Exponential backoff for empty prefetch batches",
+        "Minimum Python 3.8"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.0.2"
+    },
+    {
+      "version": "1.0.1",
+      "date": "2026-08-20",
+      "type": "patch",
+      "summary": "Fixes for double-scheduled periodic tasks, Redis index pollution, and lost results.",
+      "items": [
+        "Fixed periodic tasks being scheduled twice",
+        "Fixed stale Redis status indexes",
+        "Fixed lost or corrupted results",
+        "Fixed prefetch breaking priority order",
+        "Supported thread-executor string types"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.0.1"
+    },
+    {
+      "version": "1.0.0",
+      "date": "2026-05-11",
+      "type": "major",
+      "summary": "Decentralized architecture, multi-tier storage, failure recovery, dead-letter queue, and prefetching.",
+      "items": [
+        "Peer nodes, no master",
+        "Delayed, periodic, and Cron scheduling (timing wheel)",
+        "Task lifecycle events and metrics",
+        "Memory / SQLite / Redis multi-tier storage",
+        "Watchdog to prevent lock expiry and duplicate execution",
+        "Dead-letter queue and failed-task reclaim",
+        "Prefetching for throughput"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v1.0.0"
+    },
+    {
+      "version": "0.5.0",
+      "date": "2026-05-10",
+      "type": "minor",
+      "summary": "Prefetch and batch operations, node heartbeat, and orphan reclaim.",
+      "items": ["Prefetch and batch operations", "Node registration, discovery, and heartbeat", "Orphan task reclaim", "Competitive consumption"],
+      "url": "https://github.com/neopen/neotask/releases/tag/v0.5.0"
+    },
+    {
+      "version": "0.4.1",
+      "date": "2026-05-08",
+      "type": "patch",
+      "summary": "Lock scanner fixes, zombie-lock cleanup, heartbeat and reclaim improvements.",
+      "items": ["Cleaned up zombie locks", "Improved node heartbeat and task reclaim"],
+      "url": "https://github.com/neopen/neotask/releases/tag/v0.4.1-beta"
+    },
+    {
+      "version": "0.4.0",
+      "date": "2026-05-01",
+      "type": "minor",
+      "summary": "Distributed capabilities, executor timeouts, and sub-second delays.",
+      "items": ["Distributed prefetch and election", "Executor timeout control", "Sub-second delays"],
+      "url": "https://github.com/neopen/neotask/releases/tag/v0.4.0"
+    },
+    {
+      "version": "0.3.0",
+      "date": "2026-04-22",
+      "type": "minor",
+      "summary": "Delayed queues, periodic tasks, Cron expressions, and the timing wheel.",
+      "items": ["Delayed queues and periodic tasks", "Cron expression support", "Timing wheel algorithm", "Fixed priority queue issues"],
+      "url": "https://github.com/neopen/neotask/releases/tag/v0.3.0"
+    },
+    {
+      "version": "0.2.0",
+      "date": "2026-04-21",
+      "type": "minor",
+      "summary": "Observability components: event bus and metrics collector.",
+      "items": ["Event bus", "Metrics collector", "Health checks", "Memory queue and SQLite storage improvements"],
+      "url": "https://github.com/neopen/neotask/releases/tag/v0.2.0"
+    },
+    {
+      "version": "0.1.1",
+      "date": "2026-04-09",
+      "type": "minor",
+      "summary": "First complete version: task pool, scheduled dispatch, storage backends, and event callbacks.",
+      "items": [
+        "Immediate, delayed, periodic, and Cron tasks",
+        "Priority queue and automatic retries",
+        "Memory / SQLite / Redis storage",
+        "Task lifecycle event callbacks"
+      ],
+      "url": "https://github.com/neopen/neotask/releases/tag/v0.1.1-beta.3"
+    },
+    {
+      "version": "0.1.0",
+      "date": "2026-03-25",
+      "type": "alpha",
+      "summary": "Internal test release to validate the publishing pipeline.",
+      "items": ["Internal testing only"],
+      "url": "https://github.com/neopen/neotask/releases/tag/v0.1.0-alpha.1"
+    }
+  ]
+}

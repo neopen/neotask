@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>更新日志 · NeoTask 版本发布记录</title>
-  <meta name="description" content="NeoTask 全部 18 个版本的发布记录：v1.1.1 最新版本，以及从 0.1.0 到 1.x 的功能演进、缺陷修复与升级说明。">
-  <meta name="keywords" content="NeoTask 更新日志, NeoTask 版本历史, NeoTask 1.1.1, Python 任务队列更新, NeoTask 升级">
+  <meta name="description" content="NeoTask 从 0.1.0 至今的完整发布记录，最新为 v1.2.1：功能演进、缺陷修复与升级说明。">
+  <meta name="keywords" content="NeoTask 更新日志, NeoTask 版本历史, NeoTask 1.2.1, Python 任务队列更新, NeoTask 升级">
   <meta name="author" content="NeoPen">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
   <meta name="theme-color" content="#0b1713">
@@ -43,13 +43,16 @@
     "about": {
       "@type": "SoftwareApplication",
       "name": "NeoTask",
-      "softwareVersion": "1.1.1",
+      "softwareVersion": "1.2.1",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "OS Independent",
       "url": "https://task.helpenx.com/"
     }
   }
   </script>
+  <link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/changelog.html">
+  <link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/changelog.html">
+  <link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/changelog.html">
 </head>
 <body class="sub-page">
   <svg class="svg-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -87,7 +90,7 @@
         <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
       </svg>
       <span class="brand-name">NeoTask</span>
-      <span class="brand-version">v1.1.1</span>
+      <span class="brand-version">v1.2.1</span>
     </a>
 
     <nav class="site-nav" id="siteNav" aria-label="主导航">
@@ -97,12 +100,16 @@
       <a class="site-nav-link is-active" href="/changelog.html">更新日志</a>
       <a class="site-nav-link " href="/community.html">社区</a>
       <a class="site-nav-link site-nav-external" href="https://helpenx.com/" target="_blank" rel="noopener">
-        HelpEnx Hub<span class="nav-brand-cn">（星阵工坊）</span>
+        HelpEnx Hub<span class="nav-brand-cn">（星阵万象）</span>
         <svg class="icon icon-xs nav-external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
       </a>
     </nav>
 
     <div class="header-actions">
+      <a class="lang-switch" href="/en/changelog.html" hreflang="en" lang="en" aria-label="Switch to English">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>
+        <span>EN</span>
+      </a>
       <a class="gh-star" href="https://github.com/neopen/neotask" target="_blank" rel="noopener" aria-label="在 GitHub 上为 NeoTask 加 Star">
         <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.9 5.33.9 11.6c0 4.9 3.17 9.05 7.57 10.52.55.1.75-.24.75-.53v-1.85c-3.08.67-3.73-1.48-3.73-1.48-.5-1.28-1.23-1.62-1.23-1.62-1-.69.08-.68.08-.68 1.11.08 1.7 1.14 1.7 1.14.98 1.69 2.58 1.2 3.2.92.1-.71.39-1.2.7-1.48-2.46-.28-5.05-1.23-5.05-5.48 0-1.21.43-2.2 1.14-2.98-.11-.28-.49-1.4.11-2.92 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.6 1.52.22 2.64.11 2.92.71.78 1.14 1.77 1.14 2.98 0 4.26-2.6 5.2-5.06 5.47.4.35.76 1.03.76 2.07v3.07c0 .29.2.64.76.53a11.1 11.1 0 0 0 7.56-10.52C23.1 5.33 18.27.5 12 .5z"/></svg>
         <span>Star</span>
@@ -124,12 +131,12 @@
         <h1>更新日志</h1>
         <p>NeoTask 的真实发布记录。每个版本都对应 PyPI 发布与 GitHub Release，升级前请阅读当前版本的修复说明。</p>
         <div class="page-hero-actions">
-          <a class="btn btn-primary" href="https://pypi.org/project/neotask/" target="_blank" rel="noopener">在 PyPI 安装 v1.1.1 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+          <a class="btn btn-primary" href="https://pypi.org/project/neotask/" target="_blank" rel="noopener">在 PyPI 安装 v1.2.1 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
           <a class="btn btn-outline" href="https://github.com/neopen/neotask/releases" target="_blank" rel="noopener">GitHub Releases</a>
         </div>
         <div class="page-hero-meta">
-          <span><strong>最新版本</strong> v1.1.1</span>
-          <span><strong>发布日期</strong> 2026-11-15</span>
+          <span><strong>最新版本</strong> v1.2.1</span>
+          <span><strong>发布日期</strong> 2026-11-22</span>
           <span><strong>许可证</strong> MIT</span>
           <span><strong>Python</strong> 3.8+</span>
         </div>
@@ -141,7 +148,7 @@
         <aside class="changelog-aside">
           <div class="aside-card">
             <h2>升级建议</h2>
-            <p>生产环境建议使用最新补丁版本。从 1.0.2 起依赖收敛到少量基础库；当前 1.1.1 基础依赖为 <code>aiosqlite</code>、<code>croniter</code> 与 <code>colorama</code>，最低支持 Python 3.8+。1.0.8 起可使用 <code>neotask --benchmark</code> 做轻量性能自测，1.1 起提供断点续跑、成本采集与业务失败上报。</p>
+            <p>生产环境建议使用最新补丁版本。从 1.0.2 起依赖收敛到少量基础库；当前 1.2.1 基线依赖 <code>aiosqlite</code>、<code>croniter</code> 与 <code>colorama</code>，最低支持 Python 3.8+。1.0.8 起可用 <code>neotask --benchmark</code> 做轻量性能自测；1.1 起提供断点续跑、成本采集与业务失败上报；1.2 新增指标快照与周期推送；1.2.1 修复预取空转退避、内存批量写入与 Redis 批量读取。</p>
             <code class="aside-command">pip install -U neotask</code>
           </div>
           <div class="aside-card">
@@ -158,9 +165,63 @@
 
         <div class="changelog-list">
 
-      <article class="release is-latest" id="v1.1.1">
+      <article class="release is-latest" id="v1.2.1">
         <div class="release-side">
-          <div class="release-version">v1.1.1<span class="release-latest">最新</span></div>
+          <div class="release-version">v1.2.1<span class="release-latest">最新</span></div>
+          <time datetime="2026-11-22">2026-11-22</time>
+          <span class="release-type patch">修复版本</span>
+        </div>
+        <div class="release-body">
+          <h2>全链路性能修复：预取空队列退避、内存队列批量写删、监控采样阻塞与 Redis 批量读取。</h2>
+          <ul>
+            <li>预取空队列不再叠加指数退避，稀疏任务延迟从最高 500 ms 降至 12–26 ms</li>
+            <li>内存批量写入降为 O(k log n)；向 10,000 条队列写入 1,000 条约 0.471 ms</li>
+            <li>批量移除使用惰性墓碑；移除 1,000 条约 0.668 ms，无需重建堆</li>
+            <li>psutil 采样移入线程池，消除周期性约 100 ms 的事件循环停顿</li>
+            <li>Redis list_by_status 改为单次 MGET；内存分页与 Blackboard TTL 写入优化</li>
+            <li>回归：单元测试 538 通过 / 12 跳过；集成测试 87 通过 / 1 跳过</li>
+          </ul>
+          <a class="text-link" href="https://github.com/neopen/neotask/releases/tag/v1.2.1" target="_blank" rel="noopener">查看完整发布说明 <span aria-hidden="true">→</span></a>
+        </div>
+      </article>
+      <article class="release" id="v1.2.0">
+        <div class="release-side">
+          <div class="release-version">v1.2.0</div>
+          <time datetime="2026-11-20">2026-11-20</time>
+          <span class="release-type minor">功能版本</span>
+        </div>
+        <div class="release-body">
+          <h2>性能与轻量监控：快照、周期推送，以及 1,000 任务并发、断点与进度基准。</h2>
+          <ul>
+            <li>新增 TaskPool.get_metrics() 轻量快照与 on_metrics() 周期推送</li>
+            <li>新增仓储计数与重试计数接口，快照不再加载任务实体</li>
+            <li>新增 1,000 任务并发、提交延迟与批量吞吐基准</li>
+            <li>新增断点写入成本与监控快照成本基准</li>
+            <li>新增进度上报频率对吞吐影响的基准</li>
+            <li>未订阅事件不再入队；内部处理器按事件类型订阅</li>
+            <li>SQLite 自动提交模式跳过空提交，仅在超限时清理断点</li>
+          </ul>
+          <a class="text-link" href="https://github.com/neopen/neotask/releases/tag/v1.2.0" target="_blank" rel="noopener">查看完整发布说明 <span aria-hidden="true">→</span></a>
+        </div>
+      </article>
+      <article class="release" id="v1.1.2">
+        <div class="release-side">
+          <div class="release-version">v1.1.2</div>
+          <time datetime="2026-11-18">2026-11-18</time>
+          <span class="release-type patch">修复版本</span>
+        </div>
+        <div class="release-body">
+          <h2>调度精度与执行器配置修复。</h2>
+          <ul>
+            <li>修复定时任务的调度精度</li>
+            <li>修复部分路径执行器配置未生效</li>
+          </ul>
+          <a class="text-link" href="https://github.com/neopen/neotask/releases/tag/v1.1.2" target="_blank" rel="noopener">查看完整发布说明 <span aria-hidden="true">→</span></a>
+        </div>
+      </article>
+      <article class="release" id="v1.1.1">
+        <div class="release-side">
+          <div class="release-version">v1.1.1</div>
           <time datetime="2026-11-15">2026-11-15</time>
           <span class="release-type patch">修复版本</span>
         </div>
@@ -502,7 +563,7 @@
           <span class="brand-name">NeoTask</span>
         </a>
         <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
-        <div class="footer-status"><span class="status-dot"></span> v1.1.1 · 发布于 2026-11-15</div>
+        <div class="footer-status"><span class="status-dot"></span> v1.2.1 · 发布于 2026-11-22</div>
       </div>
 
       <div class="footer-col">

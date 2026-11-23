@@ -66,7 +66,7 @@
         "url": "https://task.helpenx.com/",
         "codeRepository": "https://github.com/neopen/neotask",
         "downloadUrl": "https://pypi.org/project/neotask/",
-        "softwareVersion": "1.1.1",
+        "softwareVersion": "1.2.1",
         "license": "https://github.com/neopen/neotask/blob/main/LICENSE",
         "screenshot": "https://task.helpenx.com/assets/img/og.png",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -130,6 +130,9 @@
     ]
   }
   </script>
+  <link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/">
+  <link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/">
+  <link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/">
 </head>
 <body class="home-page">
   <svg class="svg-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -167,7 +170,7 @@
         <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
       </svg>
       <span class="brand-name">NeoTask</span>
-      <span class="brand-version">v1.1.1</span>
+      <span class="brand-version">v1.2.1</span>
     </a>
 
     <nav class="site-nav" id="siteNav" aria-label="主导航">
@@ -177,12 +180,16 @@
       <a class="site-nav-link " href="/changelog.html">更新日志</a>
       <a class="site-nav-link " href="/community.html">社区</a>
       <a class="site-nav-link site-nav-external" href="https://helpenx.com/" target="_blank" rel="noopener">
-        HelpEnx Hub<span class="nav-brand-cn">（星阵工坊）</span>
+        HelpEnx Hub<span class="nav-brand-cn">（星阵万象）</span>
         <svg class="icon icon-xs nav-external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
       </a>
     </nav>
 
     <div class="header-actions">
+      <a class="lang-switch" href="/en/" hreflang="en" lang="en" aria-label="Switch to English">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>
+        <span>EN</span>
+      </a>
       <a class="gh-star" href="https://github.com/neopen/neotask" target="_blank" rel="noopener" aria-label="在 GitHub 上为 NeoTask 加 Star">
         <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.9 5.33.9 11.6c0 4.9 3.17 9.05 7.57 10.52.55.1.75-.24.75-.53v-1.85c-3.08.67-3.73-1.48-3.73-1.48-.5-1.28-1.23-1.62-1.23-1.62-1-.69.08-.68.08-.68 1.11.08 1.7 1.14 1.7 1.14.98 1.69 2.58 1.2 3.2.92.1-.71.39-1.2.7-1.48-2.46-.28-5.05-1.23-5.05-5.48 0-1.21.43-2.2 1.14-2.98-.11-.28-.49-1.4.11-2.92 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.6 1.52.22 2.64.11 2.92.71.78 1.14 1.77 1.14 2.98 0 4.26-2.6 5.2-5.06 5.47.4.35.76 1.03.76 2.07v3.07c0 .29.2.64.76.53a11.1 11.1 0 0 0 7.56-10.52C23.1 5.33 18.27.5 12 .5z"/></svg>
         <span>Star</span>
@@ -202,9 +209,9 @@
       <div class="hero-grid-bg" aria-hidden="true"></div>
       <div class="container hero-layout">
         <div class="hero-copy">
-          <a class="announce" href="/changelog.html#v1.1.1">
+          <a class="announce" href="/changelog.html#v1.2.1">
             <span class="announce-tag">NEW</span>
-            <span>v1.1.1 已发布 · 2026-11-15</span>
+            <span>v1.2.1 已发布 · 2026-11-22</span>
             <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
           </a>
           <h1>把耗时任务<br><span class="grad-text">交给后台。</span></h1>
@@ -293,7 +300,7 @@
             <div class="console-foot">
               <span class="console-tag"><svg class="icon icon-xs"><use href="#i-database"/></svg> memory</span>
               <span class="console-tag"><svg class="icon icon-xs"><use href="#i-sliders"/></svg> workers=10</span>
-              <span class="console-tag">v1.1.1</span>
+              <span class="console-tag">v1.2.1</span>
             </div>
           </div>
         </div>
@@ -451,7 +458,7 @@
             <span class="eyebrow">QUICK TO ADOPT</span>
             <h2>几分钟接入，而不是几天</h2>
           </div>
-          <p class="section-note">安装后即可运行。以下示例均为 v1.1.1 的真实 API。</p>
+          <p class="section-note">安装后即可运行。以下示例均为 v1.2.1 的真实 API。</p>
         </div>
 
         <div class="code-layout">
@@ -553,7 +560,7 @@ result = pool.wait_for_result(task_id)</code></pre>
             <div class="code-window-foot">
               <span><span class="dot-live"></span> Python 3.8+</span>
               <span>MIT</span>
-              <span>v1.1.1</span>
+              <span>v1.2.1</span>
             </div>
           </div>
         </div>
@@ -706,27 +713,27 @@ result = pool.wait_for_result(task_id)</code></pre>
         </div>
         <div class="bench-grid">
           <div class="bench-card bench-main">
-            <span class="bench-label">提交吞吐</span>
-            <strong class="bench-num">9,681<span> tasks/s</span></strong>
-            <p>2,000 个 noop 任务，Memory 存储，10 个 Worker。</p>
+            <span class="bench-label">预取完成吞吐</span>
+            <strong class="bench-num">4,241<span> tasks/s</span></strong>
+            <p>2,000 个 noop 任务，并发 10，开启预取。</p>
           </div>
           <div class="bench-card">
-            <span class="bench-label">完成吞吐</span>
-            <strong class="bench-num">3,035<span> tasks/s</span></strong>
-            <p>20,000 个 noop 任务压测，Memory 存储，10 个 Worker。</p>
+            <span class="bench-label">稀疏任务延迟</span>
+            <strong class="bench-num">1.1–2.2<span> ms</span></strong>
+            <p>关闭预取时的端到端延迟，空闲后连续 8 次。</p>
           </div>
           <div class="bench-card">
-            <span class="bench-label">串行往返</span>
-            <strong class="bench-num">0.86<span> ms</span></strong>
-            <p>单任务提交到完成的 P50 延迟，200 次串行测量。</p>
+            <span class="bench-label">队列批量写入</span>
+            <strong class="bench-num">0.471<span> ms</span></strong>
+            <p>向 10,000 条队列一次写入 1,000 条。</p>
           </div>
           <div class="bench-card">
-            <span class="bench-label">IO 扩展性</span>
-            <strong class="bench-num">8.03<span> ×</span></strong>
-            <p>20 ms 睡眠任务，8 个 Worker 相对 1 个 Worker 的完成吞吐。</p>
+            <span class="bench-label">批量移除</span>
+            <strong class="bench-num">0.668<span> ms</span></strong>
+            <p>从 11,000 条队列批量移除 1,000 条。</p>
           </div>
         </div>
-        <p class="bench-note">数据来自 NeoTask 1.0.8 官方基准脚本与 20,000 任务压力套件：Windows 10 19045、i7-1165G7、Python 3.13.15、Memory 后端，旁路组件全部关闭。绝对数值不代表你的部署环境，请以自己的业务压测为准。<a href="/docs/v1.0/benchmarks.html">阅读完整口径与边界说明 →</a></p>
+        <p class="bench-note">数据来自 NeoTask 1.2.1 官方基准脚本与 2,000 任务 noop 套件：Windows 10 19045、Intel Core i7（4 核 / 8 线程）、16 GB 内存、Python 3.13、Memory 后端，旁路组件全部关闭。绝对数值不代表你的部署环境，请以自己的业务压测为准。<a href="/docs/v1.0/benchmarks.html">阅读完整口径与边界说明 →</a></p>
       </div>
     </section>
 
@@ -761,7 +768,7 @@ result = pool.wait_for_result(task_id)</code></pre>
           <a class="home-doc" href="/docs/v1.0/api-reference.html">
             <span class="home-doc-cat">参考</span>
             <strong>API 参考</strong>
-            <span>54 个公开方法的签名与行为说明。</span>
+            <span>公开 API 的签名与行为说明。</span>
             <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
           </a>
           <a class="home-doc" href="/docs/v1.0/failure-recovery.html">
@@ -850,7 +857,7 @@ result = pool.wait_for_result(task_id)</code></pre>
           <span class="brand-name">NeoTask</span>
         </a>
         <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
-        <div class="footer-status"><span class="status-dot"></span> v1.1.1 · 发布于 2026-11-15</div>
+        <div class="footer-status"><span class="status-dot"></span> v1.2.1 · 发布于 2026-11-22</div>
       </div>
 
       <div class="footer-col">

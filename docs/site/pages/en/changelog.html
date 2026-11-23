@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Changelog · NeoTask release history</title>
+  <meta name="description" content="NeoTask release notes for every version from 0.1.0 onward, with v{{VERSION}} as the latest: feature evolution, bug fixes and upgrade notes.">
+  <meta name="keywords" content="NeoTask changelog, NeoTask release history, NeoTask {{VERSION}}, Python task queue updates, NeoTask upgrade">
+  <meta name="author" content="NeoPen">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+  <meta name="theme-color" content="#0b1713">
+  <link rel="canonical" href="{{HOMEPAGE}}/en/changelog.html">
+  <meta property="og:site_name" content="NeoTask">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Changelog · NeoTask release history">
+  <meta property="og:description" content="NeoTask release notes and upgrade guidance.">
+  <meta property="og:url" content="{{HOMEPAGE}}/en/changelog.html">
+  <meta property="og:image" content="{{HOMEPAGE}}/assets/img/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="NeoTask changelog">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Changelog · NeoTask release history">
+  <meta name="twitter:description" content="NeoTask release notes and upgrade guidance.">
+  <meta name="twitter:image" content="{{HOMEPAGE}}/assets/img/og.png">
+  <meta name="twitter:image:alt" content="NeoTask changelog">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/css/site.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "NeoTask changelog",
+    "description": "Release notes and upgrade guidance for every NeoTask release from 0.1.0 onward.",
+    "url": "{{HOMEPAGE}}/en/changelog.html",
+    "inLanguage": "en",
+    "isPartOf": { "@type": "WebSite", "name": "NeoTask", "url": "{{HOMEPAGE}}/" },
+    "about": {
+      "@type": "SoftwareApplication",
+      "name": "NeoTask",
+      "softwareVersion": "{{VERSION}}",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "OS Independent",
+      "url": "{{HOMEPAGE}}/en/"
+    }
+  }
+  </script>
+</head>
+<body class="sub-page">
+  <!-- @include icons -->
+  <!-- @include header -->
+
+  <main id="main">
+    <section class="page-hero">
+      <div class="container">
+        <span class="eyebrow">CHANGELOG</span>
+        <h1>Changelog</h1>
+        <p>The actual release record. Every version maps to a PyPI release and a GitHub Release; read the fixes in the version you are upgrading to first.</p>
+        <div class="page-hero-actions">
+          <a class="btn btn-primary" href="{{PYPI}}" target="_blank" rel="noopener">Install v{{VERSION}} from PyPI <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+          <a class="btn btn-outline" href="{{CHANGELOG_URL}}" target="_blank" rel="noopener">GitHub Releases</a>
+        </div>
+        <div class="page-hero-meta">
+          <span><strong>Latest</strong> v{{VERSION}}</span>
+          <span><strong>Released</strong> {{RELEASE_DATE}}</span>
+          <span><strong>License</strong> {{LICENSE}}</span>
+          <span><strong>Python</strong> {{PYTHON}}</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container changelog-layout">
+        <aside class="changelog-aside">
+          <div class="aside-card">
+            <h2>Upgrade advice</h2>
+            <p>Production should run the latest patch release. Since 1.0.2 dependencies are limited to a small set of base libraries; the current {{VERSION}} baseline depends on <code>aiosqlite</code>, <code>croniter</code> and <code>colorama</code>, and supports Python {{PYTHON}}. Since 1.0.8, <code>neotask --benchmark</code> provides a lightweight performance self-check; 1.1 added checkpoint resume, cost tracking and business failure reporting; 1.2 adds monitoring snapshots and periodic push; 1.2.1 fixes prefetch idle backoff, in-memory batch writes and Redis batch reads.</p>
+            <code class="aside-command">pip install -U neotask</code>
+          </div>
+          <div class="aside-card">
+            <h2>Subscribe to updates</h2>
+            <p>In the GitHub repository, choose Watch → Releases to be notified of every release.</p>
+            <a class="text-link" href="{{REPO}}" target="_blank" rel="noopener">Go to the repository <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+          <div class="aside-card">
+            <h2>Version history</h2>
+            <p>Full version history, build artifacts and checksums are available on PyPI and GitHub Releases.</p>
+            <a class="text-link" href="{{PYPI}}" target="_blank" rel="noopener">PyPI releases <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+        </aside>
+
+        <div class="changelog-list">
+{{RELEASES}}
+        </div>
+      </div>
+    </section>
+
+    <section class="cta">
+      <div class="container cta-inner">
+        <div class="cta-copy">
+          <span class="eyebrow">STAY CURRENT</span>
+          <h2>Run the latest version</h2>
+          <p>Patch releases carry important stability fixes; staying current is recommended.</p>
+        </div>
+        <div class="cta-actions">
+          <div class="install-box install-box-light">
+            <span class="install-prompt">$</span>
+            <code>pip install -U neotask</code>
+            <button class="copy-btn" data-copy="pip install -U neotask" aria-label="Copy upgrade command">
+              <svg class="icon icon-sm copy-icon"><use href="#i-copy"/></svg>
+              <svg class="icon icon-sm check-icon"><use href="#i-check"/></svg>
+            </button>
+          </div>
+          <div class="cta-buttons">
+            <a class="btn btn-primary btn-lg" href="/en/docs/quickstart.html">Read the getting-started guide <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+            <a class="btn btn-ghost btn-lg" href="/en/docs/roadmap.html">View the roadmap</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- @include footer -->
+  <script src="/assets/js/site.js" defer></script>
+</body>
+</html>

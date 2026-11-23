@@ -1,0 +1,255 @@
+{
+  "categories": [
+    {
+      "id": "start",
+      "label": "Get started",
+      "description": "Installation, configuration, and production guidance."
+    },
+    {
+      "id": "concepts",
+      "label": "Core concepts",
+      "description": "Architecture, task states, task context, priority, scheduling, and storage."
+    },
+    {
+      "id": "reliability",
+      "label": "Reliability",
+      "description": "Recovery, checkpoints, cost tracking, locks, prefetch, monitoring, and troubleshooting."
+    },
+    {
+      "id": "reference",
+      "label": "Reference",
+      "description": "API signatures, return semantics, benchmarks, development, and glossary."
+    },
+    {
+      "id": "roadmap",
+      "label": "Roadmap",
+      "description": "1.x capability boundaries and future plans."
+    }
+  ],
+  "pages": [
+    {
+      "slug": "quickstart",
+      "title": "Quickstart",
+      "category": "start",
+      "featured": true,
+      "description": "Install NeoTask 1.2.1, submit your first task, and choose sync, async, or context manager usage.",
+      "updated": "2026-11-22",
+      "icon": "rocket",
+      "time": "7 min"
+    },
+    {
+      "slug": "configuration",
+      "title": "Configuration reference",
+      "category": "start",
+      "featured": true,
+      "description": "TaskPoolConfig and SchedulerConfig fields, defaults, scope, and common presets.",
+      "updated": "2026-11-22",
+      "icon": "sliders",
+      "time": "10 min"
+    },
+    {
+      "slug": "best-practices",
+      "title": "Best practices",
+      "category": "start",
+      "description": "Executor choice, concurrency, retries, timeouts, storage selection, and production guidance.",
+      "updated": "2026-11-22",
+      "icon": "check",
+      "time": "8 min"
+    },
+    {
+      "slug": "deployment",
+      "title": "Deployment guide",
+      "category": "start",
+      "description": "Local, Docker, and production deployment with storage, networking, security, and upgrades.",
+      "updated": "2026-11-22",
+      "icon": "box",
+      "time": "9 min"
+    },
+    {
+      "slug": "integration",
+      "title": "Integration guide",
+      "category": "start",
+      "description": "Integrate with web services, HTTP APIs, Python code, third-party components, agents, and workflows.",
+      "updated": "2026-11-22",
+      "icon": "link",
+      "time": "8 min"
+    },
+    {
+      "slug": "architecture",
+      "title": "Architecture overview",
+      "category": "concepts",
+      "featured": true,
+      "description": "How TaskPool, TaskScheduler, queues, workers, and storage layers fit together.",
+      "updated": "2026-11-22",
+      "icon": "blocks",
+      "time": "6 min"
+    },
+    {
+      "slug": "task-lifecycle",
+      "title": "Task lifecycle",
+      "category": "concepts",
+      "featured": true,
+      "description": "State transitions from submission to terminal states, event callbacks, and result access.",
+      "updated": "2026-11-22",
+      "icon": "layers",
+      "time": "6 min"
+    },
+    {
+      "slug": "task-context",
+      "title": "Task links and shared context",
+      "category": "concepts",
+      "description": "Parent/child links, external task_id uniqueness, and the memory-only Blackboard.",
+      "updated": "2026-11-22",
+      "icon": "workflow",
+      "time": "6 min"
+    },
+    {
+      "slug": "priority-queue",
+      "title": "Priority queue",
+      "category": "concepts",
+      "description": "Four priority levels, FIFO behavior within a level, and batch submission.",
+      "updated": "2026-11-22",
+      "icon": "sort",
+      "time": "5 min"
+    },
+    {
+      "slug": "delayed-tasks",
+      "title": "Delayed and periodic tasks",
+      "category": "concepts",
+      "description": "Delay, submit-at, fixed interval, and Cron tasks with management and missed-run policies.",
+      "updated": "2026-11-22",
+      "icon": "clock",
+      "time": "8 min"
+    },
+    {
+      "slug": "persistence",
+      "title": "Persistence",
+      "category": "concepts",
+      "description": "Memory, SQLite, and Redis backends: use cases, data semantics, and switching.",
+      "updated": "2026-11-22",
+      "icon": "database",
+      "time": "7 min"
+    },
+    {
+      "slug": "distributed",
+      "title": "Distributed deployment",
+      "category": "concepts",
+      "featured": true,
+      "description": "Shared queues, node heartbeats, task reclaim, and Redis requirements.",
+      "updated": "2026-11-22",
+      "icon": "nodes",
+      "time": "7 min"
+    },
+    {
+      "slug": "failure-recovery",
+      "title": "Failure recovery",
+      "category": "reliability",
+      "featured": true,
+      "description": "Timeouts, orphaned tasks, stale locks, dead letters, and business failure semantics.",
+      "updated": "2026-11-22",
+      "icon": "shield",
+      "time": "8 min"
+    },
+    {
+      "slug": "checkpoint",
+      "title": "Checkpoints",
+      "category": "reliability",
+      "description": "Save intermediate state and resume from the latest checkpoint on retry or explicit submission.",
+      "updated": "2026-11-22",
+      "icon": "bookmark",
+      "time": "7 min"
+    },
+    {
+      "slug": "cost-tracking",
+      "title": "Cost and timing",
+      "category": "reliability",
+      "description": "Report tokens, API calls, and estimated cost; read queue/execution timing and aggregate costs.",
+      "updated": "2026-11-22",
+      "icon": "coins",
+      "time": "6 min"
+    },
+    {
+      "slug": "distributed-lock",
+      "title": "Distributed locks",
+      "category": "reliability",
+      "description": "Task-level mutex locks, TTL, watchdog renewal, and manual locking APIs.",
+      "updated": "2026-11-22",
+      "icon": "lock",
+      "time": "5 min"
+    },
+    {
+      "slug": "prefetch",
+      "title": "Prefetch",
+      "category": "reliability",
+      "description": "Demand-driven prefetch triggers, batch sizing, and effects on latency and priority.",
+      "updated": "2026-11-22",
+      "icon": "gauge",
+      "time": "5 min"
+    },
+    {
+      "slug": "monitoring",
+      "title": "Monitoring and health checks",
+      "category": "reliability",
+      "description": "Metric snapshots and periodic push, health checks, event backpressure, UI, and Prometheus.",
+      "updated": "2026-11-22",
+      "icon": "activity",
+      "time": "7 min"
+    },
+    {
+      "slug": "troubleshooting",
+      "title": "Troubleshooting",
+      "category": "reliability",
+      "description": "Common issues, log analysis, diagnosis, deployment problems, and performance questions.",
+      "updated": "2026-11-22",
+      "icon": "refresh",
+      "time": "8 min"
+    },
+    {
+      "slug": "api-reference",
+      "title": "API reference",
+      "category": "reference",
+      "featured": true,
+      "description": "Public TaskPool and TaskScheduler methods, 1.2 additions, parameter defaults, and return semantics.",
+      "updated": "2026-11-22",
+      "icon": "code",
+      "time": "12 min"
+    },
+    {
+      "slug": "benchmarks",
+      "title": "Benchmarks",
+      "category": "reference",
+      "featured": true,
+      "description": "v1.2.1 measurements for submission, completion, prefetch, batching, and SQLite boundaries.",
+      "updated": "2026-11-22",
+      "icon": "chart",
+      "time": "9 min"
+    },
+    {
+      "slug": "developer-guide",
+      "title": "Developer guide",
+      "category": "reference",
+      "description": "Project layout, development setup, tests, build, release, and contribution rules.",
+      "updated": "2026-11-22",
+      "icon": "terminal",
+      "time": "8 min"
+    },
+    {
+      "slug": "glossary",
+      "title": "Glossary",
+      "category": "reference",
+      "description": "Shared definitions for task, queue, worker, scheduler, retry, reclaim, dead letter, and more.",
+      "updated": "2026-11-22",
+      "icon": "layers",
+      "time": "5 min"
+    },
+    {
+      "slug": "roadmap",
+      "title": "Roadmap",
+      "category": "roadmap",
+      "description": "Delivered 1.x capabilities, remaining boundaries, and NeoFlow orchestration plans.",
+      "updated": "2026-11-22",
+      "icon": "workflow",
+      "time": "5 min"
+    }
+  ]
+}

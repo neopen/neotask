@@ -1,0 +1,225 @@
+<p>The public entry points are <code>TaskPool</code> and <code>TaskScheduler</code>. Unless noted otherwise, every synchronous method has an <code>_async</code> counterpart with the same parameters and return value. This documentation is based on 1.2.1; methods and events marked 1.1 and 1.2 are additions from those releases.</p>
+
+<pre><code class="language-python">from neotask import TaskPool, TaskScheduler, TaskPoolConfig, SchedulerConfig</code></pre>
+
+<h2>TaskPool</h2>
+<pre><code class="language-python">TaskPool(executor=None, config=None)</code></pre>
+<p><code>executor</code> can be a plain function, a coroutine function or a <code>TaskExecutor</code> instance; when it is <code>None</code>, a default executor that returns a fixed result is used.</p>
+
+<h3>Lifecycle and submission</h3>
+<table>
+<thead><tr><th>Method</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>start()</code></td><td>Explicit start; the first submission also starts it automatically</td></tr>
+<tr><td><code>shutdown(graceful=True, timeout=30)</code></td><td>Stop accepting new tasks, wait for the queue to drain and then shut down</td></tr>
+<tr><td><code>submit(data, task_id=None, priority=NORMAL, delay=0, ttl=3600, parent_task_id=None, resume_from_checkpoint=False)</code></td><td>Submit a task and return its ID; <code>resume_from_checkpoint</code> requires an explicit <code>task_id</code></td></tr>
+<tr><td><code>submit_batch(tasks, priority=NORMAL, ttl=3600, partial_on_error=False)</code></td><td>Submit a list of tasks one by one and return a list of IDs; parent/child parameters are not supported</td></tr>
+<tr><td><code>create_pending_task(data, task_id=None, priority=NORMAL, ttl=3600, resume_from_checkpoint=False)</code></td><td>Create the record only; do not enqueue it</td></tr>
+<tr><td><code>enqueue_task(task_id)</code></td><td>Enqueue a <code>pending</code> task; returns <code>False</code> for states other than <code>pending</code></td></tr>
+</tbody>
+</table>
+
+<h3>Waiting and queries</h3>
+<table>
+<thead><tr><th>Method</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>wait_for_result(task_id, timeout=300)</code></td><td>Wait for and return the result; raises on failure, cancellation or timeout</td></tr>
+<tr><td><code>wait_all(task_ids, timeout=300)</code></td><td>Wait for each task in turn and return <code>{task_id: result}</code></td></tr>
+<tr><td><code>get_status(task_id)</code></td><td>Status string, or <code>None</code></td></tr>
+<tr><td><code>get_result(task_id)</code></td><td>Result summary dictionary, or <code>None</code></td></tr>
+<tr><td><code>get_task(task_id)</code></td><td>Full task dictionary, or <code>None</code></td></tr>
+<tr><td><code>task_exists(task_id)</code></td><td>Whether the task exists</td></tr>
+</tbody>
+</table>
+
+<h3>Task management</h3>
+<table>
+<thead><tr><th>Method</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>cancel(task_id)</code></td><td>Remove the queue entry and set the task to <code>cancelled</code>; valid for <code>pending</code> / <code>running</code> only</td></tr>
+<tr><td><code>retry(task_id, delay=0)</code></td><td>Reset a terminal task and enqueue it again</td></tr>
+<tr><td><code>delete(task_id)</code></td><td>Delete the task record</td></tr>
+<tr><td><code>cleanup_terminal_tasks()</code> / <code>cleanup_terminal_tasks_async()</code></td><td>Clean up terminal tasks past their retention period immediately; returns the number deleted</td></tr>
+<tr><td><code>pause()</code> / <code>resume()</code></td><td>Pause / resume dequeueing; submissions are still accepted</td></tr>
+<tr><td><code>clear_queue()</code></td><td>Clear the queue; existing task records are not modified</td></tr>
+</tbody>
+</table>
+
+<h3>Checkpoint resume (1.1)</h3>
+<table>
+<thead><tr><th>Method</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>save_checkpoint(task_id, state)</code></td><td>Save a full state snapshot and return the new version number; returns <code>0</code> if the task does not exist or checkpointing is disabled</td></tr>
+<tr><td><code>load_checkpoint(task_id)</code></td><td>Read the latest checkpoint; returns <code>None</code> if none exists or checkpointing is disabled</td></tr>
+</tbody>
+</table>
+<p>Inside executors use the module-level functions: <code>await save_checkpoint(state)</code> / <code>await load_checkpoint()</code> for async tasks, and <code>save_checkpoint_sync()</code> / <code>load_checkpoint_sync()</code> for threaded tasks; with a process executor, the parent process calls the methods above. See <a href="/docs/checkpoint.html">Checkpoint resume</a>.</p>
+
+<h3>Cost, failure and relations (1.1)</h3>
+<table>
+<thead><tr><th>Method</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>get_children(task_id)</code></td><td>Return child task IDs for a <code>parent_task_id</code>, ascending by creation time</td></tr>
+<tr><td><code>get_parent(task_id)</code></td><td>Return the parent task ID, or <code>None</code> when there is none</td></tr>
+<tr><td><code>report_failure(task_id, reason, detail="")</code></td><td>Terminate a task from outside when a business rule fails; applies to <code>running</code> tasks only and does not enter automatic retry</td></tr>
+<tr><td><code>report_cost(task_id, tokens_in=0, tokens_out=0, api_calls=0, estimated_cost=None, currency=None)</code></td><td>Accumulate task cost; terminal tasks can also be updated</td></tr>
+<tr><td><code>get_cost_summary(task_ids=None)</code></td><td>Aggregate cost and return task count, tokens, API calls, amount and currency; <code>None</code> means all tasks</td></tr>
+</tbody>
+</table>
+<p>Inside executors use <code>report_failure(reason, detail)</code> and <code>report_cost(...)</code>; both are synchronous functions. See <a href="/docs/failure-recovery.html">Failure recovery</a> and <a href="/docs/cost-tracking.html">Cost and duration</a>.</p>
+
+<h3>Blackboard (1.1, memory only)</h3>
+<table>
+<thead><tr><th>Method</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>context_set(key, value, ttl=None)</code></td><td>Write to the in-process shared context; <code>ttl</code> is in seconds and <code>None</code> means no expiry</td></tr>
+<tr><td><code>context_get(key)</code></td><td>Read a value; returns <code>None</code> if it is missing or expired</td></tr>
+<tr><td><code>context_delete(key)</code></td><td>Delete a key; returns whether it was present</td></tr>
+</tbody>
+</table>
+<p>Calling these on a non-memory backend raises <code>UnsupportedFeatureError</code>. The scope is the current <code>TaskPool</code> instance; values do not cross processes and are not persisted. See <a href="/docs/task-context.html">Task relations and shared context</a>.</p>
+
+<h3>Statistics and health</h3>
+<table>
+<thead><tr><th>Method</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>get_stats()</code></td><td>Queue, task counters, metrics, reclamation and prefetch summary</td></tr>
+<tr><td><code>get_metrics()</code></td><td>1.2 lightweight monitoring snapshot: counters, queue depth by priority, age of the oldest pending task, retry queue, storage health and checkpoint count, without loading task entities</td></tr>
+<tr><td><code>on_metrics(handler, interval=60)</code></td><td>1.2 periodic push of <code>get_metrics()</code> snapshots; returns an unsubscribe function</td></tr>
+<tr><td><code>get_worker_stats()</code></td><td>Busy state and counters for each worker</td></tr>
+<tr><td><code>get_health_status()</code></td><td>Storage, queue and system health checks; cached for 5 seconds</td></tr>
+<tr><td><code>get_queue_size()</code></td><td>Total of the priority queue and the delayed queue</td></tr>
+</tbody>
+</table>
+<p><code>get_metrics()</code> reads counters and aggregate queries only and suits probes and high-frequency reporting; when you need full task detail, use <code>get_stats()</code> or <code>get_task()</code> instead. See <a href="/docs/monitoring.html">Monitoring and health checks</a>.</p>
+
+<h3>Locks and nodes</h3>
+<table>
+<thead><tr><th>Method</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>acquire_lock(task_id, ttl=30)</code></td><td>Acquire the <code>task:{task_id}</code> lock</td></tr>
+<tr><td><code>release_lock(task_id)</code></td><td>Release a lock held by this instance</td></tr>
+<tr><td><code>get_active_nodes()</code></td><td>List of active nodes in Redis mode</td></tr>
+<tr><td><code>is_leader()</code></td><td>Always returns <code>False</code></td></tr>
+</tbody>
+</table>
+
+<h3>Events</h3>
+<table>
+<thead><tr><th>Method / attribute</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>event_bus</code></td><td>Read-only property returning the internal <code>EventBus</code>; call <code>get_stats()</code> to inspect the queue and drop counters</td></tr>
+<tr><td><code>on_created(handler)</code></td><td><code>task.created</code></td></tr>
+<tr><td><code>on_started(handler)</code></td><td><code>task.started</code></td></tr>
+<tr><td><code>on_completed(handler)</code></td><td><code>task.completed</code></td></tr>
+<tr><td><code>on_failed(handler)</code></td><td><code>task.failed</code></td></tr>
+<tr><td><code>on_cancelled(handler)</code></td><td><code>task.cancelled</code></td></tr>
+<tr><td><code>on_progress(handler)</code></td><td><code>task.progress</code></td></tr>
+<tr><td><code>on_reclaimed(handler)</code></td><td><code>task.reclaimed</code></td></tr>
+<tr><td><code>event_bus.subscribe("task.checkpointed", handler)</code></td><td><code>task.checkpointed</code> (1.1); <code>data</code> is <code>{"version": n}</code></td></tr>
+<tr><td><code>event_bus.subscribe("task.cost_reported", handler)</code></td><td><code>task.cost_reported</code> (1.1); <code>data</code> holds the details of this report</td></tr>
+</tbody>
+</table>
+<p>The two events added in 1.1 have no <code>on_*</code> convenience methods; subscribe to them through <code>event_bus.subscribe()</code> only.</p>
+
+<h2>TaskScheduler</h2>
+<pre><code class="language-python">TaskScheduler(executor=None, config=None)</code></pre>
+<p>It creates a <code>TaskPool</code> internally and adds delayed, periodic and Cron scheduling. Apart from sync-only items such as <code>get_periodic_*</code>, the methods below also have <code>_async</code> versions.</p>
+
+<h3>Delayed tasks</h3>
+<table>
+<thead><tr><th>Method</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>submit_delayed(data, delay_seconds, task_id=None, priority=NORMAL, ttl=3600)</code></td><td>Run once after a delay</td></tr>
+<tr><td><code>submit_at(data, execute_at, task_id=None, priority=NORMAL, ttl=3600)</code></td><td>Run once at a specified time</td></tr>
+</tbody>
+</table>
+
+<h3>Periodic tasks</h3>
+<table>
+<thead><tr><th>Method</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>submit_interval(data, interval_seconds, task_id=None, priority=NORMAL, run_immediately=True, max_runs=None, name="", missed_policy=None)</code></td><td>Run at a fixed interval</td></tr>
+<tr><td><code>submit_cron(data, cron_expr, task_id=None, priority=NORMAL, max_runs=None, name="", missed_policy=None)</code></td><td>Run according to a Cron expression</td></tr>
+<tr><td><code>get_periodic_tasks()</code></td><td>List periodic tasks</td></tr>
+<tr><td><code>get_periodic_task(task_id)</code></td><td>Query a single periodic task</td></tr>
+<tr><td><code>pause_periodic(task_id)</code></td><td>Pause a periodic task</td></tr>
+<tr><td><code>resume_periodic(task_id)</code></td><td>Resume a periodic task</td></tr>
+<tr><td><code>cancel_periodic(task_id)</code></td><td>Delete a periodic task</td></tr>
+</tbody>
+</table>
+
+<h3>Methods delegated to TaskPool</h3>
+<table>
+<thead><tr><th>Method</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>submit(...)</code> / <code>submit_async(...)</code></td><td>Same as TaskPool</td></tr>
+<tr><td><code>wait_for_result(...)</code></td><td>Same as TaskPool</td></tr>
+<tr><td><code>get_status</code> / <code>get_result</code> / <code>get_task</code> / <code>task_exists</code></td><td>Same as TaskPool</td></tr>
+<tr><td><code>cancel</code> / <code>delete</code> / <code>retry</code></td><td>Tries the periodic task first, then operates on regular tasks</td></tr>
+<tr><td><code>get_stats</code> / <code>get_queue_size</code> / <code>get_health_status</code></td><td>Includes periodic and timing-wheel statistics</td></tr>
+<tr><td><code>event_bus</code></td><td>Returns the EventBus of the internal TaskPool</td></tr>
+<tr><td><code>pause</code> / <code>resume</code> / <code>clear_queue</code></td><td>Same as TaskPool</td></tr>
+<tr><td><code>get_children</code> / <code>get_parent</code></td><td>Same as TaskPool</td></tr>
+<tr><td><code>report_failure</code> / <code>report_cost</code> / <code>get_cost_summary</code></td><td>Same as TaskPool</td></tr>
+<tr><td><code>save_checkpoint</code> / <code>load_checkpoint</code></td><td>Same as TaskPool</td></tr>
+<tr><td><code>context_set</code> / <code>context_get</code> / <code>context_delete</code></td><td>Same as TaskPool; memory backend only</td></tr>
+<tr><td><code>on_created</code> and the other 5 callbacks</td><td>Same as TaskPool; no <code>on_reclaimed</code></td></tr>
+</tbody>
+</table>
+
+<h2>Return value semantics</h2>
+<table>
+<thead><tr><th>Method</th><th>Success</th><th>Failure / not found</th></tr></thead>
+<tbody>
+<tr><td><code>submit*</code></td><td>Task ID string</td><td>Raises <code>QueueFullError</code> when the queue is full; raises <code>TaskAlreadyExistsError</code> on a duplicate ID</td></tr>
+<tr><td><code>wait_for_result</code></td><td>Executor return value</td><td>Raises an exception; <code>TimeoutError</code> on timeout</td></tr>
+<tr><td><code>get_status</code> / <code>get_result</code> / <code>get_task</code></td><td>Corresponding data</td><td><code>None</code></td></tr>
+<tr><td><code>cancel</code> / <code>retry</code> / <code>delete</code></td><td><code>True</code></td><td><code>False</code></td></tr>
+<tr><td><code>save_checkpoint</code></td><td>New version number</td><td><code>0</code> (task missing or checkpointing disabled)</td></tr>
+<tr><td><code>load_checkpoint</code></td><td>State dictionary</td><td><code>None</code></td></tr>
+<tr><td><code>report_failure</code> / <code>report_cost</code></td><td><code>True</code></td><td><code>False</code> (state mismatch or task missing)</td></tr>
+<tr><td><code>get_children</code> / <code>get_parent</code></td><td>ID list / parent ID</td><td>Empty list / <code>None</code></td></tr>
+<tr><td><code>get_cost_summary</code></td><td>Aggregate dictionary</td><td>Zero-value dictionary (unknown IDs are ignored)</td></tr>
+</tbody>
+</table>
+
+<h2>Exceptions</h2>
+<table>
+<thead><tr><th>Exception</th><th>Trigger</th></tr></thead>
+<tbody>
+<tr><td><code>TaskSchedulerError</code></td><td>Base class for all exceptions</td></tr>
+<tr><td><code>TaskNotFoundError</code></td><td>Waiting for a task that does not exist</td></tr>
+<tr><td><code>TaskAlreadyExistsError</code></td><td>Submitting with an existing <code>task_id</code>, including tasks already in a terminal state</td></tr>
+<tr><td><code>QueueFullError</code></td><td>The queue reached <code>queue_max_size</code></td></tr>
+<tr><td><code>BatchSubmitError</code></td><td>A batch submission contains a failing item and was rolled back; read <code>index</code> and <code>cause</code> to locate it</td></tr>
+<tr><td><code>TimeoutError</code></td><td><code>wait_for_result</code> timed out</td></tr>
+<tr><td><code>UnsupportedFeatureError</code></td><td>The current storage backend does not support the capability, for example calling Blackboard on a non-memory backend</td></tr>
+<tr><td><code>TaskError</code></td><td>Defined but unused in the current version</td></tr>
+</tbody>
+</table>
+
+<h2>CLI and lightweight benchmarks</h2>
+<p>Since 1.0.8 the installed package provides a <code>neotask</code> entry point, equivalent to <code>python -m neotask</code>:</p>
+
+<pre><code class="language-bash">neotask --version
+neotask --help
+neotask --benchmark --tasks 2000 --concurrency 10 --json</code></pre>
+
+<table>
+<thead><tr><th>Option</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>--executor MODULE:FUNC</code></td><td>Executor; also accepts a file path form such as <code>./bench.py:func</code></td></tr>
+<tr><td><code>--tasks</code> / <code>--concurrency</code></td><td>Task count and worker concurrency, 200 / 10 by default</td></tr>
+<tr><td><code>--warmup</code> / <code>--timeout</code></td><td>Number of warmup tasks and the wait timeout</td></tr>
+<tr><td><code>--payload</code></td><td>JSON task data template, <code>{"index": i}</code> by default</td></tr>
+<tr><td><code>--no-prefetch</code></td><td>Disable worker prefetch</td></tr>
+<tr><td><code>--json</code></td><td>Emit JSON for CI or scripts to consume</td></tr>
+</tbody>
+</table>
+
+<p>From code, call <code>run_benchmark()</code> / <code>run_benchmark_async()</code>, which return a <code>BenchmarkResult</code>; benchmarks disable health checks, metrics and reporters by default.</p>
+
+<h2>Other exports</h2>
+<p><code>neotask</code> also exports executor, storage, queue, lock, monitoring and distributed components: <code>AsyncExecutor</code>, <code>ThreadExecutor</code>, <code>ProcessExecutor</code>, <code>MemoryTaskRepository</code>, <code>SQLiteTaskRepository</code>, <code>RedisTaskRepository</code>, <code>MemoryCheckpointRepository</code>, <code>SQLiteCheckpointRepository</code>, <code>RedisCheckpointRepository</code>, <code>PriorityQueue</code>, <code>DelayedQueue</code>, <code>MemoryLock</code>, <code>RedisLock</code>, <code>WatchDog</code>, <code>MetricsCollector</code>, <code>HealthChecker</code>, <code>NodeManager</code>, <code>Coordinator</code> and more.</p>
+<p>The executor-scoped functions added in 1.1, <code>report_failure</code>, <code>report_cost</code>, <code>save_checkpoint</code>, <code>load_checkpoint</code>, and the synchronous variants <code>save_checkpoint_sync</code> and <code>load_checkpoint_sync</code>, are exported directly as well. See <code>neotask.__all__</code> for the complete list.</p>

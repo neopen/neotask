@@ -1,0 +1,103 @@
+<p>Since 1.1, NeoTask supports resuming from a checkpoint: while a task runs it writes intermediate state to the checkpoint repository, and when the task is retried or resubmitted the latest state is injected into <code>data["__checkpoint__"]</code>, so business code does not have to start over. It suits paged imports, batch processing, long call chains and any task that can be split by progress.</p>
+
+<h2>Enable and configure</h2>
+<pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
+
+config = TaskPoolConfig(
+    enable_checkpoint=True,        # enabled by default
+    checkpoint_keep_versions=5,    # keep the latest 5 versions per task
+)
+pool = TaskPool(executor=handle, config=config)</code></pre>
+
+<table>
+<thead><tr><th>Field</th><th>Default</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><code>enable_checkpoint</code></td><td><code>True</code></td><td>When off, no checkpoint repository is created; <code>save_checkpoint()</code> returns 0 / <code>False</code> instead of raising</td></tr>
+<tr><td><code>checkpoint_keep_versions</code></td><td><code>5</code></td><td>Versions kept per task; older versions are trimmed after each save, and 0 keeps none</td></tr>
+</tbody>
+</table>
+
+<p><code>SchedulerConfig</code> exposes the same fields and passes them to the internal <code>TaskPool</code>. All three storage backends implement the checkpoint repository: memory keeps it in-process, SQLite writes to the <code>task_checkpoints</code> table, and Redis writes to the <code>neotask:ckpt:{task_id}</code> hash.</p>
+
+<h2>Save and load</h2>
+<p>Inside an executor, use the module-level functions, picking the async or sync variant for the executor type:</p>
+
+<pre><code class="language-python">from neotask import load_checkpoint, save_checkpoint
+from neotask import load_checkpoint_sync, save_checkpoint_sync
+
+async def async_job(data):
+    state = await load_checkpoint() or {"cursor": 0}
+    for index in range(state["cursor"], data["total"]):
+        await handle_row(index)
+        if index % 100 == 0:
+            await save_checkpoint({"cursor": index + 1})
+    return {"rows": data["total"]}
+
+def thread_job(data):
+    state = load_checkpoint_sync() or {"cursor": 0}
+    for index in range(state["cursor"], data["total"]):
+        handle_row(index)
+        if index % 100 == 0:
+            save_checkpoint_sync({"cursor": index + 1})
+    return {"rows": data["total"]}</code></pre>
+
+<p>When no execution context is available (the parent process of the process executor, external scheduling components), use the task-level API:</p>
+
+<pre><code class="language-python">version = pool.save_checkpoint(task_id, {"cursor": 42})
+state = pool.load_checkpoint(task_id)</code></pre>
+
+<table>
+<thead><tr><th>Call site</th><th>Method</th><th>Return value</th></tr></thead>
+<tbody>
+<tr><td>Async executor</td><td><code>await save_checkpoint(state)</code> / <code>await load_checkpoint()</code></td><td><code>bool</code> / <code>dict | None</code></td></tr>
+<tr><td>Thread executor</td><td><code>save_checkpoint_sync(state, timeout=5.0)</code> / <code>load_checkpoint_sync(timeout=5.0)</code></td><td><code>bool</code> / <code>dict | None</code></td></tr>
+<tr><td>Process executor parent process / external call</td><td><code>pool.save_checkpoint(task_id, state)</code> / <code>pool.load_checkpoint(task_id)</code></td><td>New version number, or 0 on failure / <code>dict | None</code></td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>What <code>False</code> means:</strong> The executor-level functions return <code>False</code> / <code>None</code> instead of raising when called outside a task context, when the task has already finished, or when checkpoints are disabled. Treat a failed save as "there is no progress to resume from this time", not as a task failure.</div>
+
+<h2>Three recovery paths</h2>
+<table>
+<thead><tr><th>Path</th><th>Trigger</th><th>Behavior</th></tr></thead>
+<tbody>
+<tr><td>Automatic retry</td><td>The executor raises and <code>retry_count &lt; max_retries</code></td><td>Writes the latest checkpoint back into <code>task.data</code> and re-enqueues with <code>retry_delay × n</code></td></tr>
+<tr><td>Manual retry</td><td><code>pool.retry(task_id)</code></td><td>Resets a terminal task to <code>pending</code>, injects the latest checkpoint and re-enqueues; <code>retry_count</code> is preserved</td></tr>
+<tr><td>Explicit submit</td><td><code>submit(data, task_id="job-1", resume_from_checkpoint=True)</code></td><td>Creates the task record and injects the checkpoint before enqueueing, so a worker cannot pick it up early</td></tr>
+</tbody>
+</table>
+
+<p>Explicit submission must also provide <code>task_id</code>; otherwise <code>resume_from_checkpoint</code> has no effect and the task runs as a normal submission. A missing checkpoint is not an error either — the task runs with the original <code>data</code>.</p>
+
+<div class="doc-warning"><strong>The same <code>task_id</code> cannot be submitted twice:</strong> as long as the task record exists (including tasks that already succeeded or failed), <code>submit()</code> raises <code>TaskAlreadyExistsError</code>. To continue from a checkpoint on an existing record, call <code>retry(task_id)</code>; use a submission with <code>resume_from_checkpoint=True</code> only when the record has been deleted or you are creating it for the first time in another process.</div>
+
+<h2>Versions, events and queries</h2>
+<p>Every save produces an increasing version number and updates the task record's <code>checkpoint_version</code> to the new version. Versions beyond <code>checkpoint_keep_versions</code> are trimmed; recovery always reads the latest version.</p>
+
+<pre><code class="language-python">task = pool.get_task(task_id)
+print(task["checkpoint_version"])
+
+async def on_checkpointed(event):
+    print(event.task_id, event.data)   # {"version": 3}
+
+pool.event_bus.subscribe("task.checkpointed", on_checkpointed)</code></pre>
+
+<p>1.1 adds the <code>task.checkpointed</code> event, with <code>event.data</code> shaped like <code>{"version": 3}</code>. It has no <code>on_checkpointed()</code> convenience method; subscribe through <code>event_bus.subscribe()</code>.</p>
+
+<h2>Lifecycle and cleanup</h2>
+<ul>
+<li>Deleting a task (<code>delete()</code>) also deletes that task's checkpoints.</li>
+<li>Terminal cleanup deletes the matching checkpoints when it removes expired task records; to survive longer than a cleanup cycle, raise <code>terminal_retention_seconds</code> first.</li>
+<li>Checkpoints on the memory backend are lost when the process exits; checkpoints in SQLite and Redis survive restarts.</li>
+<li>In Redis mode checkpoints are shared by all nodes, so the latest version is still readable after another node takes over the task.</li>
+</ul>
+
+<h2>Boundaries</h2>
+<ul>
+<li><code>state</code> must be JSON-serializable, and each save stores a full snapshot rather than an incremental log. Keep state small and avoid writing large results repeatedly.</li>
+<li>A checkpoint is not a transaction. A successful save means business progress is persisted, but work done after a save and before the next one still runs again on recovery, so every step must remain idempotent.</li>
+<li>The reserved key <code>__checkpoint__</code> overwrites a business field of the same name in <code>data</code>; do not use that key for business data.</li>
+<li>A business failure (<code>report_failure</code>) does not trigger an automatic retry and therefore does not resume automatically; call <code>retry()</code> explicitly when you want to continue.</li>
+</ul>
+
+<div class="doc-note"><strong>Related pages:</strong> <a href="/docs/failure-recovery.html">Failure recovery</a> · <a href="/docs/persistence.html">Persistence</a> · <a href="/docs/api-reference.html">API reference</a> · <a href="/docs/task-lifecycle.html">Task lifecycle</a></div>

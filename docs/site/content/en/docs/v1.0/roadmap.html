@@ -1,0 +1,116 @@
+<p>NeoTask is positioned as a lightweight, embeddable execution layer that can be orchestrated. Complex task orchestration is no longer this library's responsibility: DAGs, conditional branches, dynamic routing and plugin systems belong to the upper orchestration service <strong>NeoFlow</strong>, while NeoTask only executes individual tasks reliably and exposes lightweight monitoring metrics.</p>
+
+<div class="doc-note"><strong>Division of labor with NeoFlow:</strong> NeoFlow is the DAG orchestration service above NeoTask, responsible for workflow decomposition, task dispatch, event listening and state progression; NeoTask handles queueing, execution, retries, persistence and reclamation. The two layers cooperate through public APIs and lifecycle events and can be deployed and evolved independently.</div>
+
+<h2>1.x capability boundaries (current baseline 1.2.1)</h2>
+<table>
+<thead><tr><th>Capability</th><th>Status</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Immediate tasks, batch submission</td><td>Supported</td><td><code>TaskPool</code></td></tr>
+<tr><td>Four priority levels</td><td>Supported</td><td>Lower values run first</td></tr>
+<tr><td>Delayed, fixed interval, Cron</td><td>Supported</td><td><code>TaskScheduler</code></td></tr>
+<tr><td>Memory / SQLite / Redis</td><td>Supported</td><td>Redis supports a queue shared across nodes</td></tr>
+<tr><td>Automatic retry, timeout, progress</td><td>Supported</td><td>Retries use a linear delay</td></tr>
+<tr><td>Checkpoint resume</td><td>Supported (1.1)</td><td><code>save_checkpoint()</code> / <code>load_checkpoint()</code>; both automatic and manual retries inject the latest checkpoint</td></tr>
+<tr><td>Business failure reporting</td><td>Supported (1.1)</td><td><code>report_failure()</code> records <code>failure_reason</code> and skips automatic retry</td></tr>
+<tr><td>Cost and duration collection</td><td>Supported (1.1)</td><td><code>report_cost()</code>, <code>get_cost_summary()</code> and <code>queue_wait_ms</code> / <code>duration_ms</code></td></tr>
+<tr><td>Parent/child tasks and external IDs</td><td>Supported (1.1)</td><td><code>parent_task_id</code>, <code>get_children()</code> / <code>get_parent()</code>; links only, no aggregation</td></tr>
+<tr><td>In-process shared context</td><td>Supported (1.1)</td><td>Blackboard is memory-only; values do not cross processes and are not persisted</td></tr>
+<tr><td>Automatic SQLite schema upgrade</td><td>Supported (1.1.1)</td><td>Missing columns and tables are added at startup; concurrent upgrades are idempotent</td></tr>
+<tr><td>Lightweight monitoring snapshot</td><td>Supported (1.2)</td><td><code>get_metrics()</code> and <code>on_metrics()</code>: counters, queue depth, oldest pending task, storage health and checkpoint count, without loading task entities</td></tr>
+<tr><td>Node heartbeats, task reclamation, dead letters</td><td>Supported (Redis)</td><td>Dead letters have no public query API</td></tr>
+<tr><td>Lifecycle events and backpressure</td><td>Supported</td><td>EventBus dispatches asynchronously; the queue limit and overflow policy are configurable</td></tr>
+<tr><td>Automatic terminal task cleanup</td><td>Supported</td><td>Enabled by default; retention is configurable</td></tr>
+<tr><td>CLI and lightweight benchmarks</td><td>Supported</td><td><code>neotask --benchmark</code>, <code>--version</code>, <code>--help</code></td></tr>
+<tr><td>DAG workflows and conditional branches</td><td>Out of scope</td><td>Handled by the NeoFlow orchestration service; NeoTask executes individual tasks only</td></tr>
+<tr><td>Multi-tenancy and a dedicated admin console</td><td>Out of scope</td><td>Provided by the platform or orchestration service above</td></tr>
+<tr><td>Web UI</td><td>Optional lightweight entry point</td><td><code>WebUIServer</code> from <code>neotask[ui]</code> serves <code>/api/stats</code>; it is not a standalone orchestration console</td></tr>
+</tbody>
+</table>
+
+<h2>Alternatives on 1.x</h2>
+<p>Capabilities outside the library can usually be composed from the existing primitives in business code, or handed to the NeoFlow orchestration service; state and failure handling then become your responsibility. 1.x includes checkpoints, business failure reporting, cost collection and lightweight monitoring snapshots, but none of them provides cross-task orchestration semantics.</p>
+<table>
+<thead><tr><th>Requirement</th><th>Approach on 1.x</th><th>Left to you</th></tr></thead>
+<tbody>
+<tr><td>Chaining multiple tasks</td><td>Link tasks with <code>parent_task_id</code> and submit the next step on the completion event or after <code>wait_for_result()</code> returns</td><td>Ordering dependencies, failure propagation, timeouts and cross-task checkpoint recovery</td></tr>
+<tr><td>Conditional branches</td><td>Have tasks return structured results, and let the business layer decide which task to submit next</td><td>Branch state tracking and failure compensation</td></tr>
+<tr><td>Parallel subtasks</td><td>Use <code>submit_batch()</code>, or submit individually with <code>parent_task_id</code>, then aggregate with <code>wait_all()</code></td><td>Cleanup on partial failure, retries and parent/child status rollup</td></tr>
+<tr><td>Business rule rejection</td><td><code>report_failure()</code> records <code>failure_reason</code> and ends the task directly, skipping automatic retry</td><td>Reason-code conventions, compensation flows and manual review</td></tr>
+<tr><td>Long task resume</td><td>Save progress with <code>save_checkpoint()</code> and read <code>data["__checkpoint__"]</code> on retry</td><td>Business steps must still be idempotent; in memory mode checkpoints are lost when the process exits</td></tr>
+<tr><td>Scheduled orchestration</td><td>Define periodic tasks separately with <code>TaskScheduler</code></td><td>Duplicate triggering across instances; each periodic definition should have exactly one scheduler</td></tr>
+<tr><td>Multi-tenancy</td><td>Not in the library; deploy a separate TaskPool and storage per tenant from the upper platform</td><td>Resource quotas, unified authentication and cross-tenant statistics</td></tr>
+<tr><td>Visual management</td><td>Inspect tasks and metrics with <code>neotask[ui]</code>, or consume <code>get_metrics()</code> and build your own view</td><td>Orchestration views and operations consoles belong to the upper service</td></tr>
+</tbody>
+</table>
+
+<h2>Released versions</h2>
+<table>
+<thead><tr><th>Version</th><th>Date</th><th>Highlights</th></tr></thead>
+<tbody>
+<tr><td>1.2.1</td><td>2026-11-22</td><td>End-to-end performance fixes: prefetch backoff on empty queues, in-memory queue batch write and delete, blocking monitoring sampling, Redis batch reads</td></tr>
+<tr><td>1.2.0</td><td>2026-11-20</td><td>Added <code>get_metrics()</code> and <code>on_metrics()</code>; benchmarks for monitoring, concurrency, checkpoints and progress reporting</td></tr>
+<tr><td>1.1.2</td><td>2026-11-18</td><td>Fixed timing precision in scheduled execution and executor configuration not taking effect</td></tr>
+<tr><td>1.1.1</td><td>2026-11-15</td><td>Concurrent legacy database upgrade, startup schema readiness and metrics read race fixes</td></tr>
+<tr><td>1.1.0</td><td>2026-11-13</td><td>Checkpoint resume, cost collection, parent/child tasks, Blackboard and business failure reporting</td></tr>
+</tbody>
+</table>
+
+<h2>v1.1: local task capabilities (released)</h2>
+<p>1.1.0 was released on 2026-11-13; 1.1.1 on 2026-11-15 resolved concurrency and startup readiness issues in the automatic legacy database upgrade, and 1.1.2 fixed timing precision and configuration handling. All of the following are available:</p>
+<ul>
+<li>Checkpoint resume: <code>save_checkpoint()</code> / <code>load_checkpoint()</code>, with three recovery paths — automatic retry, manual retry and explicit submission;</li>
+<li>Cost and duration collection: <code>report_cost()</code>, <code>queue_wait_ms</code> / <code>duration_ms</code> and <code>get_cost_summary()</code>;</li>
+<li>Parent/child task links: <code>parent_task_id</code>, <code>get_children()</code> / <code>get_parent()</code>; links only, no aggregation;</li>
+<li>Local context reads and writes (Blackboard) and business failure reporting with <code>report_failure()</code>;</li>
+<li>The <code>task.checkpointed</code> / <code>task.cost_reported</code> events, plus support for an externally supplied <code>task_id</code>;</li>
+<li>Legacy SQLite databases gain missing columns and tables automatically at startup; no manual migration is needed.</li>
+</ul>
+<p>For details see <a href="/docs/checkpoint.html">Checkpoint resume</a>, <a href="/docs/cost-tracking.html">Cost and duration</a>, <a href="/docs/task-context.html">Task relations and shared context</a> and <a href="/docs/failure-recovery.html">Failure recovery</a>.</p>
+
+<h2>v1.2: lightweight monitoring and performance fixes (released)</h2>
+<ul>
+<li><strong>1.2.0</strong>: standardized <code>get_metrics()</code> snapshots and periodic <code>on_metrics()</code> pushes; benchmarks for monitoring, concurrency, checkpoints and progress reporting.</li>
+<li><strong>1.2.1</strong>: in prefetch mode an empty queue no longer accrues exponential backoff, cutting sparse-task latency from a worst case in the 500 ms range to 12–26 ms; in-memory queue batch writes dropped from O(total queue size) to O(k log n) and batch removal became a lazy tombstone; psutil sampling moved to a thread pool, eliminating periodic stalls on the event loop; Redis batch reads are coalesced.</li>
+</ul>
+<p>For monitoring fields and push mechanisms see <a href="/docs/monitoring.html">Monitoring and health checks</a>; for how the numbers are defined see <a href="/docs/benchmarks.html">Performance benchmarks</a>.</p>
+
+<h2>v1.3: metrics export and reliability</h2>
+<ul>
+<li>Optional Prometheus exporter: adapts <code>get_metrics()</code> to a mountable HTTP service or <code>render()</code>, without listening on a port by default;</li>
+<li>Crash recovery boundaries: state explicitly that <code>pending</code> records that were never enqueued are not executed automatically, and count them in metrics;</li>
+<li>Shutdown configuration: clarify whether undelivered delayed tasks are drained, with the behavior documented;</li>
+<li>A semantics matrix for automatic retry, manual retry and checkpoint resume.</li>
+</ul>
+
+<h2>v2.0: orchestration integration (not committed)</h2>
+<p>Work will start only after the local capabilities are stable and there is real multi-service demand; it is not part of the current release commitment. Integration will be delivered as a client for the NeoFlow orchestration service:</p>
+<ul>
+<li><code>OrchestratorClient</code>: task consumption, event reporting, heartbeats and local retry storage;</li>
+<li>Redis Stream consumer groups and a cross-language protocol;</li>
+<li>Instance registration, reclamation of tasks from lost instances and control message handling.</li>
+</ul>
+<p>The following are handled by the NeoFlow orchestration layer and will not be implemented in NeoTask: DAG workflows, conditional branches, parallel orchestration, dynamic routing, plugin systems, a standalone web UI and multi-tenant isolation.</p>
+
+<h2>Upgrade preparation</h2>
+<ul>
+<li>Keep tasks idempotent: orchestration reruns, failure recovery and manual retries all execute tasks again.</li>
+<li>Depend on public APIs only: do not read or write Redis keys directly or call internal modules; storage structures may change between versions.</li>
+<li>Record your current configuration: save <code>TaskPoolConfig</code> and <code>SchedulerConfig</code> before upgrading, then compare them against the new configuration reference after release.</li>
+<li>1.0.x → 1.1.x → 1.2.x require no manual migration: missing columns and the <code>task_checkpoints</code> table are created at startup; backing up the SQLite file before upgrading is still recommended.</li>
+<li>1.2.1 changed the internal implementation of prefetch on empty queues and of queue batching, with compatible behavior; custom monitoring that depends on internal counters or log formats needs retesting in staging.</li>
+<li>Do not put planned items into production dependencies, and do not import a <code>workflow</code> module on 1.x — it does not exist yet.</li>
+</ul>
+
+<h2>Versions and documentation paths</h2>
+<p>1.x delivers backward-compatible feature enhancements and performance work only, with no breaking changes; major-version capabilities are reserved for 2.0. The current documentation line <strong>v1.0</strong> covers the entire 1.x series (baseline 1.2.1); 2.0 will open a separate documentation path when it ships.</p>
+<table>
+<thead><tr><th>Library version</th><th>Documentation path</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>1.x (including 1.1, 1.2…)</td><td><code>/docs/v1.0/</code></td><td>Current documentation line; ongoing enhancements and bug fixes are published at this path</td></tr>
+<tr><td>2.0</td><td><code>/docs/v2.0/</code></td><td>Added when 2.0 ships; major-version features and breaking changes are documented there</td></tr>
+</tbody>
+</table>
+<p>Minor releases within 1.x do not change documentation links; when upgrading to 2.0, switch to the new documentation line to compare configuration and API changes.</p>
+
+<div class="doc-note"><strong>Versioning policy:</strong> the v1.0 documentation covers the entire 1.x line, its baseline follows the latest patch release, and it is maintained at the original path; 2.0 opens a new documentation path for major-version capabilities, while old links remain accessible.</div>

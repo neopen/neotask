@@ -1,0 +1,132 @@
+<p>A task passes through only a small set of states between submission and completion. States live in the storage layer and events are published through the event bus; the sync and async APIs read the same record.</p>
+
+<h2>States</h2>
+<table>
+<thead><tr><th>State</th><th>Meaning</th><th>Terminal</th></tr></thead>
+<tbody>
+<tr><td><code>pending</code></td><td>Created and waiting for a worker to dequeue it</td><td>No</td></tr>
+<tr><td><code>running</code></td><td>Claimed by a node and executing</td><td>No</td></tr>
+<tr><td><code>success</code></td><td>Execution finished and the return value is saved</td><td>Yes</td></tr>
+<tr><td><code>failed</code></td><td>Execution failed and retries are exhausted, the reclaimer judged it failed, or the executor reported a business failure</td><td>Yes</td></tr>
+<tr><td><code>cancelled</code></td><td>Explicitly cancelled</td><td>Yes</td></tr>
+<tr><td><code>scheduled</code></td><td>Reserved in the enum; delayed tasks in 1.x stay <code>pending</code> while they wait</td><td>No</td></tr>
+</tbody>
+</table>
+
+<h2>Normal transitions</h2>
+<pre class="diagram"><code>submit()
+  │
+  ▼
+pending ──► running ──► success
+  │            │
+  │            ├──► failed ──► pending (automatic retry)
+  │            │                 │
+  │            │                 └──► failed (retries exhausted)
+  │            │
+  │            └──► failed (timeout / reclaimed)
+  │
+  └──► cancelled (cancelled before start or while running)</code></pre>
+
+<h2>Querying and waiting</h2>
+<table>
+<thead><tr><th>Method</th><th>Returns</th></tr></thead>
+<tbody>
+<tr><td><code>get_status(task_id)</code></td><td>The state string; <code>None</code> if the task does not exist</td></tr>
+<tr><td><code>get_task(task_id)</code></td><td>The full record, including data, priority, progress, node, retry count and timestamps</td></tr>
+<tr><td><code>get_result(task_id)</code></td><td><code>task_id</code>, <code>status</code>, <code>result</code>, <code>error</code>, <code>failure_reason</code>, <code>parent_task_id</code>, <code>estimated_cost</code>, <code>cost_tracking</code>, <code>queue_wait_ms</code>, <code>duration_ms</code>, plus creation and completion times</td></tr>
+<tr><td><code>wait_for_result(task_id, timeout=300)</code></td><td>Returns the result on success; raises on failure, cancellation or timeout</td></tr>
+<tr><td><code>wait_all(task_ids, timeout=300)</code></td><td>Waits item by item and returns <code>{task_id: result}</code>; failed items are <code>{"error": "..."}</code></td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>Cross-node waiting:</strong> besides listening to local events, <code>wait_for_result()</code> re-checks storage every 0.2 seconds, so it still returns promptly when the task runs on another node.</div>
+
+<h2>Events</h2>
+<p>Callbacks must be async functions with the signature <code>async def handler(event: TaskEvent)</code>. Events enter a background queue first; the EventBus consumer task then dispatches them to subscribers in order. Exceptions raised by a callback are logged and swallowed, and never affect task execution.</p>
+
+<table>
+<thead><tr><th>Registration method</th><th>Event</th><th><code>event.data</code></th></tr></thead>
+<tbody>
+<tr><td><code>on_created</code></td><td><code>task.created</code></td><td>The full task dict</td></tr>
+<tr><td><code>on_started</code></td><td><code>task.started</code></td><td><code>{"node_id": "..."}</code></td></tr>
+<tr><td><code>on_completed</code></td><td><code>task.completed</code></td><td>The executor's raw return value</td></tr>
+<tr><td><code>on_failed</code></td><td><code>task.failed</code></td><td><code>{"error": "..."}</code></td></tr>
+<tr><td><code>on_cancelled</code></td><td><code>task.cancelled</code></td><td><code>None</code></td></tr>
+<tr><td><code>on_progress</code></td><td><code>task.progress</code></td><td><code>{"progress": 0.5, "message": "...", "timestamp": ...}</code></td></tr>
+<tr><td><code>on_reclaimed</code></td><td><code>task.reclaimed</code></td><td>Reclaim reason and related details</td></tr>
+<tr><td><code>event_bus.subscribe("task.checkpointed", handler)</code></td><td><code>task.checkpointed</code></td><td><code>{"version": 3}</code></td></tr>
+<tr><td><code>event_bus.subscribe("task.cost_reported", handler)</code></td><td><code>task.cost_reported</code></td><td>Cost details of this report</td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>The 1.1 events have no convenience methods:</strong> <code>task.checkpointed</code> and <code>task.cost_reported</code> can only be subscribed through <code>pool.event_bus.subscribe("event_name", handler)</code>; <code>TaskPool</code> does not provide <code>on_checkpointed()</code> / <code>on_cost_reported()</code>.</div>
+
+<pre><code class="language-python">import asyncio
+from neotask import TaskPool, TaskPoolConfig
+
+async def on_completed(event):
+    print("done", event.task_id, event.data)
+
+pool = TaskPool(executor=handle)
+pool.on_completed(on_completed)</code></pre>
+
+<h2>Event bus backpressure</h2>
+<p>By default the event queue is unbounded, so production speed is limited only by memory. With <code>event_queue_max_size</code> set, new events are dropped and counted once the queue is full; when a single callback exceeds <code>event_slow_handler_threshold</code> seconds, the slow-callback counter is incremented. Dropped events do not change task state, but any monitoring or downstream step that depends on them misses a notification.</p>
+
+<pre><code class="language-python">config = TaskPoolConfig(
+    event_queue_max_size=1000,        # None means unbounded
+    event_overflow_policy="drop",    # only drop is supported
+    event_slow_handler_threshold=0.5,
+)
+pool = TaskPool(executor=handle, config=config)
+
+print(pool.event_bus.get_stats())
+# queue_size / max_queue_size / processed_events / dropped_events
+# slow_handler_calls / slow_handler_threshold / is_running</code></pre>
+
+<div class="doc-warning"><strong>Slow subscribers delay event timestamps:</strong> events are handled by a separate consumer task, so <code>task.completed</code> may be observed later than the task actually finished. When you need exact durations, instrument inside the task body or use the timestamps from <code>get_task()</code>; do not treat event lag as execution latency.</div>
+
+<h2>Terminal state cleanup</h2>
+<p>Since 1.0.8, <code>success</code> / <code>failed</code> / <code>cancelled</code> tasks past their retention period are cleaned up every 60 seconds by default, so memory and storage do not grow without bound as task volume increases. The retention window comes from <code>terminal_retention_seconds</code>; when it is 0, each task's own <code>ttl</code> is used.</p>
+
+<pre><code class="language-python">config = TaskPoolConfig(
+    enable_terminal_cleanup=True,
+    terminal_cleanup_interval=60.0,
+    terminal_retention_seconds=0,     # 0 = clean up by each task's ttl
+)
+
+# Clean up expired terminal tasks now and return the number removed
+removed = pool.cleanup_terminal_tasks()</code></pre>
+
+<div class="doc-note">Cleanup removes only terminal records past their retention period. It does not touch <code>pending</code> / <code>running</code> tasks and is not the same as failure reclamation. The checkpoints of removed tasks are deleted as well. If you need long-term audit records, disable automatic cleanup or set <code>terminal_retention_seconds</code> high enough, and archive the records yourself.</div>
+
+<h2>Progress reporting</h2>
+<p>Async tasks call <code>report_progress()</code>; sync tasks running under the thread executor call <code>report_progress_sync()</code>. Progress values are clamped to 0–1, and a successful task is set to 1.0 automatically.</p>
+
+<pre><code class="language-python">from neotask import report_progress, report_progress_sync
+
+async def async_task(data):
+    await report_progress(0.3, "parsing input")
+    await asyncio.sleep(1)
+    await report_progress(0.8, "writing results")
+    return {"ok": True}
+
+def thread_task(data):
+    report_progress_sync(0.5, "processing")
+    return {"ok": True}</code></pre>
+
+<div class="doc-warning">The process executor runs in a separate process and cannot share the progress context, so <code>report_progress()</code> returns <code>False</code>.</div>
+
+<h2>Cancel, retry and delete</h2>
+<table>
+<thead><tr><th>Operation</th><th>Behavior</th><th>Restriction</th></tr></thead>
+<tbody>
+<tr><td><code>cancel(task_id)</code></td><td>Removes the task from the queue and sets it to <code>cancelled</code></td><td>Only <code>pending</code> / <code>running</code> tasks can be cancelled; running business code is not forcibly terminated</td></tr>
+<tr><td><code>retry(task_id, delay=0)</code></td><td>Resets a terminal task to <code>pending</code>, re-enqueues it and injects the latest checkpoint</td><td>Only <code>failed</code> / <code>cancelled</code> tasks can be retried; <code>retry_count</code> is preserved</td></tr>
+<tr><td><code>delete(task_id)</code></td><td>Deletes the task record and clears waiters</td><td>Does not stop code that has already started</td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>Automatic retry:</strong> after an execution failure, if <code>retry_count &lt; max_retries</code>, the task returns to <code>pending</code> and is re-enqueued with a <code>retry_delay × n</code> delay. Both automatic and manual retries inject the latest checkpoint into <code>data["__checkpoint__"]</code>; once retries are exhausted the task is written as <code>failed</code>, and in Redis mode an entry is also published to the dead-letter queue.</div>
+
+<div class="doc-note"><strong>Business failures:</strong> after the executor calls <code>report_failure(reason, detail)</code>, the task is set to <code>failed</code> as soon as the current execution ends and <code>failure_reason</code> is recorded; no retry budget is consumed and nothing is written to the dead-letter queue. For how failures are judged and ended externally, see <a href="/docs/failure-recovery.html">Failure recovery</a>.</div>

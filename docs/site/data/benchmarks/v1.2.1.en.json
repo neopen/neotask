@@ -1,0 +1,129 @@
+{
+  "version": "1.2.1",
+  "environment": [
+    { "label": "CPU", "value": "Intel Core i7, 4 cores / 8 threads" },
+    { "label": "Memory", "value": "16 GB" },
+    { "label": "OS", "value": "Windows 10 19045, 64-bit" },
+    { "label": "Python", "value": "3.13" },
+    { "label": "Storage", "value": "memory (micro and prefetch suites); SQLite / Redis (historical storage comparison)" },
+    { "label": "Side components", "value": "metrics, health check, reporter, reclaimer, heartbeat, dead letter disabled per suite" }
+  ],
+  "metrics": [
+    {
+      "label": "Prefetch throughput",
+      "value": "4,241",
+      "unit": "tasks/s",
+      "detail": "2,000 noop tasks, concurrency 10, prefetch_size=20; after the v1.2.1 empty-queue backoff fix.",
+      "homeDetail": "2,000 noop tasks, concurrency 10, prefetch on.",
+      "highlight": true
+    },
+    {
+      "label": "Sparse latency",
+      "value": "1.1–2.2",
+      "unit": "ms",
+      "detail": "Prefetch off, one task after 1s idle, 8 samples; with prefetch on it is 12.2–26.2 ms.",
+      "homeDetail": "End-to-end latency with prefetch off after idle."
+    },
+    {
+      "label": "Queue batch push",
+      "value": "0.471",
+      "unit": "ms",
+      "detail": "Push 1,000 items into a 10,000-item in-memory queue; about 2.12M items/s.",
+      "homeDetail": "Push 1,000 items into a 10,000-item queue."
+    },
+    {
+      "label": "Batch remove",
+      "value": "0.668",
+      "unit": "ms",
+      "detail": "Remove 1,000 items from an 11,000-item queue; lazy tombstones replace heap rebuilds.",
+      "homeDetail": "Remove 1,000 items from an 11,000-item queue."
+    }
+  ],
+  "scheduling": {
+    "headers": ["Operation", "Scale", "Config", "Result", "Note"],
+    "rows": [
+      ["Batch push", "10,000 + 1,000", "memory", "0.471 ms", "about 2.12M items/s"],
+      ["Batch remove", "11,000 - 1,000", "memory", "0.668 ms", "about 1.5M ops/s"],
+      ["Pop all + validate", "10,000", "memory", "no duplicates or leaks", "invariants hold"],
+      ["peek(5)", "10,000", "memory", "0.008 ms", "heapq.nsmallest"],
+      ["Regression", "unit + integration", "v1.2.1", "538 / 87 passed", "12 / 1 skipped"]
+    ]
+  },
+  "io": {
+    "max": 4241,
+    "caption": "Completion throughput · 2,000 noop tasks, 10 workers (linear scale)",
+    "note": "Prefetch off 3,156 tasks/s; prefetch 20 gives 4,241 tasks/s on the same machine and parameters.",
+    "headers": ["Config", "Completion", "P50", "P95"],
+    "rows": [
+      ["Prefetch off", "3,156/s", "1.20 ms", "3.07 ms"],
+      ["Prefetch 20", "4,241/s", "11.24 ms", "15.14 ms"]
+    ],
+    "bars": [
+      { "label": "Prefetch off", "value": 3156, "display": "3,156/s" },
+      { "label": "Prefetch 20", "value": 4241, "display": "4,241/s" }
+    ]
+  },
+  "stress": {
+    "headers": ["Scenario", "Scale", "Config", "Result", "Note"],
+    "rows": [
+      ["Sparse · prefetch off", "8 samples", "1s idle", "1.1–2.2 ms", "recommended for low latency"],
+      ["Sparse · prefetch on", "8 samples", "1s idle", "12.2–26.2 ms", "includes 10ms coalescing"],
+      ["Empty-queue wakeup", "continuous", "v1.2.1", "no 0.5s backoff", "P0 fix"],
+      ["Batch cancel", "1,000", "memory", "0.668 ms", "lazy tombstones"],
+      ["Queue full", "10,000", "all backends", "False / QueueFullError", "consistent semantics"]
+    ],
+    "note": "Regression: 538 unit tests passed / 12 skipped; 87 integration tests passed / 1 skipped. One timing-sensitive test is flaky under full concurrency and passes alone."
+  },
+  "sqlite": {
+    "rows": [
+      {
+        "mode": "End-to-end · Memory",
+        "workers": 10,
+        "ok": true,
+        "outcome": "4,761 tasks/s, p50 297 ms",
+        "meta": [
+          { "label": "Scale", "value": "2,000" },
+          { "label": "Elapsed", "value": "0.42 s" }
+        ]
+      },
+      {
+        "mode": "End-to-end · SQLite",
+        "workers": 4,
+        "ok": true,
+        "outcome": "519 tasks/s, p50 1,036 ms",
+        "meta": [
+          { "label": "Scale", "value": "1,000" },
+          { "label": "Elapsed", "value": "1.93 s" }
+        ]
+      },
+      {
+        "mode": "End-to-end · Redis",
+        "workers": 4,
+        "ok": true,
+        "outcome": "232 tasks/s, p50 2,547 ms",
+        "meta": [
+          { "label": "Scale", "value": "1,000" },
+          { "label": "Elapsed", "value": "4.31 s" }
+        ]
+      }
+    ]
+  },
+  "prefetch": {
+    "caption": "Sparse end-to-end latency · one task after 1s idle (shorter is better)",
+    "note": "Prefetch off 1.1–2.2 ms; prefetch on 12.2–26.2 ms. The 10ms coalescing window trades latency for throughput; disable prefetch for sub-10ms tasks.",
+    "bars": [
+      { "label": "Prefetch off", "value": 2.2, "display": "≤ 2.2 ms" },
+      { "label": "Prefetch on", "value": 26.2, "display": "≤ 26.2 ms" }
+    ]
+  },
+  "eventbus": {
+    "headers": ["Capability", "Config", "Behavior"],
+    "rows": [
+      ["Unsubscribed events", "since v1.2", "not enqueued, less idle work"],
+      ["Bounded queue", "event_queue_max_size", "drops new events and counts when full"],
+      ["Slow handler warning", "event_slow_handler_threshold=1.0s", "warns without blocking tasks"],
+      ["Periodic snapshot", "on_metrics(interval=1.0)", "counts and queue depth without loading tasks"],
+      ["Terminal cleanup", "enabled by default", "removes SUCCESS/FAILED/CANCELLED by ttl"]
+    ]
+  }
+}

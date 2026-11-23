@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>性能基准 · NeoTask v1.0 文档</title>
-  <meta name="description" content="提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">
+  <meta name="description" content="v1.2.1 提交、完成、预取、批量操作与 SQLite 边界的实测数据、配置决策表与复现方法。">
   <meta name="keywords" content="性能基准, 性能基准 教程, 性能基准 文档, 参考, NeoTask v1.0 文档, NeoTask 1.x, Python 任务队列">
   <meta name="author" content="NeoPen">
   <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
@@ -13,7 +13,7 @@
   <meta property="og:locale" content="zh_CN">
   <meta property="og:type" content="article">
   <meta property="og:title" content="性能基准 · NeoTask v1.0 文档">
-  <meta property="og:description" content="提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">
+  <meta property="og:description" content="v1.2.1 提交、完成、预取、批量操作与 SQLite 边界的实测数据、配置决策表与复现方法。">
   <meta property="og:url" content="https://task.helpenx.com/docs/v1.0/benchmarks.html">
   <meta property="og:image" content="https://task.helpenx.com/assets/img/og.png">
   <meta property="og:image:type" content="image/png">
@@ -21,11 +21,11 @@
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="性能基准 · NeoTask 文档">
   <meta property="article:published_time" content="2026-10-29">
-  <meta property="article:modified_time" content="2026-11-17">
+  <meta property="article:modified_time" content="2026-11-22">
   <meta property="article:section" content="参考">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="性能基准 · NeoTask v1.0 文档">
-  <meta name="twitter:description" content="提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">
+  <meta name="twitter:description" content="v1.2.1 提交、完成、预取、批量操作与 SQLite 边界的实测数据、配置决策表与复现方法。">
   <meta name="twitter:image" content="https://task.helpenx.com/assets/img/og.png">
   <meta name="twitter:image:alt" content="性能基准 · NeoTask 文档">
   <meta name="theme-color" content="#0b1713">
@@ -44,13 +44,13 @@
         "@id": "https://task.helpenx.com/docs/v1.0/benchmarks.html#article",
         "headline": "性能基准",
         "name": "性能基准 · NeoTask v1.0 文档",
-        "description": "提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。",
+        "description": "v1.2.1 提交、完成、预取、批量操作与 SQLite 边界的实测数据、配置决策表与复现方法。",
         "image": "https://task.helpenx.com/assets/img/og.png",
         "url": "https://task.helpenx.com/docs/v1.0/benchmarks.html",
         "mainEntityOfPage": "https://task.helpenx.com/docs/v1.0/benchmarks.html",
         "inLanguage": "zh-CN",
         "datePublished": "2026-10-29",
-        "dateModified": "2026-11-17",
+        "dateModified": "2026-11-22",
         "articleSection": "参考",
         "keywords": "性能基准, 性能基准 教程, 性能基准 文档, 参考, NeoTask v1.0 文档, NeoTask 1.x, Python 任务队列",
         "author": {
@@ -117,6 +117,9 @@
     ]
   }
   </script>
+  <link rel="alternate" hreflang="zh-CN" href="https://task.helpenx.com/docs/v1.0/benchmarks.html">
+  <link rel="alternate" hreflang="en" href="https://task.helpenx.com/en/docs/v1.0/benchmarks.html">
+  <link rel="alternate" hreflang="x-default" href="https://task.helpenx.com/docs/v1.0/benchmarks.html">
 </head>
 <body class="docs-page" id="top">
   <a class="skip-link" href="#main">跳到主要内容</a>
@@ -129,7 +132,7 @@
         <circle cx="24.2" cy="8.6" r="1.8" fill="#b7f171"/>
       </svg>
       <span class="brand-name">NeoTask</span>
-      <span class="brand-version">v1.1.1</span>
+      <span class="brand-version">v1.2.1</span>
     </a>
 
     <nav class="site-nav" id="siteNav" aria-label="主导航">
@@ -139,12 +142,16 @@
       <a class="site-nav-link " href="/changelog.html">更新日志</a>
       <a class="site-nav-link " href="/community.html">社区</a>
       <a class="site-nav-link site-nav-external" href="https://helpenx.com/" target="_blank" rel="noopener">
-        HelpEnx Hub<span class="nav-brand-cn">（星阵工坊）</span>
+        HelpEnx Hub<span class="nav-brand-cn">（星阵万象）</span>
         <svg class="icon icon-xs nav-external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
       </a>
     </nav>
 
     <div class="header-actions">
+      <a class="lang-switch" href="/en/docs/v1.0/benchmarks.html" hreflang="en" lang="en" aria-label="Switch to English">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>
+        <span>EN</span>
+      </a>
       <a class="gh-star" href="https://github.com/neopen/neotask" target="_blank" rel="noopener" aria-label="在 GitHub 上为 NeoTask 加 Star">
         <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.9 5.33.9 11.6c0 4.9 3.17 9.05 7.57 10.52.55.1.75-.24.75-.53v-1.85c-3.08.67-3.73-1.48-3.73-1.48-.5-1.28-1.23-1.62-1.23-1.62-1-.69.08-.68.08-.68 1.11.08 1.7 1.14 1.7 1.14.98 1.69 2.58 1.2 3.2.92.1-.71.39-1.2.7-1.48-2.46-.28-5.05-1.23-5.05-5.48 0-1.21.43-2.2 1.14-2.98-.11-.28-.49-1.4.11-2.92 0 0 .93-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.6 1.52.22 2.64.11 2.92.71.78 1.14 1.77 1.14 2.98 0 4.26-2.6 5.2-5.06 5.47.4.35.76 1.03.76 2.07v3.07c0 .29.2.64.76.53a11.1 11.1 0 0 0 7.56-10.52C23.1 5.33 18.27.5 12 .5z"/></svg>
         <span>Star</span>
@@ -178,9 +185,11 @@
       <nav class="docs-nav" id="docsNav" aria-label="文档导航">
         <div class="docs-nav-group">
         <p class="docs-nav-label">开始使用</p>
-        <a class="docs-nav-link" href="/docs/v1.0/quickstart.html" data-search="快速开始 安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。">快速开始</a>
+        <a class="docs-nav-link" href="/docs/v1.0/quickstart.html" data-search="快速开始 安装 NeoTask 1.2.1，提交第一个任务，并选择同步、异步或上下文管理器用法。">快速开始</a>
         <a class="docs-nav-link" href="/docs/v1.0/configuration.html" data-search="配置参考 TaskPoolConfig 与 SchedulerConfig 的字段、默认值、生效范围和常用配置档位。">配置参考</a>
         <a class="docs-nav-link" href="/docs/v1.0/best-practices.html" data-search="最佳实践 执行器、并发、重试、超时、存储选型与生产部署建议。">最佳实践</a>
+        <a class="docs-nav-link" href="/docs/v1.0/deployment.html" data-search="部署指南 本地、Docker 与生产环境部署，含存储、网络、安全与升级核对。">部署指南</a>
+        <a class="docs-nav-link" href="/docs/v1.0/integration.html" data-search="集成指南 与 Web 服务、HTTP API、Python 代码、第三方组件、Agent 与工作流集成。">集成指南</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">核心概念</p>
@@ -199,16 +208,19 @@
         <a class="docs-nav-link" href="/docs/v1.0/cost-tracking.html" data-search="成本与耗时 上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">成本与耗时</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
         <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
-        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标快照与周期推送、健康检查、事件总线背压、可选监控入口与 Prometheus 上报。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/troubleshooting.html" data-search="问题排查 常见问题、日志分析、错误诊断、部署与性能问题排查。">问题排查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
-        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">API 参考</a>
-        <a class="docs-nav-link is-active" href="/docs/v1.0/benchmarks.html" data-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">性能基准</a>
+        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.2 新增 API、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/benchmarks.html" data-search="性能基准 v1.2.1 提交、完成、预取、批量操作与 SQLite 边界的实测数据、配置决策表与复现方法。">性能基准</a>
+        <a class="docs-nav-link" href="/docs/v1.0/developer-guide.html" data-search="开发者指南 项目结构、开发环境、测试、构建、发布与贡献规范。">开发者指南</a>
+        <a class="docs-nav-link" href="/docs/v1.0/glossary.html" data-search="术语表 任务、队列、Worker、调度、重试、回收、死信等核心术语的统一解释。">术语表</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及性能、监控与 NeoFlow 编排集成规划。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       <p class="docs-nav-empty" id="docsNavEmpty" hidden>没有匹配的文档</p>
@@ -233,9 +245,11 @@
       <nav class="docs-nav" id="docsNavMobile" aria-label="文档导航">
         <div class="docs-nav-group">
         <p class="docs-nav-label">开始使用</p>
-        <a class="docs-nav-link" href="/docs/v1.0/quickstart.html" data-search="快速开始 安装 NeoTask，提交第一个任务，并选择同步、异步或上下文管理器用法。">快速开始</a>
+        <a class="docs-nav-link" href="/docs/v1.0/quickstart.html" data-search="快速开始 安装 NeoTask 1.2.1，提交第一个任务，并选择同步、异步或上下文管理器用法。">快速开始</a>
         <a class="docs-nav-link" href="/docs/v1.0/configuration.html" data-search="配置参考 TaskPoolConfig 与 SchedulerConfig 的字段、默认值、生效范围和常用配置档位。">配置参考</a>
         <a class="docs-nav-link" href="/docs/v1.0/best-practices.html" data-search="最佳实践 执行器、并发、重试、超时、存储选型与生产部署建议。">最佳实践</a>
+        <a class="docs-nav-link" href="/docs/v1.0/deployment.html" data-search="部署指南 本地、Docker 与生产环境部署，含存储、网络、安全与升级核对。">部署指南</a>
+        <a class="docs-nav-link" href="/docs/v1.0/integration.html" data-search="集成指南 与 Web 服务、HTTP API、Python 代码、第三方组件、Agent 与工作流集成。">集成指南</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">核心概念</p>
@@ -254,16 +268,19 @@
         <a class="docs-nav-link" href="/docs/v1.0/cost-tracking.html" data-search="成本与耗时 上报 token、API 调用与预估费用，读取排队/执行耗时，并聚合跨任务成本。">成本与耗时</a>
         <a class="docs-nav-link" href="/docs/v1.0/distributed-lock.html" data-search="分布式锁 任务级互斥锁、TTL、看门狗续期与手动加锁接口。">分布式锁</a>
         <a class="docs-nav-link" href="/docs/v1.0/prefetch.html" data-search="预取机制 按消费需求驱动的预取触发条件、批量配置与对延迟和优先级的影响。">预取机制</a>
-        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标采集、健康检查、事件总线背压、可选轻量监控入口与 Prometheus 上报。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/monitoring.html" data-search="监控与健康检查 指标快照与周期推送、健康检查、事件总线背压、可选监控入口与 Prometheus 上报。">监控与健康检查</a>
+        <a class="docs-nav-link" href="/docs/v1.0/troubleshooting.html" data-search="问题排查 常见问题、日志分析、错误诊断、部署与性能问题排查。">问题排查</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">参考</p>
-        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.1 新增 API、参数默认值与返回语义。">API 参考</a>
-        <a class="docs-nav-link is-active" href="/docs/v1.0/benchmarks.html" data-search="性能基准 提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。">性能基准</a>
+        <a class="docs-nav-link" href="/docs/v1.0/api-reference.html" data-search="API 参考 TaskPool 与 TaskScheduler 的公开方法、1.2 新增 API、参数默认值与返回语义。">API 参考</a>
+        <a class="docs-nav-link is-active" href="/docs/v1.0/benchmarks.html" data-search="性能基准 v1.2.1 提交、完成、预取、批量操作与 SQLite 边界的实测数据、配置决策表与复现方法。">性能基准</a>
+        <a class="docs-nav-link" href="/docs/v1.0/developer-guide.html" data-search="开发者指南 项目结构、开发环境、测试、构建、发布与贡献规范。">开发者指南</a>
+        <a class="docs-nav-link" href="/docs/v1.0/glossary.html" data-search="术语表 任务、队列、Worker、调度、重试、回收、死信等核心术语的统一解释。">术语表</a>
       </div>
         <div class="docs-nav-group">
         <p class="docs-nav-label">路线图</p>
-        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及 v1.2–v2.0 的性能、监控与编排集成规划；DAG 由 NeoFlow 承担。">版本路线图<span class="nav-soon">规划</span></a>
+        <a class="docs-nav-link" href="/docs/v1.0/roadmap.html" data-search="版本路线图 1.x 能力边界与已交付版本记录，以及性能、监控与 NeoFlow 编排集成规划。">版本路线图<span class="nav-soon">规划</span></a>
       </div>
       </nav>
       
@@ -272,11 +289,11 @@
         <header class="article-header">
           <p class="article-eyebrow">参考</p>
           <h1>性能基准</h1>
-          <p class="article-lede">提交、完成、IO 扩展与 SQLite 边界的实测数据，含配置决策表与复现方法。</p>
+          <p class="article-lede">v1.2.1 提交、完成、预取、批量操作与 SQLite 边界的实测数据、配置决策表与复现方法。</p>
           <div class="article-meta">
             <span class="article-version">v1.0 · NeoTask 1.x</span>
             <span class="dot"></span>
-            <span>更新于 2026-11-17</span>
+            <span>更新于 2026-11-22</span>
             <span class="dot"></span>
             <span>约 9 分钟 读完</span>
             <span class="dot"></span>
@@ -284,30 +301,30 @@
           </div>
         </header>
         <div class="article-body">
-<p>以下数据由 NeoTask 1.0.8 官方基准脚本与极限压力套件测得，用于判断相对趋势与配置影响，不构成性能承诺。数字随 CPU、Python 版本、存储后端与旁路组件变化，请按同一口径在自己的目标环境复测。</p>
+<p>以下数据由 NeoTask 1.2.1 官方基准脚本与压力套件测得，用于判断相对趋势与配置影响，不构成性能承诺。数字随 CPU、Python 版本、存储后端与旁路组件变化，请按同一口径在自己的目标环境复测。</p>
 
-<div class="doc-note"><strong>版本口径：</strong>本页数据采集自 1.0.8。1.1 未重新跑完整基准；升级后请用 <code>neotask --benchmark</code> 或仓库基准脚本在目标环境复测，再据此调整并发与预取参数。</div>
+<div class="doc-note"><strong>版本口径：</strong>本页数据采集自 1.2.1（2026-11-22），运行于 Python 3.13。1.2.1 修复了预取空队列退避、内存队列批量写删、监控采样阻塞与 Redis 批量读，吞吐与延迟数字与 1.0.x 不可直接比较。升级后请用 <code>neotask --benchmark</code> 或仓库基准脚本在目标环境复测。</div>
 
 <div class="bench-kpis">
   <div class="bench-kpi is-highlight">
-    <span class="bench-kpi-label">提交吞吐</span>
-    <span class="bench-kpi-value">9,681<span>tasks/s</span></span>
-    <span class="bench-kpi-detail">2,000 个 noop 任务顺序提交，Memory 后端，10 个 Worker；官方套件。</span>
+    <span class="bench-kpi-label">预取完成吞吐</span>
+    <span class="bench-kpi-value">4,241<span>tasks/s</span></span>
+    <span class="bench-kpi-detail">2,000 个 noop 任务，并发 10，prefetch_size=20；v1.2.1 修复空队列退避后的结果。</span>
   </div>
   <div class="bench-kpi">
-    <span class="bench-kpi-label">完成吞吐</span>
-    <span class="bench-kpi-value">3,035<span>tasks/s</span></span>
-    <span class="bench-kpi-detail">20,000 个 noop 任务全部完成，10 个 Worker，预取关闭；压力套件按任务完成计数。</span>
+    <span class="bench-kpi-label">稀疏任务延迟</span>
+    <span class="bench-kpi-value">1.1–2.2<span>ms</span></span>
+    <span class="bench-kpi-detail">关闭预取，空闲 1 秒后提交单条任务，连续 8 次；开启预取为 12.2–26.2 ms。</span>
   </div>
   <div class="bench-kpi">
-    <span class="bench-kpi-label">串行往返</span>
-    <span class="bench-kpi-value">0.86<span>ms</span></span>
-    <span class="bench-kpi-detail">单任务提交到完成的 P50 延迟，200 次串行测量，P95 1.65 ms；官方套件。</span>
+    <span class="bench-kpi-label">队列批量写入</span>
+    <span class="bench-kpi-value">0.471<span>ms</span></span>
+    <span class="bench-kpi-detail">向已有 10,000 条任务的内存队列一次写入 1,000 条，约 212 万条/秒。</span>
   </div>
   <div class="bench-kpi">
-    <span class="bench-kpi-label">IO 扩展性</span>
-    <span class="bench-kpi-value">8.03<span>×</span></span>
-    <span class="bench-kpi-detail">20 ms 睡眠任务，8 个 Worker 相对 1 个 Worker 的完成吞吐；官方套件。</span>
+    <span class="bench-kpi-label">批量移除</span>
+    <span class="bench-kpi-value">0.668<span>ms</span></span>
+    <span class="bench-kpi-detail">从 11,000 条队列批量移除 1,000 条；惰性墓碑替代整堆重建。</span>
   </div>
 </div>
 
@@ -315,190 +332,161 @@
 <table class="bench-env">
 <thead><tr><th>项目</th><th>配置</th></tr></thead>
 <tbody>
-<tr><td>CPU</td><td>Intel Core i7-1165G7，4 核 8 线程</td></tr>
-<tr><td>内存</td><td>15.8 GiB</td></tr>
+<tr><td>CPU</td><td>Intel Core i7，4 核 8 线程</td></tr>
+<tr><td>内存</td><td>16 GB</td></tr>
 <tr><td>系统</td><td>Windows 10 19045，64 位</td></tr>
-<tr><td>Python</td><td>3.13.15</td></tr>
-<tr><td>存储</td><td>memory（主套件与压力套件）；SQLite（边界探针）</td></tr>
-<tr><td>旁路组件</td><td>metrics、health check、reporter、reclaimer、heartbeat、dead letter、retry 全部关闭</td></tr>
+<tr><td>Python</td><td>3.13</td></tr>
+<tr><td>存储</td><td>memory（微基准与预取套件）；SQLite / Redis（跨存储历史对照）</td></tr>
+<tr><td>旁路组件</td><td>metrics、health check、reporter、reclaimer、heartbeat、dead letter 按套件关闭</td></tr>
 </tbody>
 </table>
-<p>主套件、20,000 任务压力套件与 SQLite 探针是三组独立测量，口径不同，不能合并比较。</p>
+<p>微基准、预取套件与跨存储对照是三组独立测量，口径不同，不能合并比较。所有数字来自单台开发机，旁路组件按套件关闭。</p>
 
-<h2 id="口径">口径</h2>
+<h2 id="method">口径</h2>
 <table>
 <thead><tr><th>指标</th><th>定义</th></tr></thead>
 <tbody>
-<tr><td>提交吞吐</td><td>第一个 <code>submit_async</code> 到第 N 个返回</td></tr>
-<tr><td>完成吞吐（官方套件）</td><td>第一个 <code>submit_async</code> 到第 N 个 <code>task.completed</code> 事件</td></tr>
-<tr><td>完成吞吐（压力套件）</td><td>任务执行完成时计数，不等待事件订阅回调</td></tr>
-<tr><td>任务延迟</td><td>单任务提交前到该任务完成事件</td></tr>
-<tr><td>等待吞吐</td><td>N 个并发 <code>wait_for_result_async</code> 全部返回的速率</td></tr>
+<tr><td>完成吞吐</td><td>2,000 个 noop 任务、并发 10，从提交到全部完成；预取开 / 关各测一轮</td></tr>
+<tr><td>稀疏任务延迟</td><td>空闲 1 秒后提交单条任务，连续 8 次，记录端到端延迟</td></tr>
+<tr><td>队列微基准</td><td>内存优先队列的批量写入、批量移除、peek 与不变量校验</td></tr>
+<tr><td>跨存储端到端</td><td>Memory / SQLite / Redis 各跑一轮提交到完成，规模与并发见表格</td></tr>
 </tbody>
 </table>
-<p>每个场景独立创建 <code>TaskPool</code>，预热 10 个任务；主套件重复 2–3 轮取中位数。提交吞吐与完成吞吐的分母不同，不能直接比较：前者衡量入队链路，后者包含调度、执行与状态落库。</p>
+<p>预取核心基准（吞吐）与稀疏延迟（单任务响应）衡量的是相反目标：预取用批量出队换吞吐，代价是合并窗口带来的固定延迟。比较前先确认口径与配置。</p>
 
-<div class="doc-warning"><strong>1.0.8 的完成吞吐有两个口径：</strong>事件总线改为异步队列后，官方套件按 <code>task.completed</code> 事件计时，订阅者处理慢时测到的是事件投递速率，而不是任务执行速率。同一版本的压力套件在任务完成时计数，20,000 任务实测 3,035 tasks/s；官方套件 3,000 任务为 1,804 tasks/s。两者都不是容量上限，比较时先确认口径。</div>
+<div class="doc-warning"><strong>预取的两面：</strong>同一套参数下，开启预取的完成吞吐为 4,241 tasks/s，关闭为 3,156 tasks/s；但空闲后单条任务的延迟从 1.1–2.2 ms 升到 12.2–26.2 ms。1.2.1 修复了空队列上的指数退避，稀疏任务不再出现最坏 500 ms 级延迟，但预取的 10 ms 合并窗口仍然存在。</div>
 
 <h2 id="调度与执行开销">调度与执行开销</h2>
 <table>
-<thead><tr><th>场景</th><th>N</th><th>Workers</th><th>提交吞吐</th><th>完成吞吐</th><th>P50</th><th>P95</th><th>P99</th></tr></thead>
+<thead><tr><th>操作</th><th>规模</th><th>配置</th><th>结果</th><th>说明</th></tr></thead>
 <tbody>
-<tr><td>只提交</td><td>2,000</td><td>10</td><td>9,681/s</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-<tr><td>提交并等待完成</td><td>3,000</td><td>10</td><td>7,636/s</td><td>1,804/s</td><td>1,315 ms</td><td>1,366 ms</td><td>1,374 ms</td></tr>
-<tr><td>串行往返</td><td>200</td><td>10</td><td>1,044/s</td><td>1,044/s</td><td>0.86 ms</td><td>1.65 ms</td><td>2.18 ms</td></tr>
+<tr><td>批量写入</td><td>10,000 + 1,000</td><td>memory</td><td>0.471 ms</td><td>约 212 万条/s</td></tr>
+<tr><td>批量移除</td><td>11,000 - 1,000</td><td>memory</td><td>0.668 ms</td><td>约 150 万次/s</td></tr>
+<tr><td>全部弹出并校验</td><td>10,000</td><td>memory</td><td>无重复、无墓碑泄漏</td><td>不变量校验通过</td></tr>
+<tr><td>peek(5)</td><td>10,000</td><td>memory</td><td>0.008 ms</td><td>heapq.nsmallest</td></tr>
+<tr><td>回归测试</td><td>单元 + 集成</td><td>v1.2.1</td><td>538 / 87 通过</td><td>12 / 1 跳过</td></tr>
 </tbody>
 </table>
-<p>2,000 个 noop 任务顺序提交为 9,681 tasks/s，折算单条约 0.10 ms；串行往返 P50 0.86 ms 包含出队、执行、状态写回与事件唤醒。完成吞吐的瓶颈在生命周期流转、状态落库与事件分发，不在执行器本身；单纯增加 Worker 无法突破这一上限。</p>
+<p>内存队列的批量写入与移除已从整堆重建改为增量维护与惰性墓碑：向 10,000 条队列一次写入 1,000 条约 0.471 ms（约 212 万条/s），批量移除 1,000 条约 0.668 ms。全部弹出并校验的不变量测试确认没有重复项或墓碑泄漏；<code>peek(5)</code> 在 10,000 条队列上为 0.008 ms。1.2.1 的完整回归为单元测试 538 通过 / 12 跳过，集成测试 87 通过 / 1 跳过。</p>
 
-<h2 id="IO 扩展性">IO 扩展性</h2>
-<p>任务体为 <code>asyncio.sleep(0.020)</code>，N=400，Memory 后端。完成吞吐随 Worker 数增加接近线性增长。</p>
+<h2 id="预取与完成吞吐">预取与完成吞吐</h2>
+<p>2,000 个 noop 任务、10 Worker，对比关闭预取与 <code>prefetch_size=20</code>。预取把共享队列批量搬到本地队列，吞吐提升约 34%，但单任务 P50 从 1.20 ms 升至 11.24 ms。</p>
 <figure class="bench-chart">
-  <figcaption>完成吞吐 · 400 个 20 ms 睡眠任务（线性刻度）</figcaption>
+  <figcaption>完成吞吐 · 2,000 个 noop 任务，10 Worker（线性刻度）</figcaption>
   <div class="bench-bars">
     <div class="bench-bar-row">
-      <span class="bench-bar-label">1 worker</span>
-      <span class="bench-bar-track"><span class="bench-bar-fill" style="width: 12%"></span></span>
-      <span class="bench-bar-value">30.2/s</span>
+      <span class="bench-bar-label">关闭预取</span>
+      <span class="bench-bar-track"><span class="bench-bar-fill" style="width: 74%"></span></span>
+      <span class="bench-bar-value">3,156/s</span>
     </div>
     <div class="bench-bar-row">
-      <span class="bench-bar-label">2 workers</span>
-      <span class="bench-bar-track"><span class="bench-bar-fill" style="width: 25%"></span></span>
-      <span class="bench-bar-value">61.6/s</span>
-    </div>
-    <div class="bench-bar-row">
-      <span class="bench-bar-label">4 workers</span>
-      <span class="bench-bar-track"><span class="bench-bar-fill" style="width: 52%"></span></span>
-      <span class="bench-bar-value">125.8/s</span>
-    </div>
-    <div class="bench-bar-row">
-      <span class="bench-bar-label">8 workers</span>
+      <span class="bench-bar-label">预取 20</span>
       <span class="bench-bar-track"><span class="bench-bar-fill" style="width: 100%"></span></span>
-      <span class="bench-bar-value">242.3/s</span>
+      <span class="bench-bar-value">4,241/s</span>
     </div>
   </div>
-  <p class="bench-chart-note">柱长按 242.3 tasks/s 满刻度换算；8 Worker 下的 P99 为 1,532 ms。</p>
+  <p class="bench-chart-note">预取关闭 3,156 tasks/s；预取 20 为 4,241 tasks/s。对比数据来自同一台机器、同一轮参数。</p>
 </figure>
 <table>
-<thead><tr><th>Workers</th><th>完成吞吐</th><th>相对 1 Worker</th><th>P50</th><th>P95</th><th>P99</th></tr></thead>
+<thead><tr><th>配置</th><th>完成吞吐</th><th>P50</th><th>P95</th></tr></thead>
 <tbody>
-<tr><td>1</td><td>30.2/s</td><td>1.00×</td><td>6,245 ms</td><td>12,616 ms</td><td>13,109 ms</td></tr>
-<tr><td>2</td><td>61.6/s</td><td>2.04×</td><td>3,162 ms</td><td>6,096 ms</td><td>6,353 ms</td></tr>
-<tr><td>4</td><td>125.8/s</td><td>4.17×</td><td>1,592 ms</td><td>2,957 ms</td><td>3,085 ms</td></tr>
-<tr><td>8</td><td>242.3/s</td><td>8.03×</td><td>795 ms</td><td>1,474 ms</td><td>1,532 ms</td></tr>
+<tr><td>关闭预取</td><td>3,156/s</td><td>1.20 ms</td><td>3.07 ms</td></tr>
+<tr><td>预取 20</td><td>4,241/s</td><td>11.24 ms</td><td>15.14 ms</td></tr>
 </tbody>
 </table>
-<p>1 Worker 的绝对值受 Windows 定时器粒度影响：20 ms 的 sleep 实际约 31 ms，因此 30.2 tasks/s 略低于理论上限。评估扩展性时看相对倍率，不要只看单点绝对值。</p>
+<p>吞吐瓶颈在生命周期流转、状态落库与事件分发，不在执行器本身；单纯增加 Worker 无法突破这一上限。任务体有 IO 等待或执行时间较长时，预取的批量收益更明显；纯微任务且要求低延迟时，关闭预取更合适。</p>
+
+<h2 id="稀疏任务延迟">稀疏任务延迟</h2>
+<p>空闲 1 秒后提交单条任务，模拟低频率事件触发。关闭预取时端到端延迟为 1.1–2.2 ms；开启预取后为 12.2–26.2 ms，主要来自预取器的合并窗口。</p>
+<figure class="bench-chart">
+  <figcaption>稀疏任务端到端延迟 · 空闲 1 秒后提交单条（柱越短越好）</figcaption>
+  <div class="bench-bars">
+    <div class="bench-bar-row">
+      <span class="bench-bar-label">关闭预取</span>
+      <span class="bench-bar-track"><span class="bench-bar-fill" style="width: 8%"></span></span>
+      <span class="bench-bar-value">≤ 2.2 ms</span>
+    </div>
+    <div class="bench-bar-row">
+      <span class="bench-bar-label">开启预取</span>
+      <span class="bench-bar-track"><span class="bench-bar-fill" style="width: 100%"></span></span>
+      <span class="bench-bar-value">≤ 26.2 ms</span>
+    </div>
+  </div>
+  <p class="bench-chart-note">关闭预取 1.1–2.2 ms；开启预取 12.2–26.2 ms。预取的 10 ms 合并窗口换取批量吞吐，短任务且要求低延迟时应关闭。</p>
+</figure>
+<p>延迟敏感的场景（如交互式请求触发的后台动作）应关闭预取或调小 <code>prefetch_size</code>；批处理、采集与转码类任务保持默认预取即可。二者的取舍见 <a href="/docs/v1.0/prefetch.html">预取机制</a>。</p>
 
 <h2 id="持续与突发负载">持续与突发负载</h2>
-<p>20,000 个 noop 任务一次性提交，观察持续完成能力；其余场景覆盖 Worker 数、缓存淘汰、空闲 CPU、延时精度与三后端突发。压力套件在空闲机器上以最终 wheel 运行。</p>
+<p>覆盖稀疏提交、预取空队列唤醒、批量取消与队列满载四类边界。1.2.1 的空队列退避修复与惰性墓碑是这一轮的主要变化。</p>
 <table>
-<thead><tr><th>场景</th><th>N</th><th>Workers</th><th>完成吞吐</th><th>提交吞吐</th><th>备注</th></tr></thead>
+<thead><tr><th>场景</th><th>规模</th><th>配置</th><th>结果</th><th>备注</th></tr></thead>
 <tbody>
-<tr><td>内存 noop · 预取关</td><td>20,000</td><td>10</td><td>3,035/s</td><td>21,052/s</td><td>RSS +32.2 MB</td></tr>
-<tr><td>内存 noop · 预取开</td><td>20,000</td><td>10</td><td>3,421/s</td><td>25,760/s</td><td>完成 +12.7%，RSS +9.0 MB</td></tr>
-<tr><td>内存 noop · 预取关</td><td>8,000</td><td>4</td><td>3,554/s</td><td>26,840/s</td><td>—</td></tr>
-<tr><td>内存 noop · 预取关</td><td>8,000</td><td>20</td><td>3,532/s</td><td>27,365/s</td><td>超过 4 Worker 后不再增长</td></tr>
-<tr><td>内存 noop · 缓存淘汰</td><td>30,000</td><td>10</td><td>3,349/s</td><td>—</td><td>get_stats 9.8 ms，缓存上限 5,000</td></tr>
-<tr><td>空闲 CPU · 预取开</td><td>—</td><td>10</td><td>—</td><td>—</td><td>1.04%（3 秒窗口）</td></tr>
-<tr><td>延时 200 · 背景负载</td><td>200</td><td>10</td><td>—</td><td>—</td><td>med 121.3 ms / p95 137.9 ms</td></tr>
-<tr><td>SQLite 突发</td><td>500</td><td>1</td><td>338/s</td><td>—</td><td>500/500 成功，零错误</td></tr>
-<tr><td>Redis 突发</td><td>1,000</td><td>10</td><td>219.7/s</td><td>14,023/s</td><td>全部成功，经网络往返</td></tr>
-<tr><td>队列容量背压</td><td>50</td><td>—</td><td>—</td><td>—</td><td>接受 51 个后抛 QueueFullError</td></tr>
+<tr><td>稀疏任务 · 关闭预取</td><td>8 次</td><td>空闲 1s</td><td>1.1–2.2 ms</td><td>低延迟推荐</td></tr>
+<tr><td>稀疏任务 · 开启预取</td><td>8 次</td><td>空闲 1s</td><td>12.2–26.2 ms</td><td>含 10ms 合并窗口</td></tr>
+<tr><td>预取空队列唤醒</td><td>连续提交</td><td>v1.2.1</td><td>无 0.5s 退避</td><td>P0 修复</td></tr>
+<tr><td>批量取消</td><td>1,000</td><td>memory</td><td>0.668 ms</td><td>惰性墓碑</td></tr>
+<tr><td>队列满载</td><td>10,000</td><td>三后端</td><td>返回 False / QueueFullError</td><td>语义一致</td></tr>
 </tbody>
 </table>
-<div class="doc-note">压力套件在空闲机器上以最终 wheel 运行；完成吞吐在任务完成时计数，不经过 task.completed 订阅回调，因此与官方套件的完成口径不同。 8 Worker 与 20 Worker 的完成吞吐基本持平，说明瓶颈已回到事件循环与生命周期处理，而不是并发度。</div>
+<div class="doc-note">回归验证：单元测试 538 通过 / 12 跳过；集成测试 87 通过 / 1 跳过。1 个计时敏感用例在全量并发下偶发，单独运行通过。 空队列唤醒不再叠加 0.5 秒退避，是稀疏任务延迟从数百毫秒降至毫秒级的直接原因；队列满载时三种后端均返回 <code>False</code> 或 <code>QueueFullError</code>，语义一致。</div>
 
-<h2 id="事件总线与唤醒">事件总线与唤醒</h2>
-<p>1.0.8 起 Worker 与预取器由事件唤醒，不再按固定间隔轮询。EventBus 默认无界；设置 <code>event_queue_max_size</code> 后队列满会丢弃新事件并计数，慢回调超过 <code>event_slow_handler_threshold</code> 时会告警。</p>
-<table>
-<thead><tr><th>场景</th><th>配置</th><th>结果</th></tr></thead>
-<tbody>
-<tr><td>有界队列 · 丢弃</td><td>上限 5，50 个事件</td><td>处理 5，丢弃 45</td></tr>
-<tr><td>有界队列 · 丢弃</td><td>上限 3，30 个任务</td><td>处理 28，丢弃 58</td></tr>
-<tr><td>默认无界</td><td>30 个任务</td><td>处理 30，丢弃 0</td></tr>
-<tr><td>慢回调隔离</td><td>阈值 1.0 s</td><td>快回调 0.1 ms，慢回调 310.3 ms；计数 1</td></tr>
-<tr><td>空闲唤醒延迟</td><td>10 次空闲后提交</td><td>中位 1.3 ms，最大 2.2 ms</td></tr>
-</tbody>
-</table>
-<p>空闲后提交的唤醒延迟中位 1.3 ms，是串行往返降到 0.86 ms 的主要原因。有界队列会牺牲事件完整性换取内存上限：需要完整审计时保持无界，并把耗时回调移出事件循环。</p>
-
-<h2 id="SQLite 边界">SQLite 边界</h2>
-<p>noop 任务，每次重建数据库，对比串行提交与 1–4 个 Worker 的突发提交。</p>
+<h2 id="跨存储对照">跨存储对照</h2>
+<p>同一业务路径在三种后端上的端到端对照：Memory 2,000 任务、SQLite 与 Redis 各 1,000 任务。规模不同，只看量级与 P50 的相对差距。</p>
 <div class="bench-boundaries">
   <div class="bench-boundary is-ok">
     <div class="bench-boundary-head">
       <span class="bench-boundary-badge">成功</span>
-      <strong>串行提交 100 条</strong>
-      <span class="bench-boundary-workers">1 worker</span>
+      <strong>端到端 · Memory</strong>
+      <span class="bench-boundary-workers">10 workers</span>
     </div>
-    <p class="bench-boundary-outcome">全部成功</p>
-    <dl class="bench-boundary-meta"><div><dt>吞吐</dt><dd>76.5 tasks/s</dd></div><div><dt>P50</dt><dd>11.4 ms</dd></div><div><dt>P95</dt><dd>27.6 ms</dd></div></dl>
+    <p class="bench-boundary-outcome">4,761 tasks/s，p50 297 ms</p>
+    <dl class="bench-boundary-meta"><div><dt>规模</dt><dd>2,000</dd></div><div><dt>耗时</dt><dd>0.42 s</dd></div></dl>
   </div>
   <div class="bench-boundary is-ok">
     <div class="bench-boundary-head">
       <span class="bench-boundary-badge">成功</span>
-      <strong>突发提交 100 条</strong>
-      <span class="bench-boundary-workers">1 worker</span>
-    </div>
-    <p class="bench-boundary-outcome">100/100 成功</p>
-    <dl class="bench-boundary-meta"><div><dt>吞吐</dt><dd>87.4 tasks/s</dd></div></dl>
-  </div>
-  <div class="bench-boundary is-ok">
-    <div class="bench-boundary-head">
-      <span class="bench-boundary-badge">成功</span>
-      <strong>突发提交 100 条</strong>
-      <span class="bench-boundary-workers">2 workers</span>
-    </div>
-    <p class="bench-boundary-outcome">100/100 成功，写入串行化</p>
-    <dl class="bench-boundary-meta"><div><dt>吞吐</dt><dd>61.8 tasks/s</dd></div></dl>
-  </div>
-  <div class="bench-boundary is-ok">
-    <div class="bench-boundary-head">
-      <span class="bench-boundary-badge">成功</span>
-      <strong>突发提交 100 条</strong>
+      <strong>端到端 · SQLite</strong>
       <span class="bench-boundary-workers">4 workers</span>
     </div>
-    <p class="bench-boundary-outcome">100/100 成功，写入串行化</p>
-    <dl class="bench-boundary-meta"><div><dt>吞吐</dt><dd>41.3 tasks/s</dd></div></dl>
+    <p class="bench-boundary-outcome">519 tasks/s，p50 1,036 ms</p>
+    <dl class="bench-boundary-meta"><div><dt>规模</dt><dd>1,000</dd></div><div><dt>耗时</dt><dd>1.93 s</dd></div></dl>
+  </div>
+  <div class="bench-boundary is-ok">
+    <div class="bench-boundary-head">
+      <span class="bench-boundary-badge">成功</span>
+      <strong>端到端 · Redis</strong>
+      <span class="bench-boundary-workers">4 workers</span>
+    </div>
+    <p class="bench-boundary-outcome">232 tasks/s，p50 2,547 ms</p>
+    <dl class="bench-boundary-meta"><div><dt>规模</dt><dd>1,000</dd></div><div><dt>耗时</dt><dd>4.31 s</dd></div></dl>
   </div>
 </div>
-<p>1.0.8 为单连接写入加了串行锁，多 Worker 并发提交不再出现 <code>database is locked</code>，但吞吐随 Worker 数增加而下降：2 Worker 61.8 tasks/s、4 Worker 41.3 tasks/s。SQLite 仍适合低频、单写入者场景；需要高并发写入或跨节点共享队列时改用 Redis。</p>
+<p>Memory 走进程内队列，4,761 tasks/s；SQLite 受单文件串行写入约束，519 tasks/s；Redis 受网络往返与序列化影响，232 tasks/s。SQLite 适合单机持久化与低频写入；需要多节点共享或更高并发时改用 Redis。跨存储迁移前务必在预发环境验证，并注意任务与事件的可接受丢失窗口。</p>
 
-<h2 id="预取的配置影响">预取的配置影响</h2>
-<p>1.0.8 的预取由本地队列消费进度驱动，<code>prefetch_interval</code> 只作为等待兜底，不再按固定 0.1 秒一批补货。极短任务下关闭预取与开启预取的完成吞吐处于同一量级。</p>
-<figure class="bench-chart">
-  <figcaption>完成吞吐 · 3,000 个 noop 任务（线性刻度）</figcaption>
-  <div class="bench-bars">
-    <div class="bench-bar-row">
-      <span class="bench-bar-label">关闭预取</span>
-      <span class="bench-bar-track"><span class="bench-bar-fill" style="width: 94%"></span></span>
-      <span class="bench-bar-value">1,453/s</span>
-    </div>
-    <div class="bench-bar-row">
-      <span class="bench-bar-label">预取 20</span>
-      <span class="bench-bar-track"><span class="bench-bar-fill" style="width: 79%"></span></span>
-      <span class="bench-bar-value">1,211/s</span>
-    </div>
-    <div class="bench-bar-row">
-      <span class="bench-bar-label">预取 100</span>
-      <span class="bench-bar-track"><span class="bench-bar-fill" style="width: 100%"></span></span>
-      <span class="bench-bar-value">1,538/s</span>
-    </div>
-  </div>
-  <p class="bench-chart-note">预取关闭 1,453 tasks/s，预取 20 为 1,211 tasks/s，预取 100 为 1,538 tasks/s；差异处于单轮波动范围。</p>
-</figure>
-<p>预取的价值主要在批量出队侧：20,000 任务压力套件中，预取开启的提交吞吐比关闭高 22.4%（25,760 对 21,052 tasks/s），完成吞吐高 12.7%。任务体有 IO 等待或执行时间较长时收益更明显。触发条件与批量参数见 <a href="/docs/v1.0/prefetch.html">预取机制</a>。</p>
+<h2 id="事件总线与唤醒">事件总线与唤醒</h2>
+<p>事件总线把生命周期事件异步投递给订阅者。1.2 起无订阅者的事件不再入队，降低空转；有界队列满时丢弃新事件并计数，慢回调超过阈值会记录告警。</p>
+<table>
+<thead><tr><th>能力</th><th>配置</th><th>行为</th></tr></thead>
+<tbody>
+<tr><td>无订阅事件</td><td>v1.2 起</td><td>不再入队，降低空转</td></tr>
+<tr><td>有界队列</td><td>event_queue_max_size</td><td>队列满时丢弃新事件并计数</td></tr>
+<tr><td>慢回调告警</td><td>event_slow_handler_threshold=1.0s</td><td>记录告警，不阻断任务执行</td></tr>
+<tr><td>周期监控快照</td><td>on_metrics(interval=1.0)</td><td>推送计数与队列深度，不加载任务实体</td></tr>
+<tr><td>终态清理</td><td>enabled 默认开启</td><td>按 ttl 清理 SUCCESS/FAILED/CANCELLED</td></tr>
+</tbody>
+</table>
+<p>需要完整审计时保持事件队列无界，并把耗时回调移出事件循环；生产环境建议设置 <code>event_queue_max_size</code> 并监控 <code>dropped_events</code>。周期监控优先用 <code>on_metrics()</code> 推送快照，避免为每个指标单独订阅事件。</p>
 
 <h2 id="怎么选配置">怎么选配置</h2>
 <table>
 <thead><tr><th>场景</th><th>建议配置</th><th>依据</th></tr></thead>
 <tbody>
-<tr><td>数十微秒的纯计算微任务</td><td>Worker 数与 CPU 核数对齐；预取可关可开</td><td>预取不再是数量级瓶颈，关闭 1,453 与预取 100 的 1,538 tasks/s 处于同一量级</td></tr>
-<tr><td>毫秒级 IO 任务</td><td>保持默认预取，Worker 16–32 起步</td><td>20 ms 睡眠任务在 8 Worker 下仍有 8.03× 扩展</td></tr>
+<tr><td>数十微秒的纯计算微任务</td><td>Worker 数与 CPU 核数对齐；预取可关可开</td><td>预取 4,241 与关闭 3,156 tasks/s 处于同一量级，预取主要降低出队开销</td></tr>
+<tr><td>毫秒级 IO 任务</td><td>保持默认预取，Worker 16–32 起步</td><td>预取批量出队，IO 等待期间吞吐收益明显</td></tr>
+<tr><td>低延迟、稀疏提交</td><td>关闭预取或 <code>prefetch_size</code> 降到 5 以下</td><td>关闭预取 1.1–2.2 ms，开启 12.2–26.2 ms</td></tr>
 <tr><td>CPU 密集任务</td><td>ProcessExecutor，Worker 不超过物理核数</td><td>异步 Worker 共享 GIL，超配只增加切换开销</td></tr>
-<tr><td>单机低频、需重启恢复</td><td>SQLite，单写入者</td><td>写入已串行化；1 Worker 突发 87.4 tasks/s，4 Worker 降至 41.3 tasks/s</td></tr>
-<tr><td>多节点或高并发写入</td><td>Redis，唯一 <code>node_id</code></td><td><code>TaskPoolConfig.redis()</code> 自动启用 Redis 锁；手工构造配置时需显式设置 <code>lock_type="redis"</code></td></tr>
+<tr><td>单机低频、需重启恢复</td><td>SQLite，单写入者</td><td>519 tasks/s，P50 1.0 s；写入串行化</td></tr>
+<tr><td>多节点或高并发写入</td><td>Redis，唯一 <code>node_id</code></td><td>共享队列、锁、心跳与回收只在 Redis 模式可用</td></tr>
 <tr><td>优先级严格生效</td><td>关闭预取或调小批量</td><td>预取会提前取走任务，后提交的高优先级任务可能排在已取走的低优先级任务之后</td></tr>
 <tr><td>事件完整性优先</td><td>保持无界事件队列，回调快速返回</td><td>有界队列会丢弃事件；慢回调会延后 <code>task.completed</code> 的观测时间</td></tr>
 </tbody>
@@ -517,15 +505,15 @@ git clone https://github.com/neopen/neotask.git
 cd neotask
 pip install -e ".[dev]"
 python tests/benchmark/run_benchmark.py</code></pre>
-<p><code>neotask --benchmark</code> 随 PyPI 包分发，默认 200 个任务、10 并发，适合快速对照；完整基准脚本位于仓库 <code>tests/benchmark/</code>，主套件约需 2 分钟，SQLite 探针另需约 2 分钟。复测时记录 CPU、Python 版本、存储后端与 Worker 数，否则结果不可比。</p>
+<p><code>neotask --benchmark</code> 随 PyPI 包分发，默认 200 个任务、10 并发，适合快速对照；完整基准脚本位于仓库 <code>tests/benchmark/</code>，1.2.1 的回归与套件结果来自同一环境。复测时记录 CPU、Python 版本、存储后端与 Worker 数，否则结果不可比。</p>
 
 <h2 id="解读边界">解读边界</h2>
 <ul>
-<li>数据来自单台开发笔记本（4 核 8 线程），不能外推到服务器或容器环境。</li>
-<li>主套件与压力套件使用 Memory 后端，SQLite 数据单独测量，三者不可混用。</li>
-<li>旁路组件（metrics、health check、reporter、reclaimer、heartbeat、dead letter、retry）全部关闭，开启后吞吐会下降。</li>
-<li>延迟分位数来自单次场景，不代表长期稳定性；持续负载与突发负载应分开评估。</li>
-<li>1.0.8 事件总线改为异步队列，完成吞吐的事件口径与 1.0.7 及更早版本不可直接比较；历史数字仅作趋势参考。</li>
+<li>数据来自单台开发笔记本（4 核 8 线程、16 GB、Windows 10、Python 3.13），不能外推到服务器或容器环境。</li>
+<li>吞吐、稀疏延迟与跨存储对照口径不同，三组数字不可混用。</li>
+<li>旁路组件（metrics、health check、reporter、reclaimer、heartbeat、dead letter）按套件关闭，开启后吞吐会下降。</li>
+<li>1.2.1 修复了空队列指数退避与内存队列批量写删，稀疏任务延迟与批量操作数字与 1.0.x 不可直接比较；历史数字仅作趋势参考。</li>
+<li>延迟分位数来自单轮场景，不代表长期稳定性；持续负载与突发负载应分开评估。</li>
 </ul>
 
 <div class="doc-note"><strong>不要直接引用绝对值做容量规划。</strong>请在自己的目标环境用相同脚本、相同口径复测，并把业务任务的真实耗时分布纳入评估。</div>
@@ -537,11 +525,11 @@ python tests/benchmark/run_benchmark.py</code></pre>
       </article>
       <nav class="docs-pager" aria-label="上一篇与下一篇">
       <a class="pager-prev" href="/docs/v1.0/api-reference.html"><span>上一篇</span><strong>API 参考</strong></a>
-      <a class="pager-next" href="/docs/v1.0/roadmap.html"><span>下一篇</span><strong>版本路线图</strong></a>
+      <a class="pager-next" href="/docs/v1.0/developer-guide.html"><span>下一篇</span><strong>开发者指南</strong></a>
     </nav>
       <p class="docs-feedback">发现文档问题？欢迎在 <a href="https://github.com/neopen/neotask/issues" target="_blank" rel="noopener">GitHub Issues</a> 反馈。</p>
     </main>
-    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#%E6%B5%8B%E8%AF%95%E7%8E%AF%E5%A2%83">测试环境</a><a href="#%E5%8F%A3%E5%BE%84">口径</a><a href="#%E8%B0%83%E5%BA%A6%E4%B8%8E%E6%89%A7%E8%A1%8C%E5%BC%80%E9%94%80">调度与执行开销</a><a href="#IO%20%E6%89%A9%E5%B1%95%E6%80%A7">IO 扩展性</a><a href="#%E6%8C%81%E7%BB%AD%E4%B8%8E%E7%AA%81%E5%8F%91%E8%B4%9F%E8%BD%BD">持续与突发负载</a><a href="#%E4%BA%8B%E4%BB%B6%E6%80%BB%E7%BA%BF%E4%B8%8E%E5%94%A4%E9%86%92">事件总线与唤醒</a><a href="#SQLite%20%E8%BE%B9%E7%95%8C">SQLite 边界</a><a href="#%E9%A2%84%E5%8F%96%E7%9A%84%E9%85%8D%E7%BD%AE%E5%BD%B1%E5%93%8D">预取的配置影响</a><a href="#%E6%80%8E%E4%B9%88%E9%80%89%E9%85%8D%E7%BD%AE">怎么选配置</a><a href="#%E5%A4%8D%E7%8E%B0">复现</a><a href="#%E8%A7%A3%E8%AF%BB%E8%BE%B9%E7%95%8C">解读边界</a></nav>
+    <nav class="docs-toc" aria-label="本页目录"><p class="docs-toc-label">本页目录</p><a href="#%E6%B5%8B%E8%AF%95%E7%8E%AF%E5%A2%83">测试环境</a><a href="#method">口径</a><a href="#%E8%B0%83%E5%BA%A6%E4%B8%8E%E6%89%A7%E8%A1%8C%E5%BC%80%E9%94%80">调度与执行开销</a><a href="#%E9%A2%84%E5%8F%96%E4%B8%8E%E5%AE%8C%E6%88%90%E5%90%9E%E5%90%90">预取与完成吞吐</a><a href="#%E7%A8%80%E7%96%8F%E4%BB%BB%E5%8A%A1%E5%BB%B6%E8%BF%9F">稀疏任务延迟</a><a href="#%E6%8C%81%E7%BB%AD%E4%B8%8E%E7%AA%81%E5%8F%91%E8%B4%9F%E8%BD%BD">持续与突发负载</a><a href="#%E8%B7%A8%E5%AD%98%E5%82%A8%E5%AF%B9%E7%85%A7">跨存储对照</a><a href="#%E4%BA%8B%E4%BB%B6%E6%80%BB%E7%BA%BF%E4%B8%8E%E5%94%A4%E9%86%92">事件总线与唤醒</a><a href="#%E6%80%8E%E4%B9%88%E9%80%89%E9%85%8D%E7%BD%AE">怎么选配置</a><a href="#%E5%A4%8D%E7%8E%B0">复现</a><a href="#%E8%A7%A3%E8%AF%BB%E8%BE%B9%E7%95%8C">解读边界</a></nav>
   </div>
   <footer class="site-footer">
   <div class="container">
@@ -556,7 +544,7 @@ python tests/benchmark/run_benchmark.py</code></pre>
           <span class="brand-name">NeoTask</span>
         </a>
         <p>轻量级 Python 异步任务队列。<br>嵌入你的应用，不需要额外部署中间件。</p>
-        <div class="footer-status"><span class="status-dot"></span> v1.1.1 · 发布于 2026-11-15</div>
+        <div class="footer-status"><span class="status-dot"></span> v1.2.1 · 发布于 2026-11-22</div>
       </div>
 
       <div class="footer-col">

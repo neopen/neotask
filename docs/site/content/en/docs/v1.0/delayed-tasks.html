@@ -1,0 +1,112 @@
+<p>Delayed tasks run once at a specific point in time; periodic tasks repeat on an interval or a Cron schedule. Both are provided by <code>TaskScheduler</code> and reuse <code>TaskPool</code> underneath for execution and storage.</p>
+
+<h2>One-off delay</h2>
+<pre><code class="language-python">from datetime import datetime, timedelta
+from neotask import TaskScheduler
+
+scheduler = TaskScheduler(executor=send_reminder)
+
+# relative delay
+task_id = scheduler.submit_delayed({"user_id": 42}, delay_seconds=300)
+
+# fixed point in time
+run_at = datetime.now() + timedelta(hours=2)
+task_id = scheduler.submit_at({"user_id": 42}, execute_at=run_at)</code></pre>
+
+<table>
+<thead><tr><th>Parameter</th><th>Default</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>delay_seconds</code></td><td>Required</td><td>Delay in seconds; a value of 0 or less enqueues the task immediately</td></tr>
+<tr><td><code>task_id</code></td><td>Generated automatically</td><td>Custom IDs must be unique</td></tr>
+<tr><td><code>priority</code></td><td><code>NORMAL</code></td><td>Priority used when the task is enqueued at expiry</td></tr>
+<tr><td><code>ttl</code></td><td><code>3600</code></td><td>Task-level timeout / reclaim threshold</td></tr>
+</tbody>
+</table>
+
+<h2>Time wheel</h2>
+<p>With <code>SchedulerConfig(enable_time_wheel=True)</code>, a delayed task is first written to storage (status <code>pending</code>) and then added to the time wheel. At expiry only the task is pushed into the queue, so while it waits it can still be queried and cancelled by task ID.</p>
+
+<pre><code class="language-python">from neotask import TaskScheduler, SchedulerConfig
+
+config = SchedulerConfig.high_performance()  # 360 slots × 1 second
+scheduler = TaskScheduler(executor=handle, config=config)
+scheduler.start()</code></pre>
+
+<ul>
+<li>The default range is <code>slots × tick × max_rounds</code>, that is 60 × 1 second × 100 rounds ≈ 100 minutes.</li>
+<li>A delay beyond that range falls back to the regular delayed queue and is not lost.</li>
+<li>The time wheel itself is not persisted, so unexpired tasks are not enqueued automatically after a process restart.</li>
+</ul>
+
+<h2>Fixed interval</h2>
+<pre><code class="language-python">periodic_id = scheduler.submit_interval(
+    {"job": "heartbeat"},
+    interval_seconds=30,
+    run_immediately=True,
+    max_runs=None,
+    name="service-heartbeat",
+    missed_policy="skip",
+)</code></pre>
+
+<table>
+<thead><tr><th>Parameter</th><th>Default</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>interval_seconds</code></td><td>Required</td><td>Interval between two executions</td></tr>
+<tr><td><code>run_immediately</code></td><td><code>True</code></td><td>Whether the first execution runs immediately</td></tr>
+<tr><td><code>max_runs</code></td><td><code>None</code></td><td>Maximum number of executions; <code>None</code> means unlimited</td></tr>
+<tr><td><code>missed_policy</code></td><td><code>"skip"</code></td><td>Compensation policy for missed executions</td></tr>
+</tbody>
+</table>
+
+<h2>Cron</h2>
+<pre><code class="language-python">report_id = scheduler.submit_cron(
+    {"job": "daily-report"},
+    "0 9 * * *",          # every day at 09:00
+    name="daily-report",
+    max_runs=None,
+    missed_policy="run_once",
+)</code></pre>
+
+<p>Cron expressions are parsed by <code>croniter</code> and support the standard five-field format. The first execution happens at the next matching time; it does not run immediately.</p>
+
+<table>
+<thead><tr><th><code>missed_policy</code></th><th>Behavior</th></tr></thead>
+<tbody>
+<tr><td><code>skip</code></td><td>Skip all missed slots and continue from the current time (default)</td></tr>
+<tr><td><code>ignore</code></td><td>Ignore missed slots; similar to <code>skip</code></td></tr>
+<tr><td><code>run_once</code></td><td>Run exactly once to catch up after a miss</td></tr>
+<tr><td><code>catch_up</code></td><td>Replay missed slots, up to 5 executions per round</td></tr>
+</tbody>
+</table>
+
+<h2>Managing periodic tasks</h2>
+<table>
+<thead><tr><th>Method</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>get_periodic_tasks()</code></td><td>List all periodic tasks</td></tr>
+<tr><td><code>get_periodic_task(task_id)</code></td><td>Query a single periodic task</td></tr>
+<tr><td><code>pause_periodic(task_id)</code></td><td>Pause the task and keep its definition</td></tr>
+<tr><td><code>resume_periodic(task_id)</code></td><td>Resume and recompute the next run time</td></tr>
+<tr><td><code>cancel_periodic(task_id)</code></td><td>Delete the periodic task</td></tr>
+</tbody>
+</table>
+
+<p><code>cancel(task_id)</code> first tries to cancel a periodic task and falls back to cancelling a regular task when none is found.</p>
+
+<h2>Persistence</h2>
+<table>
+<thead><tr><th>Storage</th><th>Periodic tasks across restarts</th><th>Delayed tasks across restarts</th></tr></thead>
+<tbody>
+<tr><td>memory</td><td>No; a warning is logged once at registration</td><td>No</td></tr>
+<tr><td>SQLite</td><td>Yes, with <code>enable_persistence=True</code></td><td>No; unexpired tasks are not enqueued automatically</td></tr>
+<tr><td>Redis</td><td>Yes, with <code>enable_persistence=True</code></td><td>No; unexpired tasks are not enqueued automatically</td></tr>
+</tbody>
+</table>
+
+<div class="doc-warning"><strong>Restart boundary:</strong> Task records are preserved, but the delayed heap and the time wheel live in process memory. After a restart, delayed tasks still in their waiting period remain <code>pending</code> and do not run automatically. The application must scan and resubmit them at startup, or express the recurring schedule as a periodic task instead.</div>
+
+<h2>Shutdown</h2>
+<pre><code class="language-python">scheduler.shutdown(graceful=True, timeout=30)</code></pre>
+<p>Graceful shutdown first stops accepting new tasks, waits for the queue to drain, then stops the periodic manager and the time wheel.</p>
+
+<p>1.0.8 adds <code>drain_delayed_on_shutdown</code> (default <code>False</code>). When enabled, delayed tasks that have not yet expired are moved into the priority queue at shutdown and awaited. This suits workloads where running early is preferable to losing a task; the trade-off is that those tasks no longer run at their scheduled time.</p>

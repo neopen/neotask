@@ -1,0 +1,111 @@
+<p>NeoTask 1.x provides two entry points: <code>TaskPool</code> handles immediate tasks, and <code>TaskScheduler</code> handles delayed and periodic scheduling. Both use the same execution model: you provide a callable, and NeoTask handles queueing, concurrent execution, state recording and result delivery.</p>
+
+<h2>Requirements</h2>
+<table>
+<thead><tr><th>Item</th><th>Requirement</th></tr></thead>
+<tbody>
+<tr><td>Python</td><td>≥ 3.8</td></tr>
+<tr><td>Core dependencies</td><td><code>aiosqlite</code>, <code>croniter</code>, <code>colorama</code></td></tr>
+<tr><td>Redis backend</td><td><code>pip install "neotask[redis]"</code></td></tr>
+<tr><td>System metrics</td><td><code>pip install "neotask[monitor]"</code></td></tr>
+</tbody>
+</table>
+
+<pre><code class="language-bash">pip install neotask</code></pre>
+
+<h2>Verify the installation</h2>
+<pre><code class="language-bash">python -c "import neotask; print(neotask.__version__)"
+# 1.2.1
+
+neotask --version
+# neotask 1.2.1</code></pre>
+<p>If the import fails, first confirm that the current Python environment matches the install location. The Redis backend and system metrics are optional dependencies; when they are missing, the memory mode still runs. Since 1.0.8 the package ships a <code>neotask</code> CLI entry point for version queries and lightweight benchmarks; see <a href="/docs/benchmarks.html">Benchmarks</a> for the full benchmarks and the API details.</p>
+<p>Since 1.1 NeoTask also provides checkpoint resume, business failure reporting, cost collection and parent/child task links; 1.2 adds the lightweight <code>get_metrics()</code> monitoring snapshot and periodic <code>on_metrics()</code> push. When you need these capabilities, start with <a href="/docs/checkpoint.html">Checkpoints</a> or <a href="/docs/monitoring.html">Monitoring and health checks</a>.</p>
+
+<h2>Lightweight benchmark</h2>
+<pre><code class="language-bash"># Built-in 5 ms executor, 200 tasks, 10 concurrent
+neotask --benchmark
+
+# Use your own executor and output JSON
+neotask --benchmark --executor my_tasks:handle --tasks 2000 --json</code></pre>
+<p>The benchmark entry point disables health checks, metrics and the reporter by default and measures only submission, completion and end-to-end latency. It is suitable for validating the environment and the executor, not as a substitute for a full load test.</p>
+
+<h2>Submit your first task</h2>
+<p>The executor receives a <code>dict</code>, and its return value is stored as the task result. The return value must be JSON-serializable.</p>
+
+<pre><code class="language-python">import asyncio
+from neotask import TaskPool
+
+async def handle(data):
+    await asyncio.sleep(0.1)
+    return {"value": data["value"] * 2}
+
+pool = TaskPool(executor=handle)
+task_id = pool.submit({"value": 21})
+result = pool.wait_for_result(task_id)
+print(result)  # {'value': 42}
+pool.shutdown()</code></pre>
+
+<p><code>TaskPool</code> starts automatically on the first submit; you can also call <code>pool.start()</code> explicitly.</p>
+
+<h2>Three calling styles</h2>
+<table>
+<thead><tr><th>Style</th><th>When to use</th><th>Example</th></tr></thead>
+<tbody>
+<tr><td>Synchronous API</td><td>Scripts, plain functions, needing the result immediately</td><td><code>submit()</code> + <code>wait_for_result()</code></td></tr>
+<tr><td>Asynchronous API</td><td>Services already inside an event loop</td><td><code>await submit_async()</code> + <code>await wait_for_result_async()</code></td></tr>
+<tr><td>Context manager</td><td>Need guaranteed resource cleanup</td><td><code>with TaskPool(...) as pool:</code></td></tr>
+</tbody>
+</table>
+
+<pre><code class="language-python"># Asynchronous
+task_id = await pool.submit_async({"value": 1})
+result = await pool.wait_for_result_async(task_id, timeout=30)
+
+# Synchronous context manager
+with TaskPool(executor=handle) as pool:
+    task_id = pool.submit({"value": 2})
+    print(pool.wait_for_result(task_id))
+
+# Asynchronous context manager
+async with TaskPool(executor=handle) as pool:
+    task_id = await pool.submit_async({"value": 3})
+    print(await pool.wait_for_result_async(task_id))</code></pre>
+
+<h2>Submit without waiting</h2>
+<p>Background tasks usually do not need the result. After submitting, query the state or result by task ID:</p>
+
+<pre><code class="language-python">task_id = pool.submit({"value": 5})
+pool.get_status(task_id)   # pending / running / success / failed / cancelled
+pool.get_result(task_id)   # contains status, result, error and timestamps
+
+# Blocking wait when needed
+result = pool.wait_for_result(task_id, timeout=60)</code></pre>
+
+<h2>Batch submission</h2>
+<pre><code class="language-python">task_ids = pool.submit_batch([{"value": i} for i in range(100)])
+results = pool.wait_all(task_ids, timeout=60)
+# {task_id: result}; the value of a failed task looks like {"error": "..."}</code></pre>
+
+<h2>Common errors</h2>
+<table>
+<thead><tr><th>Symptom</th><th>Common cause</th><th>What to do</th></tr></thead>
+<tbody>
+<tr><td><code>ModuleNotFoundError: neotask</code></td><td>Installed into another Python or virtual environment</td><td>Confirm that <code>python -m pip</code> matches the running interpreter, then reinstall</td></tr>
+<tr><td>Redis connection failure</td><td>The <code>redis</code> extra is not installed or the address is unreachable</td><td>Install <code>neotask[redis]</code> and check <code>redis_url</code> and the network</td></tr>
+<tr><td>Task stays <code>pending</code></td><td>The pool is not started, concurrency is 0 or a worker failed</td><td>Call <code>pool.start()</code> explicitly and use <code>get_stats()</code> to inspect the queue and worker state</td></tr>
+<tr><td><code>wait_for_result</code> times out</td><td>The task is still running, or a blocking synchronous function holds the event loop</td><td>Increase the wait time; move blocking code to <code>ThreadExecutor</code></td></tr>
+<tr><td><code>database is locked</code></td><td>Several processes share the same SQLite file</td><td>1.0.8 serializes writes within a single process; across processes still prefer a single writer, or switch to Redis</td></tr>
+</tbody>
+</table>
+
+<h2>Next steps</h2>
+<ul>
+<li>Tune concurrency, timeouts, storage and retries: <a href="/docs/configuration.html">Configuration reference</a></li>
+<li>Learn about task states and events: <a href="/docs/task-lifecycle.html">Task lifecycle</a></li>
+<li>Save progress in long tasks: <a href="/docs/checkpoint.html">Checkpoints</a></li>
+<li>Collect tokens, API calls and duration: <a href="/docs/cost-tracking.html">Cost and timing</a></li>
+<li>Deploy across nodes: <a href="/docs/distributed.html">Distributed deployment</a></li>
+</ul>
+
+<div class="doc-note"><strong>About executor types:</strong> When you pass a plain synchronous function, <code>TaskPool</code> wraps it as an asynchronous executor automatically; <code>TaskPoolConfig.executor_type</code> does not change this behavior. To run on a thread or in a process, pass a <code>ThreadExecutor</code> or <code>ProcessExecutor</code> instance explicitly; see <a href="/docs/architecture.html">Architecture overview</a>.</div>

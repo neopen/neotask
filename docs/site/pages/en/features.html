@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Features · NeoTask async task queue</title>
+  <meta name="description" content="NeoTask capabilities: immediate tasks with four priority levels, delayed, interval and Cron scheduling, automatic retries and failure recovery, Memory/SQLite/Redis storage, Redis shared queues and task locks, lifecycle events, and lightweight monitoring metrics.">
+  <meta name="keywords" content="Python task queue features, task priority, Cron scheduler, task retry, failure recovery, task persistence, Redis distributed queue, task locks, lightweight monitoring, task monitoring, DAG workflow orchestration, NeoFlow, NeoTask features">
+  <meta name="author" content="NeoPen">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+  <meta name="theme-color" content="#0b1713">
+  <link rel="canonical" href="{{HOMEPAGE}}/en/features.html">
+  <meta property="og:site_name" content="NeoTask">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Features · NeoTask async task queue">
+  <meta property="og:description" content="One library covering submission, scheduling, execution, persistence and failure recovery for background jobs.">
+  <meta property="og:url" content="{{HOMEPAGE}}/en/features.html">
+  <meta property="og:image" content="{{HOMEPAGE}}/assets/img/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="NeoTask features">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Features · NeoTask async task queue">
+  <meta name="twitter:description" content="One library covering submission, scheduling, execution, persistence and failure recovery for background jobs.">
+  <meta name="twitter:image" content="{{HOMEPAGE}}/assets/img/og.png">
+  <meta name="twitter:image:alt" content="NeoTask features">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/css/site.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "NeoTask features",
+    "description": "NeoTask capabilities: priorities, delayed and Cron scheduling, automatic retries, multi-tier storage, distributed queues and task locks, lifecycle events and metrics.",
+    "url": "{{HOMEPAGE}}/en/features.html",
+    "inLanguage": "en",
+    "isPartOf": { "@type": "WebSite", "name": "NeoTask", "url": "{{HOMEPAGE}}/" },
+    "about": {
+      "@type": "SoftwareApplication",
+      "name": "NeoTask",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "OS Independent",
+      "url": "{{HOMEPAGE}}/en/"
+    }
+  }
+  </script>
+</head>
+<body class="sub-page">
+  <!-- @include icons -->
+  <!-- @include header -->
+
+  <main id="main">
+    <section class="page-hero">
+      <div class="container">
+        <span class="eyebrow">PRODUCT CAPABILITIES</span>
+        <h1>One library for the<br><span class="grad-text">entire task lifecycle.</span></h1>
+        <p>From submission and queueing to execution, persistence, retries, reclamation and observation. NeoTask packs the runtime a time-consuming task needs into one Python package, enabled as you need it.</p>
+        <div class="page-hero-actions">
+          <a class="btn btn-primary" href="/en/docs/quickstart.html">Get started <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+          <a class="btn btn-outline" href="/en/docs/task-lifecycle.html">Task lifecycle</a>
+        </div>
+        <div class="page-hero-meta">
+          <span><svg class="icon icon-xs"><use href="#i-check"/></svg> Python {{PYTHON}}</span>
+          <span><svg class="icon icon-xs"><use href="#i-check"/></svg> {{LICENSE}} License</span>
+          <span><svg class="icon icon-xs"><use href="#i-check"/></svg> No external services</span>
+          <span><svg class="icon icon-xs"><use href="#i-check"/></svg> Scales to distributed</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container feature-rows">
+        <article class="feature-row">
+          <div class="feature-copy">
+            <span class="feature-tag">01 · Immediate tasks</span>
+            <h2>Submit and run, with priority deciding order</h2>
+            <p>TaskPool hands incoming work to the worker pool at once. Four priority levels give critical work a first chance under bursty traffic, with FIFO within a level.</p>
+            <ul class="check-list">
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Sync, async and batch submission</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Result waiting, status queries and cancellation</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Context manager starts and stops the pool</li>
+            </ul>
+            <a class="text-link" href="/en/docs/priority-queue.html">Priority queue internals <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+          <div class="feature-panel">
+            <div class="panel-top"><span>priority queue</span><span class="panel-live"><span class="dot-live"></span> live</span></div>
+            <div class="feature-priority">
+              <div class="prio-row"><span>CRITICAL</span><i style="--w:100%"></i><em>0</em></div>
+              <div class="prio-row"><span>HIGH</span><i style="--w:78%"></i><em>1</em></div>
+              <div class="prio-row"><span>NORMAL</span><i style="--w:52%"></i><em>2</em></div>
+              <div class="prio-row"><span>LOW</span><i style="--w:26%"></i><em>3</em></div>
+            </div>
+            <div class="panel-foot"><span>TaskPriority</span><span>FIFO within level</span></div>
+          </div>
+        </article>
+
+        <article class="feature-row is-reverse">
+          <div class="feature-copy">
+            <span class="feature-tag">02 · Scheduling</span>
+            <h2>Delays, intervals and Cron in one scheduler</h2>
+            <p>TaskScheduler adds a time dimension on top of the task pool: delayed runs, run-at timestamps, fixed intervals and Cron expressions, plus pause and resume for periodic jobs.</p>
+            <ul class="check-list">
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Second-level delays and run-at times</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Fixed-interval periodic jobs</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Cron expressions and missed-run policy</li>
+            </ul>
+            <a class="text-link" href="/en/docs/delayed-tasks.html">Scheduling internals <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+          <div class="feature-panel">
+            <div class="panel-top"><span>scheduler</span><span>Asia/Shanghai</span></div>
+            <div class="schedule-list">
+              <div class="schedule-row"><span class="schedule-time">60s</span><span>remind_checkout</span><em>delayed</em></div>
+              <div class="schedule-row"><span class="schedule-time">5m</span><span>heartbeat</span><em>interval</em></div>
+              <div class="schedule-row"><span class="schedule-time">09:00</span><span>daily_report</span><em>cron</em></div>
+              <div class="schedule-row"><span class="schedule-time">02:00</span><span>nightly_cleanup</span><em>cron</em></div>
+            </div>
+            <div class="panel-foot"><span>submit_delayed · submit_interval · submit_cron</span></div>
+          </div>
+        </article>
+
+        <article class="feature-row">
+          <div class="feature-copy">
+            <span class="feature-tag">03 · Reliability</span>
+            <h2>Retries on failure, reclamation on node loss</h2>
+            <p>Exceptions retry automatically per configuration. In Redis multi-node mode, heartbeat expiry and the reclaimer return tasks from a silent node to the queue; tasks that ultimately fail land in the dead letter queue for manual inspection. Memory and SQLite do not reclaim across nodes.</p>
+            <ul class="check-list">
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Automatic retries with linear delay</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Orphan task reclamation and zombie-lock scanning</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Dead letter queue preserves the failure state</li>
+            </ul>
+            <a class="text-link" href="/en/docs/failure-recovery.html">Failure recovery internals <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+          <div class="feature-panel">
+            <div class="panel-top"><span>task lifecycle</span><span>watchdog</span></div>
+            <div class="lifecycle">
+              <span class="life-node">PENDING</span>
+              <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
+              <span class="life-node">RUNNING</span>
+              <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
+              <span class="life-node is-ok">SUCCESS</span>
+            </div>
+            <div class="lifecycle-branch">
+              <span class="life-node is-fail">FAILED</span>
+              <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
+              <span class="life-node">RETRY</span>
+              <svg class="icon icon-xs"><use href="#i-arrow"/></svg>
+              <span class="life-node is-muted">DEAD LETTER</span>
+            </div>
+            <div class="panel-foot"><span>max_retries</span><span>reclaimer · heartbeat</span></div>
+          </div>
+        </article>
+
+        <article class="feature-row is-reverse">
+          <div class="feature-copy">
+            <span class="feature-tag">04 · Persistence</span>
+            <h2>Three stores, one abstraction</h2>
+            <p>Pick a backend by deployment scale: in-memory for development, SQLite for single-machine persistence, Redis for multi-node sharing. Switching storage does not change business code.</p>
+            <ul class="check-list">
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Memory: zero config, in-process</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> SQLite: single-file durability</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Redis: shared queue and state indexes</li>
+            </ul>
+            <a class="text-link" href="/en/docs/deployment.html#storage-database">Storage internals <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+          <div class="feature-panel">
+            <div class="panel-top"><span>storage backends</span><span>TaskRepository</span></div>
+            <div class="storage-options">
+              <div class="storage-option">
+                <span class="storage-name">Memory</span>
+                <span class="storage-desc">Development / transient tasks</span>
+                <span class="storage-state">Default</span>
+              </div>
+              <div class="storage-option is-active">
+                <span class="storage-name">SQLite</span>
+                <span class="storage-desc">Single-machine persistence</span>
+                <span class="storage-state">Recommended</span>
+              </div>
+              <div class="storage-option">
+                <span class="storage-name">Redis</span>
+                <span class="storage-desc">Distributed cluster</span>
+                <span class="storage-state">Optional</span>
+              </div>
+            </div>
+            <div class="panel-foot"><span>aiosqlite</span><span>TaskPoolConfig</span></div>
+          </div>
+        </article>
+
+        <article class="feature-row">
+          <div class="feature-copy">
+            <span class="feature-tag">05 · Distributed</span>
+            <h2>Peer nodes, no master</h2>
+            <p>After switching to Redis, nodes consume the shared queue as peers. Heartbeats track node liveness, locks with a watchdog prevent duplicate execution, and prefetch cuts round-trip overhead.</p>
+            <ul class="check-list">
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Competitive consumption, no scheduler center</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Redis distributed locks with watchdog renewal</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Demand-driven prefetch and batch operations</li>
+            </ul>
+            <a class="text-link" href="/en/docs/deployment.html#production">Distributed deployment <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+          <div class="feature-panel">
+            <div class="panel-top"><span>cluster</span><span>3 nodes</span></div>
+            <div class="cluster-visual">
+              <span class="cluster-node">node-1<br><em>active</em></span>
+              <span class="cluster-node">node-2<br><em>active</em></span>
+              <span class="cluster-node is-muted">node-3<br><em>offline</em></span>
+              <span class="cluster-queue">Redis shared queue</span>
+            </div>
+            <div class="panel-foot"><span>heartbeat</span><span>reclaimer</span><span>lock</span></div>
+          </div>
+        </article>
+
+        <article class="feature-row is-reverse">
+          <div class="feature-copy">
+            <span class="feature-tag">06 · Observability</span>
+            <h2>Task state in your existing monitoring</h2>
+            <p>Subscribe to six lifecycle events and read statistics and health status; the event bus offers bounded queues and slow-callback statistics. When you need an HTTP metrics endpoint, the optional <code>neotask[ui]</code> extra starts <code>WebUIServer</code> manually.</p>
+            <ul class="check-list">
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> created / started / completed / failed</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> cancelled / reclaimed events</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Event backpressure, drop counts and metrics collection</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> Lightweight monitoring entry point (optional <code>neotask[ui]</code>)</li>
+              <li><svg class="icon icon-xs"><use href="#i-check"/></svg> <code>neotask --benchmark</code> self-check</li>
+            </ul>
+            <a class="text-link" href="/en/docs/monitoring.html">Monitoring and health checks <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a>
+          </div>
+          <div class="feature-panel">
+            <div class="panel-top"><span>event bus</span><span class="panel-live"><span class="dot-live"></span> streaming</span></div>
+            <div class="event-stream">
+              <div><span class="ev-time">12:01:04</span><span class="ev-name">task.created</span><span class="ev-id">#a3f1</span></div>
+              <div><span class="ev-time">12:01:04</span><span class="ev-name">task.started</span><span class="ev-id">#a3f1</span></div>
+              <div><span class="ev-time">12:01:06</span><span class="ev-name">task.completed</span><span class="ev-id">#a3f1</span></div>
+              <div><span class="ev-time">12:01:09</span><span class="ev-name">task.failed</span><span class="ev-id">#b91c</span></div>
+              <div><span class="ev-time">12:01:12</span><span class="ev-name">task.reclaimed</span><span class="ev-id">#c40e</span></div>
+            </div>
+            <div class="panel-foot"><span>EventBus</span><span>health check</span></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section section-tint">
+      <div class="container">
+        <div class="section-head">
+          <span class="eyebrow">CAPABILITY MATRIX</span>
+          <h2>Capability boundaries by storage</h2>
+          <p>One API, with capabilities that depend on the storage backend. Confirm your deployment shape before choosing.</p>
+        </div>
+        <div class="cap-wrap">
+          <table class="cap-table">
+            <thead>
+              <tr><th>Capability</th><th>Memory</th><th>SQLite</th><th>Redis</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Immediate tasks and priorities</td><td><span class="cap-yes">Supported</span></td><td><span class="cap-yes">Supported</span></td><td><span class="cap-yes">Supported</span></td></tr>
+              <tr><td>Delayed / interval / Cron</td><td><span class="cap-yes">Supported</span></td><td><span class="cap-yes">Supported</span></td><td><span class="cap-yes">Supported</span></td></tr>
+              <tr><td>Task state persistence</td><td><span class="cap-no">In-process</span></td><td><span class="cap-yes">On disk</span></td><td><span class="cap-yes">Persisted</span></td></tr>
+              <tr><td>Shared queue across nodes</td><td><span class="cap-no">Not supported</span></td><td><span class="cap-no">Not supported</span></td><td><span class="cap-yes">Supported</span></td></tr>
+              <tr><td>Distributed locks and watchdog</td><td><span class="cap-no">In-process lock</span></td><td><span class="cap-no">In-process lock</span></td><td><span class="cap-yes">Redis lock</span></td></tr>
+              <tr><td>Cross-node failure reclamation</td><td><span class="cap-no">Not supported</span></td><td><span class="cap-no">Not supported</span></td><td><span class="cap-yes">Supported</span></td></tr>
+              <tr><td>Prefetch and batch reads</td><td><span class="cap-yes">Supported</span></td><td><span class="cap-yes">Supported</span></td><td><span class="cap-yes">Supported</span></td></tr>
+              <tr><td>Cross-node heartbeat and metrics</td><td><span class="cap-no">Not needed</span></td><td><span class="cap-no">Not needed</span></td><td><span class="cap-yes">Supported</span></td></tr>
+              <tr><td>Extra dependencies</td><td><span class="cap-muted">None</span></td><td><span class="cap-muted">aiosqlite</span></td><td><span class="cap-muted">redis</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="boundary">
+          <div class="boundary-copy">
+            <span class="eyebrow">HONEST LIMITS</span>
+            <h2>Knowing what it does not do matters more than knowing what it does</h2>
+            <p>NeoTask is a focused task queue, not a universal workflow platform. The following are out of scope or available only as options:</p>
+          </div>
+          <ul class="boundary-list">
+            <li>
+              <span class="boundary-icon">—</span>
+              <div><strong>DAG workflow orchestration</strong><p>Out of scope. The NeoFlow orchestration service owns task topology, conditional branches and parallel execution; NeoTask executes individual tasks.</p></div>
+            </li>
+            <li>
+              <span class="boundary-icon">—</span>
+              <div><strong>Multi-tenancy and quotas</strong><p>Out of scope; tenant isolation and resource quotas belong to the platform or orchestration layer above.</p></div>
+            </li>
+            <li>
+              <span class="boundary-icon">○</span>
+              <div><strong>Lightweight monitoring endpoint</strong><p><code>WebUIServer</code> from <code>neotask[ui]</code> serves a root page and <code>/api/stats</code>, and you start it yourself; there is no separate orchestration console.</p></div>
+            </li>
+            <li>
+              <span class="boundary-icon">○</span>
+              <div><strong>Progress callbacks</strong><p>Tasks can call <code>report_progress()</code> and applications subscribe via <code>on_progress</code>; process executors cannot share context, so progress is unavailable there.</p></div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta">
+      <div class="container cta-inner">
+        <div class="cta-copy">
+          <span class="eyebrow">NEXT STEP</span>
+          <h2>Spend a few minutes verifying the fit</h2>
+          <p>Submitting one real task after install is more convincing than any feature list.</p>
+        </div>
+        <div class="cta-actions">
+          <div class="install-box install-box-light">
+            <span class="install-prompt">$</span>
+            <code>pip install neotask</code>
+            <button class="copy-btn" data-copy="pip install neotask" aria-label="Copy install command">
+              <svg class="icon icon-sm copy-icon"><use href="#i-copy"/></svg>
+              <svg class="icon icon-sm check-icon"><use href="#i-check"/></svg>
+            </button>
+          </div>
+          <div class="cta-buttons">
+            <a class="btn btn-primary btn-lg" href="/en/docs/quickstart.html">Read the getting-started guide <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+            <a class="btn btn-ghost btn-lg" href="/en/docs/configuration.html">Configuration reference</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- @include footer -->
+  <script src="/assets/js/site.js" defer></script>
+</body>
+</html>

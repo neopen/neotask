@@ -1,0 +1,53 @@
+<p>NeoTask uses four priority levels. Lower numbers run first, so <code>CRITICAL</code> is dequeued first. Priority is fixed at submission time and never changes while the task executes.</p>
+
+<h2>Priority values</h2>
+<table>
+<thead><tr><th>Enum</th><th>Value</th><th>Use</th></tr></thead>
+<tbody>
+<tr><td><code>TaskPriority.CRITICAL</code></td><td>0</td><td>Work that must be handled as soon as possible</td></tr>
+<tr><td><code>TaskPriority.HIGH</code></td><td>1</td><td>Above normal priority</td></tr>
+<tr><td><code>TaskPriority.NORMAL</code></td><td>2</td><td>Default</td></tr>
+<tr><td><code>TaskPriority.LOW</code></td><td>3</td><td>Background work that can be deferred</td></tr>
+</tbody>
+</table>
+
+<pre><code class="language-python">from neotask import TaskPool, TaskPriority
+
+pool = TaskPool(executor=handle)
+
+pool.submit({"job": "cleanup"}, priority=TaskPriority.LOW)
+pool.submit({"job": "billing"}, priority=TaskPriority.HIGH)
+pool.submit({"job": "alert"}, priority=0)  # integers work too
+
+# One priority for the whole batch
+pool.submit_batch([{"job": "report"}], priority=TaskPriority.NORMAL)</code></pre>
+
+<h2>Ordering rules</h2>
+<table>
+<thead><tr><th>Storage</th><th>Implementation</th><th>Order within the same priority</th></tr></thead>
+<tbody>
+<tr><td>memory</td><td>Min-heap of <code>(priority, sequence, task_id)</code></td><td>Strict FIFO, guaranteed by an auto-incrementing sequence</td></tr>
+<tr><td>SQLite</td><td><code>ORDER BY priority ASC, created_at ASC</code></td><td>FIFO by enqueue time</td></tr>
+<tr><td>Redis</td><td>ZSET with the priority as score</td><td>Lexicographic by member; default task IDs carry a timestamp prefix, so the result is close to FIFO</td></tr>
+</tbody>
+</table>
+
+<div class="doc-warning"><strong>Custom task IDs affect Redis ordering:</strong> members with the same score are ordered lexicographically in Redis. If you pass unordered custom <code>task_id</code> values, same-priority tasks no longer dequeue in submission order. For strict FIFO, use default IDs or choose SQLite.</div>
+
+<h2>Priority and concurrency</h2>
+<p>Priority decides dequeue order; it does not preempt running tasks. If all 10 workers are executing long low-priority jobs, a newly arrived <code>CRITICAL</code> task still waits for an idle worker. To reduce latency:</p>
+<ul>
+<li>raise <code>worker_concurrency</code> to keep idle execution capacity;</li>
+<li>split long jobs into several shorter tasks so each one holds a worker briefly;</li>
+<li>give critical work a dedicated TaskPool instance and storage namespace.</li>
+</ul>
+
+<div class="doc-warning"><strong>No priority aging:</strong> the queue sorts by value only and never promotes a low-priority task because it has waited long. Sustained high-priority traffic can starve <code>LOW</code> tasks indefinitely; when you need fairness, rate-limit high-priority submissions in the business layer or move low-priority work to a separate queue.</div>
+
+<h2>How prefetch affects ordering</h2>
+<p>With prefetch enabled, a worker pulls <code>prefetch_size</code> tasks from the queue into its local queue at once. Strict cross-priority ordering holds only within each batch dequeue; a low-priority task already in the local queue can run before a high-priority task that arrives later on the shared queue.</p>
+
+<div class="doc-note">For order-sensitive workloads, set <code>enable_prefetch=False</code>, or use <code>worker_concurrency=1</code> with <code>prefetch_size</code> set to 1. See <a href="/docs/prefetch.html">Prefetching</a> for details.</div>
+
+<h2>Delayed tasks</h2>
+<p>Tasks submitted with <code>submit(..., delay=n)</code> enter the delayed queue first and move to the priority queue at their original priority once they are due. <code>delay=0</code> goes straight to the priority queue. The delayed queue is an in-process min-heap and is not persisted with storage.</p>

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="{{HTML_LANG}}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeoTask {{DOCS_VERSION}} Docs · Install, configure, API, and benchmarks</title>
+  <meta name="description" content="{{UI_DOCS_HUB_DESCRIPTION}}">
+  <meta name="keywords" content="{{UI_DOCS_HUB_KEYWORDS}}">
+  <meta name="author" content="NeoPen">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+  <link rel="canonical" href="{{DOCS_HUB_CANONICAL}}">
+  <meta property="og:site_name" content="{{UI_DOCS_SITE_NAME}}">
+  <meta property="og:locale" content="{{OG_LOCALE}}">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{{UI_DOCS_HUB_TITLE_HEAD}}">
+  <meta property="og:description" content="{{UI_DOCS_HUB_OG_DESCRIPTION}}">
+  <meta property="og:url" content="{{DOCS_HUB_CANONICAL}}">
+  <meta property="og:image" content="{{HOMEPAGE}}/assets/img/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="{{UI_DOCS_HUB_TITLE}} · {{DOCS_VERSION}}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{UI_DOCS_HUB_TITLE_HEAD}}">
+  <meta name="twitter:description" content="{{UI_DOCS_HUB_OG_DESCRIPTION}}">
+  <meta name="twitter:image" content="{{HOMEPAGE}}/assets/img/og.png">
+  <meta name="twitter:image:alt" content="{{UI_DOCS_HUB_TITLE}} · {{DOCS_VERSION}}">
+  <meta name="theme-color" content="#0b1713">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/css/site.css">
+  <link rel="stylesheet" href="/assets/css/docs.css">
+{{DOCS_JSONLD}}
+</head>
+<body class="docs-page docs-landing">
+  <!-- @include icons -->
+  <!-- @include header -->
+
+  <main id="main">
+    <section class="docs-hero">
+      <div class="docs-hero-inner">
+        <span class="eyebrow">{{UI_DOCS_HERO_EYEBROW}} · {{DOCS_VERSION}}</span>
+        <h1>{{UI_DOCS_HUB_TITLE}}</h1>
+        <p>{{UI_DOCS_HERO_TEXT}}</p>
+        <div class="docs-hero-actions">
+          <a class="btn btn-primary" href="{{QUICKSTART_URL}}">{{UI_DOCS_QUICK_START}} <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+          <a class="btn btn-outline" href="{{API_URL}}">{{UI_DOCS_API_REFERENCE}}</a>
+          <a class="btn btn-outline" href="{{DOCS_ALL_PATH}}">{{UI_DOCS_SWITCH_VERSION}}</a>
+          <a class="btn btn-outline" href="{{REPO}}" target="_blank" rel="noopener"><svg class="icon icon-sm"><use href="#i-github"/></svg> {{UI_DOCS_SOURCE_REPO}}</a>
+        </div>
+        <div class="docs-meta-row">
+          <span>{{DOCS_COUNT}} {{UI_DOCS_DOCS_COUNT}}</span>
+          <span>{{DOCS_VERSION}}</span>
+          <span>{{UI_DOCS_APPLIES_TO}} {{DOCS_LIBRARY}}</span>
+          <span>{{UI_DOCS_BASELINE}}{{DOCS_BASELINE}}</span>
+          <span>{{UI_DOCS_UPDATED}} {{DOCS_UPDATED}}</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="docs-hub">
+      <div class="docs-version-bar">
+        <label for="docsVersionHub">{{UI_DOCS_VERSION_LABEL}}</label>
+        <select id="docsVersionHub" data-docs-version>
+          {{DOCS_VERSION_OPTIONS}}
+        </select>
+        <span>{{UI_DOCS_APPLIES_TO}} {{DOCS_LIBRARY}} · {{UI_DOCS_BASELINE}}{{DOCS_BASELINE}}</span>
+        <a href="{{DOCS_ALL_PATH}}">{{UI_DOCS_ALL_VERSIONS}}</a>
+      </div>
+
+      <div class="hub-search">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="docsHubSearch" type="search" placeholder="{{UI_DOCS_SEARCH_PLACEHOLDER}}" aria-label="{{UI_DOCS_SEARCH_ARIA}}" autocomplete="off">
+        <span class="hub-search-hint">/</span>
+      </div>
+
+      <div class="docs-quick">
+        <a class="docs-quick-item" href="{{QUICKSTART_URL}}">
+          <span>{{UI_DOCS_QUICK5}}</span>
+          <strong>{{UI_DOCS_QUICK5_TITLE}}</strong>
+          <p>{{UI_DOCS_QUICK5_TEXT}}</p>
+        </a>
+        <a class="docs-quick-item" href="{{DOCS_HUB_PATH}}/configuration.html">
+          <span>{{UI_DOCS_QUICK_CONFIG}}</span>
+          <strong>{{UI_DOCS_QUICK_CONFIG_TITLE}}</strong>
+          <p>{{UI_DOCS_QUICK_CONFIG_TEXT}}</p>
+        </a>
+        <a class="docs-quick-item" href="{{DOCS_HUB_PATH}}/failure-recovery.html">
+          <span>{{UI_DOCS_QUICK_OPS}}</span>
+          <strong>{{UI_DOCS_QUICK_OPS_TITLE}}</strong>
+          <p>{{UI_DOCS_QUICK_OPS_TEXT}}</p>
+        </a>
+      </div>
+
+      <div class="docs-hub-intro" style="margin-top:40px">
+        <h2>{{UI_DOCS_RECOMMENDED}}</h2>
+        <a href="{{QUICKSTART_URL}}">{{UI_DOCS_START_READING}} →</a>
+      </div>
+      <div class="doc-feature-grid">
+{{DOCS_FEATURED}}
+      </div>
+
+      <div id="docsGroups">
+{{DOCS_GROUPS}}
+      </div>
+
+      <p class="hub-count" id="docsHubCount" hidden></p>
+      <p class="hub-empty" id="docsHubEmpty" hidden>{{UI_DOCS_EMPTY_SEARCH}}</p>
+
+      <div class="hub-foot">
+        <div>
+          <h2>{{UI_DOCS_ISSUES_TITLE}}</h2>
+          <p>{{UI_DOCS_ISSUES_TEXT}}</p>
+        </div>
+        <a class="btn btn-outline" href="{{ISSUES}}" target="_blank" rel="noopener">{{UI_DOCS_ISSUES_BTN}} <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+      </div>
+    </div>
+  </main>
+
+  <!-- @include footer -->
+  <script src="/assets/js/site.js" defer></script>
+</body>
+</html>

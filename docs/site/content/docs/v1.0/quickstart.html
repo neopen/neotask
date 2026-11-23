@@ -15,12 +15,12 @@
 
 <h2>安装校验</h2>
 <pre><code class="language-bash">python -c "import neotask; print(neotask.__version__)"
-# 1.1.1
+# 1.2.1
 
 neotask --version
-# neotask 1.1.1</code></pre>
+# neotask 1.2.1</code></pre>
 <p>如果导入失败，先确认当前 Python 环境与安装位置一致。Redis 后端和系统指标是可选依赖，未安装时不影响内存模式运行。1.0.8 起安装包提供 <code>neotask</code> 命令行入口，支持版本查询与轻量基准；完整基准与 API 说明见 <a href="/docs/benchmarks.html">性能基准</a>。</p>
-<p>1.1 起还提供断点续跑、业务失败上报、成本采集与父子任务关联。需要这些能力时，从 <a href="/docs/checkpoint.html">断点续跑</a> 开始，或先阅读 <a href="/docs/cost-tracking.html">成本与耗时</a> 与 <a href="/docs/task-context.html">任务关联与共享上下文</a>。</p>
+<p>1.1 起还提供断点续跑、业务失败上报、成本采集与父子任务关联；1.2 新增 <code>get_metrics()</code> 轻量监控快照与 <code>on_metrics()</code> 周期推送。需要这些能力时，从 <a href="/docs/checkpoint.html">断点续跑</a> 或 <a href="/docs/monitoring.html">监控与健康检查</a> 开始。</p>
 
 <h2>轻量性能自测</h2>
 <pre><code class="language-bash"># 内置 5 ms 执行器，200 个任务，10 并发

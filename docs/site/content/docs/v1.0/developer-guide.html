@@ -1,0 +1,151 @@
+<p>这一章面向想阅读源码、提交补丁或发布版本的开发者。NeoTask 使用 <code>src</code> 布局、无运行时框架依赖，测试与发布流程都在仓库内完成。</p>
+
+<h2 id="project-structure">项目结构</h2>
+<pre><code class="text">neotask/
+├── src/neotask/
+│   ├── api/            # TaskPool、TaskScheduler（公共入口）
+│   ├── core/           # 生命周期、分发、进度、成本、断点、上下文
+│   ├── queue/          # 优先级队列、延时队列、队列调度、死信
+│   ├── worker/         # Worker 池、预取器、回收器
+│   ├── storage/        # Memory / SQLite / Redis 仓储实现
+│   ├── executor/       # 异步 / 线程 / 进程执行器
+│   ├── lock/           # 内存锁、Redis 锁、看门狗
+│   ├── distributed/    # 节点、协调器、分片
+│   ├── event/          # 事件总线与中间件
+│   ├── monitor/        # 指标、健康检查、报告器
+│   ├── models/         # Task、配置、周期任务模型
+│   ├── cli/            # neotask 命令行入口
+│   └── common/         # 异常、常量、日志
+├── tests/              # unit / integration / distributed / chaos / benchmark
+├── benchmarks/         # 压测脚本与结果
+├── examples/           # 可运行示例
+├── scripts/            # 迁移与维护脚本
+├── pyproject.toml
+└── CONTRIBUTING.md</code></pre>
+<p>数据流：<code>TaskPool</code> → <code>TaskDispatcher</code> → <code>QueueScheduler</code> → <code>WorkerPool</code> → <code>TaskExecutor</code>，生命周期事件经 <code>EventBus</code> 广播，状态与结果写入仓储。</p>
+
+<h2 id="dev-environment">开发环境</h2>
+<pre><code class="language-bash">git clone https://github.com/neopen/neotask.git
+cd neotask
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"</code></pre>
+<table>
+<thead><tr><th>工具</th><th>用途</th></tr></thead>
+<tbody>
+<tr><td><code>pytest</code> + <code>pytest-asyncio</code></td><td>单元与集成测试</td></tr>
+<tr><td><code>ruff</code></td><td>Lint 与格式化</td></tr>
+<tr><td><code>mypy</code></td><td>类型检查</td></tr>
+<tr><td><code>pre-commit</code></td><td>提交前自动检查</td></tr>
+<tr><td><code>build</code> / <code>twine</code></td><td>构建与发布</td></tr>
+</tbody>
+</table>
+<p>最低 Python 为 3.8，CI 覆盖 3.8 / 3.10 / 3.12。本地开发建议使用 3.10 以上，便于获得更完整的类型提示。</p>
+
+<h2 id="local-development">本地开发</h2>
+<ul>
+<li>以可编辑模式安装（<code>-e</code>），修改源码后无需重新安装。</li>
+<li>新增示例放在 <code>examples/</code>，命名与现有文件保持序号前缀。</li>
+<li>运行单个示例验证行为：<code>python examples/01_simple.py</code>。</li>
+<li>涉及 Redis 的改动需要本地 Redis，或使用容器启动一个临时实例。</li>
+<li>日志级别可通过 <code>NEOTASK_LOG_LEVEL</code> 之类的应用侧变量控制（NeoTask 不强制读取环境变量）。</li>
+</ul>
+<p>提交前建议先跑一个最小回归：</p>
+<pre><code class="language-bash">pytest tests/unit -q
+ruff check src tests</code></pre>
+
+<h2 id="testing">测试</h2>
+<pre><code class="language-bash"># 全量
+pytest tests/
+
+# 按层次
+pytest tests/unit/ -v
+pytest tests/integration/ -v
+pytest tests/distributed/ -v
+
+# 单个文件
+pytest tests/unit/test_task.py -v
+
+# 覆盖率
+pytest --cov=src/neotask tests/
+
+# 超时保护（慢用例）
+pytest tests/ -q --timeout=60</code></pre>
+<p>测试目录说明：</p>
+<table>
+<thead><tr><th>目录</th><th>内容</th></tr></thead>
+<tbody>
+<tr><td><code>tests/unit</code></td><td>模型、队列、解析器、配置等纯逻辑</td></tr>
+<tr><td><code>tests/integration</code></td><td>池、调度器、存储与事件的端到端组合</td></tr>
+<tr><td><code>tests/distributed</code></td><td>Redis 队列、锁、节点与回收</td></tr>
+<tr><td><code>tests/chaos</code></td><td>故障注入与恢复</td></tr>
+<tr><td><code>tests/benchmark</code></td><td>性能回归与基准脚本</td></tr>
+</tbody>
+</table>
+<p>当前仓库约有 500+ 个单元测试；1.2.1 的完整回归结果见 <a href="/docs/benchmarks.html#method">性能基准 · 测量环境</a>。新增行为应同时补充单元测试与至少一个集成用例。</p>
+
+<h2 id="build">构建</h2>
+<pre><code class="language-bash">python -m build
+# 产物：dist/neotask-X.Y.Z-py3-none-any.whl 与 .tar.gz
+
+# 本地安装验证
+pip install dist/neotask-*.whl
+python -c "import neotask; print(neotask.__version__)"</code></pre>
+<p>构建使用 <code>setuptools</code>，包数据与入口点定义在 <code>pyproject.toml</code>。构建后建议在干净虚拟环境中验证：导入、<code>neotask --version</code>、<code>neotask --benchmark --tasks 50</code>。</p>
+
+<h2 id="release">发布</h2>
+<p>维护者使用 release-please + GitHub Actions 发布：</p>
+<ol>
+<li>向 <code>main</code> 合并符合 Conventional Commits 的提交（<code>fix:</code> → PATCH，<code>feat:</code> → MINOR，<code>feat!</code> / <code>BREAKING CHANGE</code> → MAJOR）。</li>
+<li>机器人创建 Release PR，自动更新 <code>pyproject.toml</code>、<code>__init__.py</code>、<code>CHANGELOG.md</code> 与 manifest。</li>
+<li>合并后打 <code>vX.Y.Z</code> 标签并创建 GitHub Release。</li>
+<li><code>publish-pypi</code> 工作流构建并上传 PyPI。</li>
+</ol>
+<p>紧急情况下可手动构建并 <code>twine upload dist/*</code>。无论哪种方式，发布后都要验证 PyPI 页面、安装命令与版本号一致。</p>
+
+<h2 id="contributing">贡献代码</h2>
+<ol>
+<li>先搜索 Issue，避免重复；较大的特性先开 Issue 对齐设计与边界。</li>
+<li>从 <code>main</code> 拉分支，命名如 <code>feat/checkpoint-resume</code>。</li>
+<li>保持改动聚焦：一个 PR 只解决一件事，避免顺手重构。</li>
+<li>补充测试与文档；公共 API 变化需更新 <code>CHANGELOG.md</code> 与文档。</li>
+<li>提交信息使用 Conventional Commits，说明「为什么」而不只是「改了什么」。</li>
+<li>发起 PR，填写复现步骤、验证方式与兼容性影响。</li>
+</ol>
+<p>不要在 PR 中提交本地数据文件、日志、虚拟环境或密钥。涉及 Redis / SQLite 行为变化时，请说明测试使用的后端与版本。</p>
+
+<h2 id="code-style">代码规范</h2>
+<ul>
+<li>遵循 PEP 8；模块 <code>snake_case</code>，类 <code>PascalCase</code>，函数与变量 <code>snake_case</code>，常量 <code>UPPER_SNAKE</code>。</li>
+<li>公共 API 必须有类型注解与简短 docstring；Args / Returns / Raises 按现有风格书写。</li>
+<li>私有成员使用前导下划线；内部实现不要从包入口导出。</li>
+<li>异步代码不要在执行器内做阻塞调用；阻塞库交给线程或进程执行器。</li>
+<li>日志使用项目统一的 logger，不要直接 <code>print</code>。</li>
+<li>异常使用 <code>common/exceptions.py</code> 中的类型，避免抛裸 <code>Exception</code>。</li>
+</ul>
+<pre><code class="language-bash">ruff check src tests
+ruff format src tests
+mypy src/neotask/
+pre-commit run --all-files</code></pre>
+<p>格式化与 lint 通过是合并前提；类型检查允许存量模块逐步收敛，但新增公共接口不应引入新的 mypy 错误。</p>
+
+<div class="doc-note"><strong>相关：</strong>贡献流程的完整版本见仓库 <a href="{{REPO}}/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">CONTRIBUTING.md</a>；安全问题请遵循下方<a href="#security">安全策略</a>，不要公开提交漏洞细节。</div>
+
+<h2 id="security">安全策略</h2>
+<p>安全更新仅覆盖最新 1.x 稳定版本。发现漏洞时请不要公开提交 Issue，按以下方式私下披露：</p>
+<ol>
+<li>通过 <a href="{{REPO}}/security/advisories/new" target="_blank" rel="noopener">GitHub Security Advisory</a> 提交，或发送邮件至 {{EMAIL}}。</li>
+<li>提供受影响版本、复现步骤、影响范围与可能的 PoC。</li>
+<li>维护者在 48 小时内确认，7 天内完成评估；修复时间按严重程度为 7–30 天。</li>
+<li>修复发布后更新更新日志，并在获得同意后致谢报告者。</li>
+</ol>
+<table>
+<thead><tr><th>等级</th><th>示例</th><th>目标修复窗口</th></tr></thead>
+<tbody>
+<tr><td>严重</td><td>远程代码执行、未授权访问、数据泄露</td><td>7 天内</td></tr>
+<tr><td>高</td><td>权限提升、敏感信息泄露、拒绝服务</td><td>14 天内</td></tr>
+<tr><td>中</td><td>信息泄露、安全功能绕过</td><td>21 天内</td></tr>
+<tr><td>低</td><td>需要特定条件才能利用的问题</td><td>30 天内</td></tr>
+</tbody>
+</table>
+<p>部署侧的安全建议见 <a href="/docs/deployment.html#security">部署指南 · 安全部署</a>。</p>

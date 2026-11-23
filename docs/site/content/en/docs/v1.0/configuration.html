@@ -1,0 +1,98 @@
+<p>NeoTask configuration is provided by two dataclasses: <code>TaskPoolConfig</code> for immediate tasks and <code>SchedulerConfig</code> for delayed and periodic tasks. Every field has a default, so a direct instantiation is enough to run.</p>
+
+<pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
+
+config = TaskPoolConfig(
+    storage_type="redis",
+    redis_url="redis://127.0.0.1:6379/0",
+    lock_type="redis",       # must be set explicitly when built by hand; the redis() factory sets it automatically
+    worker_concurrency=20,
+    task_timeout=60,
+    max_retries=3,
+)
+pool = TaskPool(executor=handle, config=config)</code></pre>
+
+<h2>TaskPoolConfig</h2>
+<table>
+<thead><tr><th>Field</th><th>Default</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><code>storage_type</code></td><td><code>"memory"</code></td><td><code>memory</code> / <code>sqlite</code> / <code>redis</code></td></tr>
+<tr><td><code>sqlite_path</code></td><td><code>"/data/neotask.db"</code></td><td>SQLite database path</td></tr>
+<tr><td><code>redis_url</code></td><td><code>None</code></td><td>Redis connection string; required when using Redis</td></tr>
+<tr><td><code>executor_type</code></td><td><code>ExecutorType.ASYNC</code></td><td>Takes effect only when an asynchronous executor is passed</td></tr>
+<tr><td><code>max_workers</code></td><td><code>10</code></td><td>Thread/process count inside the executor, depending on the executor implementation</td></tr>
+<tr><td><code>worker_concurrency</code></td><td><code>10</code></td><td>Number of tasks executed concurrently</td></tr>
+<tr><td><code>prefetch_size</code></td><td><code>20</code></td><td>Tasks prefetched per batch; also determines the local queue capacity (5 times)</td></tr>
+<tr><td><code>task_timeout</code></td><td><code>None</code></td><td>Single-task execution timeout in seconds; unlimited by default</td></tr>
+<tr><td><code>queue_max_size</code></td><td><code>10000</code></td><td>Queue limit; submission raises <code>QueueFullError</code> when full</td></tr>
+<tr><td><code>priority_levels</code></td><td><code>4</code></td><td>Number of priority levels; the current implementation is fixed at four</td></tr>
+<tr><td><code>event_queue_max_size</code></td><td><code>None</code></td><td>Pending event queue limit; <code>None</code> means unbounded</td></tr>
+<tr><td><code>event_overflow_policy</code></td><td><code>"drop"</code></td><td>Policy when the queue is full; currently only dropping new events is supported</td></tr>
+<tr><td><code>event_slow_handler_threshold</code></td><td><code>1.0</code></td><td>Count and warn when a single event callback exceeds this many seconds</td></tr>
+<tr><td><code>lock_type</code></td><td><code>"memory"</code></td><td><code>memory</code> / <code>redis</code>; <code>TaskPoolConfig.redis()</code> sets it to <code>redis</code> automatically</td></tr>
+<tr><td><code>lock_timeout</code></td><td><code>30</code></td><td>Task lock TTL in seconds</td></tr>
+<tr><td><code>enable_metrics</code></td><td><code>True</code></td><td>Collect task metrics</td></tr>
+<tr><td><code>enable_health_check</code></td><td><code>True</code></td><td>Enable storage, queue and system health checks</td></tr>
+<tr><td><code>enable_reporter</code></td><td><code>False</code></td><td>Print a console metrics summary every 60 seconds</td></tr>
+<tr><td><code>max_retries</code></td><td><code>3</code></td><td>Automatic retries after a failure</td></tr>
+<tr><td><code>retry_delay</code></td><td><code>1.0</code></td><td>Retry delay base; the delay of the n-th retry is <code>retry_delay × n</code></td></tr>
+<tr><td><code>enable_checkpoint</code></td><td><code>True</code></td><td>Enable checkpoint resume; when off no checkpoint repository is created and the related APIs return 0 / <code>False</code></td></tr>
+<tr><td><code>checkpoint_keep_versions</code></td><td><code>5</code></td><td>Checkpoint versions kept per task; 0 means keep none</td></tr>
+<tr><td><code>enable_prefetch</code></td><td><code>True</code></td><td>Enable batch prefetch</td></tr>
+<tr><td><code>prefetch_min_threshold</code></td><td><code>5</code></td><td>Not effective in the current version; the threshold is derived from <code>prefetch_size</code></td></tr>
+<tr><td><code>enable_terminal_cleanup</code></td><td><code>True</code></td><td>Periodically clean up succeeded, failed and cancelled terminal tasks</td></tr>
+<tr><td><code>terminal_cleanup_interval</code></td><td><code>60.0</code></td><td>Terminal cleanup scan interval in seconds; not started when ≤ 0</td></tr>
+<tr><td><code>terminal_retention_seconds</code></td><td><code>0</code></td><td>Terminal retention period; 0 means use the task's own <code>ttl</code></td></tr>
+<tr><td><code>enable_reclaimer</code></td><td><code>True</code></td><td>Enable the task reclaimer in Redis mode; not created when off</td></tr>
+<tr><td><code>enable_heartbeat</code></td><td><code>True</code></td><td>Enable the node heartbeat in Redis mode; not created when off</td></tr>
+<tr><td><code>drain_delayed_on_shutdown</code></td><td><code>False</code></td><td>On shutdown, move delayed tasks that are not yet due into the priority queue immediately and wait for execution</td></tr>
+<tr><td><code>reclaimer_interval</code></td><td><code>30.0</code></td><td>Reclaimer scan interval in Redis mode in seconds</td></tr>
+<tr><td><code>heartbeat_interval</code></td><td><code>5</code></td><td>Heartbeat interval in Redis mode in seconds</td></tr>
+<tr><td><code>heartbeat_timeout</code></td><td><code>20</code></td><td>Node heartbeat timeout in seconds</td></tr>
+<tr><td><code>enable_dead_letter</code></td><td><code>True</code></td><td>Enable the dead letter queue in Redis mode</td></tr>
+<tr><td><code>dead_letter_max_size</code></td><td><code>10000</code></td><td>Dead letter queue capacity</td></tr>
+<tr><td><code>dead_letter_ttl</code></td><td><code>604800</code></td><td>Dead letter retention time in seconds (7 days by default)</td></tr>
+<tr><td><code>node_id</code></td><td>Hostname</td><td>Node identifier; must be unique in a distributed deployment</td></tr>
+</tbody>
+</table>
+
+<div class="doc-note"><strong>The switches take effect since 1.0.8:</strong> <code>enable_reclaimer</code> and <code>enable_heartbeat</code> now directly decide whether the reclaimer and heartbeat components are created, and they only apply when <code>storage_type="redis"</code> and <code>redis_url</code> is configured. Turning off the heartbeat also loses the node liveness view, and orphan reclamation is skipped.</div>
+
+<h2>SchedulerConfig</h2>
+<table>
+<thead><tr><th>Field</th><th>Default</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><code>storage_type</code></td><td><code>"memory"</code></td><td>Shared with the underlying TaskPool</td></tr>
+<tr><td><code>sqlite_path</code> / <code>redis_url</code></td><td>Same as TaskPoolConfig</td><td>Storage connection parameters</td></tr>
+<tr><td><code>worker_concurrency</code></td><td><code>10</code></td><td>Number of tasks executed concurrently</td></tr>
+<tr><td><code>max_retries</code> / <code>retry_delay</code></td><td><code>3</code> / <code>1.0</code></td><td>Failure retry policy</td></tr>
+<tr><td><code>enable_checkpoint</code> / <code>checkpoint_keep_versions</code></td><td><code>True</code> / <code>5</code></td><td>Checkpoint switch and version retention count, passed to the internal TaskPool</td></tr>
+<tr><td><code>event_queue_max_size</code> / <code>event_overflow_policy</code></td><td><code>None</code> / <code>"drop"</code></td><td>Same as TaskPoolConfig, passed to the internal TaskPool</td></tr>
+<tr><td><code>event_slow_handler_threshold</code></td><td><code>1.0</code></td><td>Slow event callback warning threshold in seconds</td></tr>
+<tr><td><code>enable_persistence</code></td><td><code>True</code></td><td>Periodic tasks are written to SQLite / Redis and can be recovered after a restart</td></tr>
+<tr><td><code>scan_interval</code></td><td><code>1.0</code></td><td>Scheduling loop scan interval in seconds</td></tr>
+<tr><td><code>enable_periodic_manager</code></td><td><code>True</code></td><td>When off, degrades to a simple in-memory periodic scheduler</td></tr>
+<tr><td><code>enable_time_wheel</code></td><td><code>False</code></td><td>Enable the time wheel for delayed tasks</td></tr>
+<tr><td><code>time_wheel_slots</code></td><td><code>60</code></td><td>Number of time wheel slots</td></tr>
+<tr><td><code>time_wheel_tick</code></td><td><code>1.0</code></td><td>Time wheel tick interval in seconds</td></tr>
+<tr><td><code>default_max_runs</code></td><td><code>None</code></td><td>Default maximum runs for periodic tasks</td></tr>
+<tr><td><code>default_missed_policy</code></td><td><code>"skip"</code></td><td>Default policy for missed executions</td></tr>
+</tbody>
+</table>
+
+<div class="doc-warning"><strong>Configuration is only passed down in part:</strong> <code>TaskScheduler</code> passes storage, <code>worker_concurrency</code>, retries, checkpoint, progress write-back, cache limits, shutdown delay handling and event bus fields to the internal <code>TaskPool</code>, and sets the lock type according to the storage type. Prefetch, monitoring, <code>task_timeout</code>, queue capacity, dead letter and other parameters still require constructing <code>TaskPool</code> directly or modifying the underlying config; <code>SchedulerConfig</code> does not expose these fields today.</div>
+
+<h2>Common presets</h2>
+<table>
+<thead><tr><th>Scenario</th><th>Configuration</th></tr></thead>
+<tbody>
+<tr><td>Local development</td><td><code>TaskPoolConfig.memory()</code></td></tr>
+<tr><td>Single-machine persistence</td><td><code>TaskPoolConfig.sqlite("/var/lib/neotask.db")</code>; writes are already serialized, but a single writer is still recommended</td></tr>
+<tr><td>Shared queue across nodes</td><td><code>TaskPoolConfig.redis("redis://host:6379/0", node_id="worker-1")</code></td></tr>
+<tr><td>Scheduled tasks</td><td><code>SchedulerConfig.redis("redis://host:6379/0")</code> or <code>SchedulerConfig.sqlite(path)</code></td></tr>
+<tr><td>Low-latency delayed tasks</td><td><code>SchedulerConfig.high_performance()</code> (time wheel enabled)</td></tr>
+</tbody>
+</table>
+
+<h2 id="env-vars">Environment variables</h2>
+<p>This version does not read environment variables; all configuration is passed in code. In containerized deployments, construct the configuration object explicitly in your startup script.</p>

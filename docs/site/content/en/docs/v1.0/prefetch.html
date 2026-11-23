@@ -1,0 +1,74 @@
+<p>The prefetcher moves tasks from the shared queue to each worker's local queue in batches, reducing dequeue requests to Redis or the storage layer. It is on by default. Refill is driven by consumption progress on the local queue and woken by enqueue events when idle; since 1.2.1 an empty queue no longer adds exponential backoff, so sparse tasks are not slowed to hundreds of milliseconds by prefetching.</p>
+
+<h2>Configuration</h2>
+<pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
+
+config = TaskPoolConfig(
+    prefetch_size=20,        # tasks fetched per batch
+    enable_prefetch=True,
+)
+pool = TaskPool(executor=handle, config=config)</code></pre>
+
+<p>The remaining parameters are derived from <code>prefetch_size</code> and cannot be set individually through <code>TaskPoolConfig</code>:</p>
+
+<table>
+<thead><tr><th>Parameter</th><th>Derivation rule (default <code>prefetch_size=20</code>)</th></tr></thead>
+<tbody>
+<tr><td>Local queue capacity</td><td><code>prefetch_size × 5</code> = 100</td></tr>
+<tr><td>Low-water trigger</td><td><code>max(1, prefetch_size // 4)</code> = 5</td></tr>
+<tr><td>High-water stop</td><td><code>prefetch_size × 3</code> = 60</td></tr>
+<tr><td>Wait fallback interval</td><td>0.1 seconds; used only as a timeout while waiting for consumption, no longer a cap on refill cadence</td></tr>
+<tr><td>Idle timeout</td><td>Prefetching pauses after 5 seconds without consumption</td></tr>
+<tr><td>Empty-queue wait</td><td>Waits for an enqueue notification; no exponential backoff since 1.2.1</td></tr>
+</tbody>
+</table>
+
+<h2>Trigger logic</h2>
+<p>The default is the HYBRID strategy:</p>
+<ul>
+<li>When the local queue drops below the low-water mark (5), prefetch immediately; every time a worker takes a task it checks and sets the demand signal.</li>
+<li>While the local queue still has stock, refill waits for the worker to consume down to the low-water mark; the wait timeout is the fallback.</li>
+<li>When the shared queue is empty, wait for an enqueue notification instead of sleeping a fixed 0.1 seconds; since 1.2.1 consecutive empty prefetches also add no backoff.</li>
+</ul>
+
+<h2>One prefetch cycle</h2>
+<ol>
+<li>Compute the remaining capacity of the local queue.</li>
+<li>Pop up to <code>prefetch_size</code> tasks from the shared queue in one batch.</li>
+<li>Put them into the local queue; stop when capacity runs out.</li>
+<li>Workers take tasks from the local queue and run them.</li>
+</ol>
+
+<h2>Impact on priority</h2>
+<p>Prefetching dequeues in batches, so strict ordering across priorities holds only within each batch. A low-priority task already sitting in the local queue can run before a high-priority task that arrives later in the shared queue.</p>
+
+<table>
+<thead><tr><th>Requirement</th><th>Configuration</th></tr></thead>
+<tbody>
+<tr><td>Strict priority ordering</td><td><code>enable_prefetch=False</code></td></tr>
+<tr><td>Reduce the ordering effect</td><td>Decrease <code>prefetch_size</code>, for example 1–5</td></tr>
+<tr><td>High throughput, longer tasks</td><td>Increase <code>prefetch_size</code>, for example 50–100</td></tr>
+</tbody>
+</table>
+
+<h2>Throughput versus latency</h2>
+<p>The main gain from prefetching is on the batch dequeue side. In the 1.2.1 baseline with 2,000 noop tasks and 10 workers, <code>prefetch_size=20</code> reaches 4,241 tasks/s of completion throughput against 3,156 tasks/s with prefetching off, about 34% higher. The cost is per-task P50 rising from 1.20 ms to 11.24 ms.</p>
+<p>Sparse submission shows a wider gap: submit a single task after 1 second idle and end-to-end latency is 1.1–2.2 ms with prefetching off versus 12.2–26.2 ms with it on, mostly from the prefetcher's coalescing window. 1.2.1 fixed the exponential backoff on an empty queue, so the worst-case 500 ms-class delay is gone, but the coalescing window remains.</p>
+<p>When task bodies wait on IO or run for a while, saving the dequeue round trip is worth more; for very short tasks that need low latency, turning prefetching off or reducing the batch size fits better.</p>
+
+<div class="doc-note">Decide based on task duration and queue backend: tasks in the millisecond range or longer usually benefit; for very short tasks, run an A/B comparison with the same set of parameters rather than turning prefetching off by default. See <a href="/docs/benchmarks.html">Performance benchmarks</a> for the measurement basis.</div>
+
+<h2>Statistics</h2>
+<pre><code class="language-python">stats = pool.get_stats()
+print(stats.get("prefetcher"))
+# total_prefetch / total_fetched / total_errors
+# avg_batch_size / avg_latency_ms / p95_latency_ms</code></pre>
+
+<p>The <code>prefetcher</code> field is returned only when prefetching is enabled. Prefetcher statistics do not include actual worker execution time.</p>
+
+<h2>Disabling and shutdown</h2>
+<ul>
+<li>With <code>enable_prefetch=False</code>, workers dequeue directly from the shared queue.</li>
+<li>On graceful shutdown the prefetcher first waits for the local queue to be consumed; after the timeout it returns the remaining tasks to the shared queue so they do not become orphans.</li>
+<li>A forced termination loses tasks that were dequeued into the local queue but not yet run; only the reclaimer's <code>ttl</code> fallback can recover them.</li>
+</ul>

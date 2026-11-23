@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="{{HTML_LANG}}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{UI_DOCS_VERSIONS_TITLE}} · {{LATEST_VERSION}} covers 1.x</title>
+  <meta name="description" content="{{UI_DOCS_VERSIONS_LEDE}} The latest is {{LATEST_VERSION}} (baseline v{{LATEST_BASELINE}}).">
+  <meta name="keywords" content="NeoTask docs versions, NeoTask documentation, Python task queue docs, NeoTask {{LATEST_VERSION}}, NeoTask upgrade">
+  <meta name="author" content="NeoPen">
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+  <link rel="canonical" href="{{DOCS_ALL_CANONICAL}}">
+  <meta property="og:site_name" content="{{UI_DOCS_SITE_NAME}}">
+  <meta property="og:locale" content="{{OG_LOCALE}}">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{{UI_DOCS_VERSIONS_TITLE}}">
+  <meta property="og:description" content="{{UI_DOCS_VERSIONS_LEDE}} The latest is {{LATEST_VERSION}}.">
+  <meta property="og:url" content="{{DOCS_ALL_CANONICAL}}">
+  <meta property="og:image" content="{{HOMEPAGE}}/assets/img/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="{{UI_DOCS_VERSIONS_TITLE}}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{UI_DOCS_VERSIONS_TITLE}} · {{LATEST_VERSION}} covers 1.x">
+  <meta name="twitter:description" content="{{UI_DOCS_VERSIONS_LEDE}} The latest is {{LATEST_VERSION}}.">
+  <meta name="twitter:image" content="{{HOMEPAGE}}/assets/img/og.png">
+  <meta name="twitter:image:alt" content="{{UI_DOCS_VERSIONS_TITLE}}">
+  <meta name="theme-color" content="#0b1713">
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/css/site.css">
+  <link rel="stylesheet" href="/assets/css/docs.css">
+{{DOCS_INDEX_JSONLD}}
+</head>
+<body class="docs-page docs-landing">
+  <!-- @include icons -->
+  <!-- @include header -->
+
+  <main id="main">
+    <section class="docs-hero">
+      <div class="docs-hero-inner">
+        <span class="eyebrow">{{UI_DOCS_HERO_EYEBROW}}</span>
+        <h1>{{UI_DOCS_VERSIONS_TITLE}}</h1>
+        <p>{{UI_DOCS_VERSIONS_LEDE}}</p>
+        <div class="docs-hero-actions">
+          <a class="btn btn-primary" href="{{LATEST_QUICKSTART_URL}}">{{UI_DOCS_QUICK_START}} <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+          <a class="btn btn-outline" href="{{LATEST_DOCS_URL}}api-reference.html">{{UI_DOCS_API_REFERENCE}}</a>
+          <a class="btn btn-outline" href="{{REPO}}" target="_blank" rel="noopener"><svg class="icon icon-sm"><use href="#i-github"/></svg> {{UI_DOCS_SOURCE_REPO}}</a>
+        </div>
+        <div class="docs-meta-row">
+          <span>{{VERSION_COUNT_TEXT}}</span>
+          <span>{{UI_DOCS_LATEST}} {{LATEST_VERSION}}</span>
+          <span>{{UI_DOCS_BASELINE}}{{LATEST_BASELINE}}</span>
+          <span>English</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="docs-hub">
+      <div class="docs-hub-intro">
+        <h2>Browse the docs line</h2>
+        <a href="{{CHANGELOG_PAGE_URL}}">See release history →</a>
+      </div>
+
+      <div class="version-grid">
+{{VERSION_CARDS}}
+      </div>
+
+      <section class="version-policy">
+        <h2>What the {{LATEST_VERSION}} docs cover</h2>
+        <div class="version-policy-grid">
+{{LATEST_SCOPE}}
+        </div>
+        <p class="version-scope-note">Start with the <a href="{{LATEST_QUICKSTART_URL}}">{{UI_DOCS_QUICK_START}}</a>, or browse all {{DOCS_COUNT}} pages from the <a href="{{LATEST_DOCS_URL}}">{{UI_DOCS_LATEST}} docs</a>.</p>
+      </section>
+
+      <section class="version-policy">
+        <h2>Version policy</h2>
+        <div class="version-policy-grid">
+          <div>
+            <h3>One docs line for 1.x</h3>
+            <p>The v1.0 line covers the entire 1.x series, currently baseline {{LATEST_BASELINE}}. 1.x ships compatible enhancements only, so patch and minor releases never change documentation paths.</p>
+          </div>
+          <div>
+            <h3>Stable links</h3>
+            <p>Links for a published version stay fixed. Version 2.0 adds its own docs line under a separate path and does not overwrite older content.</p>
+          </div>
+          <div>
+            <h3>Check before upgrading</h3>
+            <p>When moving from 1.x to 2.0, read both the old and new configuration and API references and confirm the breaking changes.</p>
+          </div>
+        </div>
+      </section>
+
+      <div class="hub-foot">
+        <div>
+          <h2>Can't find your version?</h2>
+          <p>Docs are kept per major version line. If you need an older release or migration help, tell us which version you run in GitHub Issues.</p>
+        </div>
+        <a class="btn btn-outline" href="{{ISSUES}}" target="_blank" rel="noopener">{{UI_DOCS_ISSUES_BTN}} <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
+      </div>
+    </div>
+  </main>
+
+  <!-- @include footer -->
+  <script src="/assets/js/site.js" defer></script>
+</body>
+</html>

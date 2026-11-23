@@ -1,0 +1,165 @@
+<p>NeoTask is an embedded library, not a standalone service: deploying NeoTask means deploying your application process and choosing a storage backend. This page covers local, container and production shapes, plus storage, network, security and upgrade notes.</p>
+
+<h2 id="local">Local deployment</h2>
+<p>A single-machine script or desktop tool uses Memory or SQLite directly with no extra process:</p>
+<pre><code class="language-bash">pip install neotask
+
+# Verify
+python -c "import neotask; print(neotask.__version__)"</code></pre>
+<pre><code class="language-python">from neotask import TaskPool, TaskPoolConfig
+
+pool = TaskPool(
+    executor=handle,
+    config=TaskPoolConfig.sqlite("/var/lib/myapp/neotask.db"),
+)</code></pre>
+<ul>
+<li>During development use <code>TaskPoolConfig.memory()</code>; it clears on restart, which keeps runs reproducible.</li>
+<li>Use SQLite when tasks must survive a restart, and make sure the directory exists and the runtime user can write to it.</li>
+<li>Scheduled work uses <code>SchedulerConfig.sqlite()</code>; periodic jobs registered against Memory do not recover after a restart.</li>
+</ul>
+
+<h2 id="docker">Docker deployment</h2>
+<p>NeoTask starts with your application process, so the image is "your app plus the neotask dependency". A generic Dockerfile:</p>
+<pre><code class="language-dockerfile">FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# Default SQLite path /data/neotask.db; mount a persistent volume
+RUN mkdir -p /data && chown -R 10001:10001 /data
+USER 10001
+
+CMD ["python", "-m", "myapp.worker"]</code></pre>
+<p>Declare <code>neotask[redis]</code> or <code>neotask[monitor]</code> in <code>requirements.txt</code> as needed. Application code must handle SIGTERM: call <code>pool.shutdown(graceful=True, timeout=30)</code> so in-flight tasks finish and queue state is written back.</p>
+<pre><code class="language-bash">docker build -t myapp-worker .
+docker run --rm -v neotask-data:/data --env-file .env myapp-worker</code></pre>
+
+<h2 id="docker-compose">Docker Compose</h2>
+<p>For a shared queue across nodes, start Redis and two peer workers with Compose:</p>
+<pre><code class="language-yaml">services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  worker-a:
+    build: .
+    command: ["python", "-m", "myapp.worker"]
+    environment:
+      NEOTASK_REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
+      NEOTASK_CONCURRENCY: "8"
+    depends_on:
+      redis:
+        condition: service_healthy
+    stop_grace_period: 40s
+
+  worker-b:
+    build: .
+    command: ["python", "-m", "myapp.worker"]
+    environment:
+      NEOTASK_REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
+      NEOTASK_CONCURRENCY: "8"
+    depends_on:
+      redis:
+        condition: service_healthy
+    stop_grace_period: 40s
+
+volumes:
+  redis-data: {}</code></pre>
+<div class="tips"><p><code>worker-a</code> and <code>worker-b</code> run the same code against the same queue; there is no primary/replica setup. Each process gets a <code>node_id</code> that includes its pid, which is already unique inside a container.</p></div>
+
+<h2 id="production">Production deployment</h2>
+<table>
+<thead><tr><th>Shape</th><th>Storage</th><th>Scale</th><th>Watch out for</th></tr></thead>
+<tbody>
+<tr><td>Single process, embedded</td><td>SQLite</td><td>Low concurrency, one machine</td><td>Keep a single writer; back up regularly</td></tr>
+<tr><td>Multi-process, one machine</td><td>SQLite read queries + one writing process</td><td>Moderate concurrency</td><td>Never let processes write the same file concurrently</td></tr>
+<tr><td>Shared queue across nodes</td><td>Redis</td><td>Horizontal scaling</td><td>Redis high availability; lock and heartbeat settings</td></tr>
+<tr><td>Separated scheduler and workers</td><td>Redis / SQLite</td><td>Many periodic jobs</td><td>Register periodic jobs from a single scheduler instance</td></tr>
+</tbody>
+</table>
+<p>Production checklist:</p>
+<ul>
+<li>Deploy separately from the web service: the web process only submits, workers execute, so long tasks never occupy request threads.</li>
+<li>Set <code>task_timeout</code> and a generous <code>ttl</code>; raise both together for long tasks.</li>
+<li>In Kubernetes set <code>terminationGracePeriodSeconds</code> above <code>shutdown(timeout)</code> so graceful exit can finish.</li>
+<li>Enable metrics and health checks; probe with <code>get_health_status()</code>, not high-frequency calls to <code>get_stats()</code>.</li>
+<li>Bound <code>event_queue_max_size</code> in production so a slow handler cannot grow memory without limit.</li>
+<li>Register periodic jobs on exactly one instance, or rely on Redis periodic persistence and mutual exclusion.</li>
+<li>If you need automatic reclamation of tasks from crashed nodes, use Redis. Memory / SQLite have no heartbeat or reclaimer, so <code>running</code> records left by an abnormal exit need manual handling.</li>
+</ul>
+
+<h2 id="env">Environment variables</h2>
+<p>NeoTask does not read environment variables itself; applications usually assemble config from them:</p>
+<table>
+<thead><tr><th>Variable</th><th>Example</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>NEOTASK_STORAGE</code></td><td><code>redis</code></td><td>Select the backend</td></tr>
+<tr><td><code>NEOTASK_REDIS_URL</code></td><td><code>redis://:pass@redis:6379/0</code></td><td>Redis connection</td></tr>
+<tr><td><code>NEOTASK_SQLITE_PATH</code></td><td><code>/data/neotask.db</code></td><td>SQLite path</td></tr>
+<tr><td><code>NEOTASK_CONCURRENCY</code></td><td><code>8</code></td><td>Worker concurrency</td></tr>
+<tr><td><code>NEOTASK_NODE_ID</code></td><td><code>worker-a</code></td><td>Optional override of the automatic node ID</td></tr>
+</tbody>
+</table>
+<p>See <a href="/en/docs/configuration.html#env-vars">Configuration · Environment variables</a> for the mapping code. Inject passwords and connection strings as secrets; never bake them into images or log them.</p>
+
+<h2 id="storage-database">Storage and databases</h2>
+<table>
+<thead><tr><th>Backend</th><th>Strengths</th><th>Limits</th><th>Backup</th></tr></thead>
+<tbody>
+<tr><td>Memory</td><td>Zero config, lowest latency</td><td>Lost on exit; not shared across processes</td><td>None needed</td></tr>
+<tr><td>SQLite</td><td>Single file, transactional, easy to back up</td><td>Single writer; unsuitable for network filesystems</td><td><code>sqlite3 .backup</code> or a file snapshot</td></tr>
+<tr><td>Redis</td><td>Shared across nodes, low latency</td><td>Operational overhead; memory capacity limits</td><td>RDB / AOF plus managed snapshots</td></tr>
+</tbody>
+</table>
+<ul>
+<li>Keep the SQLite file on local persistent disk, never on NFS / SMB mounts.</li>
+<li>Enable AOF or periodic RDB on Redis, and accept a bounded loss window for tasks and events.</li>
+<li>Terminal records are cleaned up per <code>ttl</code> or <code>terminal_retention_seconds</code>; export them in event callbacks when you need long-term audit.</li>
+<li>1.2.1 automatically adds missing columns to SQLite databases created by 1.0.x; cross-backend migration still uses the migration scripts in the repository.</li>
+</ul>
+
+<h2 id="network">Network configuration</h2>
+<ul>
+<li><strong>Redis</strong>: enable authentication and TLS (<code>rediss://</code>) in production, and restrict security groups to worker subnets.</li>
+<li><strong>Connections</strong>: the Redis pool cap is set by <code>redis_max_connections</code> (default 50); size it from per-node concurrency and replica count.</li>
+<li><strong>Latency</strong>: a cross-AZ Redis adds submit and heartbeat latency; co-locate it with workers when latency matters.</li>
+<li><strong>SQLite</strong>: local file access only, no network port; mount it as a volume inside containers.</li>
+<li><strong>Health checks</strong>: expose an HTTP probe from your application that calls <code>get_health_status()</code>; do not expose the Redis port to the probe system.</li>
+</ul>
+
+<h2 id="security">Security deployment</h2>
+<ul>
+<li>Run containers as a non-root user with a read-only root filesystem and only the data volume writable.</li>
+<li>Always set a Redis password; never expose port 6379 to the public internet.</li>
+<li>Task <code>data</code>, <code>result</code> and checkpoints are persisted; avoid plaintext credentials and encrypt on the application side when required.</li>
+<li>Executors are registered through code; never dynamically import modules or execute arbitrary code from external input.</li>
+<li>Restrict read permissions on SQLite files and backups; backups contain the same business data.</li>
+<li>Read release notes before upgrading and watch for default changes and security fixes.</li>
+</ul>
+
+<h2 id="upgrade">Upgrade guide</h2>
+<ol>
+<li><strong>Read the release notes</strong>: confirm default changes, deprecations and behavior changes in the target version.</li>
+<li><strong>Back up storage</strong>: copy the SQLite database file; trigger one Redis snapshot.</li>
+<li><strong>Validate in staging</strong>: run the same submit, retry, cancel and recovery cases with identical config.</li>
+<li><strong>Upgrade the dependency</strong>: <code>pip install -U "neotask[redis,monitor]"</code> and verify <code>neotask.__version__</code>.</li>
+<li><strong>Rolling restart</strong>: restart nodes one at a time in a multi-node setup; let old nodes shut down gracefully before new ones take over the queue.</li>
+<li><strong>Watch metrics</strong>: queue depth, age of the oldest pending task, failure rate and reclamation count.</li>
+</ol>
+<div class="warning"><p>SQLite upgrades only auto-add columns with defaults. Back up before any major-version or cross-backend migration, validate the scripts in staging, and never trial-run a migration against production.</p></div>
+
+<div class="doc-note"><strong>Related:</strong> field meanings in <a href="/en/docs/configuration.html">Configuration</a>; post-launch diagnosis in <a href="/en/docs/troubleshooting.html">Troubleshooting</a>; capacity numbers in <a href="/en/docs/benchmarks.html">Benchmarks</a>.</div>

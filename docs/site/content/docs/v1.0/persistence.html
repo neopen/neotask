@@ -34,7 +34,7 @@ pool = TaskPool(executor=handle, config=config)</code></pre>
 </tbody>
 </table>
 
-<div class="doc-warning"><strong>并发写入限制：</strong>1.0.8 为 SQLite 单连接写入加了串行锁，同一进程内的多个 Worker 并发提交不再报 <code>database is locked</code>，但写入仍是一个接一个执行，吞吐随 Worker 数增加而下降。实测 100 条突发：1 Worker 87.4 tasks/s、2 Worker 61.8 tasks/s、4 Worker 41.3 tasks/s。生产环境仍建议单写入者；需要高并发写入时改用 Redis。</div>
+<div class="doc-warning"><strong>并发写入限制：</strong>SQLite 单连接写入已串行化，同一进程内的多个 Worker 并发提交不会报 <code>database is locked</code>，但写入仍是一个接一个执行，多 Worker 不会带来线性扩展。1.2.1 端到端对照中，1,000 任务、4 Worker 为 519 tasks/s、P50 1.0 s；Memory 同路径为 4,761 tasks/s。生产环境仍建议单写入者；需要高并发写入时改用 Redis。</div>
 
 <p>路径必须可写，目录需提前存在。容器中建议挂载持久卷，不要放在容器临时层。</p>
 

@@ -255,8 +255,68 @@ code {
   transform: translate(1px, -1px);
 }
 
-@media (min-width: 921px) and (max-width: 1120px) {
+html[lang="en"] .site-nav-link {
+  white-space: nowrap;
+}
+
+@media (max-width: 1280px) {
+  html[lang="en"] .site-nav-link {
+    padding: 8px 12px;
+  }
+
+  html[lang="en"] .header-inner {
+    gap: 20px;
+  }
+
+  html[lang="en"] .site-nav {
+    gap: 2px;
+  }
+
+  html[lang="en"] .header-actions {
+    gap: 8px;
+  }
+}
+
+@media (min-width: 921px) and (max-width: 1160px) {
   .nav-brand-cn {
+    display: none;
+  }
+
+  /* English nav labels are wider; collapse to the menu before they crowd the header */
+  html[lang="en"] .site-nav {
+    position: fixed;
+    top: 68px;
+    left: 0;
+    right: 0;
+    z-index: 70;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding: 12px 20px 24px;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+    box-shadow: 0 24px 40px -24px rgba(10, 18, 16, 0.3);
+  }
+
+  html[lang="en"] .site-nav.is-open {
+    display: flex;
+  }
+
+  html[lang="en"] .site-nav-link {
+    padding: 12px 10px;
+    font-size: 15px;
+  }
+
+  html[lang="en"] .site-nav-link.is-active::after {
+    display: none;
+  }
+
+  html[lang="en"] .nav-toggle {
+    display: block;
+  }
+
+  html[lang="en"] .header-cta {
     display: none;
   }
 }
@@ -264,7 +324,43 @@ code {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 5px;
+}
+
+.lang-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 500;
+  transition: border-color 0.18s ease, transform 0.18s ease;
+}
+
+.lang-switch:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+
+.lang-switch svg {
+  width: 15px;
+  height: 15px;
+}
+
+@media (max-width: 640px) {
+  .lang-switch {
+    padding: 0 8px;
+  }
+
+  .lang-switch span {
+    display: none;
+  }
 }
 
 .gh-star {

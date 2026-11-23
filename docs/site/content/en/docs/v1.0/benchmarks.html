@@ -1,0 +1,94 @@
+<p>The figures below were measured with the official NeoTask {{BENCH_RELEASE}} benchmark scripts and stress suite. They are meant to show relative trends and the effect of configuration, not to serve as a performance promise. Numbers vary with CPU, Python version, storage backend and sidecar components, so re-measure with the same method on your own target environment.</p>
+
+<div class="doc-note"><strong>Version scope:</strong> the data on this page was collected on 1.2.1 (2026-11-22), running on Python 3.13. 1.2.1 fixed prefetch empty-queue backoff, in-memory queue batch write/remove, blocking metric sampling and Redis batch reads, so the throughput and latency figures are not directly comparable with 1.0.x. After upgrading, re-measure in your target environment with <code>neotask --benchmark</code> or the repository benchmark scripts.</div>
+
+{{BENCH_METRICS}}
+
+<h2>Test environment</h2>
+{{BENCH_ENV_TABLE}}
+<p>The micro-benchmarks, the prefetch suite and the cross-storage comparison are three independent measurements taken with different methods; they cannot be merged or compared directly. All numbers come from a single developer machine, with sidecar components disabled per suite.</p>
+
+<h2 id="method">Measurement method</h2>
+<table>
+<thead><tr><th>Metric</th><th>Definition</th></tr></thead>
+<tbody>
+<tr><td>Completion throughput</td><td>2,000 noop tasks at concurrency 10, from submission until all complete; one run with prefetch on and one with prefetch off</td></tr>
+<tr><td>Sparse task latency</td><td>Submit a single task after 1 idle second, 8 times in a row, recording end-to-end latency</td></tr>
+<tr><td>Queue micro-benchmark</td><td>Batch write, batch remove, peek and invariant validation on the in-memory priority queue</td></tr>
+<tr><td>Cross-storage end to end</td><td>One submission-to-completion run each on Memory / SQLite / Redis; scale and concurrency are given in the table</td></tr>
+</tbody>
+</table>
+<p>The prefetch core benchmark (throughput) and sparse latency (single-task response) measure opposite goals: prefetch trades batch dequeue for throughput, at the cost of the fixed latency introduced by the coalescing window. Confirm the method and configuration before comparing.</p>
+
+<div class="doc-warning"><strong>Two sides of prefetch:</strong> under the same parameters, completion throughput with prefetch on is 4,241 tasks/s and 3,156 tasks/s with prefetch off; but the latency of a single task after idle rises from 1.1–2.2 ms to 12.2–26.2 ms. 1.2.1 fixed exponential backoff on empty queues, so sparse tasks no longer see worst-case 500 ms latency, but the 10 ms prefetch coalescing window still applies.</div>
+
+<h2>Scheduling and execution overhead</h2>
+{{BENCH_SCHEDULING_TABLE}}
+<p>Batch write and removal on the in-memory queue have moved from full heap rebuilds to incremental maintenance with lazy tombstones: writing 1,000 tasks at once into a 10,000-task queue takes about 0.471 ms (about 2.12M tasks/s), and batch removal of 1,000 tasks takes about 0.668 ms. The invariant test that pops everything and validates it confirms there are no duplicates and no tombstone leaks; <code>peek(5)</code> on a 10,000-task queue takes 0.008 ms. The complete 1.2.1 regression is 538 passed / 12 skipped unit tests and 87 passed / 1 skipped integration tests.</p>
+
+<h2>Prefetch and completion throughput</h2>
+<p>2,000 noop tasks with 10 workers, comparing prefetch off against <code>prefetch_size=20</code>. Prefetch moves tasks from the shared queue to local queues in batches, raising throughput by about 34%, but single-task P50 rises from 1.20 ms to 11.24 ms.</p>
+{{BENCH_IO_CHART}}
+{{BENCH_IO_TABLE}}
+<p>The throughput bottleneck lies in lifecycle transitions, state persistence and event dispatch, not in the executor itself; simply adding workers cannot break through this ceiling. When task bodies have IO waits or run for longer, the batch gain from prefetch is more obvious; for pure micro-tasks that demand low latency, turning prefetch off is the better fit.</p>
+
+<h2>Sparse task latency</h2>
+<p>Submit a single task after 1 idle second to simulate a low-frequency event trigger. With prefetch off, end-to-end latency is 1.1–2.2 ms; with prefetch on it is 12.2–26.2 ms, mostly from the prefetcher's coalescing window.</p>
+{{BENCH_PREFETCH_CHART}}
+<p>Latency-sensitive scenarios (such as a background action triggered by an interactive request) should disable prefetch or reduce <code>prefetch_size</code>; batch, collection and transcoding tasks can keep the default prefetch. See <a href="/docs/prefetch.html">Prefetch mechanism</a> for the trade-off between the two.</p>
+
+<h2>Sustained and burst load</h2>
+<p>Covers four boundary categories: sparse submission, prefetch empty-queue wakeup, batch cancellation and a full queue. The empty-queue backoff fix and lazy tombstones are the main changes in this 1.2.1 round.</p>
+{{BENCH_STRESS_TABLE}}
+<div class="doc-note">{{BENCH_STRESS_NOTE}} Empty-queue wakeup no longer stacks a 0.5 s backoff, which is the direct cause of sparse task latency dropping from hundreds of milliseconds to the millisecond range; when the queue is full, all three backends return <code>False</code> or <code>QueueFullError</code>, with consistent semantics.</div>
+
+<h2>Cross-storage comparison</h2>
+<p>The same business path end to end on three backends: Memory 2,000 tasks, SQLite and Redis 1,000 tasks each. The scale differs, so look only at the order of magnitude and the relative P50 gap.</p>
+{{BENCH_SQLITE_BOUNDARIES}}
+<p>Memory uses an in-process queue at 4,761 tasks/s; SQLite is constrained by serial single-file writes at 519 tasks/s; Redis is affected by network round trips and serialization at 232 tasks/s. SQLite suits single-machine persistence and low-frequency writes; switch to Redis when you need multi-node sharing or higher concurrency. Always validate in a staging environment before migrating between backends, and note the acceptable loss window for tasks and events.</p>
+
+<h2>Event bus and wakeup</h2>
+<p>The event bus delivers lifecycle events to subscribers asynchronously. Since 1.2, events with no subscribers are no longer enqueued, reducing idle work; when a bounded queue is full, new events are dropped and counted, and callbacks slower than the threshold log a warning.</p>
+{{BENCH_EVENT_TABLE}}
+<p>When complete auditing is required, keep the event queue unbounded and move time-consuming callbacks out of the event loop; in production, set <code>event_queue_max_size</code> and monitor <code>dropped_events</code>. For periodic monitoring, prefer pushing snapshots with <code>on_metrics()</code> instead of subscribing to events for each metric separately.</p>
+
+<h2>Choosing a configuration</h2>
+<table>
+<thead><tr><th>Scenario</th><th>Recommended configuration</th><th>Basis</th></tr></thead>
+<tbody>
+<tr><td>Pure compute micro-tasks of tens of microseconds</td><td>Match the worker count to CPU cores; prefetch may be on or off</td><td>Prefetch at 4,241 and prefetch off at 3,156 tasks/s are in the same order of magnitude; prefetch mainly reduces dequeue overhead</td></tr>
+<tr><td>Millisecond-scale IO tasks</td><td>Keep the default prefetch, start with 16–32 workers</td><td>Prefetch dequeues in batches, so the throughput gain is obvious during IO waits</td></tr>
+<tr><td>Low latency with sparse submission</td><td>Disable prefetch or lower <code>prefetch_size</code> below 5</td><td>Prefetch off 1.1–2.2 ms, prefetch on 12.2–26.2 ms</td></tr>
+<tr><td>CPU-intensive tasks</td><td>ProcessExecutor, workers no more than physical cores</td><td>Async workers share the GIL, so oversubscription only adds switching overhead</td></tr>
+<tr><td>Single machine, low frequency, must recover after restart</td><td>SQLite, single writer</td><td>519 tasks/s, P50 1.0 s; writes are serialized</td></tr>
+<tr><td>Multiple nodes or high-concurrency writes</td><td>Redis, a unique <code>node_id</code></td><td>Shared queues, locks, heartbeat and reclamation are only available in Redis mode</td></tr>
+<tr><td>Strict priority ordering</td><td>Disable prefetch or lower the batch size</td><td>Prefetch takes tasks ahead of time, so a high-priority task submitted later may end up behind already-taken low-priority tasks</td></tr>
+<tr><td>Event completeness first</td><td>Keep the event queue unbounded and make callbacks return quickly</td><td>A bounded queue drops events; slow callbacks delay when <code>task.completed</code> is observed</td></tr>
+</tbody>
+</table>
+<p>See <a href="/docs/configuration.html">Configuration reference</a> for field defaults and scope; see <a href="/docs/best-practices.html">Best practices</a> for complete guidance on executors and concurrency.</p>
+
+<h2>Reproducing the numbers</h2>
+<pre><code class="language-bash"># Quick self-test with the built-in 5 ms executor
+neotask --benchmark
+
+# Use your own executor
+neotask --benchmark --executor my_tasks:handle --tasks 2000 --json
+
+# Full benchmark suite in the repository
+git clone https://github.com/neopen/neotask.git
+cd neotask
+pip install -e ".[dev]"
+python tests/benchmark/run_benchmark.py</code></pre>
+<p><code>neotask --benchmark</code> ships with the PyPI package and defaults to 200 tasks at concurrency 10, which suits quick comparison; the full benchmark scripts live in the repository under <code>tests/benchmark/</code>, and the 1.2.1 regression and suite results come from the same environment. When re-measuring, record the CPU, Python version, storage backend and worker count, otherwise the results are not comparable.</p>
+
+<h2>Interpretation boundaries</h2>
+<ul>
+<li>The data comes from a single developer laptop (4 cores / 8 threads, 16 GB, Windows 10, Python 3.13) and does not extrapolate to servers or container environments.</li>
+<li>Throughput, sparse latency and the cross-storage comparison use different methods; the three sets of numbers must not be mixed.</li>
+<li>Sidecar components (metrics, health check, reporter, reclaimer, heartbeat, dead letter) are disabled per suite; enabling them lowers throughput.</li>
+<li>1.2.1 fixed empty-queue exponential backoff and in-memory queue batch write/remove, so sparse task latency and batch-operation numbers are not directly comparable with 1.0.x; historical figures serve only as a trend reference.</li>
+<li>Latency percentiles come from a single-run scenario and do not represent long-term stability; evaluate sustained and burst load separately.</li>
+</ul>
+
+<div class="doc-note"><strong>Do not quote absolute values directly for capacity planning.</strong> Re-measure on your own target environment with the same scripts and the same method, and factor the real duration distribution of your business tasks into the evaluation.</div>

@@ -7,7 +7,7 @@ name = "neotask"
 version = "1.2.1"
 description = "NeoTask - 轻量级 Python 异步分布式任务队列，支持即时/延时/周期任务，内置优先级队列、自动重试 | Lightweight Python Async Task Queue Manager"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 authors = [
     {name = "neopen", email = "helpenx+task@gmail.com"}
 ]
@@ -30,7 +30,7 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
     # 许可证
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     # 操作系统
     "Operating System :: OS Independent",
     # 编程语言

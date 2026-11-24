@@ -40,7 +40,7 @@ examples/
 ```python
 """
 Copyright (c) 2025 neopen
-Licensed under the MIT License.
+Licensed under the Apache License, Version 2.0.
 See LICENSE File For Details.
 
 @FileName: NN_descriptive_name.py
@@ -117,7 +117,7 @@ python examples/NN_feature_name.py
 ```python
 """
 Copyright (c) 2025 neopen
-Licensed under the MIT License.
+Licensed under the Apache License, Version 2.0.
 See LICENSE File For Details.
 
 @FileName: 11_timeout.py

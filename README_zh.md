@@ -5,7 +5,7 @@
   </p>
   <p align="center">
     <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.8+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
-    <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License"></a>
+    <a href="./LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square" alt="License"></a>
   </p>
   <p align="center">
     <a href="https://pypi.org/project/neotask/" target="_blank"><img src="https://img.shields.io/pypi/v/neotask.svg?style=flat-square&logo=pypi&logoColor=white" alt="PyPI"></a>
@@ -585,7 +585,7 @@ python examples/05_cron_tasks.py
 
 ## 许可证
 
-MIT License © 2026 neopen
+Apache License 2.0 © 2025-2026 neopen
 
 ------
 

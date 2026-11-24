@@ -796,9 +796,9 @@ python examples/05_cron_tasks.py
 
 ## 许可证
 
-MIT License - 详见 [LICENSE](../LICENSE) 文件
+Apache License 2.0 - 详见 [LICENSE](../LICENSE) 与 [NOTICE](../NOTICE) 文件
 
-Copyright (c) 2026 neopen
+Copyright (c) 2025-2026 neopen
 
 ------
 

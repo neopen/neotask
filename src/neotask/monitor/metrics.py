@@ -42,6 +42,7 @@ class TaskMetrics:
     # 当前状态（瞬时值）
     pending: int = 0
     running: int = 0
+    waiting: int = 0
     scheduled: int = 0
 
     # 执行时间统计（滑动窗口）
@@ -169,6 +170,7 @@ class TaskMetrics:
             "failure_rate": self.failure_rate,
             "pending": self.pending,
             "running": self.running,
+            "waiting": self.waiting,
             "scheduled": self.scheduled,
             "avg_execution_time": self.avg_execution_time,
             "p50_execution_time": self.p50_execution_time,
@@ -330,11 +332,14 @@ class MetricsCollector:
         # 清理
         self._cleanup_task(task_id)
 
-    async def record_task_failed(self, task_id: str) -> None:
+    async def record_task_failed(
+        self, task_id: str, old_status: Optional[str] = None
+    ) -> None:
         """记录任务失败
 
         Args:
             task_id: 任务ID
+            old_status: 失败前状态；``waiting`` 表示等待超时，需递减等待计数
         """
         # 计算执行时间
         if task_id in self._task_start_times:
@@ -351,23 +356,44 @@ class MetricsCollector:
 
         with self._lock:
             self._metrics.total_failed += 1
-            self._metrics.running = max(0, self._metrics.running - 1)
+            if old_status == "waiting":
+                self._metrics.waiting = max(0, self._metrics.waiting - 1)
+            else:
+                self._metrics.running = max(0, self._metrics.running - 1)
 
         # 清理
         self._cleanup_task(task_id)
 
-    async def record_task_cancelled(self, task_id: str) -> None:
+    async def record_task_cancelled(
+        self, task_id: str, old_status: Optional[str] = None
+    ) -> None:
         """记录任务取消
 
         Args:
             task_id: 任务ID
+            old_status: 取消前状态；``waiting`` 表示取消等待中的任务
         """
         with self._lock:
             self._metrics.total_cancelled += 1
-            self._metrics.running = max(0, self._metrics.running - 1)
+            if old_status == "waiting":
+                self._metrics.waiting = max(0, self._metrics.waiting - 1)
+            else:
+                self._metrics.running = max(0, self._metrics.running - 1)
 
         # 清理
         self._cleanup_task(task_id)
+
+    async def record_task_waiting(self, task_id: str) -> None:
+        """记录任务进入等待（释放执行槽位）"""
+        with self._lock:
+            self._metrics.running = max(0, self._metrics.running - 1)
+            self._metrics.waiting += 1
+
+    async def record_task_signal_received(self, task_id: str) -> None:
+        """记录等待中的任务被信号唤醒（重新回到待执行）"""
+        with self._lock:
+            self._metrics.waiting = max(0, self._metrics.waiting - 1)
+            self._metrics.pending += 1
 
     async def record_task_retry(self, task_id: str, retry_count: int) -> None:
         """记录任务重试

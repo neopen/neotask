@@ -21,7 +21,7 @@ from neotask.common.constants import (
     DEFAULT_PROGRESS_FLUSH_INTERVAL,
     DEFAULT_RUNNING_PERSIST_DELAY,
 )
-from neotask.common.logger import info
+from neotask.common.logger import info, warning
 from neotask.core.dispatcher import TaskDispatcher
 from neotask.core.lifecycle import TaskLifecycleManager
 from neotask.event.bus import EventBus
@@ -29,7 +29,7 @@ from neotask.executor.base import TaskExecutor
 from neotask.executor.factory import ExecutorFactory, ExecutorType
 from neotask.monitor.metrics import MetricsCollector
 from neotask.models.config import StorageType
-from neotask.models.task import TaskPriority
+from neotask.models.task import TaskPriority, TaskStatus
 from neotask.queue.queue_scheduler import QueueScheduler
 from neotask.storage.base import TaskRepository, QueueRepository
 from neotask.storage.factory import StorageFactory
@@ -60,6 +60,11 @@ class EngineConfig:
     # 断点续跑：任务内保存的状态快照，恢复时注入 task.data["__checkpoint__"]
     enable_checkpoint: bool = True
     checkpoint_keep_versions: int = 5  # 单个任务保留的历史版本数
+
+    # 人工介入：等待外部信号的默认超时（秒）；None/0 表示不超时
+    waiting_timeout: Optional[float] = None
+    # 等待超时扫描间隔（秒）；<=0 关闭后台扫描，仅保留手动清理
+    waiting_scan_interval: float = 30.0
 
     # 执行器配置
     executor_func: Optional[Any] = None
@@ -145,6 +150,7 @@ class TaskEngine:
         self._metrics: Optional[MetricsCollector] = None
 
         self._background_tasks: List[asyncio.Task] = []
+        self._waiting_scan_task: Optional[asyncio.Task] = None
 
     def configure(self, config: EngineConfig) -> "TaskEngine":
         """配置引擎（支持链式调用）"""
@@ -212,7 +218,8 @@ class TaskEngine:
             lifecycle_manager=self._lifecycle_manager,
             concurrency=self.config.worker_concurrency,
             prefetch_size=self.config.prefetch_size,
-            task_timeout=self.config.task_timeout
+            task_timeout=self.config.task_timeout,
+            waiting_timeout=self.config.waiting_timeout,
         )
 
         # 8. 初始化Worker监督者（修复：WorkerSupervisor 只需要 worker_pool）
@@ -305,6 +312,12 @@ class TaskEngine:
         if self._metrics:
             await self._metrics.start()
 
+        # 启动等待超时扫描
+        if self.config.waiting_scan_interval > 0:
+            self._waiting_scan_task = asyncio.create_task(
+                self._waiting_timeout_loop()
+            )
+
         info("TaskEngine started successfully")
 
     async def stop(self, graceful: bool = True, timeout: float = 30) -> None:
@@ -342,6 +355,15 @@ class TaskEngine:
 
         # 停止写回任务并落库剩余进度（必须在关闭存储连接之前）
         await self._lifecycle_manager.stop_progress_flusher()
+
+        # 停止等待超时扫描（必须在关闭存储连接之前）
+        if self._waiting_scan_task:
+            self._waiting_scan_task.cancel()
+            try:
+                await self._waiting_scan_task
+            except asyncio.CancelledError:
+                pass
+            self._waiting_scan_task = None
 
         # 关闭存储连接
         if hasattr(self._task_repo, 'close'):
@@ -415,6 +437,47 @@ class TaskEngine:
         # 尝试取消正在执行的任务
         return await self._worker_pool.cancel_task(task_id)
 
+    async def signal(self, task_id: str, payload: Any = None) -> bool:
+        """向等待中的任务发送信号
+
+        仅对 ``waiting`` 状态生效，先到先得；重复 signal 或任务已结束
+        返回 ``False``。
+
+        Args:
+            task_id: 任务ID
+            payload: 任意可 JSON 序列化的唤醒数据
+
+        Returns:
+            是否成功唤醒并重新入队
+        """
+        task = await self._lifecycle_manager.get_task(task_id)
+        if not task or task.status != TaskStatus.WAITING:
+            return False
+
+        if not await self._lifecycle_manager.signal_task(task_id, payload):
+            return False
+
+        try:
+            queued = await self._queue_scheduler.push(
+                task_id, task.priority.value
+            )
+        except Exception as exc:
+            warning(f"Signal for task {task_id} could not be enqueued: {exc}")
+            queued = False
+
+        if not queued:
+            await self._lifecycle_manager.revert_signal(task_id)
+            warning(
+                f"Signal for task {task_id} rolled back to waiting: queue rejected"
+            )
+            return False
+
+        return True
+
+    async def cleanup_expired_waiting(self) -> int:
+        """立即处理已超时的等待任务，返回转为 failed 的数量"""
+        return await self._lifecycle_manager.fail_expired_waiting()
+
     async def wait(self, task_id: str, timeout: float = 300) -> Any:
         """等待任务完成并返回结果
 
@@ -455,10 +518,17 @@ class TaskEngine:
 
     async def get_stats(self) -> Dict[str, Any]:
         """获取统计信息"""
+        task_stats = await self._lifecycle_manager.get_task_stats()
         stats = {
             "queue_size": await self._queue_scheduler.size(),
             "active_workers": self._worker_pool.active_count(),
             "running": self._running,
+            "total": task_stats.total,
+            "pending": task_stats.pending,
+            "waiting": task_stats.waiting,
+            "completed": task_stats.completed,
+            "failed": task_stats.failed,
+            "cancelled": task_stats.cancelled,
         }
 
         if self._metrics:
@@ -473,6 +543,20 @@ class TaskEngine:
     async def resume(self) -> None:
         """恢复处理新任务"""
         await self._queue_scheduler.resume()
+
+    async def _waiting_timeout_loop(self) -> None:
+        """周期把等待超时的任务转为 failed"""
+        interval = self.config.waiting_scan_interval
+        while True:
+            try:
+                await asyncio.sleep(interval)
+                failed = await self._lifecycle_manager.fail_expired_waiting()
+                if failed:
+                    info(f"{failed} waiting task(s) timed out")
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                warning(f"Waiting timeout scan failed: {e}")
 
     @property
     def event_bus(self) -> Optional[EventBus]:

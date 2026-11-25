@@ -31,6 +31,7 @@ from neotask.common.exceptions import TaskAlreadyExistsError, TaskNotFoundError
 from neotask.common.logger import debug, info, is_debug_enabled, warning
 from neotask.core.checkpoint import CHECKPOINT_DATA_KEY
 from neotask.core.future import FutureManager
+from neotask.core.signal import SIGNAL_DATA_KEY
 from neotask.event.bus import EventBus, TaskEvent
 from neotask.models.task import Task, TaskPriority, TaskStats, TaskStatus
 from neotask.storage.base import CheckpointRepository, TaskRepository
@@ -817,6 +818,193 @@ class TaskLifecycleManager:
             self._cache_put(task.task_id, task)
         return True
 
+    # ========== 人工介入（等待 / 信号） ==========
+
+    @staticmethod
+    def _signal_entry(task: Task) -> Optional[Dict[str, Any]]:
+        entry = (task.data or {}).get(SIGNAL_DATA_KEY)
+        return entry if isinstance(entry, dict) else None
+
+    async def suspend_for_signal(
+            self,
+            task_id: str,
+            signal: str,
+            timeout: Optional[float] = None,
+    ) -> bool:
+        """把运行中的任务持久化为 ``waiting``，等待外部信号
+
+        进入等待前确保存在可恢复的 checkpoint（Handler 未保存时以空状态占位），
+        并记录等待键、序号、超时时刻，供 signal 唤醒与超时扫描使用。
+
+        Returns:
+            任务存在且处于 RUNNING 时返回 True
+        """
+        task = await self.get_task(task_id)
+        if not task or task.status != TaskStatus.RUNNING:
+            warning(
+                f"Cannot suspend task {task_id}: "
+                f"status={task.status.value if task else 'not found'}, expected RUNNING"
+            )
+            return False
+
+        # 延迟落库的 RUNNING 写入必须在 WAITING 之前收尾，避免状态回退
+        await self._resolve_deferred_running(task_id)
+
+        if self._checkpoint_repo is not None:
+            if await self._checkpoint_repo.load_latest(task_id) is None:
+                await self.save_checkpoint(task_id, {})
+
+        previous = self._signal_entry(task)
+        sequence = int(previous.get("sequence") or 0) + 1 if previous else 1
+        timeout_at = time.time() + timeout if timeout and timeout > 0 else None
+        task.data[SIGNAL_DATA_KEY] = {
+            "signal": signal,
+            "sequence": sequence,
+            "payload": None,
+            "arrived": False,
+            "consumed": False,
+            "timeout_at": timeout_at,
+        }
+        task.status = TaskStatus.WAITING
+
+        await self._task_repo.save_fields(
+            task,
+            ("status", "data", "node_id", "started_at", "queue_wait_ms"),
+        )
+        self._clear_progress_flush(task_id)
+
+        if self._cache_enabled:
+            self._cache_put(task_id, task)
+
+        await self._emit_event(
+            EventType.WAITING,
+            task_id,
+            {
+                "old_status": TaskStatus.RUNNING.value,
+                "signal": signal,
+                "timeout_at": timeout_at,
+            },
+        )
+        return True
+
+    async def consume_signal(self, task_id: str, signal: str) -> bool:
+        """标记当前信号已被 Handler 消费并从 ``task.data`` 清除 payload
+
+        清除后同一等待键再次挂起不会命中旧信号；payload 已通过本次调用的
+        返回值交付给业务代码。
+        """
+        task = await self.get_task(task_id)
+        if not task:
+            return False
+
+        entry = self._signal_entry(task)
+        if not entry or entry.get("signal") != signal or not entry.get("arrived"):
+            return False
+
+        entry["arrived"] = False
+        entry["consumed"] = True
+        entry["payload"] = None
+
+        await self._task_repo.save_fields(task, ("data",))
+        if self._cache_enabled:
+            self._cache_put(task_id, task)
+        return True
+
+    async def signal_task(
+            self,
+            task_id: str,
+            payload: Any = None,
+    ) -> bool:
+        """唤醒等待中的任务：写入 payload、转 ``pending`` 并发布事件
+
+        只接受 ``waiting`` 状态；先到先得，重复 signal 或任务已结束返回 False。
+        调用方负责把任务重新入队，入队失败时可调用 :meth:`revert_signal` 回滚。
+        """
+        task = await self.get_task(task_id)
+        if not task or task.status != TaskStatus.WAITING:
+            return False
+
+        entry = self._signal_entry(task)
+        if not entry or entry.get("arrived"):
+            return False
+
+        signal = str(entry.get("signal") or "")
+        entry["payload"] = payload
+        entry["arrived"] = True
+
+        task.status = TaskStatus.PENDING
+        task.node_id = ""
+        fields = ["status", "data", "node_id"]
+        if await self.resume_from_checkpoint(task):
+            fields.append("checkpoint_version")
+
+        await self._task_repo.save_fields(task, tuple(fields))
+        if self._cache_enabled:
+            self._cache_put(task_id, task)
+
+        await self._emit_event(
+            EventType.SIGNAL_RECEIVED,
+            task_id,
+            {"signal": signal, "payload": payload},
+        )
+        return True
+
+    async def revert_signal(self, task_id: str) -> bool:
+        """signal 入队失败时回滚：撤销已到达标记并恢复 ``waiting``"""
+        task = await self.get_task(task_id)
+        if not task or task.status != TaskStatus.PENDING:
+            return False
+
+        entry = self._signal_entry(task)
+        if not entry or not entry.get("arrived"):
+            return False
+
+        entry["arrived"] = False
+        entry["payload"] = None
+        task.status = TaskStatus.WAITING
+
+        await self._task_repo.save_fields(task, ("status", "data"))
+        if self._cache_enabled:
+            self._cache_put(task_id, task)
+        return True
+
+    async def fail_expired_waiting(self, now: Optional[float] = None) -> int:
+        """把等待超时的任务置为 FAILED（``failure_reason="waiting_timeout"``）
+
+        先完整扫描再统一失败，避免边扫描边改状态导致分页偏移。扫描与 signal
+        并发时以先完成落库的一方为准。
+        """
+        current = time.time() if now is None else now
+        waiting: List[Task] = []
+        offset = 0
+        batch = 1000
+        while True:
+            tasks = await self._task_repo.list_by_status(
+                TaskStatus.WAITING, limit=batch, offset=offset
+            )
+            waiting.extend(tasks)
+            if len(tasks) < batch:
+                break
+            offset += len(tasks)
+
+        failed = 0
+        for task in waiting:
+            entry = self._signal_entry(task)
+            if not entry or entry.get("arrived"):
+                continue
+            timeout_at = entry.get("timeout_at")
+            if timeout_at is None or float(timeout_at) > current:
+                continue
+            signal = str(entry.get("signal") or "")
+            if await self.fail_task(
+                task.task_id,
+                f"Timed out waiting for signal '{signal}'",
+                allow_waiting=True,
+                failure_reason="waiting_timeout",
+            ):
+                failed += 1
+        return failed
+
     async def _delete_checkpoints(self, task_ids: List[str]) -> None:
         """删除任务时清理其 checkpoint（尽力而为，失败不影响删除主流程）"""
         if self._checkpoint_repo is None:
@@ -895,11 +1083,13 @@ class TaskLifecycleManager:
             allow_pending: bool = False,
             failure_reason: Optional[str] = None,
             cost: Optional[Dict[str, Any]] = None,
+            allow_waiting: bool = False,
     ) -> bool:
         """任务失败
 
         正常情况下只有 RUNNING 状态的任务可以标记为失败。`allow_pending=True`
         用于入队失败的回滚：任务已落库为 PENDING 但从未进入队列，只能在这里终结。
+        `allow_waiting=True` 用于等待超时扫描终结 WAITING 任务。
 
         Args:
             task_id: 任务ID
@@ -908,6 +1098,7 @@ class TaskLifecycleManager:
             failure_reason: 业务级失败原因（如 ``qa_failed``）。系统异常时留空，
                 两者靠该字段区分，状态同为 ``FAILED``。
             cost: 本次执行上报的成本明细；非空时随 ``task.failed`` 事件携带
+            allow_waiting: 是否允许终结等待中的任务（等待超时）
         """
         task = await self.get_task(task_id)
 
@@ -920,11 +1111,16 @@ class TaskLifecycleManager:
             warning(f"Cannot fail task {task_id}: already in terminal state {task.status.value}")
             return False
 
-        allowed = (TaskStatus.PENDING, TaskStatus.RUNNING) if allow_pending else (TaskStatus.RUNNING,)
+        allowed = [TaskStatus.RUNNING]
+        if allow_pending:
+            allowed.append(TaskStatus.PENDING)
+        if allow_waiting:
+            allowed.append(TaskStatus.WAITING)
         if task.status not in allowed:
+            expected = " / ".join(status.value.upper() for status in allowed)
             warning(
                 f"Cannot fail task {task_id}: status={task.status.value}, "
-                f"expected {'PENDING or RUNNING' if allow_pending else 'RUNNING'}"
+                f"expected {expected}"
             )
             return False
 
@@ -970,8 +1166,12 @@ class TaskLifecycleManager:
         if not task:
             return False
 
-        # 只有待处理或运行中的任务可以取消
-        if task.status not in (TaskStatus.PENDING, TaskStatus.RUNNING):
+        # 待处理、运行中与等待中的任务都可以取消
+        if task.status not in (
+            TaskStatus.PENDING,
+            TaskStatus.RUNNING,
+            TaskStatus.WAITING,
+        ):
             return False
 
         await self._resolve_deferred_running(task_id)
@@ -1146,6 +1346,8 @@ class TaskLifecycleManager:
                         stats.pending += 1
                     elif task.status == TaskStatus.RUNNING:
                         stats.running += 1
+                    elif task.status == TaskStatus.WAITING:
+                        stats.waiting += 1
                     elif task.status == TaskStatus.SUCCESS:
                         stats.completed += 1
                     elif task.status == TaskStatus.FAILED:
@@ -1172,6 +1374,7 @@ class TaskLifecycleManager:
         stats.total = sum(counts.values())
         stats.pending = counts.get(TaskStatus.PENDING, 0)
         stats.running = counts.get(TaskStatus.RUNNING, 0)
+        stats.waiting = counts.get(TaskStatus.WAITING, 0)
         stats.completed = counts.get(TaskStatus.SUCCESS, 0)
         stats.failed = counts.get(TaskStatus.FAILED, 0)
         stats.cancelled = counts.get(TaskStatus.CANCELLED, 0)

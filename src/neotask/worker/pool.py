@@ -39,6 +39,12 @@ from neotask.core.progress import (
     reset_progress_reporter,
     set_progress_reporter,
 )
+from neotask.core.signal import (
+    SignalWaiter,
+    TaskSuspended,
+    reset_signal_waiter,
+    set_signal_waiter,
+)
 from neotask.event.bus import EventBus, TaskEvent
 from neotask.executor.base import TaskExecutor
 from neotask.models.task import TaskPriority, TaskStatus
@@ -81,7 +87,8 @@ class WorkerPool:
             task_timeout: Optional[float] = None,
             lock_manager = None,
             enable_prefetch: bool = True,  # 新增：是否启用预取器
-            node_id: str = "default"
+            node_id: str = "default",
+            waiting_timeout: Optional[float] = None,
     ):
         self._executor = executor
         self._task_repo = task_repo
@@ -94,6 +101,7 @@ class WorkerPool:
         self._task_timeout = task_timeout
         self._enable_prefetch = enable_prefetch
         self._node_id = node_id
+        self._waiting_timeout = waiting_timeout
 
         # 死信队列（由 TaskPool 注入，仅 Redis 模式下存在）
         self._dead_letter: Optional[DeadLetterQueue] = None
@@ -521,6 +529,16 @@ class WorkerPool:
                 await self._lifecycle.cancel_task(task_id)
                 return
 
+            except TaskSuspended as suspended:
+                # 任务已持久化为 WAITING：不完成 future、不走重试，释放槽位后
+                # 由 signal 唤醒重新入队；finally 负责释放锁与 worker 统计。
+                if is_debug_enabled():
+                    debug(
+                        f"Task {task_id} suspended waiting for signal "
+                        f"'{suspended.signal}'"
+                    )
+                return
+
             except asyncio.TimeoutError:
                 err = f"Task execution timeout after {self._task_timeout}s"
                 error(f"Task {task_id} timeout: {err}")
@@ -618,17 +636,33 @@ class WorkerPool:
         async def checkpoint_load() -> Optional[Dict[str, Any]]:
             return await self._lifecycle.load_checkpoint(task_id)
 
+        async def signal_suspend(signal: str, timeout: Optional[float]) -> bool:
+            return await self._lifecycle.suspend_for_signal(task_id, signal, timeout)
+
+        async def signal_consume(signal: str) -> bool:
+            return await self._lifecycle.consume_signal(task_id, signal)
+
+        loop = asyncio.get_running_loop()
         reporter = ProgressReporter(progress_callback)
         token = set_progress_reporter(reporter)
         failure_token = set_failure_recorder(recorder)
         cost_token = set_cost_recorder(cost_recorder)
+        signal_token = set_signal_waiter(
+            SignalWaiter(
+                task,
+                signal_suspend,
+                signal_consume,
+                default_timeout=self._waiting_timeout,
+                loop=loop,
+            )
+        )
         checkpoint_token = None
         if self._lifecycle.checkpoint_enabled:
             checkpoint_token = set_checkpoint_context(
                 CheckpointContext(
                     checkpoint_save,
                     checkpoint_load,
-                    loop=asyncio.get_running_loop(),
+                    loop=loop,
                 )
             )
         try:
@@ -642,6 +676,7 @@ class WorkerPool:
         finally:
             if checkpoint_token is not None:
                 reset_checkpoint_context(checkpoint_token)
+            reset_signal_waiter(signal_token)
             reset_cost_recorder(cost_token)
             reset_failure_recorder(failure_token)
             reset_progress_reporter(token)

@@ -18,18 +18,42 @@ import copy
 import json
 
 
-class TaskStatus(Enum):
-    """Task status enumeration."""
+class TaskStatus(str, Enum):
+    """Task status enumeration.
+
+    成员名大写、值小写；``str`` 混入后 ``str(status)`` 显式走字符串实现，
+    保证 Python 3.8–3.12 下日志、JSON 与存储值统一输出小写。
+    """
     PENDING = "pending"
     RUNNING = "running"
+    WAITING = "waiting"
     SUCCESS = "success"
     FAILED = "failed"
     CANCELLED = "cancelled"
     SCHEDULED = "scheduled"
 
+    __str__ = str.__str__
+
     def is_terminal(self) -> bool:
         """Check if status is terminal (no further changes)."""
         return self in (TaskStatus.SUCCESS, TaskStatus.FAILED, TaskStatus.CANCELLED)
+
+    @classmethod
+    def from_value(cls, value: Any) -> "TaskStatus":
+        """按小写值或成员名还原状态，未知/缺失时回退到 ``PENDING``"""
+        if isinstance(value, cls):
+            return value
+        text = str(value or "").strip()
+        if not text:
+            return cls.PENDING
+        try:
+            return cls(text.lower())
+        except ValueError:
+            pass
+        try:
+            return cls[text.upper()]
+        except KeyError:
+            return cls.PENDING
 
 
 class TaskPriority(Enum):
@@ -161,7 +185,7 @@ class Task:
         return cls(
             task_id=data.get("task_id", ""),
             data=parse_json(data.get("data")) or {},
-            status=TaskStatus(data.get("status", "pending")),
+            status=TaskStatus.from_value(data.get("status", "pending")),
             priority=TaskPriority(int(data.get("priority", 2))),
             progress=float(data.get("progress") or 0.0),
             progress_message=data.get("progress_message") or "",
@@ -284,6 +308,7 @@ class TaskStats:
         total: int = 0,
         pending: int = 0,
         running: int = 0,
+        waiting: int = 0,
         completed: int = 0,
         failed: int = 0,
         cancelled: int = 0,
@@ -291,6 +316,7 @@ class TaskStats:
         self.total = total
         self.pending = pending
         self.running = running
+        self.waiting = waiting
         self.completed = completed
         self.failed = failed
         self.cancelled = cancelled

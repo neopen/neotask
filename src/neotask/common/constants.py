@@ -43,8 +43,8 @@ class EventType:
     ``"task.completed"``。纯字符串常量与既有裸字符串订阅方式逐字节等价，
     不需要为字典键与格式化行为赌版本差异。
 
-    前 10 项为 1.0.x 已有事件，末 2 项（``CHECKPOINTED`` / ``COST_REPORTED``）由
-    v1.1.0 新增。
+    前 10 项为 1.0.x 已有事件，``CHECKPOINTED`` / ``COST_REPORTED`` 由 v1.1.0
+    新增，``WAITING`` / ``SIGNAL_RECEIVED`` 由 v1.3.0 人工介入新增。
     """
 
     CREATED = "task.created"
@@ -59,6 +59,8 @@ class EventType:
     RECLAIMED = "task.reclaimed"
     CHECKPOINTED = "task.checkpointed"
     COST_REPORTED = "task.cost_reported"
+    WAITING = "task.waiting"
+    SIGNAL_RECEIVED = "task.signal_received"
 
 
 def redis_key(name: str) -> str:

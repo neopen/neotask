@@ -62,6 +62,7 @@
 - **Parent-Child Association** *(v1.1)* - Tasks carry `parent_task_id` with `get_children()` / `get_parent()` queries; auto-aggregation is intentionally left to the caller or orchestrator
 - **Checkpoint & Resume** *(v1.1)* - Executors save intermediate state via `save_checkpoint()` / `load_checkpoint()` (or `pool.save_checkpoint(task_id, ...)` for process executors); `task.checkpointed` is emitted, and retries / `resume_from_checkpoint=True` resume from the latest version
 - **Local Blackboard** *(v1.1, Memory backend)* - Share process-local values with `context_set()` / `context_get()` / `context_delete()` (optional TTL); non-Memory backends raise `UnsupportedFeatureError` instead of silently degrading
+- **Human-in-the-loop** *(v1.3)* - Handlers pause with `await neotask.wait_for_signal("approval")`; the task persists as `waiting` and releases its worker slot. `pool.signal(task_id, payload)` resumes from the latest checkpoint (first signal wins, duplicates return `False`). Waiting state survives restarts on all backends and can expire via `waiting_timeout` (`failure_reason="waiting_timeout"`)
 
 
 
@@ -160,7 +161,7 @@ graph TB
 
 **Development Roadmap**
 
-> **Note**: NeoTask is a self-sufficient local execution SDK — DAG decomposition, task dispatch and state progression belong to an upper-layer **control plane** (e.g. NeoFlow), which NeoTask only integrates with as an **execution plane** (pull task → run handler → report event). v2.0 (NeoFlow execution-plane integration) is **deferred**; built-in DAG, dynamic routing, plugin system and Web UI remain out of scope. The task/event wire contract is frozen across 1.x — see [docs/neotask-execution-contract.md](docs/neotask-execution-contract.md).
+> **Note**: NeoTask is a self-sufficient local execution SDK — DAG decomposition, task dispatch and state progression belong to an upper-layer **control plane** (e.g. NeoFlow), which NeoTask only integrates with as an **execution plane** (pull task → run handler → report event). v2.0 (NeoFlow execution-plane integration) is **deferred**; built-in DAG, dynamic routing and a plugin system remain out of scope. The only UI is an optional simple Web UI panel (`neotask[ui]`) that shows the task status of the current node — it is not a management console and has no cross-node view. The task/event wire contract is frozen across 1.x — see [docs/neotask-execution-contract.md](docs/neotask-execution-contract.md).
 
 ```mermaid
 timeline
@@ -211,7 +212,7 @@ timeline
                                 : Benchmark Suite
 
     section v1.3
-        Human-in-the-Loop : Waiting Status (durable)
+        Human-in-the-Loop (Delivered) : Waiting Status (durable)
                           : task.waiting / task.signal_received
                           : Suspend & Resume via Checkpoint
 
@@ -234,7 +235,7 @@ timeline
 
 ### Installation
 
-**Requirements**: Python ≥ 3.8. The base package depends on `aiosqlite` (SQLite storage) and `croniter` (Cron expressions); Redis, psutil, and the Web UI are optional extras.
+**Requirements**: Python ≥ 3.8. The base package depends on `aiosqlite` (SQLite storage) and `croniter` (Cron expressions); Redis, psutil, and the simple single-node Web UI panel (`neotask[ui]`) are optional extras.
 
 ```sh
 # Basic installation
@@ -416,6 +417,9 @@ How the numbers are measured:
 | `pool.save_checkpoint(task_id, state) / pool.load_checkpoint(task_id)` | Explicit checkpoint write / latest-state read (works for process executors) |
 | `pool.submit(..., task_id=..., resume_from_checkpoint=True)` | Resubmit with an external id and inject its latest checkpoint |
 | `pool.context_set(key, value, ttl=None) / context_get(key) / context_delete(key)` | Process-local blackboard (Memory backend only) |
+| `await neotask.wait_for_signal(signal, timeout=None)`        | Suspend the handler in `waiting` until a signal arrives; returns the signal payload |
+| `pool.signal(task_id, payload=None)`                         | Wake a `waiting` task and re-enqueue it (first come, first served) |
+| `pool.list_tasks(status=None, limit=100, offset=0)`          | List tasks, optionally filtered by status (e.g. `"waiting"`) |
 | `pool.on_progress(handler)`                                  | Subscribe to progress events                                 |
 | `scheduler.submit_delayed(data, delay_seconds)`              | Delayed task                                                 |
 | `scheduler.submit_interval(data, interval_seconds)`          | Periodic task                                                |
@@ -478,6 +482,15 @@ A few behaviors are easy to trip over, so they are documented explicitly:
   `submit` / `create_pending_task` (requires an explicit `task_id`). Versions are
   pruned to `checkpoint_keep_versions` (default 5), reflected in
   `get_task()["checkpoint_version"]`, and every write emits `task.checkpointed`.
+- **Human-in-the-loop**: inside a handler call
+  `await neotask.wait_for_signal("approval")` (thread executors use
+  `wait_for_signal_sync`; process executors are not supported). The task is
+  persisted as `waiting`, releases its worker slot and does not consume `ttl` or
+  auto-retry. Wake it from outside with `pool.signal(task_id, payload)`; only the
+  first signal wins and the handler replays from the latest checkpoint with the
+  payload already arrived. Waiting tasks survive restarts on Memory / SQLite /
+  Redis; set `waiting_timeout` (or pass `timeout=`) to fail expired waits with
+  `failure_reason="waiting_timeout"`. `task.data["__signal__"]` is reserved.
 - **Local blackboard**: `context_set` / `context_get` / `context_delete` are
   process-local and **Memory backend only**. SQLite / Redis raise
   `UnsupportedFeatureError` instead of silently doing nothing.

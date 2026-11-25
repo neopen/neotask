@@ -50,6 +50,7 @@
 - **父子关联** *(v1.1)* - 任务携带 `parent_task_id`，提供 `get_children()` / `get_parent()` 查询；自动汇总交由调用方或编排层，不在 NeoTask 内实现
 - **断点续跑** *(v1.1)* - 执行器用 `save_checkpoint()` / `load_checkpoint()` 保存中间状态（进程执行器用 `pool.save_checkpoint(task_id, ...)`），发布 `task.checkpointed`；重试与 `resume_from_checkpoint=True` 自动从最近版本恢复
 - **本地上下文** *(v1.1，仅 Memory)* - `context_set()` / `context_get()` / `context_delete()` 共享进程内数据（可选 TTL）；非 Memory 后端抛 `UnsupportedFeatureError`，不静默降级
+- **人工介入** *(v1.3)* - Handler 内 `await neotask.wait_for_signal("approval")` 进入 `waiting` 并释放 worker 槽位；`pool.signal(task_id, payload)` 从最近 checkpoint 恢复执行（先到先得，重复 signal 返回 `False`）。等待状态三后端均可跨重启保留，支持 `waiting_timeout` 超时转 `failed`（`failure_reason="waiting_timeout"`）
 
 ------
 
@@ -144,7 +145,7 @@ graph TB
 
 **发展路线图**
 
-**图注**：NeoTask 是可独立自足的本地执行 SDK —— DAG 拆解、任务下发与状态推进属于上层**控制面**（如 NeoFlow），NeoTask 仅作为**执行面**与其对接（拉取任务 → 执行 Handler → 上报事件）。v2.0（NeoFlow 执行面接入）为**后移项**；内置 DAG、动态路由、插件系统与 Web UI 不在范围内。任务与事件的线协议在 1.x 内冻结，详见 [docs/neotask-execution-contract.md](docs/neotask-execution-contract.md)。
+**图注**：NeoTask 是可独立自足的本地执行 SDK —— DAG 拆解、任务下发与状态推进属于上层**控制面**（如 NeoFlow），NeoTask 仅作为**执行面**与其对接（拉取任务 → 执行 Handler → 上报事件）。v2.0（NeoFlow 执行面接入）为**后移项**；内置 DAG、动态路由、插件系统不在范围内。唯一的界面是可选的简单 Web UI 面板（`neotask[ui]`），只展示当前节点的任务状态，不做跨节点视图，也不是管理控制台。任务与事件的线协议在 1.x 内冻结，详见 [docs/neotask-execution-contract.md](docs/neotask-execution-contract.md)。
 
 ```mermaid
 timeline
@@ -195,7 +196,7 @@ timeline
                    : 基准测试套件
 
     section v1.3
-        人工介入 : 等待状态（waiting）
+        人工介入（已交付） : 等待状态（waiting）
                  : 挂起/唤醒事件
                  : 基于 Checkpoint 的恢复
 
@@ -398,6 +399,9 @@ print(result.format())        # result.to_dict() 可直接 json.dumps
 | `pool.save_checkpoint(task_id, state) / pool.load_checkpoint(task_id)` | 显式写入 checkpoint / 读取最近状态（进程执行器可用） |
 | `pool.submit(..., task_id=..., resume_from_checkpoint=True)` | 用外部 task_id 重提交并注入最近 checkpoint |
 | `pool.context_set(key, value, ttl=None) / context_get(key) / context_delete(key)` | 进程内 Blackboard（仅 Memory 后端） |
+| `await neotask.wait_for_signal(signal, timeout=None)`        | 在 Handler 内挂起为 `waiting`，信号到达后返回 payload |
+| `pool.signal(task_id, payload=None)`                         | 唤醒 `waiting` 任务并重新入队（先到先得） |
+| `pool.list_tasks(status=None, limit=100, offset=0)`          | 按状态列出任务（如 `"waiting"`） |
 | `pool.on_progress(handler)`                                  | 订阅进度事件                                                 |
 | `scheduler.submit_delayed(data, delay_seconds)`              | 提交延时任务                                                 |
 | `scheduler.submit_interval(data, interval_seconds)`          | 提交周期任务                                                 |
@@ -448,6 +452,13 @@ print(result.failed)     # [{"index": 3, "data": {...}, "error": "queue is full"
   `submit` / `create_pending_task` 传入 `resume_from_checkpoint=True`（需显式
   `task_id`）也会恢复。历史版本按 `checkpoint_keep_versions`（默认 5）淘汰，
   `get_task()["checkpoint_version"]` 体现存在性，每次写入发布 `task.checkpointed`。
+- **人工介入**：Handler 内用 `await neotask.wait_for_signal("approval")`（线程执行器
+  用 `wait_for_signal_sync`，进程执行器不支持）。任务落库为 `waiting`、释放 worker
+  槽位，不占 `ttl`、不自动重试；外部用 `pool.signal(task_id, payload)` 唤醒，只有
+  第一次 signal 生效，Handler 从最近 checkpoint 重放并直接拿到 payload。等待任务在
+  Memory / SQLite / Redis 上均可跨重启保留；设置 `waiting_timeout`（或传 `timeout=`
+  ）后超时转 `failed`，`failure_reason="waiting_timeout"`。`task.data["__signal__"]`
+  为保留键，业务不得占用。
 - **本地上下文**：`context_set` / `context_get` / `context_delete` 仅限 **Memory
   后端**；SQLite / Redis 会抛 `UnsupportedFeatureError`，不静默降级。
 - **优雅关闭的范围**：`shutdown(graceful=True)` 只会把已入队的任务（pending + running）
@@ -533,7 +544,7 @@ neotask/
 ├── event/         # 事件总线
 ├── monitor/       # 指标、健康检查、上报
 ├── distributed/   # 节点管理、协调器、分片
-├── web/           # 可选 Web UI
+├── web/           # 可选：单节点任务状态面板
 ├── utils/         # 专用事件循环、Redis/SQLite 代理
 ├── models/        # 任务与配置模型
 └── common/        # 日志、异常

@@ -12,12 +12,14 @@ See LICENSE File For Details.
 
 import json
 import sqlite3
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from neotask.models.task import Task, TaskPriority, TaskStatus
 from neotask.common.exceptions import TaskAlreadyExistsError
+from neotask.core.signal import SIGNAL_DATA_KEY
 from neotask.storage.base import (
     CheckpointRecord,
     CheckpointRepository,
@@ -25,6 +27,7 @@ from neotask.storage.base import (
     QueueRepository,
     merge_cost_detail,
     new_cost_summary,
+    waiting_timeout_at,
 )
 from neotask.utils import sqlite_compat
 
@@ -54,6 +57,8 @@ _NEW_TASK_COLUMNS = (
     ("cost_tracking", "TEXT"),
     ("queue_wait_ms", "REAL"),
     ("duration_ms", "REAL"),
+    # v1.3.0：WAITING 任务的到期时刻，供超时扫描走索引；非等待任务为 NULL
+    ("signal_timeout_at", "REAL"),
 )
 
 #: 队列表结构与索引：任务仓储的「创建 + 入队」单事务快路径也要用到，
@@ -199,6 +204,12 @@ class SQLiteTaskRepository(TaskRepository):
         # v1.1.0 起的新列不写进上面的 CREATE TABLE，统一由 _add_missing_columns 补齐：
         # 新建库当场 ALTER 一次，1.0.x 老库同样走这条路，新列只在一处声明。
         await self._add_missing_columns(conn)
+        # 等待超时扫描只取到期行：部分索引让查询在万级等待任务下仍是范围查找
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tasks_waiting_timeout "
+            f"ON tasks(signal_timeout_at) WHERE status = '{TaskStatus.WAITING.value}'"
+        )
+        await self._backfill_signal_timeouts(conn)
         await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_tasks_status 
             ON tasks(status)
@@ -246,6 +257,48 @@ class SQLiteTaskRepository(TaskRepository):
                 if "duplicate column name" not in str(exc).lower():
                     raise
 
+    async def _backfill_signal_timeouts(self, conn) -> None:
+        """为升级前已处于 WAITING 的任务补 ``signal_timeout_at``
+
+        v1.3.0 的等待超时只存在于 ``data`` JSON 里；补列后不回溯的话，升级
+        前挂起的任务不会被超时扫描命中。只在 ``signal_timeout_at IS NULL``
+        的等待任务上执行，补完后是空操作。
+        """
+        cursor = await conn.execute(
+            "SELECT task_id, data FROM tasks "
+            "WHERE status = ? AND signal_timeout_at IS NULL",
+            (TaskStatus.WAITING.value,),
+        )
+        try:
+            rows = await cursor.fetchall()
+        finally:
+            await cursor.close()
+
+        updates = []
+        for task_id, raw in rows:
+            try:
+                data = json.loads(raw) if isinstance(raw, str) else raw
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            entry = data.get(SIGNAL_DATA_KEY)
+            if not isinstance(entry, dict):
+                continue
+            timeout_at = entry.get("timeout_at")
+            if timeout_at is None:
+                continue
+            try:
+                updates.append((float(timeout_at), task_id))
+            except (TypeError, ValueError):
+                continue
+
+        if updates:
+            await conn.executemany(
+                "UPDATE tasks SET signal_timeout_at = ? WHERE task_id = ?",
+                updates,
+            )
+
     @staticmethod
     def _task_values(task: Task) -> tuple:
         """任务行的绑定参数（与 INSERT 列顺序一致）"""
@@ -271,7 +324,22 @@ class SQLiteTaskRepository(TaskRepository):
             json.dumps(task.cost_tracking) if task.cost_tracking else None,
             getattr(task, 'queue_wait_ms', None),
             getattr(task, 'duration_ms', None),
+            waiting_timeout_at(task),
         )
+
+    @staticmethod
+    def _append_timeout_column(
+            task: Task, columns: list, params: list
+    ) -> None:
+        """status/data 一起写时同步等待超时列
+
+        超时只在 ``data.__signal__.timeout_at`` 里变化，部分字段写入
+        （进度、重试计数等）不会影响索引，跳过以免每次写都重算 JSON。
+        """
+        if "status" not in columns and "data" not in columns:
+            return
+        columns.append("signal_timeout_at")
+        params.append(waiting_timeout_at(task))
 
     async def save(self, task: Task) -> None:
         await self._ensure_init()
@@ -280,8 +348,8 @@ class SQLiteTaskRepository(TaskRepository):
             (task_id, data, status, priority, node_id, retry_count, ttl,
              created_at, started_at, completed_at, result, error, progress, progress_message,
              failure_reason, checkpoint_version, parent_task_id, estimated_cost,
-             cost_tracking, queue_wait_ms, duration_ms)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             cost_tracking, queue_wait_ms, duration_ms, signal_timeout_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, self._task_values(task))
         await self._conn.commit()
 
@@ -293,8 +361,8 @@ class SQLiteTaskRepository(TaskRepository):
             (task_id, data, status, priority, node_id, retry_count, ttl,
              created_at, started_at, completed_at, result, error, progress, progress_message,
              failure_reason, checkpoint_version, parent_task_id, estimated_cost,
-             cost_tracking, queue_wait_ms, duration_ms)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             cost_tracking, queue_wait_ms, duration_ms, signal_timeout_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, self._task_values(task))
         inserted = cursor.rowcount > 0
         await cursor.close()
@@ -330,8 +398,8 @@ class SQLiteTaskRepository(TaskRepository):
                 (task_id, data, status, priority, node_id, retry_count, ttl,
                  created_at, started_at, completed_at, result, error, progress, progress_message,
                  failure_reason, checkpoint_version, parent_task_id, estimated_cost,
-                 cost_tracking, queue_wait_ms, duration_ms)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 cost_tracking, queue_wait_ms, duration_ms, signal_timeout_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 self._task_values(task),
             )
@@ -399,8 +467,8 @@ class SQLiteTaskRepository(TaskRepository):
             (task_id, data, status, priority, node_id, retry_count, ttl,
              created_at, started_at, completed_at, result, error, progress, progress_message,
              failure_reason, checkpoint_version, parent_task_id, estimated_cost,
-             cost_tracking, queue_wait_ms, duration_ms)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             cost_tracking, queue_wait_ms, duration_ms, signal_timeout_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, params)
         return [task.task_id for task in new_tasks]
 
@@ -416,6 +484,7 @@ class SQLiteTaskRepository(TaskRepository):
             _serialize_field(name, getattr(task, name, None))
             for name in columns
         ]
+        self._append_timeout_column(task, columns, params)
         params.append(task.task_id)
 
         cursor = await self._conn.execute(
@@ -445,6 +514,7 @@ class SQLiteTaskRepository(TaskRepository):
             _serialize_field(name, getattr(task, name, None))
             for name in columns
         ]
+        self._append_timeout_column(task, columns, params)
         params.extend([task.task_id, self._status_value(expected)])
 
         async def _cas(db) -> bool:
@@ -579,6 +649,32 @@ class SQLiteTaskRepository(TaskRepository):
         finally:
             await cursor.close()
         return int(row[0]) if row else 0
+
+    async def list_expired_waiting(
+            self,
+            now: Optional[float] = None,
+            limit: int = 1000,
+            offset: int = 0,
+    ) -> List[Task]:
+        """等待超时任务：单条查询只取到期行，不再解码全部等待任务"""
+        await self._ensure_init()
+        current = time.time() if now is None else now
+        conn: Any = self._conn
+        cursor = await conn.execute(
+            "SELECT * FROM tasks WHERE status = ? AND signal_timeout_at IS NOT NULL "
+            "AND signal_timeout_at <= ? "
+            "ORDER BY signal_timeout_at, task_id LIMIT ? OFFSET ?",
+            (TaskStatus.WAITING.value, current, limit, offset),
+        )
+        try:
+            rows = await cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+        finally:
+            await cursor.close()
+        return [
+            _row_to_task(dict(zip(columns, row)))
+            for row in rows
+        ]
 
     async def oldest_pending_created_at(self) -> Optional[datetime]:
         """最早 PENDING 任务的创建时间（走 status 过滤的最小值查询）"""

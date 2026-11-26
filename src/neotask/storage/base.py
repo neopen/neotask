@@ -15,7 +15,29 @@ from dataclasses import dataclass
 from datetime import datetime
 import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+from neotask.core.signal import SIGNAL_DATA_KEY
 from neotask.models.task import Task, TaskStatus
+
+
+def waiting_timeout_at(task: Task) -> Optional[float]:
+    """等待到期时刻（epoch 秒）。
+
+    只有 ``WAITING`` 状态且有 ``timeout_at`` 的任务参与超时扫描；其它状态
+    或未设置超时返回 ``None``。索引型后端用它在写入时算出索引 score。
+    """
+    if task.status != TaskStatus.WAITING:
+        return None
+    data = task.data if isinstance(task.data, dict) else None
+    entry = (data or {}).get(SIGNAL_DATA_KEY)
+    if not isinstance(entry, dict):
+        return None
+    timeout_at = entry.get("timeout_at")
+    if timeout_at is None:
+        return None
+    try:
+        return float(timeout_at)
+    except (TypeError, ValueError):
+        return None
 
 
 def new_cost_summary() -> Dict[str, Any]:
@@ -239,6 +261,36 @@ class TaskRepository(ABC):
             if len(tasks) < batch:
                 return total
             offset += batch
+
+    async def list_expired_waiting(
+            self,
+            now: Optional[float] = None,
+            limit: int = 1000,
+            offset: int = 0,
+    ) -> List[Task]:
+        """列出等待超时的 ``WAITING`` 任务，按到期时刻升序。
+
+        默认实现按状态分页扫描后过滤，任何后端都能工作；内置后端均覆盖为
+        索引查询，只加载到期任务，避免每次扫描解码全部等待任务。
+        """
+        current = time.time() if now is None else now
+        expired: List[Task] = []
+        scan_offset = 0
+        batch = 1000
+        while True:
+            tasks = await self.list_by_status(
+                TaskStatus.WAITING, limit=batch, offset=scan_offset
+            )
+            for task in tasks:
+                timeout_at = waiting_timeout_at(task)
+                if timeout_at is not None and timeout_at <= current:
+                    expired.append(task)
+            if len(tasks) < batch:
+                break
+            scan_offset += len(tasks)
+
+        expired.sort(key=lambda task: (waiting_timeout_at(task) or 0.0, task.task_id))
+        return expired[offset:offset + limit]
 
     async def oldest_pending_created_at(self) -> Optional[datetime]:
         """最早 PENDING 任务的创建时间；没有 PENDING 任务时返回 None。

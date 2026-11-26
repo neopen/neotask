@@ -1086,16 +1086,17 @@ class TaskLifecycleManager:
     async def fail_expired_waiting(self, now: Optional[float] = None) -> int:
         """把等待超时的任务置为 FAILED（``failure_reason="waiting_timeout"``）
 
-        先完整扫描再统一失败，避免边扫描边改状态导致分页偏移。扫描与 signal
-        并发时以先完成落库的一方为准。
+        只向仓储要到期任务（索引/过滤由后端负责），先完整取回再统一失败，
+        避免边扫描边改状态导致分页偏移。扫描与 signal 并发时以先完成落库
+        的一方为准。
         """
         current = time.time() if now is None else now
         waiting: List[Task] = []
         offset = 0
         batch = 1000
         while True:
-            tasks = await self._task_repo.list_by_status(
-                TaskStatus.WAITING, limit=batch, offset=offset
+            tasks = await self._task_repo.list_expired_waiting(
+                current, limit=batch, offset=offset
             )
             waiting.extend(tasks)
             if len(tasks) < batch:

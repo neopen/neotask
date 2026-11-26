@@ -26,6 +26,7 @@ from neotask.storage.base import (
     QueueRepository,
     new_cost_summary,
     record_task_cost,
+    waiting_timeout_at,
 )
 
 
@@ -182,6 +183,26 @@ class MemoryTaskRepository(TaskRepository):
         """统计指定状态的任务数量（不拷贝任务对象）"""
         with self._lock:
             return sum(1 for task in self._tasks.values() if task.status == status)
+
+    async def list_expired_waiting(
+            self,
+            now: Optional[float] = None,
+            limit: int = 1000,
+            offset: int = 0,
+    ) -> List[Task]:
+        """等待超时任务：锁内过滤，只为到期任务克隆副本"""
+        current = time.time() if now is None else now
+        with self._lock:
+            expired = []
+            for task in self._tasks.values():
+                timeout_at = waiting_timeout_at(task)
+                if timeout_at is not None and timeout_at <= current:
+                    expired.append((timeout_at, task.task_id, task))
+            expired.sort(key=lambda item: (item[0], item[1]))
+            return [
+                task.clone()
+                for _, _, task in expired[offset:offset + limit]
+            ]
 
     async def oldest_pending_created_at(self) -> Optional[datetime]:
         """最早 PENDING 任务的创建时间（直接遍历字典取最小值）"""

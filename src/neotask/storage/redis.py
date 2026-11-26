@@ -39,6 +39,7 @@ from neotask.storage.base import (
     CheckpointRepository,
     TaskRepository,
     QueueRepository,
+    waiting_timeout_at,
 )
 
 #: 队列 zset 键：任务仓储的「创建即入队」原子脚本需要直接写入这两个键
@@ -55,6 +56,14 @@ _TERMINAL_STATUS_VALUES = {
 #: 终态过期索引：score = 完成时间 + ttl（无完成时间时用创建时间 + 2*ttl）。
 #: 清理时按 score 范围取到期任务，避免全量读取任务实体。
 _TERMINAL_EXPIRY_KEY = redis_key("terminal:expiry")
+
+#: 等待超时索引：member = task_id，score = ``data.__signal__.timeout_at``。
+#: 超时扫描按 score 范围取到期任务，避免每次 SMEMBERS + MGET 全量解码。
+_SIGNAL_TIMEOUT_KEY = redis_key("signal_timeouts")
+
+#: 索引回填标记：v1.3.0 升级前挂起的等待任务需要补进 ZSET（每个库一次）
+_SIGNAL_TIMEOUT_READY_KEY = redis_key("signal_timeouts:ready")
+
 
 def _parse_timestamp(value: Any) -> Optional[float]:
     """把存储里的时间值解析为 Unix 时间戳"""
@@ -119,12 +128,13 @@ redis.call('ZADD', KEYS[3], ARGV[4], ARGV[2])
 return 1
 """
 
-#: 状态 CAS 脚本：GET → 比较 status → SET → 状态索引 / 父子索引 / 终态过期索引
+#: 状态 CAS 脚本：GET → 比较 status → SET → 状态索引 / 父子索引 / 终态过期索引 / 等待超时索引
 #: 返回 0 表示任务不存在或状态已被其它实例改写，1 表示本次转换生效
 #:
 #: KEYS: 1=任务键 2=新状态集合 3=旧状态集合 4=父子索引 5=终态过期索引
+#:       6=等待超时索引
 #: ARGV: 1=任务 JSON 2=task_id 3=expected 4=新状态 5=parent_task_id(可空)
-#:       6=过期 score（空字符串表示移除）
+#:       6=过期 score（空字符串表示移除）7=等待超时 score（空字符串表示移除）
 _CAS_FIELDS_LUA = """
 local raw = redis.call('GET', KEYS[1])
 if not raw then
@@ -146,6 +156,11 @@ if ARGV[6] == '' then
     redis.call('ZREM', KEYS[5], ARGV[2])
 else
     redis.call('ZADD', KEYS[5], ARGV[6], ARGV[2])
+end
+if ARGV[7] == '' then
+    redis.call('ZREM', KEYS[6], ARGV[2])
+else
+    redis.call('ZADD', KEYS[6], ARGV[7], ARGV[2])
 end
 return 1
 """
@@ -226,6 +241,12 @@ class RedisTaskRepository(TaskRepository):
         else:
             await client.zadd(self._expiry_key, {task.task_id: score})
 
+        # 同步等待超时索引（只有 WAITING 且有 timeout_at 的任务在集合内）
+        timeout_at = waiting_timeout_at(task)
+        if timeout_at is None:
+            await client.zrem(_SIGNAL_TIMEOUT_KEY, task.task_id)
+        else:
+            await client.zadd(_SIGNAL_TIMEOUT_KEY, {task.task_id: timeout_at})
 
     async def save_if_absent(self, task: Task) -> bool:
         """单条 Lua 完成「查重 + SET + SADD」，把新任务提交压到 1 次往返"""
@@ -306,6 +327,7 @@ class RedisTaskRepository(TaskRepository):
 
         task_dict = task.to_dict()
         score = _expiry_score(task_dict)
+        timeout_at = waiting_timeout_at(task)
         outcome = await script(
             keys=[
                 self._task_key(task.task_id),
@@ -313,6 +335,7 @@ class RedisTaskRepository(TaskRepository):
                 self._status_key(self._status_value(expected)),
                 self._parent_key(task.parent_task_id or "_none_"),
                 self._expiry_key,
+                _SIGNAL_TIMEOUT_KEY,
             ],
             args=[
                 json.dumps(task_dict, default=str),
@@ -321,6 +344,7 @@ class RedisTaskRepository(TaskRepository):
                 task.status.value,
                 task.parent_task_id or "",
                 "" if score is None else score,
+                "" if timeout_at is None else timeout_at,
             ],
         )
         return int(outcome) == 1
@@ -390,6 +414,7 @@ class RedisTaskRepository(TaskRepository):
         key = self._task_key(task_id)
         result = await client.delete(key)
         await client.zrem(self._expiry_key, task_id)
+        await client.zrem(_SIGNAL_TIMEOUT_KEY, task_id)
         return result > 0
 
     async def delete_batch(self, task_ids: List[str]) -> int:
@@ -429,6 +454,7 @@ class RedisTaskRepository(TaskRepository):
             # 删除任务键与终态过期索引
             pipe.delete(self._task_key(task_id))
             pipe.zrem(self._expiry_key, task_id)
+            pipe.zrem(_SIGNAL_TIMEOUT_KEY, task_id)
 
         await pipe.execute()
         return deleted_count
@@ -491,6 +517,80 @@ class RedisTaskRepository(TaskRepository):
                 tasks.append(Task.from_dict(json.loads(raw)))
             except (ValueError, TypeError):
                 continue
+        return tasks
+
+    async def _ensure_timeout_index(self, client: Any) -> None:
+        """一次性把升级前已挂起的 WAITING 任务补进超时索引
+
+        v1.3.0 之前/升级前挂起的任务只有 ``data`` 里的 ``timeout_at``，没有
+        ZSET 成员；标记键存在后不再回填，后续由写入路径维护。
+        """
+        if await client.exists(_SIGNAL_TIMEOUT_READY_KEY):
+            return
+
+        task_ids = list(
+            await client.smembers(self._status_key(TaskStatus.WAITING.value))
+        )
+        for start in range(0, len(task_ids), 500):
+            chunk = task_ids[start:start + 500]
+            raws = await client.mget([self._task_key(tid) for tid in chunk])
+            scores = {}
+            for task_id, raw in zip(chunk, raws):
+                if not raw:
+                    continue
+                try:
+                    task = Task.from_dict(json.loads(raw))
+                except (ValueError, TypeError):
+                    continue
+                timeout_at = waiting_timeout_at(task)
+                if timeout_at is not None:
+                    scores[task_id] = timeout_at
+            if scores:
+                await client.zadd(_SIGNAL_TIMEOUT_KEY, scores)
+
+        await client.set(_SIGNAL_TIMEOUT_READY_KEY, "1")
+
+    async def list_expired_waiting(
+            self,
+            now: Optional[float] = None,
+            limit: int = 1000,
+            offset: int = 0,
+    ) -> List[Task]:
+        """等待超时任务：按 ZSET 范围取到期成员后分批 MGET
+
+        索引里的残留成员（例如状态已被改写但 ZREM 未执行）在读取时按实际
+        任务状态过滤并顺手清理，扫描结果与 ``waiting_timeout_at`` 一致。
+        """
+        client = await self._get_client()
+        await self._ensure_timeout_index(client)
+
+        current = time.time() if now is None else now
+        task_ids = list(await client.zrangebyscore(
+            _SIGNAL_TIMEOUT_KEY, "-inf", current,
+            start=offset, num=limit,
+        ))
+        if not task_ids:
+            return []
+
+        raws = await client.mget([self._task_key(tid) for tid in task_ids])
+        tasks: List[Task] = []
+        stale: List[str] = []
+        for task_id, raw in zip(task_ids, raws):
+            if not raw:
+                stale.append(task_id)
+                continue
+            try:
+                task = Task.from_dict(json.loads(raw))
+            except (ValueError, TypeError):
+                stale.append(task_id)
+                continue
+            if waiting_timeout_at(task) is None:
+                stale.append(task_id)
+                continue
+            tasks.append(task)
+
+        if stale:
+            await client.zrem(_SIGNAL_TIMEOUT_KEY, *stale)
         return tasks
 
     async def count_by_status(self, status: TaskStatus) -> int:

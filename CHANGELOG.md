@@ -6,6 +6,18 @@
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [1.3.0](https://github.com/neopen/neotask/compare/v1.2.1...v1.3.0) (2026-11-26)
+
+
+### ✨ Features (新功能)
+
+* **core:** v1.3 人工介入——等待状态与信号唤醒 ([#56](https://github.com/neopen/neotask/issues/56)) ([9cc8bee](https://github.com/neopen/neotask/commit/9cc8bee09f1366757c071b02be662c7961d044cf))
+
+
+### 🔧 Other Changes (其他变更)
+
+* **license:** 将项目许可证从 MIT 迁移至 Apache-2.0 ([#54](https://github.com/neopen/neotask/issues/54)) ([b09cc87](https://github.com/neopen/neotask/commit/b09cc875c49c91549c5deddfd557038bf55613f2))
+
 ## [1.2.1](https://github.com/neopen/neotask/compare/v1.2.0...v1.2.1) (2026-11-22)
 
 

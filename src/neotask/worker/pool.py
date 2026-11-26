@@ -47,7 +47,7 @@ from neotask.core.signal import (
 )
 from neotask.event.bus import EventBus, TaskEvent
 from neotask.executor.base import TaskExecutor
-from neotask.models.task import TaskPriority, TaskStatus
+from neotask.models.task import Task, TaskPriority, TaskStatus
 from neotask.queue.dead_letter import DeadLetterQueue, DeadLetterReason
 from neotask.queue.queue_scheduler import QueueScheduler
 from neotask.storage.base import TaskRepository
@@ -434,8 +434,14 @@ class WorkerPool:
 
             # 检查任务状态 - 只有 PENDING 的任务才能执行
             if task.status != TaskStatus.PENDING:
-                warning(f"Task {task_id} status is {task.status}, not PENDING, skipping")
-                return
+                # 队列跨实例共享：本实例缓存可能是上次挂起时的 WAITING 副本，
+                # 而其它实例已 signal 成 PENDING，回查存储后再判定是否执行
+                fresh = await self._lifecycle.get_task(task_id, refresh=True)
+                if fresh is not None:
+                    task = fresh
+                if task.status != TaskStatus.PENDING:
+                    warning(f"Task {task_id} status is {task.status}, not PENDING, skipping")
+                    return
 
             # ========== 获取分布式锁（防止重复执行）==========
             lock_key = f"task:{task_id}"
@@ -642,6 +648,9 @@ class WorkerPool:
         async def signal_consume(signal: str) -> bool:
             return await self._lifecycle.consume_signal(task_id, signal)
 
+        async def signal_reload() -> Optional[Task]:
+            return await self._lifecycle.get_task(task_id, refresh=True)
+
         loop = asyncio.get_running_loop()
         reporter = ProgressReporter(progress_callback)
         token = set_progress_reporter(reporter)
@@ -654,6 +663,7 @@ class WorkerPool:
                 signal_consume,
                 default_timeout=self._waiting_timeout,
                 loop=loop,
+                reload=signal_reload,
             )
         )
         checkpoint_token = None
@@ -726,21 +736,15 @@ class WorkerPool:
             if cost:
                 await self._lifecycle.apply_cost(task_id, cost)
 
-            # 更新重试计数，重置状态为 PENDING（只写变化字段）
-            task.retry_count = new_retry_count
-            task.error = error_msg
-            task.status = TaskStatus.PENDING
-            task.node_id = ""
-            fields = ["retry_count", "error", "status", "node_id"]
-            # 自动重试同样续跑：把最近 checkpoint 注入 task.data 并落库
-            if await self._lifecycle.resume_from_checkpoint(task):
-                fields.extend(["data", "checkpoint_version"])
-            await self._task_repo.save_fields(task, tuple(fields))
-
-            # 更新缓存
-            if self._lifecycle._cache_enabled:
-                with self._lifecycle._lock:
-                    self._lifecycle._cache[task_id] = task
+            # 更新重试计数，重置状态为 PENDING（CAS：任务已被取消/完成时不再重试）
+            if not await self._lifecycle.prepare_retry(
+                    task_id, new_retry_count, error_msg
+            ):
+                warning(
+                    f"Task {task_id} cannot be retried: "
+                    "status changed by another executor"
+                )
+                return
 
             # 重新入队（带延迟）
             delay = self._retry_delay * new_retry_count
@@ -750,10 +754,14 @@ class WorkerPool:
                 # 队列已满/禁用，无法重试，直接失败并投递死信
                 err = f"{error_msg} (retry requeue failed: queue rejected task)"
                 error(f"Task {task_id} cannot be requeued: {err}")
-                await self._lifecycle.fail_task(task_id, err, cost=cost)
+                await self._lifecycle.fail_task(
+                    task_id, err, allow_pending=True, cost=cost
+                )
                 self._worker_stats[worker_id].failed_tasks += 1
+                # 死信保存的是落库后的快照（状态转换已改为影子对象写入）
+                failed_task = await self._lifecycle.get_task(task_id) or task
                 await self._send_to_dead_letter(
-                    task,
+                    failed_task,
                     DeadLetterReason.MAX_RETRIES,
                     err,
                     metadata={"node_id": self._node_id, "worker_id": worker_id}
@@ -779,8 +787,9 @@ class WorkerPool:
             debug(f"Task {task_id} exceeded max retries ({self._max_retries}), marking as FAILED")
             await self._lifecycle.fail_task(task_id, error_msg, cost=cost)
             self._worker_stats[worker_id].failed_tasks += 1
+            failed_task = await self._lifecycle.get_task(task_id) or task
             await self._send_to_dead_letter(
-                task,
+                failed_task,
                 DeadLetterReason.MAX_RETRIES,
                 error_msg,
                 metadata={"node_id": self._node_id, "worker_id": worker_id}

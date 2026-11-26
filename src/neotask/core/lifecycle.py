@@ -11,6 +11,7 @@ See LICENSE File For Details.
 """
 
 import asyncio
+import copy
 import random
 import threading
 import time
@@ -48,15 +49,17 @@ class _DeferredRunningWrite:
 
     - ``done``：任务在窗口内完成时置位，后台协程据此跳过这次 RUNNING 写入
     - ``force``：关闭时置位，即使 ``done`` 已置位也强制落库当前 RUNNING 状态
+    - ``persisted``：这次延迟写入是否真的改写了存储（False = 存储仍是 PENDING）
     - ``flush_task``：后台协程，终态写入前会先等待它结束，保证写入顺序
     """
 
-    __slots__ = ("task_obj", "done", "force", "flush_task")
+    __slots__ = ("task_obj", "done", "force", "persisted", "flush_task")
 
     def __init__(self, task: Task, done: asyncio.Event):
         self.task_obj = task
         self.done = done
         self.force = False
+        self.persisted = False
         self.flush_task: Optional[asyncio.Task] = None
 
 
@@ -285,14 +288,22 @@ class TaskLifecycleManager:
             await self._future_manager.remove(task_id)
         return deleted
 
-    async def get_task(self, task_id: str) -> Optional[Task]:
+    async def get_task(self, task_id: str, refresh: bool = False) -> Optional[Task]:
         """获取任务
 
         同一实例内的所有状态写入（start/complete/fail/cancel/update_status）都会
-        同步刷新缓存，故缓存对本实例始终权威。
+        同步刷新缓存，故缓存对本实例始终权威。跨实例场景（多进程/多节点共享
+        同一存储）下缓存可能落后于其它实例写入的状态与 ``__signal__`` 数据，
+        执行与唤醒判定需要最新数据时应传 ``refresh=True`` 回查存储。
+
+        Args:
+            task_id: 任务 ID
+            refresh: 为 True 时绕过缓存直接读存储，并用读到的对象刷新缓存
+
+        Returns:
+            任务对象；不存在时返回 None
         """
-        # 从缓存获取
-        if self._cache_enabled:
+        if self._cache_enabled and not refresh:
             with self._lock:
                 if task_id in self._cache:
                     return self._cache[task_id]
@@ -312,27 +323,39 @@ class TaskLifecycleManager:
             status: TaskStatus,
             **kwargs
     ) -> bool:
-        """更新任务状态"""
+        """更新任务状态
+
+        写入以读取到的旧状态为 CAS 条件：并发转换时只有一方生效，
+        失败方不会覆盖对方的写入。
+        """
         task = await self.get_task(task_id)
         if not task:
             return False
 
         old_status = task.status
-        task.status = status
+        shadow = self._shadow_task(task)
+        shadow.status = status
 
         # 更新额外字段
+        fields = ["status"]
         for key, value in kwargs.items():
-            if hasattr(task, key):
-                setattr(task, key, value)
+            if hasattr(shadow, key):
+                setattr(shadow, key, value)
+                fields.append(key)
 
         # 只落库发生变化的字段，避免重写整条任务记录
-        await self._task_repo.save_fields(
-            task,
-            {"status", *(key for key in kwargs if hasattr(task, key))}
-        )
+        if not await self._task_repo.save_fields_if_status(
+                shadow, tuple(fields), old_status
+        ):
+            self._cache_discard(task_id)
+            warning(
+                f"Cannot update task {task_id}: status changed from "
+                f"{old_status.value} by another executor"
+            )
+            return False
 
         if self._cache_enabled:
-            self._cache_put(task_id, task)
+            self._cache_put(task_id, shadow)
 
         await self._emit_event(
             EventType.STATUS_CHANGED,
@@ -453,6 +476,29 @@ class TaskLifecycleManager:
                     self._cache.pop(evict_id, None)
                     self._cache_evicted = True
 
+    def _cache_discard(self, task_id: str) -> None:
+        """丢弃本地缓存副本，强制下次读取回查存储
+
+        状态转换的 CAS 失败说明存储已被其它实例改写，本地缓存不再权威；
+        保留旧对象会让后续读写继续基于过期状态做判断。
+        """
+        if not self._cache_enabled:
+            return
+        with self._lock:
+            self._cache.pop(task_id, None)
+            self._terminal_cache_set.discard(task_id)
+
+    @staticmethod
+    def _shadow_task(task: Task) -> Task:
+        """复制一份任务用于状态转换
+
+        直接修改从缓存取出的对象会在 CAS 失败时把本地缓存改脏；``data`` 可能
+        含嵌套的信号条目，必须深拷贝，其余字段在转换中只做整体赋值。
+        """
+        shadow = copy.copy(task)
+        shadow.data = copy.deepcopy(task.data) if task.data else {}
+        return shadow
+
     def start_progress_flusher(self) -> None:
         """启动后台进度写回任务（需在事件循环内调用）
 
@@ -545,9 +591,15 @@ class TaskLifecycleManager:
 
             if task.status != TaskStatus.RUNNING:
                 return
-            await self._task_repo.save_fields(
-                task, ("status", "node_id", "started_at", "queue_wait_ms")
+            # 存储中仍是 PENDING：延迟窗口内状态可能已被其它实例改写（取消/超时）
+            written = await self._task_repo.save_fields_if_status(
+                task,
+                ("status", "node_id", "started_at", "queue_wait_ms"),
+                TaskStatus.PENDING,
             )
+            handle.persisted = written
+            if not written:
+                self._cache_discard(task.task_id)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -557,27 +609,46 @@ class TaskLifecycleManager:
                 if self._deferred_running.get(task.task_id) is handle:
                     self._deferred_running.pop(task.task_id, None)
 
-    async def _resolve_deferred_running(self, task_id: str) -> None:
+    async def _resolve_deferred_running(self, task_id: str) -> Optional[bool]:
         """终态写入前结束该任务的延迟 RUNNING 落库
 
         - 仍在窗口内：跳过写入（终态写入包含 ``started_at``）
         - 已开始落库：等待它结束，避免 RUNNING 写入晚于终态写入
+
+        Returns:
+            None: 没有延迟写入
+            False: 延迟写入被跳过或失败，存储中仍是 PENDING
+            True: 延迟写入已把状态改为 RUNNING
         """
         with self._lock:
             handle = self._deferred_running.get(task_id)
         if handle is None:
-            return
+            return None
 
         handle.done.set()
         flush_task = handle.flush_task
-        if flush_task is None or flush_task.done():
-            return
-        try:
-            await asyncio.shield(flush_task)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            pass
+        if flush_task is not None and not flush_task.done():
+            try:
+                await asyncio.shield(flush_task)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                pass
+        return handle.persisted
+
+    async def _running_origin(
+            self, task_id: str, observed: TaskStatus
+    ) -> TaskStatus:
+        """解析 RUNNING 状态转换的 CAS 期望值
+
+        启用延迟 RUNNING 落库时，短任务在窗口内完成/挂起前存储里仍是 PENDING；
+        此时 CAS 必须以 PENDING 为条件，否则永远匹配不到。其它来源的状态
+        （超时的 WAITING、入队失败的 PENDING）不受影响。
+        """
+        persisted = await self._resolve_deferred_running(task_id)
+        if observed == TaskStatus.RUNNING and persisted is False:
+            return TaskStatus.PENDING
+        return observed
 
     async def flush_deferred_running(self) -> int:
         """把所有仍在等待窗口的 RUNNING 状态立即落库（关闭前调用）
@@ -613,10 +684,15 @@ class TaskLifecycleManager:
             if task.status != TaskStatus.RUNNING:
                 continue
             try:
-                await self._task_repo.save_fields(
-                    task, ("status", "node_id", "started_at", "queue_wait_ms")
+                written = await self._task_repo.save_fields_if_status(
+                    task,
+                    ("status", "node_id", "started_at", "queue_wait_ms"),
+                    TaskStatus.PENDING,
                 )
-                flushed += 1
+                if written:
+                    flushed += 1
+                else:
+                    self._cache_discard(task.task_id)
             except Exception as exc:
                 warning(f"Flush running state for {task.task_id} failed: {exc}")
 
@@ -651,32 +727,44 @@ class TaskLifecycleManager:
 
 
     async def start_task(self, task_id: str, node_id: str) -> bool:
-        """开始执行任务"""
+        """开始执行任务
+
+        状态检查与写入由仓储 CAS 合并：同一任务被多个 Worker 同时领取时，
+        只有第一个 PENDING → RUNNING 生效，其余返回 False 且不改动存储。
+        """
         task = await self.get_task(task_id)
         if not task or task.status != TaskStatus.PENDING:
             warning(f"Cannot start task {task_id}: status={task.status if task else 'not found'}")
             return False
 
-        previous = (task.status, task.node_id, task.started_at)
-        task.start(node_id)
+        shadow = self._shadow_task(task)
+        shadow.start(node_id)
         if self._running_persist_delay > 0:
             # 延迟窗口内完成的任务只需写一次终态，先只更新内存
-            self._defer_running_persist(task)
+            self._defer_running_persist(shadow)
         else:
             # 只更新状态相关字段：data 等不可变字段无需重写
             try:
-                await self._task_repo.save_fields(
-                    task,
-                    ("status", "node_id", "started_at", "queue_wait_ms")
+                started = await self._task_repo.save_fields_if_status(
+                    shadow,
+                    ("status", "node_id", "started_at", "queue_wait_ms"),
+                    TaskStatus.PENDING,
                 )
             except Exception:
-                # 落库失败必须回滚内存状态：缓存里存的就是同一个对象，若保持 RUNNING，
-                # 任务被重新入队后再次启动会被状态机拒绝，最终永久卡死在 RUNNING。
-                task.status, task.node_id, task.started_at = previous
+                # 落库失败必须放弃本地 RUNNING：缓存里保持旧状态，任务被重新
+                # 入队后再次启动会被状态机拒绝，最终永久卡死在 RUNNING。
+                self._cache_discard(task_id)
                 raise
+            if not started:
+                self._cache_discard(task_id)
+                warning(
+                    f"Cannot start task {task_id}: "
+                    "status changed by another executor"
+                )
+                return False
 
         if self._cache_enabled:
-            self._cache_put(task_id, task)
+            self._cache_put(task_id, shadow)
 
 
         await self._emit_event(EventType.STARTED, task_id, {"node_id": node_id})
@@ -848,7 +936,7 @@ class TaskLifecycleManager:
             return False
 
         # 延迟落库的 RUNNING 写入必须在 WAITING 之前收尾，避免状态回退
-        await self._resolve_deferred_running(task_id)
+        expected = await self._running_origin(task_id, TaskStatus.RUNNING)
 
         if self._checkpoint_repo is not None:
             if await self._checkpoint_repo.load_latest(task_id) is None:
@@ -857,7 +945,9 @@ class TaskLifecycleManager:
         previous = self._signal_entry(task)
         sequence = int(previous.get("sequence") or 0) + 1 if previous else 1
         timeout_at = time.time() + timeout if timeout and timeout > 0 else None
-        task.data[SIGNAL_DATA_KEY] = {
+
+        shadow = self._shadow_task(task)
+        shadow.data[SIGNAL_DATA_KEY] = {
             "signal": signal,
             "sequence": sequence,
             "payload": None,
@@ -865,16 +955,23 @@ class TaskLifecycleManager:
             "consumed": False,
             "timeout_at": timeout_at,
         }
-        task.status = TaskStatus.WAITING
+        shadow.status = TaskStatus.WAITING
 
-        await self._task_repo.save_fields(
-            task,
-            ("status", "data", "node_id", "started_at", "queue_wait_ms"),
-        )
+        if not await self._task_repo.save_fields_if_status(
+                shadow,
+                ("status", "data", "node_id", "started_at", "queue_wait_ms"),
+                expected,
+        ):
+            self._cache_discard(task_id)
+            warning(
+                f"Cannot suspend task {task_id}: "
+                "status changed by another executor"
+            )
+            return False
         self._clear_progress_flush(task_id)
 
         if self._cache_enabled:
-            self._cache_put(task_id, task)
+            self._cache_put(task_id, shadow)
 
         await self._emit_event(
             EventType.WAITING,
@@ -919,12 +1016,16 @@ class TaskLifecycleManager:
 
         只接受 ``waiting`` 状态；先到先得，重复 signal 或任务已结束返回 False。
         调用方负责把任务重新入队，入队失败时可调用 :meth:`revert_signal` 回滚。
+
+        signal 可由任意节点发起：本实例缓存可能仍是任务创建/上次挂起前的
+        副本（例如执行发生在其它节点），必须回查存储取得 WAITING 快照后再判定。
         """
-        task = await self.get_task(task_id)
+        task = await self.get_task(task_id, refresh=True)
         if not task or task.status != TaskStatus.WAITING:
             return False
 
-        entry = self._signal_entry(task)
+        shadow = self._shadow_task(task)
+        entry = self._signal_entry(shadow)
         if not entry or entry.get("arrived"):
             return False
 
@@ -932,15 +1033,20 @@ class TaskLifecycleManager:
         entry["payload"] = payload
         entry["arrived"] = True
 
-        task.status = TaskStatus.PENDING
-        task.node_id = ""
+        shadow.status = TaskStatus.PENDING
+        shadow.node_id = ""
         fields = ["status", "data", "node_id"]
-        if await self.resume_from_checkpoint(task):
+        if await self.resume_from_checkpoint(shadow):
             fields.append("checkpoint_version")
 
-        await self._task_repo.save_fields(task, tuple(fields))
+        if not await self._task_repo.save_fields_if_status(
+                shadow, tuple(fields), TaskStatus.WAITING
+        ):
+            # 其它实例已先一步唤醒（或已超时终结）该任务：本次 signal 不生效
+            self._cache_discard(task_id)
+            return False
         if self._cache_enabled:
-            self._cache_put(task_id, task)
+            self._cache_put(task_id, shadow)
 
         await self._emit_event(
             EventType.SIGNAL_RECEIVED,
@@ -950,22 +1056,31 @@ class TaskLifecycleManager:
         return True
 
     async def revert_signal(self, task_id: str) -> bool:
-        """signal 入队失败时回滚：撤销已到达标记并恢复 ``waiting``"""
+        """signal 入队失败时回滚：撤销已到达标记并恢复 ``waiting``
+
+        以 PENDING 为 CAS 条件：若任务已被 Worker 领取（RUNNING）或已被取消，
+        说明 signal 实际生效，不能再回退成 WAITING。
+        """
         task = await self.get_task(task_id)
         if not task or task.status != TaskStatus.PENDING:
             return False
 
-        entry = self._signal_entry(task)
+        shadow = self._shadow_task(task)
+        entry = self._signal_entry(shadow)
         if not entry or not entry.get("arrived"):
             return False
 
         entry["arrived"] = False
         entry["payload"] = None
-        task.status = TaskStatus.WAITING
+        shadow.status = TaskStatus.WAITING
 
-        await self._task_repo.save_fields(task, ("status", "data"))
+        if not await self._task_repo.save_fields_if_status(
+                shadow, ("status", "data"), TaskStatus.PENDING
+        ):
+            self._cache_discard(task_id)
+            return False
         if self._cache_enabled:
-            self._cache_put(task_id, task)
+            self._cache_put(task_id, shadow)
         return True
 
     async def fail_expired_waiting(self, now: Optional[float] = None) -> int:
@@ -1001,6 +1116,9 @@ class TaskLifecycleManager:
                 f"Timed out waiting for signal '{signal}'",
                 allow_waiting=True,
                 failure_reason="waiting_timeout",
+                # 扫描可能在非执行节点上运行：直接用在存储中读到的快照判定，
+                # 不能回读本实例缓存（可能仍是任务创建时的 PENDING 副本）
+                snapshot=task,
             ):
                 failed += 1
         return failed
@@ -1045,22 +1163,32 @@ class TaskLifecycleManager:
             return False
 
         # 先结束延迟的 RUNNING 落库，保证终态写入之后不会再出现 RUNNING 写入
-        await self._resolve_deferred_running(task_id)
+        expected = await self._running_origin(task_id, TaskStatus.RUNNING)
 
+        shadow = self._shadow_task(task)
         fields = ["status", "started_at", "completed_at", "result", "progress", "duration_ms"]
         if cost:
-            self._merge_cost(task, cost)
+            self._merge_cost(shadow, cost)
             fields.extend(("estimated_cost", "cost_tracking"))
 
-        task.complete(result)
+        shadow.complete(result)
         # 成功完成即视为 100%，避免 UI 停留在最后一次业务上报的进度上。
-        task.progress = 1.0
+        shadow.progress = 1.0
 
-        await self._task_repo.save_fields(task, fields)
+        if not await self._task_repo.save_fields_if_status(
+                shadow, tuple(fields), expected
+        ):
+            # 状态已被其它实例改写（取消/超时）：不再覆盖终态，也不通知等待者
+            self._cache_discard(task_id)
+            warning(
+                f"Cannot complete task {task_id}: "
+                "status changed by another executor"
+            )
+            return False
         self._clear_progress_flush(task_id)
 
         if self._cache_enabled:
-            self._cache_put(task_id, task)
+            self._cache_put(task_id, shadow)
 
 
         # 通知等待者
@@ -1084,6 +1212,7 @@ class TaskLifecycleManager:
             failure_reason: Optional[str] = None,
             cost: Optional[Dict[str, Any]] = None,
             allow_waiting: bool = False,
+            snapshot: Optional[Task] = None,
     ) -> bool:
         """任务失败
 
@@ -1099,8 +1228,10 @@ class TaskLifecycleManager:
                 两者靠该字段区分，状态同为 ``FAILED``。
             cost: 本次执行上报的成本明细；非空时随 ``task.failed`` 事件携带
             allow_waiting: 是否允许终结等待中的任务（等待超时）
+            snapshot: 调用方已从存储读到的最新任务快照（如超时扫描）。
+                给出时直接用它判定，避免本实例缓存落后于其它节点的写入。
         """
-        task = await self.get_task(task_id)
+        task = snapshot if snapshot is not None else await self.get_task(task_id)
 
         # 检查任务是否存在
         if not task:
@@ -1117,30 +1248,39 @@ class TaskLifecycleManager:
         if allow_waiting:
             allowed.append(TaskStatus.WAITING)
         if task.status not in allowed:
-            expected = " / ".join(status.value.upper() for status in allowed)
+            expected_text = " / ".join(status.value.upper() for status in allowed)
             warning(
                 f"Cannot fail task {task_id}: status={task.status.value}, "
-                f"expected {expected}"
+                f"expected {expected_text}"
             )
             return False
 
         if is_debug_enabled():
             debug(f"[DEBUG] Failing task {task_id}: {error}")
 
-        await self._resolve_deferred_running(task_id)
-
         old_status = task.status
+        expected = await self._running_origin(task_id, old_status)
+        shadow = self._shadow_task(task)
         fields = ["status", "started_at", "error", "completed_at", "failure_reason", "duration_ms"]
         if cost:
-            self._merge_cost(task, cost)
+            self._merge_cost(shadow, cost)
             fields.extend(("estimated_cost", "cost_tracking"))
 
-        task.fail(error, failure_reason)
-        await self._task_repo.save_fields(task, fields)
+        shadow.fail(error, failure_reason)
+        if not await self._task_repo.save_fields_if_status(
+                shadow, tuple(fields), expected
+        ):
+            # 超时扫描与 signal/完成并发时，先落库的一方生效，这里放弃终结
+            self._cache_discard(task_id)
+            warning(
+                f"Cannot fail task {task_id}: "
+                "status changed by another executor"
+            )
+            return False
         self._clear_progress_flush(task_id)
 
         if self._cache_enabled:
-            self._cache_put(task_id, task)
+            self._cache_put(task_id, shadow)
 
 
         # 通知等待者 - 确保错误被传递
@@ -1152,7 +1292,7 @@ class TaskLifecycleManager:
             {
                 "error": error,
                 "old_status": old_status.value,
-                "reason": task.failure_reason,
+                "reason": shadow.failure_reason,
                 "cost": cost,
             }
         )
@@ -1174,18 +1314,25 @@ class TaskLifecycleManager:
         ):
             return False
 
-        await self._resolve_deferred_running(task_id)
-
         old_status = task.status
-        task.cancel()
-        await self._task_repo.save_fields(
-            task,
-            ("status", "started_at", "completed_at", "duration_ms")
-        )
+        expected = await self._running_origin(task_id, old_status)
+        shadow = self._shadow_task(task)
+        shadow.cancel()
+        if not await self._task_repo.save_fields_if_status(
+                shadow,
+                ("status", "started_at", "completed_at", "duration_ms"),
+                expected,
+        ):
+            self._cache_discard(task_id)
+            warning(
+                f"Cannot cancel task {task_id}: "
+                "status changed by another executor"
+            )
+            return False
         self._clear_progress_flush(task_id)
 
         if self._cache_enabled:
-            self._cache_put(task_id, task)
+            self._cache_put(task_id, shadow)
 
 
         # 通知等待者
@@ -1214,7 +1361,8 @@ class TaskLifecycleManager:
             return False
 
         old_status = task.status
-        task.reset_for_retry()
+        shadow = self._shadow_task(task)
+        shadow.reset_for_retry()
 
         # 手动重试同样从最近一次 checkpoint 恢复（data 与标记一起写回）
         fields = [
@@ -1222,13 +1370,18 @@ class TaskLifecycleManager:
             "node_id", "progress", "progress_message",
             "queue_wait_ms", "duration_ms", "data", "checkpoint_version",
         ]
-        await self.resume_from_checkpoint(task)
+        await self.resume_from_checkpoint(shadow)
 
-        await self._task_repo.save_fields(task, tuple(fields))
+        if not await self._task_repo.save_fields_if_status(
+                shadow, tuple(fields), old_status
+        ):
+            # 终态被别人先重置（或已删除）时不再重复重试
+            self._cache_discard(task_id)
+            return False
         self._clear_progress_flush(task_id)
 
         if self._cache_enabled:
-            self._cache_put(task_id, task)
+            self._cache_put(task_id, shadow)
 
 
         await self._future_manager.remove(task_id)
@@ -1237,13 +1390,55 @@ class TaskLifecycleManager:
             EventType.RETRY,
             task_id,
             {
-                "retry_count": task.retry_count,
+                "retry_count": shadow.retry_count,
                 "manual": True,
                 "old_status": old_status.value,
             }
         )
 
         debug(f"Task {task_id} reset to PENDING for manual retry")
+        return True
+
+    async def prepare_retry(
+            self,
+            task_id: str,
+            retry_count: int,
+            error: str,
+    ) -> bool:
+        """自动重试前把 RUNNING 任务重置为 PENDING
+
+        与 :meth:`reset_for_retry` 的区别是这里面对的是仍在 RUNNING 的任务：
+        只写重试计数、错误信息与状态，保留 started_at 等执行痕迹，由下一次
+        执行覆盖。以 RUNNING 为 CAS 条件，任务已被取消/超时时不再复活。
+
+        Returns:
+            是否成功（状态已被其它执行者改写时返回 False）
+        """
+        task = await self.get_task(task_id)
+        if not task or task.status != TaskStatus.RUNNING:
+            return False
+
+        # 延迟的 RUNNING 落库必须先收尾，否则它会在 PENDING 写入之后再次生效
+        expected = await self._running_origin(task_id, TaskStatus.RUNNING)
+
+        shadow = self._shadow_task(task)
+        shadow.retry_count = retry_count
+        shadow.error = error
+        shadow.status = TaskStatus.PENDING
+        shadow.node_id = ""
+
+        fields = ["retry_count", "error", "status", "node_id"]
+        # 自动重试同样续跑：把最近 checkpoint 注入 task.data 并落库
+        if await self.resume_from_checkpoint(shadow):
+            fields.extend(("data", "checkpoint_version"))
+
+        if not await self._task_repo.save_fields_if_status(
+                shadow, tuple(fields), expected
+        ):
+            self._cache_discard(task_id)
+            return False
+        if self._cache_enabled:
+            self._cache_put(task_id, shadow)
         return True
 
     async def delete_task(self, task_id: str) -> bool:

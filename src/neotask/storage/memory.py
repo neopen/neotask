@@ -15,7 +15,7 @@ import heapq
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Any, Optional, Dict, List, Tuple
+from typing import Any, Optional, Dict, Iterable, List, Tuple
 
 from neotask.common.logger import debug, is_debug_enabled, warning
 from neotask.models.task import Task, TaskStatus
@@ -79,6 +79,22 @@ class MemoryTaskRepository(TaskRepository):
                 return False
             self._tasks[task.task_id] = task.clone()
         return True
+
+    async def save_fields_if_status(
+            self, task: Task, fields: Iterable[str], expected
+    ) -> bool:
+        """状态 CAS：在锁内比较当前状态，命中才整体替换副本
+
+        内存后端始终保存完整任务，``fields`` 不参与写入；比较与替换同处一把锁，
+        多个实例共享同一个仓储对象时也只会有一个转换成功。
+        """
+        expected_value = self._status_value(expected)
+        with self._lock:
+            stored = self._tasks.get(task.task_id)
+            if stored is None or stored.status.value != expected_value:
+                return False
+            self._tasks[task.task_id] = task.clone()
+            return True
 
     async def get(self, task_id: str) -> Optional[Task]:
         """获取任务（返回独立副本）

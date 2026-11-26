@@ -25,6 +25,7 @@ SIGNAL_DATA_KEY = "__signal__"
 
 SuspendCallback = Callable[[str, Optional[float]], Awaitable[bool]]
 ConsumeCallback = Callable[[str], Awaitable[bool]]
+ReloadCallback = Callable[[], Awaitable[Optional["Task"]]]
 
 _current_signal_waiter: "contextvars.ContextVar[Optional[SignalWaiter]]" = (
     contextvars.ContextVar("neotask_signal_waiter", default=None)
@@ -61,12 +62,14 @@ class SignalWaiter:
         consume: ConsumeCallback,
         default_timeout: Optional[float] = None,
         loop: Optional[asyncio.AbstractEventLoop] = None,
+        reload: Optional[ReloadCallback] = None,
     ) -> None:
         self._task = task
         self._suspend = suspend
         self._consume = consume
         self._default_timeout = default_timeout
         self._loop = loop
+        self._reload = reload
 
     def _effective_timeout(self, timeout: Optional[float]) -> Optional[float]:
         value = self._default_timeout if timeout is None else timeout
@@ -78,6 +81,18 @@ class SignalWaiter:
             raise ValueError(f"invalid wait timeout: {value!r}") from None
         return seconds if seconds > 0 else None
 
+    async def _reload_task(self) -> None:
+        """挂起前回查存储，避免跨实例缓存的旧数据覆盖已到达信号
+
+        重放执行时，唤醒信号可能由其它实例写入存储，本实例缓存里的
+        ``__signal__`` 仍是旧副本；此时直接挂起会用旧数据覆盖 arrived payload。
+        """
+        if self._reload is None:
+            return
+        fresh = await self._reload()
+        if fresh is not None:
+            self._task = fresh
+
     async def wait(
         self, signal: str, timeout: Optional[float] = None
     ) -> Any:
@@ -85,6 +100,13 @@ class SignalWaiter:
         key = _validate_signal(signal)
         entry = _signal_entry(self._task.data)
 
+        if entry and _is_arrived(entry, key):
+            payload = entry.get("payload")
+            await self._consume(key)
+            return payload
+
+        await self._reload_task()
+        entry = _signal_entry(self._task.data)
         if entry and _is_arrived(entry, key):
             payload = entry.get("payload")
             await self._consume(key)

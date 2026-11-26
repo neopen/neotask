@@ -426,6 +426,40 @@ class SQLiteTaskRepository(TaskRepository):
         await self._conn.commit()
         return cursor.rowcount > 0
 
+    async def save_fields_if_status(
+            self, task: Task, fields: Iterable[str], expected
+    ) -> bool:
+        """状态 CAS：``UPDATE ... WHERE task_id = ? AND status = ?``
+
+        状态比较与写入由同一条 UPDATE 完成，跨进程并发时数据库保证只有一个
+        执行者能匹配到旧状态；整条语句放在写事务里执行，避免共享连接上
+        其它写入插入到语句与提交之间。
+        """
+        await self._ensure_init()
+
+        columns = [name for name in fields if name in _TASK_COLUMNS]
+        if not columns:
+            return False
+
+        params = [
+            _serialize_field(name, getattr(task, name, None))
+            for name in columns
+        ]
+        params.extend([task.task_id, self._status_value(expected)])
+
+        async def _cas(db) -> bool:
+            cursor = await db.execute(
+                f"UPDATE tasks SET {', '.join(f'{name} = ?' for name in columns)} "
+                "WHERE task_id = ? AND status = ?",
+                params,
+            )
+            changed = cursor.rowcount
+            await cursor.close()
+            return bool(changed > 0)
+
+        conn: Any = self._conn
+        return bool(await conn.run_transaction(_cas))
+
     async def update_progress(
             self,
             task_id: str,

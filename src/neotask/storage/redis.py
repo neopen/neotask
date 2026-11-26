@@ -13,7 +13,7 @@ See LICENSE File For Details.
 import time
 import json
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional, Any, Tuple, Dict
+from typing import TYPE_CHECKING, List, Optional, Any, Tuple, Dict, Iterable
 
 from neotask.utils import redis_compat
 
@@ -55,7 +55,6 @@ _TERMINAL_STATUS_VALUES = {
 #: 终态过期索引：score = 完成时间 + ttl（无完成时间时用创建时间 + 2*ttl）。
 #: 清理时按 score 范围取到期任务，避免全量读取任务实体。
 _TERMINAL_EXPIRY_KEY = redis_key("terminal:expiry")
-
 
 def _parse_timestamp(value: Any) -> Optional[float]:
     """把存储里的时间值解析为 Unix 时间戳"""
@@ -120,6 +119,37 @@ redis.call('ZADD', KEYS[3], ARGV[4], ARGV[2])
 return 1
 """
 
+#: 状态 CAS 脚本：GET → 比较 status → SET → 状态索引 / 父子索引 / 终态过期索引
+#: 返回 0 表示任务不存在或状态已被其它实例改写，1 表示本次转换生效
+#:
+#: KEYS: 1=任务键 2=新状态集合 3=旧状态集合 4=父子索引 5=终态过期索引
+#: ARGV: 1=任务 JSON 2=task_id 3=expected 4=新状态 5=parent_task_id(可空)
+#:       6=过期 score（空字符串表示移除）
+_CAS_FIELDS_LUA = """
+local raw = redis.call('GET', KEYS[1])
+if not raw then
+    return 0
+end
+local ok, current = pcall(cjson.decode, raw)
+if not ok or type(current) ~= 'table' or current['status'] ~= ARGV[3] then
+    return 0
+end
+redis.call('SET', KEYS[1], ARGV[1])
+redis.call('SADD', KEYS[2], ARGV[2])
+if ARGV[4] ~= ARGV[3] then
+    redis.call('SREM', KEYS[3], ARGV[2])
+end
+if ARGV[5] ~= '' then
+    redis.call('SADD', KEYS[4], ARGV[2])
+end
+if ARGV[6] == '' then
+    redis.call('ZREM', KEYS[5], ARGV[2])
+else
+    redis.call('ZADD', KEYS[5], ARGV[6], ARGV[2])
+end
+return 1
+"""
+
 
 class RedisTaskRepository(TaskRepository):
     """Redis-based task repository."""
@@ -132,6 +162,7 @@ class RedisTaskRepository(TaskRepository):
         self._client: Optional[Any] = None
         self._save_if_absent_script: Optional[Any] = None
         self._submit_script: Optional[Any] = None
+        self._cas_script: Optional[Any] = None
         self._expiry_key = _TERMINAL_EXPIRY_KEY
 
 
@@ -195,6 +226,7 @@ class RedisTaskRepository(TaskRepository):
         else:
             await client.zadd(self._expiry_key, {task.task_id: score})
 
+
     async def save_if_absent(self, task: Task) -> bool:
         """单条 Lua 完成「查重 + SET + SADD」，把新任务提交压到 1 次往返"""
         client = await self._get_client()
@@ -257,6 +289,41 @@ class RedisTaskRepository(TaskRepository):
         if task.parent_task_id:
             await client.sadd(self._parent_key(task.parent_task_id), task.task_id)
         return outcome == 1
+
+    async def save_fields_if_status(
+            self, task: Task, fields: Iterable[str], expected
+    ) -> bool:
+        """状态 CAS：单条 Lua 完成「比较状态 → 写任务 → 同步索引」
+
+        Redis 后端始终保存完整任务 JSON，``fields`` 不参与写入；状态比较与
+        写入在脚本内原子执行，多个实例并发转换时只有一个能匹配到旧状态。
+        """
+        client = await self._get_client()
+        script = self._cas_script
+        if script is None:
+            script = client.register_script(_CAS_FIELDS_LUA)
+            self._cas_script = script
+
+        task_dict = task.to_dict()
+        score = _expiry_score(task_dict)
+        outcome = await script(
+            keys=[
+                self._task_key(task.task_id),
+                self._status_key(task.status.value),
+                self._status_key(self._status_value(expected)),
+                self._parent_key(task.parent_task_id or "_none_"),
+                self._expiry_key,
+            ],
+            args=[
+                json.dumps(task_dict, default=str),
+                task.task_id,
+                self._status_value(expected),
+                task.status.value,
+                task.parent_task_id or "",
+                "" if score is None else score,
+            ],
+        )
+        return int(outcome) == 1
 
     async def save_batch(self, tasks: List[Task]) -> List[str]:
         """批量保存任务：一次 ``MGET`` 查重 + 一个 pipeline 写入。

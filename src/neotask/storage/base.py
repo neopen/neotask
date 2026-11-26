@@ -176,6 +176,39 @@ class TaskRepository(ABC):
         await self.save(task)
         return True
 
+    @staticmethod
+    def _status_value(status) -> str:
+        """把状态统一成存储使用的小写值"""
+        return status.value if isinstance(status, TaskStatus) else str(status)
+
+    async def save_fields_if_status(
+            self,
+            task: Task,
+            fields: Iterable[str],
+            expected,
+    ) -> bool:
+        """乐观锁写入：仅当存储中的状态仍是 ``expected`` 时更新指定字段。
+
+        多个实例/协程可能同时对同一任务做状态转换（signal、超时、取消、完成），
+        状态检查与写入必须是一个原子步骤，否则「先查后写」会让双方都通过检查，
+        后写的一方静默覆盖先写的一方（丢更新）。
+
+        Args:
+            task: 已更新完字段的任务对象（``task.status`` 是转换后的新状态）
+            fields: 需要落库的字段名
+            expected: 转换前存储中的状态；不一致说明已被其他执行者抢先改写
+
+        Returns:
+            是否实际写入（False = CAS 失败，调用方必须放弃本次转换）
+
+        默认实现按「读取 → 比较 → 整条写入」执行，仅用于未覆盖该接口的自定义
+        后端，本身不具备原子性；内置 memory / sqlite / redis 后端均提供原子实现。
+        """
+        current = await self.get(task.task_id)
+        if current is None or current.status.value != self._status_value(expected):
+            return False
+        return await self.save_fields(task, fields)
+
     @abstractmethod
     async def get(self, task_id: str) -> Optional[Task]:
         """Get task by ID."""

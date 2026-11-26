@@ -217,6 +217,48 @@ class TestSignalMemory:
         finally:
             pool.shutdown()
 
+    async def test_signal_requeue_failure_reverts_counters(self):
+        """signal 后入队失败：状态、计数与指标都退回 waiting"""
+        pool = TaskPool(executor=_approval_handler, config=TaskPoolConfig.memory())
+        events = []
+        pool.event_bus.subscribe_global(
+            lambda event: events.append((event.event_type, event.task_id))
+        )
+        try:
+            pool.start()
+            task_id = pool.submit({})
+            assert _wait_until(lambda: _status_of(pool, task_id) == "waiting")
+            assert _wait_until(lambda: pool.get_stats()["waiting_count"] == 1)
+
+            async def deny_push(*args, **kwargs):
+                return False
+
+            original_push = pool._queue_scheduler.push
+            pool._queue_scheduler.push = deny_push
+            try:
+                assert pool.signal(task_id, "go") is False
+            finally:
+                pool._queue_scheduler.push = original_push
+
+            assert _status_of(pool, task_id) == "waiting"
+            stats = pool.get_stats()
+            assert stats["waiting_count"] == 1
+            assert stats["pending_count"] == 0
+            assert _wait_until(
+                lambda: pool._metrics.get_summary()["waiting"] == 1
+            )
+            assert pool._metrics.get_summary()["pending"] == 0
+
+            types = [etype for etype, tid in events if tid == task_id]
+            signal_index = types.index(EventType.SIGNAL_RECEIVED)
+            assert types.index(EventType.SIGNAL_REVERTED) > signal_index
+
+            # 回滚后任务仍可被唤醒
+            assert pool.signal(task_id, "later") is True
+            assert pool.wait_for_result(task_id, timeout=10) == {"approved": "later"}
+        finally:
+            pool.shutdown()
+
     async def test_waiting_releases_worker_slot(self):
         async def work(data):
             if data.get("wait"):

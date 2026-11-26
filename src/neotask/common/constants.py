@@ -44,7 +44,8 @@ class EventType:
     不需要为字典键与格式化行为赌版本差异。
 
     前 10 项为 1.0.x 已有事件，``CHECKPOINTED`` / ``COST_REPORTED`` 由 v1.1.0
-    新增，``WAITING`` / ``SIGNAL_RECEIVED`` 由 v1.3.0 人工介入新增。
+    新增，``WAITING`` / ``SIGNAL_RECEIVED`` / ``SIGNAL_REVERTED`` 由 v1.3.0
+    人工介入新增。
     """
 
     CREATED = "task.created"
@@ -61,6 +62,8 @@ class EventType:
     COST_REPORTED = "task.cost_reported"
     WAITING = "task.waiting"
     SIGNAL_RECEIVED = "task.signal_received"
+    #: signal 已生效但重新入队失败、任务回退到 waiting 时发布
+    SIGNAL_REVERTED = "task.signal_reverted"
 
 
 def redis_key(name: str) -> str:

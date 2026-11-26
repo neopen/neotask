@@ -380,6 +380,7 @@ class TaskPool:
             EventType.RETRY,
             EventType.WAITING,
             EventType.SIGNAL_RECEIVED,
+            EventType.SIGNAL_REVERTED,
         )
 
         # 计数器与指标合并为一个订阅方：同一事件不再为两者各起一个协程。
@@ -429,6 +430,10 @@ class TaskPool:
             elif event.event_type == EventType.SIGNAL_RECEIVED:
                 self._waiting_count = max(0, self._waiting_count - 1)
                 self._pending_count += 1
+            elif event.event_type == EventType.SIGNAL_REVERTED:
+                # signal 已发布但入队失败：计数回到 waiting 一侧
+                self._pending_count = max(0, self._pending_count - 1)
+                self._waiting_count += 1
 
     async def _record_metrics(self, event: TaskEvent) -> None:
         """按生命周期事件更新指标收集器"""
@@ -462,6 +467,8 @@ class TaskPool:
             await metrics.record_task_waiting(event.task_id)
         elif event.event_type == EventType.SIGNAL_RECEIVED:
             await metrics.record_task_signal_received(event.task_id)
+        elif event.event_type == EventType.SIGNAL_REVERTED:
+            await metrics.record_task_signal_reverted(event.task_id)
 
     def _decrement_counter_locked(self, status: str) -> None:
         """按任务原状态递减计数器（调用方需持有 ``_counter_lock``）"""

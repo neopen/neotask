@@ -1081,6 +1081,13 @@ class TaskLifecycleManager:
             return False
         if self._cache_enabled:
             self._cache_put(task_id, shadow)
+
+        # 通知订阅方把 pending 计数挪回 waiting；只有真正回滚成功才发布
+        await self._emit_event(
+            EventType.SIGNAL_REVERTED,
+            task_id,
+            {"old_status": TaskStatus.PENDING.value},
+        )
         return True
 
     async def fail_expired_waiting(self, now: Optional[float] = None) -> int:

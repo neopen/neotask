@@ -395,6 +395,12 @@ class MetricsCollector:
             self._metrics.waiting = max(0, self._metrics.waiting - 1)
             self._metrics.pending += 1
 
+    async def record_task_signal_reverted(self, task_id: str) -> None:
+        """记录唤醒入队失败回滚（从待执行退回等待）"""
+        with self._lock:
+            self._metrics.pending = max(0, self._metrics.pending - 1)
+            self._metrics.waiting += 1
+
     async def record_task_retry(self, task_id: str, retry_count: int) -> None:
         """记录任务重试
 
@@ -599,6 +605,10 @@ class MetricsCollector:
         lines.append(f"# HELP neotask_scheduled Current number of scheduled tasks")
         lines.append(f"# TYPE neotask_scheduled gauge")
         lines.append(f"neotask_scheduled {metrics.scheduled}")
+
+        lines.append("# HELP neotask_waiting Current number of tasks waiting for a signal")
+        lines.append("# TYPE neotask_waiting gauge")
+        lines.append(f"neotask_waiting {metrics.waiting}")
 
         # 比率（两位小数）
         lines.append(f"# HELP neotask_success_rate Task success rate")

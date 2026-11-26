@@ -187,6 +187,7 @@ failed  → pending   （手动重试）
 | `task.cancelled` | `{old_status}` |
 | `task.waiting` | `{old_status, signal, timeout_at}`；`timeout_at` 为等待到期时刻（epoch 秒）或 `null`（v1.3） |
 | `task.signal_received` | `{signal, payload}`；`payload` 为 `signal` 调用传入的任意 JSON 值（v1.3） |
+| `task.signal_reverted` | `{old_status: "pending"}`；唤醒后重新入队失败、任务回退到 `waiting` 时发布（v1.3） |
 | `task.retry` | 自动重试：`{error, retry_count, max_retries, old_status}`；手动重试：`{retry_count, manual: true, old_status}` |
 | `task.progress` | `{progress, message, timestamp}` |
 | `task.status_changed` | `{old_status, new_status}` |
@@ -200,7 +201,7 @@ failed  → pending   （手动重试）
 ### 8.3 投递语义
 
 - 1.x 事件总线是**进程内尽力而为**的发布订阅：单个消费协程按投递顺序处理，跨任务不保证全局顺序。
-- 同一任务的人工介入事件顺序固定为 `task.waiting` → `task.signal_received` → `task.started` → `task.completed`（或 `task.failed` / `task.cancelled`）。
+- 同一任务的人工介入事件顺序固定为 `task.waiting` → `task.signal_received` → `task.started` → `task.completed`（或 `task.failed` / `task.cancelled`）；唤醒后入队失败时紧随 `task.signal_received` 发布 `task.signal_reverted`，任务保持 `waiting`。
 - 待处理队列默认不设上限；配置 `event_queue_max_size` 后按 `drop` 策略丢弃新事件并计数告警。因此 1.x 事件**不承诺不丢**。
 - 2.0 上报到控制面时由上报端与控制面共同保证可靠性，建议至少一次投递 + 控制面按 `task_id` 与状态机幂等推进（见第 12 节）。
 

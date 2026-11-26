@@ -96,6 +96,7 @@ class PrometheusReporter(MetricsReporter):
         # 队列统计
         lines.append(f"neotask_pending {metrics.get('pending', 0)}")
         lines.append(f"neotask_running {metrics.get('running', 0)}")
+        lines.append(f"neotask_waiting {metrics.get('waiting', 0)}")
 
         # 时间统计
         lines.append(f"neotask_avg_execution_time_ms {metrics.get('avg_execution_time', 0) * 1000}")

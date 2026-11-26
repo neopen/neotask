@@ -292,6 +292,12 @@ class TaskPoolConfig:
     enable_checkpoint: bool = True
     checkpoint_keep_versions: int = 5  # 单个任务保留的历史版本数
 
+    # 人工介入：等待外部信号的默认超时（秒）；None/0 表示不超时。
+    # 单次 wait_for_signal(timeout=...) 优先于该默认值。
+    waiting_timeout: Optional[float] = None
+    # 等待超时扫描间隔（秒）；<=0 关闭后台扫描（仍可手动调用清理接口）
+    waiting_scan_interval: float = 30.0
+
     # 预取配置
     enable_prefetch: bool = True
     prefetch_min_threshold: int = 5
@@ -410,6 +416,11 @@ class SchedulerConfig:
     # 断点续跑：任务内保存的状态快照，恢复时注入 task.data["__checkpoint__"]
     enable_checkpoint: bool = True
     checkpoint_keep_versions: int = 5  # 单个任务保留的历史版本数
+
+    # 人工介入：等待外部信号的默认超时（秒）；None/0 表示不超时
+    waiting_timeout: Optional[float] = None
+    # 等待超时扫描间隔（秒）；<=0 关闭后台扫描
+    waiting_scan_interval: float = 30.0
 
     # 持久化配置
     # 默认开启：sqlite/redis 下周期任务会跨重启恢复；memory 模式下仍只存在内存中，

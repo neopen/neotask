@@ -337,14 +337,16 @@ class TestLifecycleCleanup:
         await manager.start_task(old_task.task_id, "node-1")
         await manager.complete_task(old_task.task_id, {"ok": True})
 
-        # 手动修改 completed_at 为过去时间（2天前）
-        old_task.completed_at = datetime.now(timezone.utc) - timedelta(days=2)
-        await manager._task_repo.save(old_task)
+        # 手动修改 completed_at 为过去时间（2天前）；必须作用于当前任务对象，
+        # 生命周期写入会换用独立副本，早期拿到的句柄可能已不是缓存里的那个
+        stored = await manager.get_task(old_task.task_id)
+        stored.completed_at = datetime.now(timezone.utc) - timedelta(days=2)
+        await manager._task_repo.save(stored)
 
         # 更新缓存
         if manager._cache_enabled:
             with manager._lock:
-                manager._cache[old_task.task_id] = old_task
+                manager._cache[stored.task_id] = stored
 
         # 创建新任务
         new_task = await manager.create_task(data={"test": "new"})

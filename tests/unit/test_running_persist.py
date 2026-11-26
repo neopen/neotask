@@ -31,6 +31,10 @@ class CountingTaskRepository(MemoryTaskRepository):
         self.saved_fields.append(tuple(fields))
         return await super().save_fields(task, fields)
 
+    async def save_fields_if_status(self, task, fields, expected):
+        self.saved_fields.append(tuple(fields))
+        return await super().save_fields_if_status(task, fields, expected)
+
 
 @pytest.fixture
 async def event_bus():

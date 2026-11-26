@@ -97,6 +97,8 @@ class TaskScheduler:
             event_slow_handler_threshold=self._config.event_slow_handler_threshold,
             enable_checkpoint=self._config.enable_checkpoint,
             checkpoint_keep_versions=self._config.checkpoint_keep_versions,
+            waiting_timeout=self._config.waiting_timeout,
+            waiting_scan_interval=self._config.waiting_scan_interval,
         )
 
         self._pool = TaskPool(executor, pool_config, checkpoint_repo)
@@ -1023,6 +1025,24 @@ class TaskScheduler:
         """获取指定任务的父任务 ID（异步）"""
         return await self._pool.get_parent_async(task_id)
 
+    def list_tasks(
+            self,
+            status: Optional[Union[TaskStatus, str]] = None,
+            limit: int = 100,
+            offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """按状态列出任务（同步）"""
+        return self._pool.list_tasks(status, limit, offset)
+
+    async def list_tasks_async(
+            self,
+            status: Optional[Union[TaskStatus, str]] = None,
+            limit: int = 100,
+            offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """按状态列出任务（异步）"""
+        return await self._pool.list_tasks_async(status, limit, offset)
+
     def cancel(self, task_id: str) -> bool:
         """取消任务
 
@@ -1075,6 +1095,33 @@ class TaskScheduler:
             是否成功重试
         """
         return self._pool.retry(task_id, delay)
+
+    def signal(self, task_id: str, payload: Any = None) -> bool:
+        """向等待中的任务发送信号（同步）
+
+        仅对 ``waiting`` 状态生效，先到先得；重复 signal 或任务已结束
+        返回 ``False``。
+
+        Args:
+            task_id: 任务ID
+            payload: 任意可 JSON 序列化的唤醒数据
+
+        Returns:
+            是否成功唤醒并重新入队
+        """
+        return self._pool.signal(task_id, payload)
+
+    async def signal_async(self, task_id: str, payload: Any = None) -> bool:
+        """向等待中的任务发送信号（异步）"""
+        return await self._pool.signal_async(task_id, payload)
+
+    def cleanup_expired_waiting(self) -> int:
+        """立即处理已超时的等待任务（同步），返回转为 failed 的数量"""
+        return self._pool.cleanup_expired_waiting()
+
+    async def cleanup_expired_waiting_async(self) -> int:
+        """立即处理已超时的等待任务（异步）"""
+        return await self._pool.cleanup_expired_waiting_async()
 
     def report_failure(self, task_id: str, reason: str, detail: str = "") -> bool:
         """按业务原因终结任务

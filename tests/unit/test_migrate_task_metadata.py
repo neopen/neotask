@@ -24,6 +24,7 @@ _SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "migrate_task_m
 _NEW_COLUMNS = {
     "failure_reason", "checkpoint_version", "parent_task_id",
     "estimated_cost", "cost_tracking", "queue_wait_ms", "duration_ms",
+    "signal_timeout_at",
 }
 
 
@@ -221,7 +222,7 @@ class TestStartupAlter:
         assert task.queue_wait_ms is None  # 启动期只补列，不回填耗时
 
     async def test_new_task_with_metadata_writes(self, legacy_repo):
-        """补列后 21 列 INSERT/UPDATE 可用（含 cost_tracking JSON）"""
+        """补列后 22 列 INSERT/UPDATE 可用（含 cost_tracking JSON）"""
         task = Task(
             task_id="T-new",
             data={},

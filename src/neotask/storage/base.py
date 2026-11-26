@@ -15,7 +15,29 @@ from dataclasses import dataclass
 from datetime import datetime
 import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+from neotask.core.signal import SIGNAL_DATA_KEY
 from neotask.models.task import Task, TaskStatus
+
+
+def waiting_timeout_at(task: Task) -> Optional[float]:
+    """等待到期时刻（epoch 秒）。
+
+    只有 ``WAITING`` 状态且有 ``timeout_at`` 的任务参与超时扫描；其它状态
+    或未设置超时返回 ``None``。索引型后端用它在写入时算出索引 score。
+    """
+    if task.status != TaskStatus.WAITING:
+        return None
+    data = task.data if isinstance(task.data, dict) else None
+    entry = (data or {}).get(SIGNAL_DATA_KEY)
+    if not isinstance(entry, dict):
+        return None
+    timeout_at = entry.get("timeout_at")
+    if timeout_at is None:
+        return None
+    try:
+        return float(timeout_at)
+    except (TypeError, ValueError):
+        return None
 
 
 def new_cost_summary() -> Dict[str, Any]:
@@ -176,6 +198,39 @@ class TaskRepository(ABC):
         await self.save(task)
         return True
 
+    @staticmethod
+    def _status_value(status) -> str:
+        """把状态统一成存储使用的小写值"""
+        return status.value if isinstance(status, TaskStatus) else str(status)
+
+    async def save_fields_if_status(
+            self,
+            task: Task,
+            fields: Iterable[str],
+            expected,
+    ) -> bool:
+        """乐观锁写入：仅当存储中的状态仍是 ``expected`` 时更新指定字段。
+
+        多个实例/协程可能同时对同一任务做状态转换（signal、超时、取消、完成），
+        状态检查与写入必须是一个原子步骤，否则「先查后写」会让双方都通过检查，
+        后写的一方静默覆盖先写的一方（丢更新）。
+
+        Args:
+            task: 已更新完字段的任务对象（``task.status`` 是转换后的新状态）
+            fields: 需要落库的字段名
+            expected: 转换前存储中的状态；不一致说明已被其他执行者抢先改写
+
+        Returns:
+            是否实际写入（False = CAS 失败，调用方必须放弃本次转换）
+
+        默认实现按「读取 → 比较 → 整条写入」执行，仅用于未覆盖该接口的自定义
+        后端，本身不具备原子性；内置 memory / sqlite / redis 后端均提供原子实现。
+        """
+        current = await self.get(task.task_id)
+        if current is None or current.status.value != self._status_value(expected):
+            return False
+        return await self.save_fields(task, fields)
+
     @abstractmethod
     async def get(self, task_id: str) -> Optional[Task]:
         """Get task by ID."""
@@ -206,6 +261,36 @@ class TaskRepository(ABC):
             if len(tasks) < batch:
                 return total
             offset += batch
+
+    async def list_expired_waiting(
+            self,
+            now: Optional[float] = None,
+            limit: int = 1000,
+            offset: int = 0,
+    ) -> List[Task]:
+        """列出等待超时的 ``WAITING`` 任务，按到期时刻升序。
+
+        默认实现按状态分页扫描后过滤，任何后端都能工作；内置后端均覆盖为
+        索引查询，只加载到期任务，避免每次扫描解码全部等待任务。
+        """
+        current = time.time() if now is None else now
+        expired: List[Task] = []
+        scan_offset = 0
+        batch = 1000
+        while True:
+            tasks = await self.list_by_status(
+                TaskStatus.WAITING, limit=batch, offset=scan_offset
+            )
+            for task in tasks:
+                timeout_at = waiting_timeout_at(task)
+                if timeout_at is not None and timeout_at <= current:
+                    expired.append(task)
+            if len(tasks) < batch:
+                break
+            scan_offset += len(tasks)
+
+        expired.sort(key=lambda task: (waiting_timeout_at(task) or 0.0, task.task_id))
+        return expired[offset:offset + limit]
 
     async def oldest_pending_created_at(self) -> Optional[datetime]:
         """最早 PENDING 任务的创建时间；没有 PENDING 任务时返回 None。

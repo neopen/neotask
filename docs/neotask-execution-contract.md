@@ -29,7 +29,8 @@ NeoTask 不实现 DAG 拆解、状态推进与下发策略；这些逻辑固定�
 - 任务状态枚举与状态机（第 5 节）
 - 失败、重试、续跑语义（第 9 节）
 - 任务标识与幂等规则（第 4 节）
-- Checkpoint 保留键与版本语义（第 10 节）
+- 人工等待与唤醒语义（第 9 节）
+- Checkpoint / 信号保留键与版本语义（第 10 节）
 - 成本字段与聚合结构（第 11 节）
 
 **不属于契约（可自由调整）**
@@ -47,6 +48,7 @@ NeoTask 不实现 DAG 拆解、状态推进与下发策略；这些逻辑固定�
 - **只增量**：新增字段必须可选，缺省时消费方要有安全行为；消费方必须忽略未知字段。
 - **破坏性变更**（删除字段、修改类型或语义）必须提升 `schema_version`，并在至少一个 minor 版本内同时接受旧结构。
 - 时间格式：任务 JSON 中的时间为 ISO 8601 字符串且带时区（如 `2026-11-12T09:30:00+00:00`）；事件信封 `timestamp` 为 epoch 秒（float）。
+- 自 v1.3 起 `TaskStatus` 为标准 `str, Enum`：`str(status)` 输出小写值（如 `"waiting"`），与 `status.value`、JSON 及存储值一致；此前的输出为 `TaskStatus.RUNNING` 形式，属于日志/展示口径变化，`schema_version` 不变。
 - 序列化形态差异是本契约最易出错的一点：
   - 任务 JSON（`get_task()` 与 `task.created` 负载）中，`data` / `result` / `cost_tracking` 是 **JSON 字符串**；
   - `get_result()` 视图与 `task.completed` / `task.failed` 负载中的 `result` / `cost_tracking`（`cost`）是 **已解析对象**。
@@ -60,6 +62,7 @@ NeoTask 不实现 DAG 拆解、状态推进与下发策略；这些逻辑固定�
 - 以相同 `task_id` 再次提交会抛 `TaskAlreadyExistsError`（不覆盖、不排队）。
 - 控制面下发建议：用 DAG 节点的执行 ID 作为 `task_id`，先 `task_exists()` 再决定提交；捕获 `TaskAlreadyExistsError` 同样视为幂等成功。
 - `pool.report_failure(task_id, reason)` 只接受 `RUNNING` 状态的任务。
+- `pool.signal(task_id, payload=None)` 只接受 `WAITING` 状态的任务，先到先得；重复 signal 或任务已取消/已结束返回 `False`，不产生二次副作用。
 
 ---
 
@@ -69,8 +72,9 @@ NeoTask 不实现 DAG 拆解、状态推进与下发策略；这些逻辑固定�
 | :--- | :--- | :--- |
 | `pending` | 已创建，等待执行 | 否 |
 | `running` | 执行中 | 否 |
+| `waiting` | 等待外部信号（人工审批、人工校验、外部事件），不占 worker 槽位（v1.3） | 否 |
 | `success` | 执行成功 | 是 |
-| `failed` | 执行失败（系统异常或业务失败） | 是 |
+| `failed` | 执行失败（系统异常、业务失败或等待超时） | 是 |
 | `cancelled` | 已取消 | 是 |
 | `scheduled` | 保留值，NeoTask 1.x 不会产生 | — |
 
@@ -79,16 +83,26 @@ NeoTask 不实现 DAG 拆解、状态推进与下发策略；这些逻辑固定�
 ```
 pending → running → success
 pending → running → failed
+pending → running → waiting → pending → running …   （v1.3 人工介入）
 pending → cancelled
 running → cancelled
 running → pending   （自动/手动重试）
+waiting → cancelled （v1.3，人工取消）
+waiting → failed    （v1.3，等待超时）
 failed  → pending   （手动重试）
 ```
 
 `failed` 不区分系统异常与业务失败，二者都看 `failure_reason`：
 
 - `failure_reason` 为空：系统异常，已走自动重试；
-- `failure_reason` 非空（如 `qa_failed`）：执行器主动判定的业务失败，**不进入自动重试**，`retry_count` 保持原值。
+- `failure_reason` 非空（如 `qa_failed`）：执行器主动判定的业务失败，**不进入自动重试**，`retry_count` 保持原值；
+- `failure_reason="waiting_timeout"`：等待超时（v1.3），不进入自动重试。
+
+`waiting` 的额外约束：
+
+- 进入等待即释放 worker 槽位，不参与 `ttl` 执行超时、心跳续期与故障回收，等待期间不触发自动重试；节点下线不影响等待任务，任何节点都可 `signal`。
+- 唤醒后转 `pending` 重新入队，并以 `pending → running` 重新执行 Handler（见第 9 节的可重入重放约定）。
+- 读方必须把 `waiting` 视为非终态：不得重新入队、回收或统计为成功/失败；不认识该状态的旧版本应跳过处理而不是终结任务。
 
 ---
 
@@ -171,6 +185,9 @@ failed  → pending   （手动重试）
 | `task.completed` | 执行结果对象；上报过成本时为 `{result, cost}` |
 | `task.failed` | `{error, old_status, reason, cost}`；`reason` 为业务失败原因或 `null`，`cost` 为成本或 `null` |
 | `task.cancelled` | `{old_status}` |
+| `task.waiting` | `{old_status, signal, timeout_at}`；`timeout_at` 为等待到期时刻（epoch 秒）或 `null`（v1.3） |
+| `task.signal_received` | `{signal, payload}`；`payload` 为 `signal` 调用传入的任意 JSON 值（v1.3） |
+| `task.signal_reverted` | `{old_status: "pending"}`；唤醒后重新入队失败、任务回退到 `waiting` 时发布（v1.3） |
 | `task.retry` | 自动重试：`{error, retry_count, max_retries, old_status}`；手动重试：`{retry_count, manual: true, old_status}` |
 | `task.progress` | `{progress, message, timestamp}` |
 | `task.status_changed` | `{old_status, new_status}` |
@@ -184,6 +201,7 @@ failed  → pending   （手动重试）
 ### 8.3 投递语义
 
 - 1.x 事件总线是**进程内尽力而为**的发布订阅：单个消费协程按投递顺序处理，跨任务不保证全局顺序。
+- 同一任务的人工介入事件顺序固定为 `task.waiting` → `task.signal_received` → `task.started` → `task.completed`（或 `task.failed` / `task.cancelled`）；唤醒后入队失败时紧随 `task.signal_received` 发布 `task.signal_reverted`，任务保持 `waiting`。
 - 待处理队列默认不设上限；配置 `event_queue_max_size` 后按 `drop` 策略丢弃新事件并计数告警。因此 1.x 事件**不承诺不丢**。
 - 2.0 上报到控制面时由上报端与控制面共同保证可靠性，建议至少一次投递 + 控制面按 `task_id` 与状态机幂等推进（见第 12 节）。
 
@@ -197,9 +215,13 @@ failed  → pending   （手动重试）
 | `neotask.report_failure(reason)` 后正常返回 | 直接 `failed`，`failure_reason=reason`，不自动重试 |
 | `pool.report_failure(task_id, reason)` | 同上，仅接受 `RUNNING` 任务 |
 | 超时（`ttl`） | 结束为 `failed` |
+| 人工等待（`wait_for_signal`） | `running` → `waiting`，释放 worker 槽位，不完成 future；等待期间不参与 `ttl` 与自动重试 |
+| `signal` 唤醒 | `waiting` → `pending` → 重新执行 Handler；先到先得，重复 signal 无效 |
+| 等待超时（`timeout` / `waiting_timeout`） | `waiting` → `failed`，`failure_reason="waiting_timeout"`，不自动重试 |
 | 手动重试 | `failed` → `pending`，保留 checkpoint |
 
-- 自动重试与手动重试都会把最近 checkpoint 注入 `task.data["__checkpoint__"]`。
+- 自动重试、手动重试与信号唤醒都会把最近 checkpoint 注入 `task.data["__checkpoint__"]`。
+- 等待唤醒是**可重入重放**：Handler 从最近 checkpoint 恢复后从头执行，`wait_for_signal` 命中已到达的信号时直接返回 payload 而不再次挂起。与自动重试同一约定——Handler 必须在挂起前保存 checkpoint，并保证重复执行不产生重复副作用。
 - `resume_from_checkpoint=True` 只作用于新的提交（`submit` / `create_pending_task`），与 `max_retries` 相互独立：前者决定首次执行前是否注入历史状态，后者只决定异常后的重试次数。
 
 ---
@@ -211,6 +233,13 @@ failed  → pending   （手动重试）
 - 恢复时，最新状态被注入 `task.data["__checkpoint__"]`。**`__checkpoint__` 是保留键**，业务 `data` 不得占用同名键。
 - `task.checkpointed` 事件在每次写入后发布，`data.version` 为新版本号。
 - 执行器内 async 用 `neotask.save_checkpoint(state)`；线程执行器用 `*_sync` 变体；进程执行器与执行器外场景用 `pool.save_checkpoint(task_id, state)`。
+
+### 10.1 信号数据面（v1.3）
+
+- `__signal__` 是保留键：`pool.signal()` 把唤醒 payload 写入 `task.data["__signal__"]`，结构为 `{signal, sequence, payload, arrived, consumed, timeout_at}`；`wait_for_signal` 消费后清除 `payload` 并复位 `arrived`。业务 `data` 不得占用同名键。
+- 每次进入等待把该等待键的序号加一（`sequence`，随任务数据持久化），用于观测与排查；消费后 `arrived=False`、`consumed=True`，同一等待键再次挂起时不会误命中已消费的旧 payload。
+- 每次进入等待自动保存一次 checkpoint（Handler 未保存时以空状态占位），唤醒后按第 9 节的可重入重放约定恢复。
+- 信号 payload 必须是 JSON 可序列化的值；跨进程/跨节点传递依赖任务存储，不依赖进程内 Blackboard。
 
 ---
 
@@ -263,7 +292,8 @@ failed  → pending   （手动重试）
 - [ ] 只通过任务 JSON、`get_result()` 与事件消费数据，不直接读写 NeoTask 的存储表或 Redis 键。
 - [ ] 按 `task_id` 幂等推进状态，重复事件不产生二次副作用。
 - [ ] 忽略不认识的字段；只在 `schema_version` 提升时调整解析。
-- [ ] 区分「业务失败（`failure_reason` 非空）」与「系统异常重试中」。
+- [ ] 区分「业务失败（`failure_reason` 非空）」与「系统异常重试中」；`waiting_timeout` 是等待超时，不是业务失败。
+- [ ] 把 `waiting` 视为非终态：未识别时跳过，不重新入队、不回收、不按成功/失败统计。
 - [ ] 不依赖 Blackboard 传递跨服务数据（它只在单进程内有效）。
-- [ ] 恢复任务时尊重 `task.data["__checkpoint__"]` 保留键。
+- [ ] 恢复任务时尊重 `task.data["__checkpoint__"]` 与 `task.data["__signal__"]` 两个保留键。
 - [ ] 时间解析同时兼容带时区的 ISO 8601 与 epoch 秒两种形态。

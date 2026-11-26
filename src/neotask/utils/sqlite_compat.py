@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, Iterable, Optional, Tuple, Union
+from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import aiosqlite
 
@@ -45,41 +45,85 @@ def _is_readonly_sql(sql: str) -> bool:
 class LoopBoundCursor:
     """代理 ``aiosqlite.Cursor``。
 
-    ``fetchone`` / ``fetchall`` 等在专用事件循环中执行；
-    ``description`` / ``rowcount`` 等只读属性直接暴露（执行完成后不再变化）。
+    只读语句返回的是**已缓冲**游标：``SELECT`` 的结果在
+    :meth:`LoopBoundSQLiteConnection.execute` 内一次取完并关闭语句，此后
+    ``fetch*`` 只读取内存副本。原因是 SQLite 的读快照在语句存活期间固定，
+    若 ``execute`` 与 ``fetch`` 分两次投递，其它协程在此期间发起的 SELECT
+    会复用同一条读连接上尚未结束的旧快照，读到写入提交前的陈旧数据
+    （跨实例状态判定会因此误判）。
+
+    写语句仍返回实时游标，``fetchone`` / ``fetchall`` 等在专用事件循环中执行；
+    ``description`` / ``rowcount`` 等只读属性直接暴露。
     """
 
-    def __init__(self, owner: "LoopBoundSQLiteConnection", cursor: Any) -> None:
+    def __init__(
+            self,
+            owner: "LoopBoundSQLiteConnection",
+            cursor: Optional[Any] = None,
+            *,
+            rows: Optional[List[Any]] = None,
+            description: Any = None,
+    ) -> None:
         self._owner = owner
-        self._cursor = cursor
+        self._cursor: Any = cursor
+        # 已缓冲模式：只读语句在 execute 内一次性取完全部行并关闭游标
+        self._rows = rows
+        self._pos = 0
+        self._description = description
 
     async def fetchone(self) -> Optional[Any]:
+        if self._rows is not None:
+            if self._pos >= len(self._rows):
+                return None
+            row = self._rows[self._pos]
+            self._pos += 1
+            return row
         return await self._owner._dispatch(self._cursor.fetchone)
 
     async def fetchmany(self, size: Optional[int] = None) -> Iterable[Any]:
+        if self._rows is not None:
+            # 与 sqlite3 默认行为一致：不传 size 时取 arraysize（默认 1）行
+            count = 1 if size is None else max(0, size)
+            chunk = self._rows[self._pos:self._pos + count]
+            self._pos += len(chunk)
+            return chunk
         if size is None:
             return await self._owner._dispatch(self._cursor.fetchmany)
         return await self._owner._dispatch(lambda: self._cursor.fetchmany(size))
 
     async def fetchall(self) -> Iterable[Any]:
+        if self._rows is not None:
+            chunk = self._rows[self._pos:]
+            self._pos = len(self._rows)
+            return chunk
         return await self._owner._dispatch(self._cursor.fetchall)
 
     async def close(self) -> None:
+        if self._rows is not None:
+            self._rows = []
+            self._pos = 0
+            return
         await self._owner._dispatch(self._cursor.close)
 
     @property
     def description(self) -> Any:
         """列描述信息（供 ``dict(zip(...))`` 使用）"""
+        if self._rows is not None:
+            return self._description
         return self._cursor.description
 
     @property
     def rowcount(self) -> int:
         """受影响的行数"""
+        if self._rows is not None:
+            return -1
         return self._cursor.rowcount
 
     @property
     def lastrowid(self) -> Optional[int]:
         """最后插入行的 ID"""
+        if self._rows is not None:
+            return None
         return self._cursor.lastrowid
 
     async def __aenter__(self) -> "LoopBoundCursor":
@@ -136,6 +180,10 @@ class LoopBoundSQLiteConnection:
         # 写串行锁：在专用 loop 内惰性创建。所有写操作（含批量事务）共用一把锁，
         # 杜绝多个协程的 BEGIN/COMMIT 在同一写连接上交错（见 executemany_transaction）。
         self._write_lock: Optional[asyncio.Lock] = None
+        # 读串行锁：把「执行 + 取完 + 关闭」合成一个不可分割的读语句。SQLite 的
+        # 读快照在语句存活期间固定，两条并发 SELECT 若在连接上交错，后发起的一条
+        # 会复用前一条的旧快照，读到写入提交前的数据。
+        self._read_lock: Optional[asyncio.Lock] = None
 
     def _write_lock_on_loop(self) -> asyncio.Lock:
         """返回写串行锁，必要时创建（必须在专用 loop 内调用）。
@@ -146,6 +194,12 @@ class LoopBoundSQLiteConnection:
         if self._write_lock is None:
             self._write_lock = asyncio.Lock()
         return self._write_lock
+
+    def _read_lock_on_loop(self) -> asyncio.Lock:
+        """返回读串行锁，必要时创建（必须在专用 loop 内调用）。"""
+        if self._read_lock is None:
+            self._read_lock = asyncio.Lock()
+        return self._read_lock
 
     @property
     def closed(self) -> bool:
@@ -194,6 +248,7 @@ class LoopBoundSQLiteConnection:
                 self._read_conn = None
                 # 旧锁绑定在已关闭的 loop 上，随连接一起丢弃，在新 loop 重建
                 self._write_lock = None
+                self._read_lock = None
             self._bound_loop = loop
 
             async def _runner() -> Any:
@@ -221,6 +276,10 @@ class LoopBoundSQLiteConnection:
 
         SELECT / WITH 走只读连接，其余语句走写连接（见 ``__init__`` 注释）。
         写语句持写串行锁执行，避免落入其它协程的批量事务窗口（BEGIN…COMMIT）。
+
+        只读语句持读串行锁把「执行 → 取完 → 关闭」一次完成：快照在语句开始时
+        固定，若中途让出给其它协程，它们随后发起的 SELECT 会复用本语句尚未
+        结束的旧快照，读到已提交写入之前的陈旧数据。结果是返回已缓冲游标。
         """
         readonly = _is_readonly_sql(sql)
 
@@ -230,12 +289,21 @@ class LoopBoundSQLiteConnection:
                     return await conn.execute(sql)
                 return await conn.execute(sql, parameters)
 
-            if readonly:
-                cursor = await _exec()
-            else:
+            if not readonly:
                 async with self._write_lock_on_loop():
                     cursor = await _exec()
-            return LoopBoundCursor(self, cursor)
+                return LoopBoundCursor(self, cursor)
+
+            async with self._read_lock_on_loop():
+                cursor = await _exec()
+                try:
+                    rows = await cursor.fetchall()
+                    description = cursor.description
+                finally:
+                    await cursor.close()
+            return LoopBoundCursor(
+                self, rows=list(rows), description=description
+            )
 
         return await self._run(_factory, readonly=readonly)
 
@@ -398,6 +466,7 @@ class LoopBoundSQLiteConnection:
         self._read_conn = None
         self._bound_loop = None
         self._write_lock = None
+        self._read_lock = None
 
         # loop 已不可用时直接放弃：守护线程退出后连接随之释放
         if loop is None or loop.is_closed() or not loop.is_running():

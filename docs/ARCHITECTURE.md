@@ -23,6 +23,7 @@ NeoTask 是一个纯 Python 实现的异步任务调度系统，专为耗时任�
 | **任务等待** | 支持同步/异步等待任务完成并获取结果 |
 | **事件回调** | 支持任务创建、开始、完成、失败等事件回调 |
 | **进度上报** | executor 内可发布进度（`task.progress` 事件），并持久化到任务记录 |
+| **人工介入** | Handler 用 `wait_for_signal()` 挂起为 `WAITING`（释放 worker 槽位），`pool.signal()` 唤醒并从 checkpoint 重放；等待状态三后端持久化，支持超时 |
 
 ---
 
@@ -429,6 +430,10 @@ result = pool.wait_for_result(task_id)
 | `cancel(task_id)`                                           | 取消任务                   |
 | `delete(task_id)`                                           | 删除任务                   |
 | `retry(task_id, delay=0)`                                   | 重试失败的任务             |
+| `signal(task_id, payload=None)`                             | 唤醒 waiting 任务（先到先得） |
+| `signal_async(task_id, payload=None)`                       | 异步唤醒 waiting 任务      |
+| `cleanup_expired_waiting()`                                 | 立即处理等待超时任务       |
+| `list_tasks(status=None, limit=100, offset=0)`              | 按状态列出任务             |
 | `get_stats()`                                               | 获取实时统计               |
 | `get_metrics()`                                             | 获取轻量监控快照           |
 | `get_metrics_async()`                                       | 异步获取监控快照           |
@@ -460,6 +465,8 @@ result = pool.wait_for_result(task_id)
 | `get_status(task_id)`                                        | 获取任务状态        |
 | `get_result(task_id)`                                        | 获取任务结果        |
 | `cancel(task_id)`                                            | 取消任务            |
+| `signal(task_id, payload=None)`                              | 唤醒 waiting 任务   |
+| `list_tasks(status=None, limit=100, offset=0)`               | 按状态列出任务      |
 | `get_stats()`                                                | 获取实时统计        |
 | `get_metrics()`                                              | 获取轻量监控快照    |
 | `get_metrics_async()`                                        | 异步获取监控快照    |
@@ -468,14 +475,18 @@ result = pool.wait_for_result(task_id)
 
 ### TaskStatus 状态枚举
 
-| 状态      | 值          | 说明               |
-| :-------- | :---------- | :----------------- |
-| PENDING   | "pending"   | 等待执行           |
-| RUNNING   | "running"   | 执行中             |
-| SUCCESS   | "success"   | 执行成功           |
-| FAILED    | "failed"    | 执行失败           |
-| CANCELLED | "cancelled" | 已取消             |
-| SCHEDULED | "scheduled" | 已调度（定时任务） |
+`TaskStatus` 是标准 `str, Enum`（成员名大写、值小写，`str(status)` 输出小写值），
+`TaskStatus.from_value()` 可将存储/接口中的字符串还原为枚举。
+
+| 状态      | 值          | 说明                       |
+| :-------- | :---------- | :------------------------- |
+| PENDING   | "pending"   | 等待执行                   |
+| RUNNING   | "running"   | 执行中                     |
+| WAITING   | "waiting"   | 等待外部信号（非终态，v1.3） |
+| SUCCESS   | "success"   | 执行成功                   |
+| FAILED    | "failed"    | 执行失败                   |
+| CANCELLED | "cancelled" | 已取消                     |
+| SCHEDULED | "scheduled" | 已调度（定时任务）         |
 
 ### TaskPriority 优先级
 
@@ -509,6 +520,10 @@ config = TaskPoolConfig(
     prefetch_size=20,           # 预取任务数量
     enable_prefetch=True,       # 是否启用预取
     task_timeout=None,          # 任务超时时间（秒），None 表示不超时
+
+    # 人工介入（v1.3）
+    waiting_timeout=None,       # 等待信号默认超时（秒），None/0 表示不超时
+    waiting_scan_interval=30.0, # 等待超时扫描间隔（秒），<=0 关闭后台扫描
 
     # 队列配置
     queue_max_size=10000,       # 队列最大长度
@@ -574,7 +589,7 @@ config = SchedulerConfig(
 ## 版本与展望
 
 
-### 当前能力（v1.2.0 已发布）
+### 当前能力（v1.3.0 待发布）
 
 - ✅ 即时任务队列（优先级、并发控制、批量提交）
 - ✅ 内存/SQLite/Redis 存储；周期任务持久化与跨重启恢复
@@ -584,6 +599,7 @@ config = SchedulerConfig(
 - ✅ 分布式锁、节点心跳、故障任务回收、死信队列
 - ✅ 断点续跑、成本上报、父子任务关联、本地上下文存储、自定义失败原因（v1.1）
 - ✅ 轻量监控快照 `get_metrics()` 与周期推送 `on_metrics()`（v1.2）
+- ✅ 人工介入：`WAITING` 状态、`wait_for_signal()` / `pool.signal()`、等待超时（v1.3）
 - ✅ 可选 Web UI（`pip install neotask[ui]`）
 
 ### 发展路线图
@@ -635,7 +651,7 @@ timeline
                : get_metrics 快照与周期推送
 
     section v1.3 人工介入
-        计划中 : WAITING 等待状态
+        已交付 : WAITING 等待状态
                : task.waiting / task.signal_received
                : 信号唤醒与 checkpoint 续跑
 
@@ -668,7 +684,7 @@ timeline
 | 断点续跑 / 成本上报 / 本地上下文 | ✅ 已交付（v1.1） | `core/checkpoint.py`、`core/cost.py`、`storage/` |
 | 监控快照 `get_metrics` / 周期推送 `on_metrics` | ✅ 已交付（v1.2） | `api/task_pool.py`、`monitor/` |
 | Web UI 监控面板（可选 extra） | ✅ 已交付 | `web/` |
-| 人工介入（WAITING 状态 / 信号唤醒） | 🚧 计划中（v1.3） | - |
+| 人工介入（WAITING 状态 / 信号唤醒） | ✅ 已实现（v1.3，待发布） | `core/signal.py`、`core/lifecycle.py` |
 | Prometheus 导出器 / 可靠性补强 | 🚧 计划中（v1.4） | - |
 | NeoFlow 执行面接入 | 🚧 计划中（v2.0） | - |
 

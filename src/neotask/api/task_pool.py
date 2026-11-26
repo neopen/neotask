@@ -172,7 +172,8 @@ class TaskPool:
             prefetch_size=self._config.prefetch_size,
             task_timeout=self._config.task_timeout,
             enable_prefetch=self._config.enable_prefetch,
-            node_id=self._config.node_id
+            node_id=self._config.node_id,
+            waiting_timeout=self._config.waiting_timeout,
         )
 
         # 设置重试配置
@@ -203,11 +204,13 @@ class TaskPool:
         ) if self._config.enable_health_check else None
         self._reporter_manager = None
         self._cleanup_task: Optional[asyncio.Task] = None
+        self._waiting_scan_task: Optional[asyncio.Task] = None
 
         # 内部计数器（事件驱动维护，供 get_stats / 监控使用）
         self._counter_lock = threading.Lock()
         self._pending_count = 0
         self._running_count = 0
+        self._waiting_count = 0
         self._completed_count = 0
         self._failed_count = 0
 
@@ -375,6 +378,9 @@ class TaskPool:
             EventType.FAILED,
             EventType.CANCELLED,
             EventType.RETRY,
+            EventType.WAITING,
+            EventType.SIGNAL_RECEIVED,
+            EventType.SIGNAL_REVERTED,
         )
 
         # 计数器与指标合并为一个订阅方：同一事件不再为两者各起一个协程。
@@ -418,6 +424,16 @@ class TaskPool:
             elif event.event_type == EventType.RETRY:
                 self._decrement_counter_locked(old_status or "running")
                 self._pending_count += 1
+            elif event.event_type == EventType.WAITING:
+                self._running_count = max(0, self._running_count - 1)
+                self._waiting_count += 1
+            elif event.event_type == EventType.SIGNAL_RECEIVED:
+                self._waiting_count = max(0, self._waiting_count - 1)
+                self._pending_count += 1
+            elif event.event_type == EventType.SIGNAL_REVERTED:
+                # signal 已发布但入队失败：计数回到 waiting 一侧
+                self._pending_count = max(0, self._pending_count - 1)
+                self._waiting_count += 1
 
     async def _record_metrics(self, event: TaskEvent) -> None:
         """按生命周期事件更新指标收集器"""
@@ -436,13 +452,23 @@ class TaskPool:
         elif event.event_type == EventType.COMPLETED:
             await metrics.record_task_complete(event.task_id)
         elif event.event_type == EventType.FAILED:
-            await metrics.record_task_failed(event.task_id)
+            await metrics.record_task_failed(
+                event.task_id, data.get("old_status")
+            )
         elif event.event_type == EventType.CANCELLED:
-            await metrics.record_task_cancelled(event.task_id)
+            await metrics.record_task_cancelled(
+                event.task_id, data.get("old_status")
+            )
         elif event.event_type == EventType.RETRY:
             await metrics.record_task_retry(
                 event.task_id, data.get("retry_count", 1)
             )
+        elif event.event_type == EventType.WAITING:
+            await metrics.record_task_waiting(event.task_id)
+        elif event.event_type == EventType.SIGNAL_RECEIVED:
+            await metrics.record_task_signal_received(event.task_id)
+        elif event.event_type == EventType.SIGNAL_REVERTED:
+            await metrics.record_task_signal_reverted(event.task_id)
 
     def _decrement_counter_locked(self, status: str) -> None:
         """按任务原状态递减计数器（调用方需持有 ``_counter_lock``）"""
@@ -450,6 +476,8 @@ class TaskPool:
             self._pending_count = max(0, self._pending_count - 1)
         elif status == TaskStatus.RUNNING.value:
             self._running_count = max(0, self._running_count - 1)
+        elif status == TaskStatus.WAITING.value:
+            self._waiting_count = max(0, self._waiting_count - 1)
         elif status == TaskStatus.FAILED.value:
             self._failed_count = max(0, self._failed_count - 1)
 
@@ -542,6 +570,12 @@ class TaskPool:
                         self._terminal_cleanup_loop()
                     )
 
+                # 周期处理等待超时（单次 wait_for_signal(timeout) 依赖该扫描）
+                if self._config.waiting_scan_interval > 0:
+                    self._waiting_scan_task = asyncio.create_task(
+                        self._waiting_timeout_loop()
+                    )
+
                 info(f"TaskPool started with node_id: {self._config.node_id}")
 
             try:
@@ -585,14 +619,16 @@ class TaskPool:
             # 停止接收新任务
             await self._queue_scheduler.disable()
 
-            # 停止终态清理循环
-            if self._cleanup_task:
-                self._cleanup_task.cancel()
-                try:
-                    await self._cleanup_task
-                except asyncio.CancelledError:
-                    pass
-                self._cleanup_task = None
+            # 停止终态清理与等待超时扫描循环
+            for task_attr in ("_cleanup_task", "_waiting_scan_task"):
+                scan_task = getattr(self, task_attr)
+                if scan_task:
+                    scan_task.cancel()
+                    try:
+                        await scan_task
+                    except asyncio.CancelledError:
+                        pass
+                    setattr(self, task_attr, None)
 
             # 可选：把未到期的延迟任务立即转入优先队列，避免停机后它们永远停在
             # PENDING（内存模式尤其明显）。默认关闭以保持兼容。
@@ -1019,6 +1055,31 @@ class TaskPool:
         """检查任务是否存在（异步）"""
         return await self._task_repo.exists(task_id)
 
+    def list_tasks(
+            self,
+            status: Optional[Union[TaskStatus, str]] = None,
+            limit: int = 100,
+            offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """按状态列出任务（同步）
+
+        ``status`` 可传 ``TaskStatus`` 或小写状态名；不传时按状态轮询取样。
+        ``waiting`` 任务可借此查询（例如 Web UI 展示等待中的任务）。
+        """
+        return self._run_coroutine(self.list_tasks_async(status, limit, offset))
+
+    async def list_tasks_async(
+            self,
+            status: Optional[Union[TaskStatus, str]] = None,
+            limit: int = 100,
+            offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """按状态列出任务（异步）"""
+        if isinstance(status, str):
+            status = TaskStatus.from_value(status)
+        tasks = await self._lifecycle.list_tasks(status, limit, offset)
+        return [task.to_dict() for task in tasks]
+
     # ========== 父子任务查询 API ==========
 
     def get_children(self, task_id: str) -> List[str]:
@@ -1081,14 +1142,19 @@ class TaskPool:
 
     def delete(self, task_id: str) -> bool:
         """删除任务（同步）"""
-        self._worker_pool.forget_pending_retry(task_id)
-        return self._run_coroutine(self._lifecycle.delete_task(task_id))
+        return bool(self._run_coroutine(self.delete_async(task_id)))
 
     async def delete_async(self, task_id: str) -> bool:
         """删除任务（异步）"""
         self._forget_unenqueued(task_id)
         self._worker_pool.forget_pending_retry(task_id)
-        return await self._lifecycle.delete_task(task_id)
+        task = await self._lifecycle.get_task(task_id)
+        deleted = await self._lifecycle.delete_task(task_id)
+        if deleted and task is not None:
+            # deleted 事件负载保持 null（契约稳定），计数在删除入口本地修正
+            with self._counter_lock:
+                self._decrement_counter_locked(task.status.value)
+        return deleted
 
     def retry(self, task_id: str, delay: float = 0) -> bool:
         """重试失败的任务（同步）"""
@@ -1098,6 +1164,61 @@ class TaskPool:
     async def retry_async(self, task_id: str, delay: float = 0) -> bool:
         """重试失败的任务（异步）"""
         return await self._dispatcher.redispatch(task_id, delay)
+
+    # ========== 人工介入 API ==========
+
+    def signal(self, task_id: str, payload: Any = None) -> bool:
+        """向等待中的任务发送信号（同步）
+
+        只接受 ``waiting`` 状态，先到先得：成功写入 payload、转 ``pending``、
+        重新入队并发布 ``task.signal_received``；重复 signal 或任务已结束
+        返回 ``False``，不产生二次副作用。
+
+        Args:
+            task_id: 任务ID
+            payload: 任意可 JSON 序列化的唤醒数据，原样返回给
+                ``wait_for_signal``
+
+        Returns:
+            是否成功唤醒并重新入队
+        """
+        self._ensure_running()
+        return bool(self._run_coroutine(self.signal_async(task_id, payload)))
+
+    async def signal_async(self, task_id: str, payload: Any = None) -> bool:
+        """向等待中的任务发送信号（异步）"""
+        task = await self._lifecycle.get_task(task_id)
+        if not task or task.status != TaskStatus.WAITING:
+            return False
+
+        if not await self._lifecycle.signal_task(task_id, payload):
+            return False
+
+        try:
+            queued = await self._queue_scheduler.push(
+                task_id, task.priority.value
+            )
+        except Exception as exc:
+            error(f"Signal for task {task_id} could not be enqueued: {exc}")
+            queued = False
+
+        if not queued:
+            # 入队失败：回滚到 waiting，调用方可稍后再次 signal
+            await self._lifecycle.revert_signal(task_id)
+            warning(
+                f"Signal for task {task_id} rejected by queue; task stays waiting"
+            )
+            return False
+        return True
+
+    def cleanup_expired_waiting(self) -> int:
+        """立即处理已超时的等待任务（同步），返回转为 failed 的数量"""
+        self._ensure_running()
+        return int(self._run_coroutine(self.cleanup_expired_waiting_async()))
+
+    async def cleanup_expired_waiting_async(self) -> int:
+        """立即处理已超时的等待任务（异步）"""
+        return await self._lifecycle.fail_expired_waiting()
 
     # ========== 业务失败 API ==========
 
@@ -1339,6 +1460,20 @@ class TaskPool:
             except Exception as e:
                 warning(f"Terminal task cleanup failed: {e}")
 
+    async def _waiting_timeout_loop(self) -> None:
+        """周期把等待超时的任务转为 failed"""
+        interval = self._config.waiting_scan_interval
+        while True:
+            try:
+                await asyncio.sleep(interval)
+                failed = await self._lifecycle.fail_expired_waiting()
+                if failed:
+                    info(f"{failed} waiting task(s) timed out")
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                warning(f"Waiting timeout scan failed: {e}")
+
     # ========== 统计信息 API ==========
 
     def _counter_snapshot(self) -> Dict[str, int]:
@@ -1346,6 +1481,7 @@ class TaskPool:
             return {
                 "pending_count": self._pending_count,
                 "running_count": self._running_count,
+                "waiting_count": self._waiting_count,
                 "completed_count": self._completed_count,
                 "failed_count": self._failed_count,
             }
@@ -1360,6 +1496,7 @@ class TaskPool:
             "total": stats.total,
             "pending": stats.pending,
             "running": stats.running,
+            "waiting": stats.waiting,
             "completed": stats.completed,
             "failed": stats.failed,
             "cancelled": stats.cancelled,
@@ -1393,6 +1530,7 @@ class TaskPool:
             "total": stats.total,
             "pending": stats.pending,
             "running": stats.running,
+            "waiting": stats.waiting,
             "completed": stats.completed,
             "failed": stats.failed,
             "cancelled": stats.cancelled,
@@ -1470,6 +1608,7 @@ class TaskPool:
             "node_id": self._config.node_id,
             "pending": counters["pending_count"],
             "running": counters["running_count"],
+            "waiting": counters["waiting_count"],
             "completed": counters["completed_count"],
             "failed": counters["failed_count"],
             "worker_concurrency": self._config.worker_concurrency,

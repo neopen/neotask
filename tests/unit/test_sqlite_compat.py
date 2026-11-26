@@ -58,6 +58,36 @@ async def test_connection_reusable_across_event_loops(tmp_path):
         await conn.close()
 
 
+@pytest.mark.asyncio
+async def test_concurrent_read_does_not_reuse_stale_snapshot(tmp_path):
+    """并发 SELECT 不得复用另一条未结束语句的旧快照
+
+    SQLite 的读快照在语句存活期间固定：若 SELECT 执行后游标未取完/关闭，
+    同一读连接上随后发起的另一个 SELECT 会读到该语句开始时的旧数据。
+    读语句话必须在一次投递内完成「执行 + 取完 + 关闭」，否则跨实例状态
+    判定会把已提交的 RUNNING/WAITING 读成 PENDING。
+    """
+    conn = create_connection(str(tmp_path / "snapshot.db"))
+    try:
+        await conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
+        await conn.execute("INSERT INTO t (id, v) VALUES (1, ?)", ("old",))
+        await conn.commit()
+
+        # 第一个读只执行、不取行（快照此刻固定）
+        first = await conn.execute("SELECT v FROM t WHERE id = 1")
+
+        # 期间提交新值
+        await conn.execute("UPDATE t SET v = ? WHERE id = 1", ("new",))
+        await conn.commit()
+
+        # 后发起的读必须看到新值，而不是复用第一个读的旧快照
+        second = await conn.execute("SELECT v FROM t WHERE id = 1")
+        assert (await second.fetchone())[0] == "new"
+        assert (await first.fetchone())[0] == "old"
+    finally:
+        await conn.close()
+
+
 def _init_repository_in_standalone_loop(repo) -> None:
     asyncio.run(repo._ensure_init())
 

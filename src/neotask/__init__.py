@@ -53,6 +53,13 @@ from neotask.core.checkpoint import (
     save_checkpoint_sync,
 )
 
+# 人工介入：等待外部信号
+from neotask.core.signal import (
+    SIGNAL_DATA_KEY,
+    wait_for_signal,
+    wait_for_signal_sync,
+)
+
 # 事件总线
 from neotask.common.constants import EventType
 from neotask.event.bus import EventBus, TaskEvent
@@ -169,6 +176,9 @@ __all__ = [
     "save_checkpoint_sync",
     "load_checkpoint",
     "load_checkpoint_sync",
+    "SIGNAL_DATA_KEY",
+    "wait_for_signal",
+    "wait_for_signal_sync",
 
     # 事件
     "EventBus",

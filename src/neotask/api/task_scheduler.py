@@ -1031,7 +1031,11 @@ class TaskScheduler:
             limit: int = 100,
             offset: int = 0
     ) -> List[Dict[str, Any]]:
-        """按状态列出任务（同步）"""
+        """按状态列出任务（同步）
+
+        Raises:
+            ValueError: ``status`` 不是合法状态名
+        """
         return self._pool.list_tasks(status, limit, offset)
 
     async def list_tasks_async(
@@ -1040,7 +1044,11 @@ class TaskScheduler:
             limit: int = 100,
             offset: int = 0
     ) -> List[Dict[str, Any]]:
-        """按状态列出任务（异步）"""
+        """按状态列出任务（异步）
+
+        Raises:
+            ValueError: ``status`` 不是合法状态名
+        """
         return await self._pool.list_tasks_async(status, limit, offset)
 
     def cancel(self, task_id: str) -> bool:

@@ -419,7 +419,7 @@ How the numbers are measured:
 | `pool.context_set(key, value, ttl=None) / context_get(key) / context_delete(key)` | Process-local blackboard (Memory backend only) |
 | `await neotask.wait_for_signal(signal, timeout=None)`        | Suspend the handler in `waiting` until a signal arrives; returns the signal payload |
 | `pool.signal(task_id, payload=None)`                         | Wake a `waiting` task and re-enqueue it (first come, first served) |
-| `pool.list_tasks(status=None, limit=100, offset=0)`          | List tasks, optionally filtered by status (e.g. `"waiting"`) |
+| `pool.list_tasks(status=None, limit=100, offset=0)`          | List tasks, optionally filtered by status (e.g. `"waiting"`); unknown names raise `ValueError` |
 | `pool.on_progress(handler)`                                  | Subscribe to progress events                                 |
 | `scheduler.submit_delayed(data, delay_seconds)`              | Delayed task                                                 |
 | `scheduler.submit_interval(data, interval_seconds)`          | Periodic task                                                |

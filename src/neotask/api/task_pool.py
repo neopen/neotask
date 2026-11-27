@@ -1065,6 +1065,9 @@ class TaskPool:
 
         ``status`` 可传 ``TaskStatus`` 或小写状态名；不传时按状态轮询取样。
         ``waiting`` 任务可借此查询（例如 Web UI 展示等待中的任务）。
+
+        Raises:
+            ValueError: ``status`` 不是合法状态名
         """
         return self._run_coroutine(self.list_tasks_async(status, limit, offset))
 
@@ -1074,9 +1077,13 @@ class TaskPool:
             limit: int = 100,
             offset: int = 0
     ) -> List[Dict[str, Any]]:
-        """按状态列出任务（异步）"""
+        """按状态列出任务（异步）
+
+        Raises:
+            ValueError: ``status`` 不是合法状态名
+        """
         if isinstance(status, str):
-            status = TaskStatus.from_value(status)
+            status = TaskStatus(status)
         tasks = await self._lifecycle.list_tasks(status, limit, offset)
         return [task.to_dict() for task in tasks]
 

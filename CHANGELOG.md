@@ -6,6 +6,13 @@
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [1.3.1](https://github.com/neopen/neotask/compare/v1.3.0...v1.3.1) (2026-11-27)
+
+
+### 🐛 Bug Fixes (问题修复)
+
+* v1.3.1 四项收尾修复（指标/状态校验/统计口径/执行器配置） ([#58](https://github.com/neopen/neotask/issues/58)) ([1078cea](https://github.com/neopen/neotask/commit/1078ceaecf155e4a02fbccf07e875ddf15e4b6a3))
+
 ## [1.3.0](https://github.com/neopen/neotask/compare/v1.2.1...v1.3.0) (2026-11-26)
 
 

@@ -522,7 +522,8 @@ class TaskEngine:
         stats = {
             "queue_size": await self._queue_scheduler.size(),
             "active_workers": self._worker_pool.active_count(),
-            "running": self._running,
+            "running": task_stats.running,
+            "is_running": self._running,
             "total": task_stats.total,
             "pending": task_stats.pending,
             "waiting": task_stats.waiting,

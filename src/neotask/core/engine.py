@@ -94,6 +94,13 @@ class EngineConfig:
     # 节点标识（写入事件信封；留空时按 hostname-pid 自动派生）
     node_id: str = ""
 
+    def __setattr__(self, name: str, value) -> None:
+        # 与 TaskPoolConfig 同口径：executor_type 传字符串时构造后也归一化，
+        # 非法值在赋值处即报错，而不是留到创建执行器时。
+        if name == "executor_type" and isinstance(value, str):
+            value = ExecutorType(value.lower())
+        super().__setattr__(name, value)
+
     def __post_init__(self) -> None:
         self.storage_type = StorageType.coerce(self.storage_type)
         if not self.node_id:
@@ -522,7 +529,8 @@ class TaskEngine:
         stats = {
             "queue_size": await self._queue_scheduler.size(),
             "active_workers": self._worker_pool.active_count(),
-            "running": self._running,
+            "running": task_stats.running,
+            "is_running": self._running,
             "total": task_stats.total,
             "pending": task_stats.pending,
             "waiting": task_stats.waiting,

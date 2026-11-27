@@ -325,12 +325,15 @@ class TaskPoolConfig:
     # 节点标识
     node_id: str = ""
 
+    def __setattr__(self, name: str, value) -> None:
+        # executor_type 同时接受枚举与字符串；构造时与构造后都归一化并尽早
+        # 拒绝非法值，否则下游按枚举身份比较时会把它当成未配置而静默降级。
+        if name == "executor_type" and isinstance(value, str):
+            value = ExecutorType(value.lower())
+        super().__setattr__(name, value)
+
     def __post_init__(self):
         self.storage_type = StorageType.coerce(self.storage_type)
-        # 文档承诺 executor_type 同时接受枚举与字符串；在入口处归一化，
-        # 避免下游用身份比较时把 "thread" 当成未配置。
-        if isinstance(self.executor_type, str):
-            self.executor_type = ExecutorType(self.executor_type.lower())
         if not self.node_id:
             import os
             import socket

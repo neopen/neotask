@@ -322,6 +322,22 @@ class TestTaskPoolMemory:
         assert "running" in stats
         assert "completed" in stats
 
+    @pytest.mark.asyncio
+    async def test_list_tasks_rejects_unknown_status(self, task_pool):
+        """非法状态名显式报错，不能静默回退成 pending"""
+        task_id = task_pool.submit({"test": "data"})
+        task_pool.wait_for_result(task_id, timeout=5)
+
+        done = task_pool.list_tasks("success")
+        assert [task["task_id"] for task in done] == [task_id]
+
+        with pytest.raises(ValueError):
+            task_pool.list_tasks("nope")
+        with pytest.raises(ValueError):
+            await task_pool.list_tasks_async("nope")
+
+        assert await task_pool.list_tasks_async("waiting") == []
+
     def test_pause_and_resume(self, task_pool):
         """测试暂停和恢复"""
         # 提交任务

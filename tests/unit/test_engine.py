@@ -11,6 +11,9 @@ See LICENSE File For Details.
 @Time: 2026/11/15
 """
 
+import asyncio
+import time
+
 from neotask import save_checkpoint
 from neotask.core.engine import EngineConfig, TaskEngine
 from neotask.storage.memory import MemoryCheckpointRepository
@@ -92,3 +95,47 @@ class TestTaskEngineCheckpointRepo:
         await engine.stop()
 
         assert repo.closed is True
+
+
+class TestTaskEngineStats:
+    async def test_get_stats_running_is_task_count(self):
+        """get_stats()["running"] 是运行中任务数，与 TaskPool 口径一致；
+        引擎开关状态看 is_running"""
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def work(data):
+            started.set()
+            await release.wait()
+            return {"ok": True}
+
+        engine = TaskEngine(EngineConfig(executor_func=work))
+        await engine.start()
+        try:
+            stats = await engine.get_stats()
+            assert stats["running"] == 0
+            assert stats["is_running"] is True
+
+            task_id = await engine.submit({"job": "block"})
+            await asyncio.wait_for(started.wait(), timeout=5)
+
+            stats = await engine.get_stats()
+            assert stats["running"] == 1
+            assert stats["is_running"] is True
+
+            release.set()
+            assert await engine.wait(task_id, timeout=10) == {"ok": True}
+
+            deadline = time.time() + 5
+            while time.time() < deadline:
+                stats = await engine.get_stats()
+                if stats["running"] == 0:
+                    break
+                await asyncio.sleep(0.01)
+            assert stats["running"] == 0
+            assert stats["is_running"] is True
+        finally:
+            release.set()
+            await engine.stop()
+
+        assert engine.is_running is False

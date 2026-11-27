@@ -16,7 +16,7 @@ import webbrowser
 from typing import Any, Optional
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
 from neotask.common.logger import info
@@ -185,7 +185,10 @@ class WebUIServer:
 
         @app.get("/api/tasks")
         async def list_tasks(status: Optional[str] = None, limit: int = 50):
-            tasks = await self.scheduler.list_tasks_async(status, limit=limit)
+            try:
+                tasks = await self.scheduler.list_tasks_async(status, limit=limit)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
             for task in tasks:
                 # Task.to_dict() 将 data 序列化为 JSON 字符串，面板按对象读取
                 if isinstance(task.get("data"), str):

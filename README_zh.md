@@ -401,7 +401,7 @@ print(result.format())        # result.to_dict() 可直接 json.dumps
 | `pool.context_set(key, value, ttl=None) / context_get(key) / context_delete(key)` | 进程内 Blackboard（仅 Memory 后端） |
 | `await neotask.wait_for_signal(signal, timeout=None)`        | 在 Handler 内挂起为 `waiting`，信号到达后返回 payload |
 | `pool.signal(task_id, payload=None)`                         | 唤醒 `waiting` 任务并重新入队（先到先得） |
-| `pool.list_tasks(status=None, limit=100, offset=0)`          | 按状态列出任务（如 `"waiting"`） |
+| `pool.list_tasks(status=None, limit=100, offset=0)`          | 按状态列出任务（如 `"waiting"`；非法状态名抛 `ValueError`） |
 | `pool.on_progress(handler)`                                  | 订阅进度事件                                                 |
 | `scheduler.submit_delayed(data, delay_seconds)`              | 提交延时任务                                                 |
 | `scheduler.submit_interval(data, interval_seconds)`          | 提交周期任务                                                 |

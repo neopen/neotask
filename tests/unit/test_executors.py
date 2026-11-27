@@ -14,6 +14,7 @@ import pytest
 import asyncio
 import threading
 from neotask import TaskPool, TaskPoolConfig
+from neotask.core.engine import EngineConfig
 from neotask.executor import (
     AsyncExecutor, ThreadExecutor, ProcessExecutor,
     ClassExecutor, ExecutorFactory, ExecutorType
@@ -121,6 +122,39 @@ def test_task_pool_config_rejects_unknown_executor_type():
     """未知字符串在配置构造期即报错，而不是延迟到创建执行器时"""
     with pytest.raises(ValueError):
         TaskPoolConfig(executor_type="bogus")
+
+
+def test_task_pool_config_normalizes_executor_type_assignment():
+    """构造后再赋字符串同样归一化，非法值在赋值处即报错"""
+    config = TaskPoolConfig(storage_type="memory")
+    config.executor_type = "thread"
+    assert config.executor_type is ExecutorType.THREAD
+    config.executor_type = "PROCESS"
+    assert config.executor_type is ExecutorType.PROCESS
+
+    with pytest.raises(ValueError):
+        config.executor_type = "bogus"
+
+
+def test_task_pool_honors_late_executor_type_assignment():
+    """后置赋值 "thread" 也必须落到线程执行器，而不是被包装成协程"""
+    def sync_func(data):
+        return data
+
+    config = TaskPoolConfig(storage_type="memory")
+    config.executor_type = "thread"
+    pool = TaskPool(executor=sync_func, config=config)
+    assert isinstance(pool._executor, ThreadExecutor)
+
+
+def test_engine_config_normalizes_executor_type_assignment():
+    """EngineConfig 与 TaskPoolConfig 口径一致"""
+    config = EngineConfig()
+    config.executor_type = "thread"
+    assert config.executor_type is ExecutorType.THREAD
+
+    with pytest.raises(ValueError):
+        config.executor_type = "bogus"
 
 
 @pytest.mark.parametrize(

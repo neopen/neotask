@@ -131,6 +131,23 @@ class TestMetricsCollector:
         assert summary["avg_queue_time"] <= 0.07
 
     @pytest.mark.asyncio
+    async def test_queue_time_excludes_signal_wait(self, metrics_collector):
+        """signal 唤醒重放只计唤醒后的排队时间，不重复计入人工等待时长"""
+        await metrics_collector.record_task_submit("task_001", priority=2)
+        await metrics_collector.record_task_start("task_001")
+        await metrics_collector.record_task_waiting("task_001")
+        await asyncio.sleep(0.25)  # 人工等待
+
+        await metrics_collector.record_task_signal_received("task_001")
+        await metrics_collector.record_task_start("task_001")
+        await metrics_collector.record_task_complete("task_001")
+
+        queue_times = list(metrics_collector._metrics.queue_times)
+        # 首次入队与唤醒重放各采样一次，且都不包含 0.25s 等待
+        assert len(queue_times) == 2
+        assert max(queue_times) < 0.2
+
+    @pytest.mark.asyncio
     async def test_multiple_tasks(self, metrics_collector):
         """测试多个任务"""
         task_ids = [f"task_{i:03d}" for i in range(10)]

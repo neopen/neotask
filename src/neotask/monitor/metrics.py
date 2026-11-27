@@ -295,13 +295,14 @@ class MetricsCollector:
         Args:
             task_id: 任务ID
         """
-        self._task_start_times[task_id] = time.time()
+        now = time.time()
+        self._task_start_times[task_id] = now
 
-        # 计算排队时间
-        if task_id in self._task_queue_times:
-            queue_time = time.time() - self._task_queue_times[task_id]
+        # 排队起点取出即消费：等待唤醒的任务重放时不能把整段等待时长再计入排队时间
+        queue_start = self._task_queue_times.pop(task_id, None)
+        if queue_start is not None:
             with self._lock:
-                self._metrics.queue_times.append(queue_time)
+                self._metrics.queue_times.append(now - queue_start)
 
         with self._lock:
             self._metrics.pending = max(0, self._metrics.pending - 1)
@@ -391,12 +392,16 @@ class MetricsCollector:
 
     async def record_task_signal_received(self, task_id: str) -> None:
         """记录等待中的任务被信号唤醒（重新回到待执行）"""
+        # 人工等待时长不计入排队时间：重放从唤醒时刻重新计时
+        self._task_queue_times[task_id] = time.time()
         with self._lock:
             self._metrics.waiting = max(0, self._metrics.waiting - 1)
             self._metrics.pending += 1
 
     async def record_task_signal_reverted(self, task_id: str) -> None:
         """记录唤醒入队失败回滚（从待执行退回等待）"""
+        # 退回等待态，丢弃唤醒时设置的排队起点，等下次唤醒重新计时
+        self._task_queue_times.pop(task_id, None)
         with self._lock:
             self._metrics.pending = max(0, self._metrics.pending - 1)
             self._metrics.waiting += 1

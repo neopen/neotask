@@ -39,6 +39,7 @@
 | v1.3.0 | 人工介入（等待状态与信号唤醒）   | 已发布（2026-11-26）       |
 | v1.3.1 | v1.3 收尾修复（指标/校验/口径/执行器配置） | 已发布（2026-11-27） |
 | v1.4.0 | 单节点操作台、任务列表语义与监控导出 | 规划中                     |
+| v1.5.0 | 周期任务跨实例去重、分组并发与限流 | 规划中                   |
 | v2.0.0 | NeoFlow 执行面接入               | 后移                       |
 
 ---
@@ -522,6 +523,55 @@
 
 ---
 
+## 五点一、v1.5.0 — 周期任务跨实例去重与分组限流
+
+**目标**：修复多实例共享存储时周期任务同一 slot 被重复提交的正确性问题；补上分组的并发上限与速率限制，让 API / LLM / 爬虫类任务可以独立节流。
+
+**为什么单独一个 minor**：两项都改变公开行为面——周期执行 task_id 格式变更、`Task` 新增可选字段与配置项——但都不改线协议状态机与事件类型，保持 1.x 兼容。
+
+**设计依据**（实现细节以设计文档为准）：
+
+| 主题 | 设计文档 | 核心决策 |
+| :--- | :--- | :--- |
+| 周期任务跨实例去重 | [neotask-v1.5-periodic-slot-claim-design.md](./neotask-v1.5-periodic-slot-claim-design.md) | slot 确定性 task_id（`PRD_{periodic_id}_{slot}`）复用三后端原子唯一写入；不新增 Redis 键族；冲突方收编存储态 |
+| 分组并发与限流 | [neotask-v1.5-group-limits-design.md](./neotask-v1.5-group-limits-design.md) | `Task.group` + `GroupLimit(max_concurrency, rate, per_seconds, burst)`；执行前非阻塞准入，未准入短延迟重新入队 |
+
+### P0 周期任务 slot 去重
+
+- 同一 `(periodic_id, next_run)` 在集群内最多提交一次；memory / SQLite / Redis 行为一致，依赖存储层唯一键。
+- 认领冲突不记失败、不叠加 `run_count`、不写执行记录；竞争失败方以存储状态收敛。
+- 崩溃窗口（提交成功后、实例状态保存前）重启不重复执行。
+- 兼容约束：周期执行 task_id 改为确定性格式，禁止解析 ID；混合版本集群必须全部实例一起升级（设计文档 §4.6）。
+
+### P0 分组并发与限流
+
+- `submit` / `submit_many` / `submit_delayed` / `submit_interval` / `submit_cron` / `engine.submit` 增加 `group=`。
+- 并发与速率双维度，任一不满足即不启动；限流等待不计入任务超时、不消耗重试预算、不改变任务状态。
+- 挂起释放并发名额、唤醒重新准入；取消不泄漏名额；无法重新入队时回退为阻塞等待。
+- 本版本为进程内限制，集群合计上限 = N × 单进程上限（文档与示例写死）；跨节点配额只在接口层预留，后续版本评估。
+
+### 实施顺序
+
+1. 执行契约补 `task_group` 可选字段（先文档后实现）。
+2. slot helper + `_submit_once` 冲突处理 + 认领失败方状态收敛。
+3. `Task` 字段与三后端持久化（memory / SQLite / Redis）。
+4. `GroupLimit` / `GroupGate` + worker 准入 + 回退路径。
+5. API 透传、指标与日志、示例（`examples/24_group_limits.py`）、文档与 CHANGELOG。
+
+### 验收标准
+
+- Redis 双实例同 slot 只提交一次，`claimed_elsewhere ≥ 1`；提交后崩溃窗口内重启无重复执行。
+- 单进程内并发与速率严格不超限；未配置 `group` 的现有用法零行为变化。
+- 三后端 `task_group` 往返一致，旧 SQLite 库启动自动补列；挂起 / 取消 / 重试 / 超时 / 周期任务的交互用例齐全。
+- 全量套件通过，空配置场景基准无可见回退。
+
+### 非目标
+
+- 不做领导者选举、周期任务不重叠执行（`no_overlap`）、跨时区 Cron。
+- 不做跨进程配额、分组级暂停、运行中动态修改限流参数、分组内抢占。
+
+---
+
 ## 六、v2.0.0 — NeoFlow 执行面接入（后移）
 
 **状态**：后移。1.x 本地能力稳定、NeoFlow 控制面就绪后启动。
@@ -551,7 +601,7 @@
 ## 七、文档同步要求
 
 - 线协议变更先改 [neotask-execution-contract.md](./neotask-execution-contract.md)，再改实现。
-- 版本状态变化时同步 README / README_zh 的路线图区块（当前 v1.3.1 已发布、v1.4 为单节点操作台与导出/可靠性、v2.0 为 NeoFlow 执行面接入）。
+- 版本状态变化时同步 README / README_zh 的路线图区块（当前 v1.3.1 已发布、v1.4 为单节点操作台与导出/可靠性、v1.5 为周期去重与分组限流、v2.0 为 NeoFlow 执行面接入）。
 - 每个发布版本同步 `examples/readme.txt` 索引与 CHANGELOG（由 release-please 生成）。
 
 ---
@@ -587,6 +637,16 @@
 - 嵌入式集成口径：对外契约就是进程内 Python API（提交、查询、signal/cancel/retry、
   事件订阅、配置对象），不内置 function-calling / tool schema；面向 LLM 的工具描述与
   MCP 封装放到 2.0 的 NeoFlow 适配层，避免核心 SDK 绑定宿主协议。
+
+**v1.5 周期去重与分组限流（规划中）**：
+
+- 设计已定稿：[周期任务 slot 去重](./neotask-v1.5-periodic-slot-claim-design.md)、
+  [分组并发与限流](./neotask-v1.5-group-limits-design.md)；实现按「五点一」的实施顺序推进。
+- 先修正确性（周期任务同 slot 重复提交），再加能力（分组限流）；两项同属一个 minor，
+  减少一次版本切换成本。
+- 前置动作：先补执行契约的 `task_group` 可选字段；周期执行 task_id 格式变化与
+  「混合版本集群需全部实例一起升级」写进 CHANGELOG 与升级说明。
+- 分组限流先交付进程内语义；跨节点配额待多节点部署场景明确后再评估，接口已预留。
 
 **中期**：
 

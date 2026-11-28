@@ -217,10 +217,10 @@ timeline
                           : Suspend & Resume via Checkpoint
 
     section v1.4
-        Export & Reliability : Prometheus Exporter (optional)
-                            : Crash Recovery Boundary
-                            : Graceful Shutdown Config
-                            : Retry Semantics Unification
+        Single-Node Console : Task List Ordering & Pagination
+                           : Signal / Cancel / Retry Console
+                           : Prometheus Exporter
+                           : Crash Recovery & Shutdown Matrix
 
     section v2.0
         NeoFlow Execution Plane: Task Consumer (pull)

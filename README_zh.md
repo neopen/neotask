@@ -201,10 +201,10 @@ timeline
                  : 基于 Checkpoint 的恢复
 
     section v1.4
-        导出与可靠性 : Prometheus导出器
-                     : 崩溃恢复边界
-                     : 优雅停机配置
-                     : 重试语义统一
+        单节点操作台 : 任务列表排序与分页
+                   : Signal / Cancel / Retry 操作
+                   : Prometheus导出器
+                   : 崩溃恢复与停机矩阵
 
     section v2.0
         NeoFlow执行面接入 : 任务拉取（TaskConsumer）

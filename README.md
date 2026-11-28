@@ -222,6 +222,12 @@ timeline
                            : Prometheus Exporter
                            : Crash Recovery & Shutdown Matrix
 
+    section v1.5
+        Dedupe & Group Limits : Slot-Scoped Periodic Task ID
+                              : Cross-Instance Cron Dedupe
+                              : Group Concurrency Cap
+                              : Token-Bucket Rate Limit
+
     section v2.0
         NeoFlow Execution Plane: Task Consumer (pull)
                                           : Remote Event Reporting

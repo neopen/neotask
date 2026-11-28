@@ -206,6 +206,12 @@ timeline
                    : Prometheus导出器
                    : 崩溃恢复与停机矩阵
 
+    section v1.5
+        周期去重与分组限流 : Slot 确定性任务 ID
+                         : 跨实例 Cron 去重
+                         : 分组并发上限
+                         : 令牌桶速率限制
+
     section v2.0
         NeoFlow执行面接入 : 任务拉取（TaskConsumer）
                                  : 远程事件上报

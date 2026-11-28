@@ -18,8 +18,11 @@
 2. 1.x 的每个功能都必须能独立服务于基础 SDK 使用者，不以“为 2.0 打基础”为立项理由。
 3. 控制面接入（任务拉取、事件上报）整体放在 2.0，做成可选能力，不改变 1.x 公开结构。
 4. 线协议只做增量扩展；破坏性变更提升 `schema_version` 并保留旧版本可读一个 minor。
-5. 轻量监控属于本地能力的一部分，不做独立 Web UI。
+5. 轻量监控与单节点操作台属于本地能力：面板随宿主进程启停、默认只监听 `127.0.0.1`，
+   不做独立部署的 Web 服务或多节点控制台。
 6. 人工介入属于本地能力：等待状态落库、不依赖控制面，任何节点都可 signal 唤醒。
+7. 对外集成以进程内 Python API 为唯一公开契约；不内置 function-calling / tool schema，
+   面向 LLM 或编排平台的工具描述由适配层提供（2.0 控制面接入时定义）。
 
 ---
 
@@ -33,8 +36,9 @@
 | v1.1.2 | 调度精度与执行器配置修复         | 已发布                     |
 | v1.2.0 | 性能优化与基准测试、轻量监控     | 已发布（2026-11-20）       |
 | v1.2.1 | v1.2 剩余性能候选收尾            | 已发布（2026-11-22）       |
-| v1.3.0 | 人工介入（等待状态与信号唤醒）   | 已实现，待发布             |
-| v1.4.0 | 监控导出器与可靠性补强           | 规划中                     |
+| v1.3.0 | 人工介入（等待状态与信号唤醒）   | 已发布（2026-11-26）       |
+| v1.3.1 | v1.3 收尾修复（指标/校验/口径/执行器配置） | 已发布（2026-11-27） |
+| v1.4.0 | 单节点操作台、任务列表语义与监控导出 | 规划中                     |
 | v2.0.0 | NeoFlow 执行面接入               | 后移                       |
 
 ---
@@ -433,9 +437,46 @@
 
 ---
 
-## 五、v1.4.0 — 监控导出器与可靠性补强
+## 五、v1.4.0 — 单节点操作台、任务列表语义与监控导出
 
-**目标**：把 v1.3 的等待语义纳入恢复/停机矩阵，提供 Prometheus 导出器（可选 extra），补强崩溃恢复边界与停机语义。
+**目标**：把 v1.3 的等待语义落到可操作的本地运维面——提供嵌入式单节点操作台（查看与 signal / cancel / retry），修正任务列表的排序与分页语义，并补齐 Prometheus 导出与可靠性边界。
+
+**为什么单独一个 minor**：新增公开 HTTP 端点与三后端创建时间索引，属于公开行为面扩展；仍以可选依赖提供，不改变核心 API 与线协议。
+
+**原则**：
+
+- 操作台只服务当前节点，不做多节点聚合、任务下发等控制面职责。
+- 默认只监听 `127.0.0.1`；写接口强制 JSON body + 同源校验，可选 `token`。
+- 不提供删除操作（不可逆）；操作集合限定为 signal / cancel / retry。
+- 面板随宿主进程生命周期启停，不做独立部署的 Web 服务。
+
+### P1 任务列表排序与分页语义
+
+#### 1. 三后端 `list_by_status` 统一排序
+- 排序键：`created_at DESC, task_id`，结果稳定、分页可复现。
+- SQLite `ORDER BY created_at DESC, task_id`；memory 在锁内按 `created_at` 倒序后截断。
+- Redis 新增 `neotask:tasks:created` ZSET（score = 创建时间戳）与升级回填标记，
+  用 `ZREVRANGE + MGET` 读取；创建、删除与终态清理路径同步维护索引。
+
+#### 2. `list_tasks(status=None)` 语义
+- 不再“每个状态各取 `limit // 5` 拼接”；新增 `TaskRepository.list_recent(limit, offset)`：
+  - memory 排序后切片；SQLite 走 `created_at` 索引；Redis 走创建时间 ZSET。
+  - base 默认实现按各状态取 `offset + limit` 后合并排序，供自定义后端沿用。
+- `TaskPool` / `TaskScheduler` 的 `list_tasks` 返回稳定顺序；Web `/api/tasks` 增加 `total`，支持 offset 分页。
+
+### P1 单节点操作台
+
+#### 1. 只读视图
+- `GET /api/tasks`：状态筛选 + 分页 + `total`；`status=all` 走 `list_recent`。
+- `GET /api/tasks/{task_id}`：payload、失败原因、重试次数、checkpoint 版本、父子关系。
+- 页面：状态计数 chips、任务表、详情抽屉；具备空状态、结果数与轮询暂停。
+
+#### 2. 操作端点
+- `POST /api/tasks/{task_id}/signal`：仅 `waiting` 生效，body 为 payload。
+- `POST /api/tasks/{task_id}/cancel`：`pending` / `running` / `waiting`。
+- `POST /api/tasks/{task_id}/retry`：`failed` / `cancelled`，可选 `delay`。
+- 端点复用 `pool.signal/cancel/retry` 语义并返回结构化结果；失败返回原因，操作写审计日志。
+- 前端二次确认；`WebUIConfig.token` 可选，开启后写接口校验 `X-NeoTask-Token`；**不提供删除**。
 
 ### P1 监控导出器
 
@@ -467,8 +508,17 @@
 - 等待中的任务不进入自动重试；取消后迟到 signal 无效。
 
 ### 验收标准
+
+- 三后端分页顺序一致且可复现；`list_recent` 与 `list_tasks(None)` 有排序与分页用例。
+- 操作台：signal / cancel / retry 在 waiting / running / failed 任务上的行为与核心 API 一致，无删除入口。
+- 写接口默认仅本机可达；开启 token 后未携带返回 401，非法状态返回 400。
 - Prometheus 导出器可挂载到 FastAPI 示例。
 - 停机行为矩阵覆盖 `pending` / `running` / `waiting` / 周期任务，崩溃恢复边界在文档中有明确说明。
+
+### 非目标
+
+- 不做删除、多节点视图、远程控制台与完整鉴权/用户体系。
+- 不做独立部署的 Web 服务，不默认监听公网地址。
 
 ---
 
@@ -501,7 +551,7 @@
 ## 七、文档同步要求
 
 - 线协议变更先改 [neotask-execution-contract.md](./neotask-execution-contract.md)，再改实现。
-- 版本状态变化时同步 README / README_zh 的路线图区块（当前 v1.2.1 已发布、v1.3 为人工介入、v1.4 为导出与可靠性、v2.0 为 NeoFlow 执行面接入）。
+- 版本状态变化时同步 README / README_zh 的路线图区块（当前 v1.3.1 已发布、v1.4 为单节点操作台与导出/可靠性、v2.0 为 NeoFlow 执行面接入）。
 - 每个发布版本同步 `examples/readme.txt` 索引与 CHANGELOG（由 release-please 生成）。
 
 ---
@@ -520,16 +570,23 @@
   已随 v1.2.1 发布。
 - 发布流程：推送 dev → CI 通过 → 合并 main → release-please 自动升版并发布 PyPI。
 
-**v1.3 人工介入**：
+**v1.3 人工介入（v1.3.0 已发布 2026-11-26；v1.3.1 已发布 2026-11-27）**：
 
-- 先更新执行契约（状态表、转换图、事件表、保留键），再实现 `waiting` 状态与 `task.waiting` / `task.signal_received` 事件。
-- 同时把 `TaskStatus` 统一为标准 `str, Enum`（成员名大写、值小写），事件保持 `EventType` 大写常量 + `task.*` 线上名。
-- 挂起/唤醒语义以 checkpoint 重放为基础，三后端一致；等待任务不占 worker、不参与超时回收。
+- 执行契约先于实现更新，`waiting` 状态与 `task.waiting` / `task.signal_received` 事件已落地；
+  `TaskStatus` 统一为标准 `str, Enum`，事件保持 `EventType` 大写常量 + `task.*` 线上名。
+- 1.3.1 收尾修复：信号唤醒不再重复计入排队时间、`list_tasks` 非法状态严格报错、
+  `TaskEngine.get_stats().running` 统一为任务数、`executor_type` 后置赋值同样归一化。
 
-**v1.4 导出与可靠性**：
+**v1.4 单节点操作台、列表语义与导出/可靠性（下一步）**：
 
-- Prometheus 导出器挂到 `get_metrics()` 快照。
-- 停机/崩溃恢复矩阵纳入 `waiting`，补齐周期任务与等待任务的边界用例。
+- 排期顺序固定为：三后端列表排序与分页（含 Redis 创建时间索引 `neotask:tasks:created`
+  与升级回填）→ `list_recent(limit, offset)` 与 `list_tasks(None)` 语义统一 → 操作台
+  （只读视图 + signal / cancel / retry）→ Prometheus 导出器 → 停机/崩溃恢复矩阵。
+- 操作台不提供删除；默认仅 `127.0.0.1`，写接口 JSON + 同源校验，可选 token，操作写审计日志。
+- 监控导出器与操作台均以可选依赖提供，不改变核心 API、线协议与三后端一致性。
+- 嵌入式集成口径：对外契约就是进程内 Python API（提交、查询、signal/cancel/retry、
+  事件订阅、配置对象），不内置 function-calling / tool schema；面向 LLM 的工具描述与
+  MCP 封装放到 2.0 的 NeoFlow 适配层，避免核心 SDK 绑定宿主协议。
 
 **中期**：
 
